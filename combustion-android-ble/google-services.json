@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "746307581755",
+    "project_id": "combustion-apps",
+    "storage_bucket": "combustion-apps.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:746307581755:android:bd59dd61f20e0361dfe91e",
+        "android_client_info": {
+          "package_name": "inc.combustion.engineering"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "746307581755-5g5sgfvqmm0r7omrmmasndsccainkcla.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "inc.combustion.engineering",
+            "certificate_hash": "8bf90cdcf84aedf4eea1750ece250166777ce736"
+          }
+        },
+        {
+          "client_id": "746307581755-1nlpkmc3sr8tnkfghnpdardjo1nk9rm7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBzctRF2YFPL-bdyBgbcQS34oDw1dtMzdk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "746307581755-1nlpkmc3sr8tnkfghnpdardjo1nk9rm7.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
