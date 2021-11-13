@@ -1,0 +1,13 @@
+<component name="CopyrightManager">
+  <settings default="Combustion Inc. MIT License">
+    <module2copyright>
+      <element module="All" copyright="Combustion Inc. MIT License" />
+    </module2copyright>
+    <LanguageOptions name="Kotlin">
+      <option name="fileTypeOverride" value="3" />
+    </LanguageOptions>
+    <LanguageOptions name="__TEMPLATE__">
+      <option name="addBlankAfter" value="false" />
+    </LanguageOptions>
+  </settings>
+</component>
