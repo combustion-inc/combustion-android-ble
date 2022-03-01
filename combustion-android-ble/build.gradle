@@ -1,6 +1,7 @@
 plugins {
     id("com.android.library")
     id("kotlin-android")
+    id("maven-publish")
 }
 
 android {
@@ -60,4 +61,40 @@ dependencies {
     androidTestImplementation("androidx.test.espresso:espresso-core:$espresso_core_version")
     testImplementation('junit:junit:4.13.2')
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
+}
+
+afterEvaluate {
+    publishing {
+        repositories {
+            maven {
+                name = "GitHubPackages"
+                url = uri("https://maven.pkg.github.com/combustion-inc/combustion-android-ble")
+                credentials {
+                    username = project.findProperty("gpr.user") ?: System.getenv("USERNAME")
+                    password = project.findProperty("gpr.combustion_android_ble_key") ?: System.getenv("TOKEN")
+                }
+            }
+        }
+        publications {
+            // Creates a Maven publication called "release".
+            release(MavenPublication) {
+                // Applies the component for the release build variant.
+                from components.release
+
+                // You can then customize attributes of the publication as shown below.
+                groupId = "inc.combustion.framework"
+                artifactId = "combustion-framework-release"
+                version = "0.0.1"
+            }
+            // Creates a Maven publication called “debug”.
+            debug(MavenPublication) {
+                // Applies the component for the debug build variant.
+                from components.debug
+
+                groupId = "inc.combustion.framework"
+                artifactId = "combustion-framework-debug"
+                version = "0.0.1"
+            }
+        }
+    }
 }
