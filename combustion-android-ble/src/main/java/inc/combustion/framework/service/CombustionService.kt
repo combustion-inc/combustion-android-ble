@@ -12,9 +12,8 @@ import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.DeviceScanner
+import inc.combustion.framework.ble.*
 import inc.combustion.framework.log.LogManager
-import inc.combustion.framework.ble.ProbeManager
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -234,6 +233,22 @@ class CombustionService : LifecycleService() {
         _probes.forEach { (_, probe) -> probe.finish() }
         _probes.clear()
         emitDevicesClearedEvent()
+    }
+
+    fun addSimulatedProbe() {
+        Log.d("JDJ", "Add simulated probe")
+
+//        val advData = AdvertisingData()
+//        val data = ProbeAdvertisingData("AABBCCDD", "11:22:33:44:55:66", -60, )
+//        var newProbe =
+//            SimulatedProbeManager(
+//                "11:22:33:44:55:66",
+//                this@CombustionService,
+//                it,
+//                (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter)
+//
+//        // add it to the LogManager
+//        LogManager.instance.manage(this@CombustionService, newProbe)
     }
 
     private fun emitBluetoothOnEvent() = _discoveredProbesFlow.tryEmit(

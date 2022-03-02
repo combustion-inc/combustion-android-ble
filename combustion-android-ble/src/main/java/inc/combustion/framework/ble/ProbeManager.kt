@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.*
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-class ProbeManager (
+open class ProbeManager (
     mac: String,
     owner: LifecycleOwner,
     private var _advertisingData: ProbeAdvertisingData,

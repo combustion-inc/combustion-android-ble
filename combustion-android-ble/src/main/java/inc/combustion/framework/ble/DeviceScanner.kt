@@ -1,18 +1,13 @@
 package inc.combustion.framework.ble
 
-import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.util.Log
 import androidx.lifecycle.*
-import com.juul.kable.Advertisement
 import com.juul.kable.Scanner
 import inc.combustion.framework.LOG_TAG
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.reflect.*
-import kotlin.reflect.full.memberProperties
-import kotlin.reflect.jvm.isAccessible
 
 // The scanSettings property is only available on Android and
 // is considered a Kable obsolete API, meaning it will be removed
@@ -60,21 +55,8 @@ class DeviceScanner private constructor() {
                                isProbeScanning.set(false)
                            }
                            .collect { advertisement ->
-                               // probe advertisement received.  create the data class and emit
-                               // into the flow for downstream processing.
-                               val scanResult = advertisement.getPrivateProperty<Advertisement, ScanResult>("scanResult")
-                               advertisement.manufacturerData(AdvertisingData.VENDOR_ID)?.let {
-                                   _probeAdvertisements.emit(
-                                       ProbeAdvertisingData(
-                                           name = advertisement.name ?: "Unknown",
-                                           mac = advertisement.address,
-                                           rssi = advertisement.rssi,
-                                           advertisingData = AdvertisingData(
-                                               data = it.toUByteArray(),
-                                               isConnectable = scanResult?.isConnectable ?: false
-                                           )
-                                       )
-                                   )
+                               ProbeAdvertisingData.fromAdvertisement(advertisement)?.let {
+                                   _probeAdvertisements.emit(it)
                                }
                            }
                    }
@@ -87,20 +69,6 @@ class DeviceScanner private constructor() {
             probeAllMatchesScanJob = null
         }
 
-        /**
-         * This extension get's access to the ScanResult to return the isConnectable
-         * state of the advertisement.  See related feature request:
-         * https://github.com/JuulLabs/kable/issues/210
-         *
-         * @return value of Advertisement.ScanResult.isConnectable
-         * @see https://stackoverflow.com/questions/48158909/java-android-kotlin-reflection-on-private-field-and-call-public-methods-on-it
-         */
-        @Suppress("UNCHECKED_CAST")
-        private inline fun <reified T : Any, R> T.getPrivateProperty(name: String): R? =
-            T::class
-                .memberProperties
-                .firstOrNull { it.name == name }
-                ?.apply { isAccessible = true }
-                ?.get(this) as? R
+
     }
 }
