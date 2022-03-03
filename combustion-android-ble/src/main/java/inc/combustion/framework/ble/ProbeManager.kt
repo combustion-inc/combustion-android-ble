@@ -59,14 +59,13 @@ open class ProbeManager (
 
     private val _probeStateFlow =
         MutableSharedFlow<Probe>(FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.DROP_OLDEST)
-    private val _deviceStatusFlow =
+    internal val _deviceStatusFlow =
         MutableSharedFlow<DeviceStatus>(FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.DROP_OLDEST)
     private val _logResponseFlow =
         MutableSharedFlow<LogResponse>(FLOW_CONFIG_REPLAY*5, FLOW_CONFIG_BUFFER*5, BufferOverflow.SUSPEND)
     internal val _isConnected = AtomicBoolean(false)
     internal val _remoteRssi = AtomicInteger(0)
-    private var _hasDeviceStatus = false
-    private var _deviceStatus = DeviceStatus()
+    private var _deviceStatus: DeviceStatus? = null
     private var _connectionState = DeviceConnectionState.OUT_OF_RANGE
     private var _uploadState: ProbeUploadState = ProbeUploadState.Unavailable
     internal var _fwVersion: String? = null
@@ -133,7 +132,7 @@ open class ProbeManager (
         }
     }
 
-    fun sendLogRequest(owner: LifecycleOwner, minSequence: UInt, maxSequence: UInt) {
+    open fun sendLogRequest(owner: LifecycleOwner, minSequence: UInt, maxSequence: UInt) {
         sendUartRequest(owner, LogRequest(minSequence, maxSequence))
     }
 
@@ -170,8 +169,7 @@ open class ProbeManager (
                 _connectionState == DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE ) {
             monitor.activity()
             _advertisingData = advertisingData
-            _hasDeviceStatus = false
-            Log.d("JDJ", "_probeStateFlow.emit(probe)")
+            _deviceStatus = null
             _probeStateFlow.emit(probe)
         }
     }
@@ -203,7 +201,7 @@ open class ProbeManager (
                 _isConnected.set(_connectionState == DeviceConnectionState.CONNECTED)
 
                 if(_connectionState != DeviceConnectionState.CONNECTED)
-                    _hasDeviceStatus = false
+                    _deviceStatus = null
                 else
                     readFirmwareVersion()
 
@@ -222,7 +220,9 @@ open class ProbeManager (
     private suspend fun deviceStatusCharacteristicMonitor() {
         peripheral.observe(DEVICE_STATUS_CHARACTERISTIC)
             .collect { data ->
-                 _deviceStatusFlow.emit(DeviceStatus(data.toUByteArray()))
+                DeviceStatus.fromRawData(data.toUByteArray())?.let {
+                    _deviceStatusFlow.emit(it)
+                }
             }
     }
 
@@ -230,7 +230,6 @@ open class ProbeManager (
         _deviceStatusFlow
             .collect { status ->
                 _deviceStatus = status
-                _hasDeviceStatus = true
                 _probeStateFlow.emit(probe)
             }
     }
@@ -260,22 +259,15 @@ open class ProbeManager (
 
     private fun toProbe(): Probe {
         val isConnected = _isConnected.get()
-        val hasDeviceStatus = _hasDeviceStatus
 
-        val temps = if(isConnected && hasDeviceStatus)
-            _deviceStatus.temperatures
-        else
-            _advertisingData.probeTemperatures
+        val temps = _deviceStatus?.temperatures ?: _advertisingData.probeTemperatures
+        val minSeq = _deviceStatus?.minSequenceNumber ?: 0u
+        val maxSeq = _deviceStatus?.maxSequenceNumber ?: 0u
 
         val rssi = if(isConnected)
             _remoteRssi.get()
         else
             _advertisingData.rssi
-
-        val minSeq = if(isConnected && hasDeviceStatus)
-            _deviceStatus.minSequenceNumber else 0u
-        val maxSeq = if(isConnected && hasDeviceStatus)
-            _deviceStatus.maxSequenceNumber else 0u
 
         return Probe(
             _advertisingData.serialNumber,

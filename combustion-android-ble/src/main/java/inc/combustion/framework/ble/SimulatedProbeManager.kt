@@ -8,6 +8,7 @@ import android.util.Log
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.coroutineScope
 import androidx.lifecycle.lifecycleScope
+import inc.combustion.framework.ble.uart.LogRequest
 import inc.combustion.framework.service.ProbeTemperatures
 import kotlinx.coroutines.launch
 import kotlin.concurrent.fixedRateTimer
@@ -20,6 +21,8 @@ class SimulatedProbeManager (
     private val advertisingData: ProbeAdvertisingData,
     adapter: BluetoothAdapter
 ): ProbeManager(mac, owner, advertisingData, adapter) {
+
+    private var _maxSequence = 0u
 
     companion object {
         const val SIMULATED_MAC = "00:00:00:00:00:00"
@@ -64,7 +67,7 @@ class SimulatedProbeManager (
         fixedRateTimer(name = "FakeStatusNotifications",
             initialDelay = 1000, period = 1000) {
             owner.lifecycleScope.launch {
-                simulateAdvertising()
+                simulateStatusNotifications()
             }
         }
     }
@@ -76,6 +79,10 @@ class SimulatedProbeManager (
 
     override fun disconnect() {
         _isConnected.set(false)
+    }
+
+    override fun sendLogRequest(owner: LifecycleOwner, minSequence: UInt, maxSequence: UInt) {
+        // Do nothing
     }
 
     private suspend fun simulateAdvertising() {
@@ -92,8 +99,13 @@ class SimulatedProbeManager (
     }
 
     private suspend fun simulateStatusNotifications() {
-        val status = DeviceStatus()
+        if(!_isConnected.get()) return
 
-        _deviceStatusFlow.emit(DeviceStatus(data.toUByteArray()))
+        _remoteRssi.set(randomRSSI())
+
+        _maxSequence += 1u
+        val status = DeviceStatus(0u, _maxSequence, ProbeTemperatures.withRandomData())
+
+        _deviceStatusFlow.emit(status)
     }
 }

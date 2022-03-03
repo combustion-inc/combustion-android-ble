@@ -31,7 +31,6 @@ class CombustionService : LifecycleService() {
     private val periodicTimer = object : CountDownTimer(Long.MAX_VALUE, 1000) {
         override fun onTick(millisUntilFinished: Long) {
             lifecycleScope.launch {
-                Log.d("JDJ", "onTick : ${_probes.size}")
                 _probes.forEach { (_, value) ->
                     value.checkIdle()
                 }
