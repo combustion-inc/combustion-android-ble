@@ -51,6 +51,7 @@ class CombustionService : LifecycleService() {
                 when (state) {
                     BluetoothAdapter.STATE_OFF -> {
                         _bluetoothIsOn = false
+                        emitScanningOffEvent()
                         emitBluetoothOffEvent()
                     }
                     BluetoothAdapter.STATE_TURNING_OFF -> {
@@ -59,7 +60,6 @@ class CombustionService : LifecycleService() {
                     BluetoothAdapter.STATE_ON -> {
                         _bluetoothIsOn = true
                         emitBluetoothOnEvent()
-                        emitScanningOffEvent()
                     }
                     BluetoothAdapter.STATE_TURNING_ON -> { }
                 }
