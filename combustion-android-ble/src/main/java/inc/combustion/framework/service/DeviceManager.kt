@@ -115,4 +115,6 @@ class DeviceManager {
         service.createLogFlowForDevice(serialNumber)
 
     fun clearDevices() = service.clearDevices()
+
+    fun addSimulatedProbe() = service.addSimulatedProbe()
 }

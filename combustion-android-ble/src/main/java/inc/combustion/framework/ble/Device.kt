@@ -14,8 +14,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
 open class Device (
-    val mac: String,
-    protected val _owner: LifecycleOwner,
+    private val mac: String,
+    private val _owner: LifecycleOwner,
     adapter: BluetoothAdapter
 ){
     companion object {
@@ -64,7 +64,7 @@ open class Device (
 
     open suspend fun checkIdle() { }
 
-    fun connect() {
+    open fun connect() {
         _owner.lifecycleScope.launch {
             Log.d(LOG_TAG, "Connecting to $mac")
             try {
@@ -76,7 +76,7 @@ open class Device (
         }
     }
 
-    fun disconnect() {
+    open fun disconnect() {
         _owner.lifecycleScope.launch {
             withTimeoutOrNull(DISCONNECT_TIMEOUT_MS) {
                 peripheral.disconnect()
