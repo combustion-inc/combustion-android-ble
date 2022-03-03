@@ -17,6 +17,7 @@ import inc.combustion.framework.log.LogManager
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class CombustionService : LifecycleService() {
 
@@ -30,6 +31,7 @@ class CombustionService : LifecycleService() {
     private val periodicTimer = object : CountDownTimer(Long.MAX_VALUE, 1000) {
         override fun onTick(millisUntilFinished: Long) {
             lifecycleScope.launch {
+                Log.d("JDJ", "onTick : ${_probes.size}")
                 _probes.forEach { (_, value) ->
                     value.checkIdle()
                 }
@@ -236,19 +238,22 @@ class CombustionService : LifecycleService() {
     }
 
     fun addSimulatedProbe() {
-        Log.d("JDJ", "Add simulated probe")
+        // Create SimulatedProbeManager
+        val simulatedProbeManager = SimulatedProbeManager.create(this@CombustionService,
+            (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter)
 
-//        val advData = AdvertisingData()
-//        val data = ProbeAdvertisingData("AABBCCDD", "11:22:33:44:55:66", -60, )
-//        var newProbe =
-//            SimulatedProbeManager(
-//                "11:22:33:44:55:66",
-//                this@CombustionService,
-//                it,
-//                (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter)
-//
-//        // add it to the LogManager
-//        LogManager.instance.manage(this@CombustionService, newProbe)
+        // Add to probe list
+        _probes[simulatedProbeManager.probe.serialNumber] = simulatedProbeManager
+
+        // Add it to the LogManager
+        LogManager.instance.manage(this@CombustionService, simulatedProbeManager)
+
+        // emit into the discovered probes flow
+        lifecycleScope.launch {
+            _discoveredProbesFlow.emit(
+                DeviceDiscoveredEvent.DeviceDiscovered(simulatedProbeManager.probe.serialNumber)
+            )
+        }
     }
 
     private fun emitBluetoothOnEvent() = _discoveredProbesFlow.tryEmit(

@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 open class ProbeManager (
-    mac: String,
+    private val mac: String,
     owner: LifecycleOwner,
     private var _advertisingData: ProbeAdvertisingData,
     adapter: BluetoothAdapter
@@ -63,13 +63,13 @@ open class ProbeManager (
         MutableSharedFlow<DeviceStatus>(FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.DROP_OLDEST)
     private val _logResponseFlow =
         MutableSharedFlow<LogResponse>(FLOW_CONFIG_REPLAY*5, FLOW_CONFIG_BUFFER*5, BufferOverflow.SUSPEND)
-    private val _isConnected = AtomicBoolean(false)
-    private val _remoteRssi = AtomicInteger(0)
+    internal val _isConnected = AtomicBoolean(false)
+    internal val _remoteRssi = AtomicInteger(0)
     private var _hasDeviceStatus = false
     private var _deviceStatus = DeviceStatus()
     private var _connectionState = DeviceConnectionState.OUT_OF_RANGE
     private var _uploadState: ProbeUploadState = ProbeUploadState.Unavailable
-    private var _fwVersion: String? = null
+    internal var _fwVersion: String? = null
 
     val probeStateFlow = _probeStateFlow.asSharedFlow()
     val deviceStatusFlow = _deviceStatusFlow.asSharedFlow()
@@ -107,7 +107,7 @@ open class ProbeManager (
         // RSII polling job
         addJob(owner.lifecycleScope.launch(Dispatchers.IO) {
             while(isActive) {
-                if(_isConnected.get()) {
+                if(_isConnected.get() && mac != SimulatedProbeManager.SIMULATED_MAC) {
                     _remoteRssi.set(peripheral.rssi())
                     _probeStateFlow.emit(probe)
                 }
@@ -171,6 +171,7 @@ open class ProbeManager (
             monitor.activity()
             _advertisingData = advertisingData
             _hasDeviceStatus = false
+            Log.d("JDJ", "_probeStateFlow.emit(probe)")
             _probeStateFlow.emit(probe)
         }
     }
