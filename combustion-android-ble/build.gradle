@@ -65,16 +65,6 @@ dependencies {
 
 afterEvaluate {
     publishing {
-        repositories {
-            maven {
-                name = "GitHubPackages"
-                url = uri("https://maven.pkg.github.com/combustion-inc/combustion-android-ble")
-                credentials {
-                    username = project.findProperty("gpr.user") ?: System.getenv("USERNAME")
-                    password = project.findProperty("gpr.combustion_android_ble_key") ?: System.getenv("TOKEN")
-                }
-            }
-        }
         publications {
             // Creates a Maven publication called "release".
             release(MavenPublication) {
@@ -83,17 +73,8 @@ afterEvaluate {
 
                 // You can then customize attributes of the publication as shown below.
                 groupId = "inc.combustion"
-                artifactId = "combustion-android-ble-release"
-                version = "0.0.2"
-            }
-            // Creates a Maven publication called “debug”.
-            debug(MavenPublication) {
-                // Applies the component for the debug build variant.
-                from components.debug
-
-                groupId = "inc.combustion"
-                artifactId = "combustion-android-ble-debug"
-                version = "0.0.2"
+                artifactId = "framework"
+                version = "0.0.1"
             }
         }
     }
