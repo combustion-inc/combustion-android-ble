@@ -213,7 +213,7 @@ internal open class ProbeManager (
         if(connectionState == DeviceConnectionState.ADVERTISING_CONNECTABLE ||
             connectionState == DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE ) {
             monitor.activity()
-            advertisingData = advertisingData
+            advertisingData = newAdvertisingData
             deviceStatus = null
             _probeStateFlow.emit(probe)
         }
