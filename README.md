@@ -39,7 +39,7 @@ A straightforward example Android app illustrating the use of this framework is 
 
 ## The API
 
-The public API and data access objects are contained in the [inc.combustion.framework.service](https://github.com/combustion-inc/combustion-android-ble/tree/main/combustion-android-ble/src/main/java/inc/combustion/framework/service) package.  The [`DeviceManager`](combustion-android-ble/src/main/java/inc/combustion/framework/service/DeviceManager.kt) class is the primary entrypoint for the API.  See the [`DeviceManager`](combustion-android-ble/src/main/java/inc/combustion/framework/service/DeviceManager.kt) source documentation for more details on the API.
+The public API and data access objects are contained in the [inc.combustion.framework.service](combustion-android-ble/src/main/java/inc/combustion/framework/service) package.  The [`DeviceManager`](combustion-android-ble/src/main/java/inc/combustion/framework/service/DeviceManager.kt) class is the primary entrypoint for the API.  See the [`DeviceManager`](combustion-android-ble/src/main/java/inc/combustion/framework/service/DeviceManager.kt) source documentation for more details on the API.
 
 ## Adding the Library to Your Project
 You can find our library on [JitPack](https://jitpack.io/#combustion-inc/combustion-android-ble).  Go to that page for instructions on setting up your root `build.gradle` to use the JitPack repository and add the library dependency to your build.  See our [`build.gradle`](combustion-android-ble/build.gradle) for the compiler arguments and dependencies used by the library.
