@@ -137,7 +137,7 @@ internal class LogManager {
                                 // add the device status to the temperature log
                                 val sessionStatus = temperatureLog.addFromDeviceStatus(deviceStatus)
 
-                                // if we have any dropped records that initiate a log request to
+                                // if we have any dropped records then initiate a log request to
                                 // backfill from the missing records.
                                 if(sessionStatus.droppedRecords.isNotEmpty()) {
                                     val drop = sessionStatus.droppedRecords.first()
