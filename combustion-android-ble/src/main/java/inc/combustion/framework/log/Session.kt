@@ -152,9 +152,15 @@ internal class Session(seqNum: UInt, private val serialNumber: String) {
                 // don't change the next expected
             }
             else {
-                Log.w(LOG_TAG,
-                    "Received unexpected record? " +
-                            "$serialNumber.${logResponse.sequenceNumber} ($nextExpectedRecord)")
+                // the following can occur when re-requesting records to handle gaps in the
+                // record log.
+                if(DebugSettings.DEBUG_LOG_TRANSFER) {
+                    Log.d(
+                        LOG_TAG,
+                        "Received duplicate record " +
+                                "$serialNumber.${logResponse.sequenceNumber} ($nextExpectedRecord)"
+                    )
+                }
             }
         }
         // happy path, add the record, update the next expected.
