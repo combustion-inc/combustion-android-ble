@@ -50,7 +50,7 @@ internal class Session(seqNum: UInt, private val serialNumber: String) {
          * If > than this threshold of device status packets are received, then
          * consider the log request stalled.
          */
-        const val STALE_LOG_REQUEST_PACKET_COUNT = 20u
+        const val STALE_LOG_REQUEST_PACKET_COUNT = 15u
     }
 
     private val _logs: SortedMap<UInt, LoggedProbeDataPoint> = sortedMapOf()
@@ -66,7 +66,23 @@ internal class Session(seqNum: UInt, private val serialNumber: String) {
 
     val id = SessionId(seqNum)
     val isEmpty get() = _logs.isEmpty()
-    val maxSequenceNumber: UInt get() = if(isEmpty) 0u else _logs.lastKey()
+    private val maxSequenceNumber: UInt get() = if(isEmpty) 0u else _logs.lastKey()
+
+    val maxSequentialSequenceNumber: UInt get() {
+        var lastKey = minSequenceNumber
+        val iterator = _logs.keys.iterator()
+
+        while(iterator.hasNext()) {
+            val key = iterator.next()
+            if (lastKey >= key - 1u) {
+                lastKey = key
+            } else {
+                break
+            }
+        }
+
+        return lastKey
+    }
 
     val logRequestIsStalled: Boolean
         get() {
@@ -136,9 +152,15 @@ internal class Session(seqNum: UInt, private val serialNumber: String) {
                 // don't change the next expected
             }
             else {
-                Log.w(LOG_TAG,
-                    "Received unexpected record? " +
-                            "$serialNumber.${logResponse.sequenceNumber} ($nextExpectedRecord)")
+                // the following can occur when re-requesting records to handle gaps in the
+                // record log.
+                if(DebugSettings.DEBUG_LOG_TRANSFER) {
+                    Log.d(
+                        LOG_TAG,
+                        "Received duplicate record " +
+                                "$serialNumber.${logResponse.sequenceNumber} ($nextExpectedRecord)"
+                    )
+                }
             }
         }
         // happy path, add the record, update the next expected.
@@ -157,6 +179,15 @@ internal class Session(seqNum: UInt, private val serialNumber: String) {
 
         // decrement the stale log request counter
         staleLogRequestCount--
+
+        // sanity check -- if LogManger is adding DeviceStatus to the Session log, but has not
+        // started the log request, then force nextExpectedDeviceStatus here.
+        if(nextExpectedDeviceStatus == UInt.MAX_VALUE)  {
+           nextExpectedDeviceStatus = deviceStatus.maxSequenceNumber - 1u
+           if(DebugSettings.DEBUG_LOG_TRANSFER) {
+               Log.d(LOG_TAG, "Forcing nextExpectedDeviceStatue: $nextExpectedDeviceStatus")
+           }
+        }
 
         // check to see if we dropped data
         if(deviceStatus.maxSequenceNumber > nextExpectedDeviceStatus) {
@@ -204,7 +235,6 @@ internal class Session(seqNum: UInt, private val serialNumber: String) {
         )
 
         if(DebugSettings.DEBUG_LOG_SESSION_STATUS) {
-
             Log.d(LOG_TAG, "$status " +
                     "[${deviceStatus.minSequenceNumber.toInt()} - ${deviceStatus.maxSequenceNumber.toInt()}]"
             )

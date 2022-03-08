@@ -10,7 +10,7 @@ We build nice things that make cooking more enjoyable. Like a thermometer that's
 
 Our Predictive Thermometer's eight temperature sensors measure the temp outside and inside the food, in the center and at the surface, and nearly everywhere in between. So you know what’s really happening in and around your food. There's a display Timer that's big and bold—legible even through tears of joy and chopped onions—and a mobile app. 
 
-Or you can create your own mobile app to work with the Predictive Thermometer using this open source library.
+Or you can create your own mobile app to work with the Predictive Thermometer using this and our [iOS](https://github.com/combustion-inc/combustion-ios-ble) open source libraries.
 
 Visit [www.combustion.inc](https://www.combustion.inc) to sign up to be notified when they're available to order in early 2022.
 
@@ -39,7 +39,7 @@ A straightforward example Android app illustrating the use of this framework is 
 
 ## The API
 
-The public API and data access objects are contained in the [inc.combustion.framework.service](https://github.com/combustion-inc/combustion-android-ble/tree/main/combustion-android-ble/src/main/java/inc/combustion/framework/service) package.  The [`DeviceManager`](combustion-android-ble/src/main/java/inc/combustion/framework/service/DeviceManager.kt) class is the primary entrypoint for the API.  See the [`DeviceManager`](combustion-android-ble/src/main/java/inc/combustion/framework/service/DeviceManager.kt) source documentation for more details on the API.
+The public API and data access objects are contained in the [inc.combustion.framework.service](combustion-android-ble/src/main/java/inc/combustion/framework/service) package.  The [`DeviceManager`](combustion-android-ble/src/main/java/inc/combustion/framework/service/DeviceManager.kt) class is the primary entrypoint for the API.  See the [`DeviceManager`](combustion-android-ble/src/main/java/inc/combustion/framework/service/DeviceManager.kt) source documentation for more details on the API.
 
 ## Adding the Library to Your Project
 You can find our library on [JitPack](https://jitpack.io/#combustion-inc/combustion-android-ble).  Go to that page for instructions on setting up your root `build.gradle` to use the JitPack repository and add the library dependency to your build.  See our [`build.gradle`](combustion-android-ble/build.gradle) for the compiler arguments and dependencies used by the library.

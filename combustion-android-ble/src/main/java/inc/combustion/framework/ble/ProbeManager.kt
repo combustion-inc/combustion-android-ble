@@ -148,7 +148,12 @@ internal open class ProbeManager (
         addJob(owner.lifecycleScope.launch(Dispatchers.IO) {
             while(isActive) {
                 if(isConnected.get() && mac != SimulatedProbeManager.SIMULATED_MAC) {
-                    remoteRssi.set(peripheral.rssi())
+                    try {
+                        remoteRssi.set(peripheral.rssi())
+                    } catch (e: Exception) {
+                        Log.w(LOG_TAG,
+                            "Exception while reading remote RSSI: \n${e.stackTrace}")
+                    }
                     _probeStateFlow.emit(probe)
                 }
                 delay(PROBE_REMOTE_RSSI_POLL_RATE_MS)
@@ -213,7 +218,7 @@ internal open class ProbeManager (
         if(connectionState == DeviceConnectionState.ADVERTISING_CONNECTABLE ||
             connectionState == DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE ) {
             monitor.activity()
-            advertisingData = advertisingData
+            advertisingData = newAdvertisingData
             deviceStatus = null
             _probeStateFlow.emit(probe)
         }
@@ -258,8 +263,13 @@ internal open class ProbeManager (
 
     private suspend fun readFirmwareVersion() {
         withContext(Dispatchers.IO) {
-            val fwVersionBytes = peripheral.read(FW_VERSION_CHARACTERISTIC)
-            fwVersion = fwVersionBytes.toString(Charsets.UTF_8)
+            try {
+                val fwVersionBytes = peripheral.read(FW_VERSION_CHARACTERISTIC)
+                fwVersion = fwVersionBytes.toString(Charsets.UTF_8)
+            } catch (e: Exception) {
+                Log.w(LOG_TAG,
+                    "Exception while reading remote FW version: \n${e.stackTrace}")
+            }
         }
     }
 
@@ -286,7 +296,7 @@ internal open class ProbeManager (
                 }
             }
             .catch { exception ->
-                Log.e(LOG_TAG, "UART-TX Monitor Catch: $exception")
+                Log.i(LOG_TAG, "UART-TX Monitor Catch: $exception")
             }
             .collect { data ->
                 if(DebugSettings.DEBUG_LOG_BLE_UART_IO) {
