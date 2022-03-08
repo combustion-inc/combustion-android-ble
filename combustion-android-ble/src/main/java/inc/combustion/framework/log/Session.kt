@@ -69,9 +69,12 @@ internal class Session(seqNum: UInt, private val serialNumber: String) {
     private val maxSequenceNumber: UInt get() = if(isEmpty) 0u else _logs.lastKey()
 
     val maxSequentialSequenceNumber: UInt get() {
-        var lastKey = minSequenceNumber
-        val iterator = _logs.keys.iterator()
+        val iterator = _logs.keys.sorted().iterator()
 
+        if(!iterator.hasNext())
+            return 0u
+
+        var lastKey = iterator.next()
         while(iterator.hasNext()) {
             val key = iterator.next()
             if (lastKey >= key - 1u) {
