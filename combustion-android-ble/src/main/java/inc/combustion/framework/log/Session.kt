@@ -50,7 +50,7 @@ internal class Session(seqNum: UInt, private val serialNumber: String) {
          * If > than this threshold of device status packets are received, then
          * consider the log request stalled.
          */
-        const val STALE_LOG_REQUEST_PACKET_COUNT = 5u
+        const val STALE_LOG_REQUEST_PACKET_COUNT = 15u
     }
 
     private val _logs: SortedMap<UInt, LoggedProbeDataPoint> = sortedMapOf()
@@ -66,9 +66,9 @@ internal class Session(seqNum: UInt, private val serialNumber: String) {
 
     val id = SessionId(seqNum)
     val isEmpty get() = _logs.isEmpty()
-    val maxSequenceNumber: UInt get() = if(isEmpty) 0u else _logs.lastKey()
+    private val maxSequenceNumber: UInt get() = if(isEmpty) 0u else _logs.lastKey()
 
-    val maxSequencialSequenceNumber: UInt get() {
+    val maxSequentialSequenceNumber: UInt get() {
         var lastKey = minSequenceNumber
         val iterator = _logs.keys.iterator()
 

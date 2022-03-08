@@ -73,7 +73,7 @@ internal class ProbeTemperatureLog(private val serialNumber: String) {
         // handle the creation of new session
         sessions[currentSessionId]?.let { session ->
             if(!session.isEmpty) {
-                val localMaxSequence = session.maxSequencialSequenceNumber
+                val localMaxSequence = session.maxSequentialSequenceNumber
 
                 // data was lost
                 if(localMaxSequence < deviceMinSequence) {
@@ -110,7 +110,7 @@ internal class ProbeTemperatureLog(private val serialNumber: String) {
             }
             // otherwise, request everything not yet uploaded to phone
             else {
-                minSeq = session.maxSequencialSequenceNumber + 1u
+                minSeq = session.maxSequentialSequenceNumber + 1u
                 maxSeq = deviceMaxSequence
             }
         }

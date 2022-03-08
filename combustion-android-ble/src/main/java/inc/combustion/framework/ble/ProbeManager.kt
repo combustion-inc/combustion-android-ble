@@ -151,10 +151,8 @@ internal open class ProbeManager (
                     try {
                         remoteRssi.set(peripheral.rssi())
                     } catch (e: Exception) {
-                        if (DebugSettings.DEBUG_LOG_BLE_OPERATIONS) {
-                            Log.d(LOG_TAG,
-                                "Ignoring exception reading remote RSSI: \n${e.stackTrace}")
-                        }
+                        Log.w(LOG_TAG,
+                            "Exception while reading remote RSSI: \n${e.stackTrace}")
                     }
                     _probeStateFlow.emit(probe)
                 }
@@ -269,10 +267,8 @@ internal open class ProbeManager (
                 val fwVersionBytes = peripheral.read(FW_VERSION_CHARACTERISTIC)
                 fwVersion = fwVersionBytes.toString(Charsets.UTF_8)
             } catch (e: Exception) {
-                if (DebugSettings.DEBUG_LOG_BLE_OPERATIONS) {
-                    Log.d(LOG_TAG,
-                        "Ignoring exception reading remote FW version: \n${e.stackTrace}")
-                }
+                Log.w(LOG_TAG,
+                    "Exception while reading remote FW version: \n${e.stackTrace}")
             }
         }
     }
@@ -300,7 +296,7 @@ internal open class ProbeManager (
                 }
             }
             .catch { exception ->
-                Log.e(LOG_TAG, "UART-TX Monitor Catch: $exception")
+                Log.i(LOG_TAG, "UART-TX Monitor Catch: $exception")
             }
             .collect { data ->
                 if(DebugSettings.DEBUG_LOG_BLE_UART_IO) {
