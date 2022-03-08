@@ -11,7 +11,7 @@ android {
         minSdk 28
         targetSdk 31
         versionCode 1
-        versionName "0.0.1"
+        versionName "0.0.2"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -74,7 +74,7 @@ afterEvaluate {
                 // You can then customize attributes of the publication as shown below.
                 groupId = "inc.combustion"
                 artifactId = "framework"
-                version = "0.0.1"
+                version = "0.0.2"
             }
         }
     }
