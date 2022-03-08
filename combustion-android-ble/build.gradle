@@ -11,7 +11,7 @@ android {
         minSdk 28
         targetSdk 31
         versionCode 1
-        versionName "0.0.2"
+        versionName "0.0.3"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -74,7 +74,17 @@ afterEvaluate {
                 // You can then customize attributes of the publication as shown below.
                 groupId = "inc.combustion"
                 artifactId = "framework"
-                version = "0.0.2"
+                version = "0.0.3"
+            }
+            // Creates a Maven publication called "debug".
+            debug(MavenPublication) {
+                // Applies the component for the debug build variant.
+                from components.debug
+
+                // You can then customize attributes of the publication as shown below.
+                groupId = "inc.combustion"
+                artifactId = "framework"
+                version = "0.0.3"
             }
         }
     }
