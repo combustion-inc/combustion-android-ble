@@ -29,10 +29,11 @@ package inc.combustion.framework.service
 
 class DebugSettings {
     companion object {
-        const val DEBUG_LOG_TRANSFER = false
-        const val DEBUG_LOG_SESSION_STATUS = false
-        const val DEBUG_LOG_LOG_MANAGER_IO = false
-        const val DEBUG_LOG_BLE_UART_IO = false
-        const val DEBUG_LOG_CONNECTION_STATE = false
+        var DEBUG_LOG_TRANSFER = false
+        var DEBUG_LOG_SESSION_STATUS = false
+        var DEBUG_LOG_LOG_MANAGER_IO = false
+        var DEBUG_LOG_BLE_UART_IO = false
+        var DEBUG_LOG_CONNECTION_STATE = false
+        var DEBUG_LOG_BLE_OPERATIONS = false
     }
 }

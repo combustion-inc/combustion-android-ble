@@ -119,7 +119,7 @@ internal class LogManager {
                                 // do that below in processing the log response.
                                 temperatureLog.addFromDeviceStatus(deviceStatus)
 
-                                // not receiving expected log responses), then complete the log
+                                // not receiving expected log responses, then complete the log
                                 // request and transition state.
                                 if(temperatureLog.logRequestIsStalled) {
                                     val sessionStatus = temperatureLog.completeLogRequest()
@@ -137,7 +137,7 @@ internal class LogManager {
                                 // add the device status to the temperature log
                                 val sessionStatus = temperatureLog.addFromDeviceStatus(deviceStatus)
 
-                                // if we have any dropped records that initiate a log request to
+                                // if we have any dropped records then initiate a log request to
                                 // backfill from the missing records.
                                 if(sessionStatus.droppedRecords.isNotEmpty()) {
                                     val drop = sessionStatus.droppedRecords.first()
