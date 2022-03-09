@@ -131,10 +131,13 @@ internal class Session(seqNum: UInt, private val serialNumber: String) {
             logResponseDropCount += (logResponse.sequenceNumber - nextExpectedRecord)
 
             // track and log the dropped packet
-            for(sequence in nextExpectedDeviceStatus..(logResponse.sequenceNumber-1u)) {
+            for(sequence in nextExpectedRecord..(logResponse.sequenceNumber-1u)) {
                 droppedRecords.add(sequence)
-                Log.w(LOG_TAG, "Detected device status data drop.  $serialNumber.$sequence")
             }
+
+            // log a warning
+            Log.w(LOG_TAG, "Detected log response data drop ($serialNumber). " +
+                    "Drop range ${nextExpectedRecord}..${logResponse.sequenceNumber-1u}")
 
             // but still add this data and resync.  and remove any drops.
             _logs[loggedProbeDataPoint.sequenceNumber] = loggedProbeDataPoint
@@ -199,8 +202,11 @@ internal class Session(seqNum: UInt, private val serialNumber: String) {
             // track and log the dropped packet
             for(sequence in nextExpectedDeviceStatus..(deviceStatus.maxSequenceNumber-1u)) {
                 droppedRecords.add(sequence)
-                Log.w(LOG_TAG, "Detected device status data drop. $serialNumber.$sequence")
             }
+
+            // log a warning message
+            Log.w(LOG_TAG, "Detected device status data drop ($serialNumber). " +
+                "Drop range ${nextExpectedDeviceStatus}..${deviceStatus.maxSequenceNumber-1u}")
 
             // but still add this data and resync.
             _logs[loggedProbeDataPoint.sequenceNumber] = loggedProbeDataPoint
