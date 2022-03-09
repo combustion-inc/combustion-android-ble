@@ -74,7 +74,7 @@ afterEvaluate {
                 // You can then customize attributes of the publication as shown below.
                 groupId = "inc.combustion"
                 artifactId = "framework"
-                version = "0.0.3"
+                version = "0.1.0"
             }
             // Creates a Maven publication called "debug".
             debug(MavenPublication) {
@@ -84,7 +84,7 @@ afterEvaluate {
                 // You can then customize attributes of the publication as shown below.
                 groupId = "inc.combustion"
                 artifactId = "framework"
-                version = "0.0.3"
+                version = "0.1.0"
             }
         }
     }
