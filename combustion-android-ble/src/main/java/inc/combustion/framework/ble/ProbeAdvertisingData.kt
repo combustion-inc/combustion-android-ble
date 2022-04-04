@@ -27,6 +27,7 @@
  */
 package inc.combustion.framework.ble
 
+import android.os.Build
 import android.bluetooth.le.ScanResult
 import com.juul.kable.Advertisement
 import inc.combustion.framework.service.ProbeTemperatures
@@ -80,15 +81,30 @@ internal data class ProbeAdvertisingData (
 
             val probeTemperatures = ProbeTemperatures.fromRawData(manufacturerData.copyOf().sliceArray(TEMPERATURE_RANGE))
 
-            return ProbeAdvertisingData(
-                name = advertisement.name ?: "Unknown",
-                mac = advertisement.address,
-                rssi = advertisement.rssi,
-                serialNumber,
-                type,
-                isConnectable = scanResult?.isConnectable ?: false,
-                probeTemperatures
-            )
+            // API level 26 (Andoird 8) and Higher
+            if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                return ProbeAdvertisingData(
+                    name = advertisement.name ?: "Unknown",
+                    mac = advertisement.address,
+                    rssi = advertisement.rssi,
+                    serialNumber,
+                    type,
+                    isConnectable = scanResult?.isConnectable ?: false,
+                    probeTemperatures
+                )
+            // Lower than API level 26, always return true for isConnectable
+            } else {
+                return ProbeAdvertisingData(
+                    name = advertisement.name ?: "Unknown",
+                    mac = advertisement.address,
+                    rssi = advertisement.rssi,
+                    serialNumber,
+                    type,
+                    isConnectable = true,
+                    probeTemperatures
+                )
+            }
+
         }
     }
 
