@@ -27,6 +27,8 @@
  */
 package inc.combustion.framework.service
 
+import android.app.Notification
+import android.app.NotificationManager
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.content.*
@@ -44,6 +46,9 @@ import inc.combustion.framework.log.LogManager
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.util.concurrent.ThreadLocalRandom
+import kotlin.random.Random
+import kotlin.random.asKotlinRandom
 
 /**
  * Android Service for managing Combustion Inc. Predictive Thermometers
@@ -97,11 +102,18 @@ class CombustionService : LifecycleService() {
         private const val FLOW_CONFIG_REPLAY = 5
         private const val FLOW_CONFIG_BUFFER = FLOW_CONFIG_REPLAY * 2
 
-        fun start(context: Context) {
+        var serviceNotification : Notification? = null
+        var notificationId = 0
+
+        fun start(context: Context, notification: Notification): Int {
             Log.d(LOG_TAG, "Starting Combustion Android Service ...")
+            serviceNotification = notification
+            notificationId = ThreadLocalRandom.current().asKotlinRandom().nextInt()
             Intent(context, CombustionService::class.java).also { intent ->
                 context.startService(intent)
             }
+
+            return notificationId
         }
 
         fun bind(context: Context, connection: ServiceConnection) {
@@ -183,19 +195,40 @@ class CombustionService : LifecycleService() {
             emitBluetoothOffEvent()
         }
 
+        serviceNotification?.let {
+            startForeground(notificationId, serviceNotification)
+        }
+
         Log.d(LOG_TAG, "onStartCommand ...")
 
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     override fun onBind(intent: Intent): IBinder {
         super.onBind(intent)
         Log.d(LOG_TAG, "onBind ...")
+
         return binder
+    }
+
+    override fun onUnbind(intent: Intent?): Boolean {
+        serviceNotification = null
+        val service = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        service.cancel(notificationId)
+
+        stopForeground(true)
+
+        return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
         Log.d(LOG_TAG, "onDestroy ...")
+
+        serviceNotification = null
+        val service = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        service.cancel(notificationId)
+
+        stopForeground(true)
 
         // always try to unregister, even if the previous register didn't complete.
         try { unregisterReceiver(_bluetoothReceiver) } catch (e: Exception) { }
