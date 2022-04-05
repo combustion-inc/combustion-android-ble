@@ -82,8 +82,8 @@ internal data class ProbeAdvertisingData (
             val probeTemperatures = ProbeTemperatures.fromRawData(manufacturerData.copyOf().sliceArray(TEMPERATURE_RANGE))
 
             // API level 26 (Andoird 8) and Higher
-            if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                return ProbeAdvertisingData(
+            return if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ProbeAdvertisingData(
                     name = advertisement.name ?: "Unknown",
                     mac = advertisement.address,
                     rssi = advertisement.rssi,
@@ -94,7 +94,7 @@ internal data class ProbeAdvertisingData (
                 )
             // Lower than API level 26, always return true for isConnectable
             } else {
-                return ProbeAdvertisingData(
+                ProbeAdvertisingData(
                     name = advertisement.name ?: "Unknown",
                     mac = advertisement.address,
                     rssi = advertisement.rssi,
