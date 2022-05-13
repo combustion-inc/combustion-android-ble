@@ -33,6 +33,7 @@ package inc.combustion.framework.service
  * @property serialNumber Serial Number
  * @property mac Bluetooth MAC Address
  * @property fwVersion Firmware Version
+ * @property hwRevision Hardware Revision
  * @property temperatures Current temperature values
  * @property rssi Received signal strength
  * @property minSequence Minimum log sequence number
@@ -48,6 +49,7 @@ data class Probe(
     val serialNumber: String,
     val mac: String,
     val fwVersion: String?,
+    val hwRevision: String?,
     val temperatures: ProbeTemperatures,
     val rssi: Int,
     val minSequence: UInt,

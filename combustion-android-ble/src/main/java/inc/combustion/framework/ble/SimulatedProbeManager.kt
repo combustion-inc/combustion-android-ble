@@ -105,6 +105,7 @@ internal class SimulatedProbeManager (
     override fun connect() {
         isConnected.set(true)
         fwVersion = "v1.2.3"
+        hwRevision = "v2.3.4"
     }
 
     override fun disconnect() {
