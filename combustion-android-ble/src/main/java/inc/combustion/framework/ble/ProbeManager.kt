@@ -332,12 +332,16 @@ internal open class ProbeManager (
                     }
                     Log.d(LOG_TAG, "UART-RX: $packet")
                 }
-                when(val response = Response.fromData(data.toUByteArray())) {
-                    is LogResponse -> {
-                        _logResponseFlow.emit(response)
+                val responses = Response.fromData(data.toUByteArray())
+
+                for (response in responses) {
+                    when (response) {
+                        is LogResponse -> {
+                            _logResponseFlow.emit(response)
+                        }
                     }
+                }
             }
-        }
     }
 
     private fun toProbe(): Probe {
