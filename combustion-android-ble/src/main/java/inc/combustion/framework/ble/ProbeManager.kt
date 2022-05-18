@@ -78,6 +78,11 @@ internal open class ProbeManager (
             service = DEV_INFO_SERVICE_UUID_STRING,
             characteristic = "00002A26-0000-1000-8000-00805F9B34FB"
         )
+        val HW_REVISION_CHARACTERISTIC = characteristicOf(
+            service = DEV_INFO_SERVICE_UUID_STRING,
+            characteristic = "00002A27-0000-1000-8000-00805F9B34FB"
+        )
+
         val NEEDLE_SERVICE_UUID: ParcelUuid = ParcelUuid.fromString(
             NEEDLE_SERVICE_UUID_STRING
         )
@@ -101,7 +106,9 @@ internal open class ProbeManager (
 
     internal val isConnected = AtomicBoolean(false)
     internal val remoteRssi = AtomicInteger(0)
+
     internal var fwVersion: String? = null
+    internal var hwRevision: String? = null
 
     private val _probeStateFlow =
         MutableSharedFlow<Probe>(
@@ -257,8 +264,10 @@ internal open class ProbeManager (
 
             if(connectionState != DeviceConnectionState.CONNECTED)
                 deviceStatus = null
-            else
+            else {
                 readFirmwareVersion()
+                readHardwareRevision()
+            }
 
             if(DebugSettings.DEBUG_LOG_CONNECTION_STATE) {
                 Log.d(LOG_TAG, "${probe.serialNumber} is ${probe.connectionState}")
@@ -275,6 +284,18 @@ internal open class ProbeManager (
             } catch (e: Exception) {
                 Log.w(LOG_TAG,
                     "Exception while reading remote FW version: \n${e.stackTrace}")
+            }
+        }
+    }
+
+    private suspend fun readHardwareRevision() {
+        withContext(Dispatchers.IO) {
+            try {
+                val hwRevisionBytes = peripheral.read(HW_REVISION_CHARACTERISTIC)
+                hwRevision = hwRevisionBytes.toString(Charsets.UTF_8)
+            } catch (e: Exception) {
+                Log.w(LOG_TAG,
+                    "Exception while reading remote HW revision: \n${e.stackTrace}")
             }
         }
     }
@@ -329,6 +350,7 @@ internal open class ProbeManager (
             advertisingData.serialNumber,
             advertisingData.mac,
             fwVersion,
+            hwRevision,
             temps,
             rssi,
             minSeq,
