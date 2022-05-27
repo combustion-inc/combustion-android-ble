@@ -27,10 +27,9 @@
  */
 package inc.combustion.framework.service
 
+import inc.combustion.framework.ble.shl
+import inc.combustion.framework.ble.shr
 import kotlin.random.Random
-
-infix fun UShort.shl(shift: Int) = ((this.toInt() shl shift) and (0x0000FFFF)).toUShort()
-infix fun UShort.shr(shift: Int) = ((this.toInt() shr shift) and (0x0000FFFF)).toUShort()
 
 /**
  * Data class for probe temperature reading.

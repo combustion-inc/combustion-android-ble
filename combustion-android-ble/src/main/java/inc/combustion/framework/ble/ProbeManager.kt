@@ -349,6 +349,9 @@ internal open class ProbeManager (
         val minSeq = deviceStatus?.minSequenceNumber ?: 0u
         val maxSeq = deviceStatus?.maxSequenceNumber ?: 0u
         val rssi  = if(isConnected.get()) remoteRssi.get() else advertisingData.rssi
+        val id = deviceStatus?.id ?: advertisingData.id
+        val color = deviceStatus?.color ?: advertisingData.color
+        val mode = deviceStatus?.mode ?: advertisingData.mode
 
         return Probe(
             advertisingData.serialNumber,
@@ -360,7 +363,10 @@ internal open class ProbeManager (
             minSeq,
             maxSeq,
             connectionState,
-            uploadState
+            uploadState,
+            id,
+            color,
+            mode
         )
     }
 }

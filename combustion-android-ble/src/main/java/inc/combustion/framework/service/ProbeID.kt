@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: Probe.kt
+ * File: ProbeID.kt
  * Author: https://github.com/miwright2
  *
  * MIT License
@@ -27,42 +27,36 @@
  */
 package inc.combustion.framework.service
 
-/**
- * Data class for the current state of a probe.
- *
- * @property serialNumber Serial Number
- * @property mac Bluetooth MAC Address
- * @property fwVersion Firmware Version
- * @property hwRevision Hardware Revision
- * @property temperatures Current temperature values
- * @property rssi Received signal strength
- * @property minSequence Minimum log sequence number
- * @property maxSequence Current sequence number
- * @property connectionState Connection state
- * @property uploadState Upload State
- * @property id Probe ID
- * @property color Probe Color
- * @property mode Probe Mode
- *
- * @see DeviceConnectionState
- * @see ProbeUploadState
- * @see ProbeTemperatures
- * @see ProbeID
- * @see ProbeColor
- * @see ProbeMode
- */
-data class Probe(
-    val serialNumber: String,
-    val mac: String,
-    val fwVersion: String?,
-    val hwRevision: String?,
-    val temperatures: ProbeTemperatures,
-    val rssi: Int,
-    val minSequence: UInt,
-    val maxSequence: UInt,
-    val connectionState: DeviceConnectionState,
-    val uploadState: ProbeUploadState,
-    val id: ProbeID,
-    val color: ProbeColor,
-    val mode: ProbeMode
-)
+import inc.combustion.framework.ble.shl
+import inc.combustion.framework.ble.shr
+
+enum class ProbeID(val type: UByte) {
+    ID1(0x00u),
+    ID2(0x01u),
+    ID3(0x02u),
+    ID4(0x03u),
+    ID5(0x04u),
+    ID6(0x05u),
+    ID7(0x06u),
+    ID8(0x07u);
+
+    companion object {
+        private const val PROBE_ID_MASK = 0x07
+        private const val PROBE_ID_SHIFT = 5
+
+        fun fromUByte(byte: UByte) : ProbeID {
+            val probeID = ((byte.toUShort() and (PROBE_ID_MASK.toUShort() shl PROBE_ID_SHIFT)) shr PROBE_ID_SHIFT).toUInt()
+            return when(probeID) {
+                0x00u -> ID1
+                0x01u -> ID2
+                0x02u -> ID3
+                0x03u -> ID4
+                0x04u -> ID5
+                0x05u -> ID6
+                0x06u -> ID7
+                0x07u -> ID8
+                else -> ID1
+            }
+        }
+    }
+}

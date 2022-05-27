@@ -30,6 +30,9 @@ package inc.combustion.framework.ble
 import android.os.Build
 import android.bluetooth.le.ScanResult
 import com.juul.kable.Advertisement
+import inc.combustion.framework.service.ProbeColor
+import inc.combustion.framework.service.ProbeID
+import inc.combustion.framework.service.ProbeMode
 import inc.combustion.framework.service.ProbeTemperatures
 import kotlin.reflect.full.memberProperties
 import kotlin.reflect.jvm.isAccessible
@@ -52,13 +55,17 @@ internal data class ProbeAdvertisingData (
     val serialNumber: String,
     val type: CombustionProductType,
     val isConnectable: Boolean,
-    val probeTemperatures: ProbeTemperatures
+    val probeTemperatures: ProbeTemperatures,
+    val id: ProbeID,
+    val color: ProbeColor,
+    val mode: ProbeMode
 ) {
     companion object {
         private const val VENDOR_ID = 0x09C7
         private val PRODUCT_TYPE_RANGE = 0..0
         private val SERIAL_RANGE = 1..4
         private val TEMPERATURE_RANGE = 5..17
+        private val MODE_COLOR_ID_RANGE = 18..18
 
         fun fromAdvertisement(advertisement: Advertisement): ProbeAdvertisingData? {
             // Check vendor ID of Manufacturing data
@@ -79,9 +86,16 @@ internal data class ProbeAdvertisingData (
                 manufacturerData.copyOf().sliceArray(PRODUCT_TYPE_RANGE)[0]
             )
 
-            val probeTemperatures = ProbeTemperatures.fromRawData(manufacturerData.copyOf().sliceArray(TEMPERATURE_RANGE))
+            val probeTemperatures = ProbeTemperatures.fromRawData(
+                manufacturerData.copyOf().sliceArray(TEMPERATURE_RANGE)
+            )
 
-            // API level 26 (Andoird 8) and Higher
+            val modeColorId = manufacturerData.copyOf().sliceArray(MODE_COLOR_ID_RANGE)[0]
+            val probeColor = ProbeColor.fromUByte(modeColorId)
+            val probeID = ProbeID.fromUByte(modeColorId)
+            val probeMode = ProbeMode.fromUByte(modeColorId)
+
+            // API level 26 (Android 8) and Higher
             return if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 ProbeAdvertisingData(
                     name = advertisement.name ?: "Unknown",
@@ -90,7 +104,10 @@ internal data class ProbeAdvertisingData (
                     serialNumber,
                     type,
                     isConnectable = scanResult?.isConnectable ?: false,
-                    probeTemperatures
+                    probeTemperatures,
+                    probeID,
+                    probeColor,
+                    probeMode
                 )
             // Lower than API level 26, always return true for isConnectable
             } else {
@@ -101,7 +118,10 @@ internal data class ProbeAdvertisingData (
                     serialNumber,
                     type,
                     isConnectable = true,
-                    probeTemperatures
+                    probeTemperatures,
+                    probeID,
+                    probeColor,
+                    probeMode
                 )
             }
 

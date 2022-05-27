@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: Probe.kt
+ * File: BitFunctions.kt
  * Author: https://github.com/miwright2
  *
  * MIT License
@@ -25,44 +25,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package inc.combustion.framework.service
+package inc.combustion.framework.ble
 
-/**
- * Data class for the current state of a probe.
- *
- * @property serialNumber Serial Number
- * @property mac Bluetooth MAC Address
- * @property fwVersion Firmware Version
- * @property hwRevision Hardware Revision
- * @property temperatures Current temperature values
- * @property rssi Received signal strength
- * @property minSequence Minimum log sequence number
- * @property maxSequence Current sequence number
- * @property connectionState Connection state
- * @property uploadState Upload State
- * @property id Probe ID
- * @property color Probe Color
- * @property mode Probe Mode
- *
- * @see DeviceConnectionState
- * @see ProbeUploadState
- * @see ProbeTemperatures
- * @see ProbeID
- * @see ProbeColor
- * @see ProbeMode
- */
-data class Probe(
-    val serialNumber: String,
-    val mac: String,
-    val fwVersion: String?,
-    val hwRevision: String?,
-    val temperatures: ProbeTemperatures,
-    val rssi: Int,
-    val minSequence: UInt,
-    val maxSequence: UInt,
-    val connectionState: DeviceConnectionState,
-    val uploadState: ProbeUploadState,
-    val id: ProbeID,
-    val color: ProbeColor,
-    val mode: ProbeMode
-)
+infix fun UShort.shl(shift: Int) = ((this.toInt() shl shift) and (0x0000FFFF)).toUShort()
+infix fun UShort.shr(shift: Int) = ((this.toInt() shr shift) and (0x0000FFFF)).toUShort()
+

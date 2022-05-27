@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: Probe.kt
+ * File: ProbeColor.kt
  * Author: https://github.com/miwright2
  *
  * MIT License
@@ -27,42 +27,36 @@
  */
 package inc.combustion.framework.service
 
-/**
- * Data class for the current state of a probe.
- *
- * @property serialNumber Serial Number
- * @property mac Bluetooth MAC Address
- * @property fwVersion Firmware Version
- * @property hwRevision Hardware Revision
- * @property temperatures Current temperature values
- * @property rssi Received signal strength
- * @property minSequence Minimum log sequence number
- * @property maxSequence Current sequence number
- * @property connectionState Connection state
- * @property uploadState Upload State
- * @property id Probe ID
- * @property color Probe Color
- * @property mode Probe Mode
- *
- * @see DeviceConnectionState
- * @see ProbeUploadState
- * @see ProbeTemperatures
- * @see ProbeID
- * @see ProbeColor
- * @see ProbeMode
- */
-data class Probe(
-    val serialNumber: String,
-    val mac: String,
-    val fwVersion: String?,
-    val hwRevision: String?,
-    val temperatures: ProbeTemperatures,
-    val rssi: Int,
-    val minSequence: UInt,
-    val maxSequence: UInt,
-    val connectionState: DeviceConnectionState,
-    val uploadState: ProbeUploadState,
-    val id: ProbeID,
-    val color: ProbeColor,
-    val mode: ProbeMode
-)
+import inc.combustion.framework.ble.shl
+import inc.combustion.framework.ble.shr
+
+enum class ProbeColor(val type: UByte) {
+    COLOR1(0x00u),
+    COLOR2(0x01u),
+    COLOR3(0x02u),
+    COLOR4(0x03u),
+    COLOR5(0x04u),
+    COLOR6(0x05u),
+    COLOR7(0x06u),
+    COLOR8(0x07u);
+
+    companion object {
+        private const val PROBE_COLOR_MASK = 0x07
+        private const val PROBE_COLOR_SHIFT = 2
+
+        fun fromUByte(byte: UByte) : ProbeColor {
+            val rawProbeColor = ((byte.toUShort() and (PROBE_COLOR_MASK.toUShort() shl PROBE_COLOR_SHIFT)) shr PROBE_COLOR_SHIFT).toUInt()
+            return when(rawProbeColor) {
+                0x00u -> COLOR1
+                0x01u -> COLOR2
+                0x02u -> COLOR3
+                0x03u -> COLOR4
+                0x04u -> COLOR5
+                0x05u -> COLOR6
+                0x06u -> COLOR7
+                0x07u -> COLOR8
+                else -> COLOR1
+            }
+        }
+    }
+}
