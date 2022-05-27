@@ -131,26 +131,27 @@ class CombustionService : LifecycleService() {
             // service is destroyed
             repeatOnLifecycle(Lifecycle.State.CREATED) {
                 DeviceScanner.probeAdvertisements.collect {
-                    _probes.getOrPut(key = it.serialNumber) {
+                    if(it.type == ProbeAdvertisingData.CombustionProductType.PROBE) {
+                        _probes.getOrPut(key = it.serialNumber) {
+                            // create new probe instance
+                            var newProbe =
+                                ProbeManager(
+                                    it.mac,
+                                    this@CombustionService,
+                                    it,
+                                    (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter)
 
-                        // create new probe instance
-                        var newProbe =
-                            ProbeManager(
-                                it.mac,
-                                this@CombustionService,
-                                it,
-                                (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter)
+                            // add it to the LogManager
+                            LogManager.instance.manage(this@CombustionService, newProbe)
 
-                        // add it to the LogManager
-                        LogManager.instance.manage(this@CombustionService, newProbe)
+                            // new probe discovered, so emit into the discovered probes flow
+                            _discoveredProbesFlow.emit(
+                                DeviceDiscoveredEvent.DeviceDiscovered(it.serialNumber)
+                            )
 
-                        // new probe discovered, so emit into the discovered probes flow
-                        _discoveredProbesFlow.emit(
-                            DeviceDiscoveredEvent.DeviceDiscovered(it.serialNumber)
-                        )
-
-                        newProbe
-                    }.onNewAdvertisement(it)
+                            newProbe
+                        }.onNewAdvertisement(it)
+                    }
                 }
             }
         }
