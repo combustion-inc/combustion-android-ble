@@ -33,11 +33,8 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.ble.ProbeManager
-import inc.combustion.framework.service.DebugSettings
-import inc.combustion.framework.service.LoggedProbeDataPoint
-import inc.combustion.framework.service.ProbeUploadState
+import inc.combustion.framework.service.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
@@ -114,6 +111,10 @@ internal class LogManager {
                                 // do nothing, wait for the client to request the transfer
                             }
                             is ProbeUploadState.ProbeUploadInProgress -> {
+                                // only log normal mode packets
+                                if(deviceStatus.mode != ProbeMode.Normal)
+                                    return@collect
+
                                 // add device status data points to the log while the upload
                                 // is in progress.  don't event the status, because we will
                                 // do that below in processing the log response.
@@ -267,6 +268,10 @@ internal class LogManager {
                             probe.probe.uploadState !is ProbeUploadState.ProbeUploadComplete)  {
                                 throw CancellationException("Upload State is Now Invalid")
                         }
+
+                        // only log normal mode packets
+                        if(deviceStatus.mode != ProbeMode.Normal)
+                            return@collect
 
                         emit(LoggedProbeDataPoint.fromDeviceStatus(sessionId, deviceStatus))
                     }
