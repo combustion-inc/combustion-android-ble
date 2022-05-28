@@ -228,6 +228,10 @@ internal class LogManager {
         }
     }
 
+    fun recordsDownloaded(serialNumber: String): Int {
+        return temperatureLogs[serialNumber]?.dataPointCount ?: 0
+    }
+
     fun exportLogsForDevice(serialNumber: String): List<LoggedProbeDataPoint>? {
         return temperatureLogs[serialNumber]?.dataPoints
     }

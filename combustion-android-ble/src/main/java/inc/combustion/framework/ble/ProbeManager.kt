@@ -36,10 +36,7 @@ import com.juul.kable.State
 import com.juul.kable.characteristicOf
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.uart.*
-import inc.combustion.framework.service.ProbeUploadState
-import inc.combustion.framework.service.DebugSettings
-import inc.combustion.framework.service.DeviceConnectionState
-import inc.combustion.framework.service.Probe
+import inc.combustion.framework.service.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -73,6 +70,7 @@ internal open class ProbeManager (
         private const val UART_SERVICE_UUID_STRING   = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
         private const val FLOW_CONFIG_REPLAY = 5
         private const val FLOW_CONFIG_BUFFER = FLOW_CONFIG_REPLAY * 2
+        private const val PROBE_INSTANT_READ_IDLE_TIMEOUT_MS = 5000L
 
         val FW_VERSION_CHARACTERISTIC = characteristicOf(
             service = DEV_INFO_SERVICE_UUID_STRING,
@@ -103,6 +101,9 @@ internal open class ProbeManager (
     private var deviceStatus: DeviceStatus? = null
     private var connectionState = DeviceConnectionState.OUT_OF_RANGE
     private var uploadState: ProbeUploadState = ProbeUploadState.Unavailable
+
+    private var temperatures: ProbeTemperatures? = null
+    private var instantRead: Double? = null
 
     internal val isConnected = AtomicBoolean(false)
     internal val remoteRssi = AtomicInteger(0)
@@ -353,12 +354,22 @@ internal open class ProbeManager (
         val color = deviceStatus?.color ?: advertisingData.color
         val mode = deviceStatus?.mode ?: advertisingData.mode
 
+        if(mode == ProbeMode.InstantRead) {
+            instantReadMonitor.activity()
+            instantRead = temps.values[0]
+        } else {
+            temperatures = temps
+            if(instantReadMonitor.isIdle(PROBE_INSTANT_READ_IDLE_TIMEOUT_MS))
+                instantRead = null
+        }
+
         return Probe(
             advertisingData.serialNumber,
             advertisingData.mac,
             fwVersion,
             hwRevision,
-            temps,
+            temperatures,
+            instantRead,
             rssi,
             minSeq,
             maxSeq,

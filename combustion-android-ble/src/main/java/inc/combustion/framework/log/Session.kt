@@ -96,6 +96,12 @@ internal class Session(seqNum: UInt, private val serialNumber: String) {
     val dataPoints: List<LoggedProbeDataPoint>
         get() {
             return _logs.values.toList()
+
+        }
+
+    val dataPointCount: Int
+        get() {
+            return _logs.values.size
         }
 
     fun startLogRequest(range: RecordRange) : UploadProgress {

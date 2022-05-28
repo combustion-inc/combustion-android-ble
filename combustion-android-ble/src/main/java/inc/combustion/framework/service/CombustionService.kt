@@ -259,6 +259,9 @@ class CombustionService : LifecycleService() {
     internal fun createLogFlowForDevice(serialNumber: String): Flow<LoggedProbeDataPoint> =
         LogManager.instance.createLogFlowForDevice(serialNumber)
 
+    internal fun recordsDownloaded(serialNumber: String): Int =
+        LogManager.instance.recordsDownloaded(serialNumber)
+
     internal fun clearDevices() {
         LogManager.instance.clear()
         _probes.forEach { (_, probe) -> probe.finish() }

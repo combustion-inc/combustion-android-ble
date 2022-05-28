@@ -267,6 +267,16 @@ class DeviceManager {
         service.exportLogsForDevice(serialNumber)
 
     /**
+     * Retrieves the number of records downloaded  from the probe and available in the
+     * log buffer.
+     *
+     * @param serialNumber the serial number of the probe.
+     * @return Count of downloaded records
+     */
+    fun recordsDownloads(serialNumber: String): Int =
+        service.recordsDownloaded(serialNumber)
+
+    /**
      * Retrieves the current temperature log as a Kotlin flow of LoggedProbeDataPoint for
      * the specified serial number.  All logs previously transferred are produced to the flow
      * and new log records are produced to the flow as they are retrieved in real-time from

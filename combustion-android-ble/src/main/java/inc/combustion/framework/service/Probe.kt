@@ -35,6 +35,7 @@ package inc.combustion.framework.service
  * @property fwVersion Firmware Version
  * @property hwRevision Hardware Revision
  * @property temperatures Current temperature values
+ * @property instantRead Current instant read value
  * @property rssi Received signal strength
  * @property minSequence Minimum log sequence number
  * @property maxSequence Current sequence number
@@ -56,7 +57,8 @@ data class Probe(
     val mac: String,
     val fwVersion: String?,
     val hwRevision: String?,
-    val temperatures: ProbeTemperatures,
+    val temperatures: ProbeTemperatures?,
+    val instantRead: Double?,
     val rssi: Int,
     val minSequence: UInt,
     val maxSequence: UInt,
