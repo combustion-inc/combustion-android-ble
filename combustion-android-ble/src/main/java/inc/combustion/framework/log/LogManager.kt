@@ -151,8 +151,26 @@ internal class LogManager {
                                     // if we have any dropped records then initiate a log request to
                                     // backfill from the missing records.
                                     if(sessionStatus.droppedRecords.isNotEmpty()) {
-                                        val drop = sessionStatus.droppedRecords.first()
-                                        val range = RecordRange(drop, drop)
+
+                                        // find the first set of consecutive sequence numbers and
+                                        // request that range to backfill.
+                                        val (first, last) = if(sessionStatus.droppedRecords.size <= 1) {
+                                            Pair(sessionStatus.droppedRecords[0], sessionStatus.droppedRecords[0])
+                                        } else {
+                                            val first = sessionStatus.droppedRecords[0]
+                                            var last = first
+                                            for(i in 1 until sessionStatus.droppedRecords.size) {
+                                                if(last + 1u == sessionStatus.droppedRecords[i]) {
+                                                    last++
+                                                }
+                                                else {
+                                                    break
+                                                }
+                                            }
+                                            Pair(first, last)
+                                        }
+
+                                        val range = RecordRange(first, last)
                                         startBackfillLogRequest(
                                             owner, temperatureLog, probeManager, range, deviceStatus.maxSequenceNumber)
                                     }
