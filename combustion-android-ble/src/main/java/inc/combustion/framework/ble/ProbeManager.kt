@@ -251,7 +251,13 @@ internal open class ProbeManager (
     }
 
     private suspend fun connectionStateMonitor() {
-        peripheral.state.collect { state ->
+        peripheral.state.onCompletion {
+            Log.d(LOG_TAG, "Connection Stater Monitor Complete")
+        }
+        .catch {
+            Log.i(LOG_TAG, "Connection State Monitor Catch: $it")
+        }
+        .collect { state ->
             monitor.activity()
 
             connectionState = when(state) {
@@ -302,17 +308,31 @@ internal open class ProbeManager (
     }
 
     private suspend fun deviceStatusCharacteristicMonitor() {
-        peripheral.observe(DEVICE_STATUS_CHARACTERISTIC).collect { data ->
-            DeviceStatus.fromRawData(data.toUByteArray())?.let {
-                _deviceStatusFlow.emit(it)
+        peripheral.observe(DEVICE_STATUS_CHARACTERISTIC)
+            .onCompletion {
+                Log.d(LOG_TAG, "Device Status Characteristic Monitor Complete")
             }
+            .catch {
+                Log.i(LOG_TAG, "Device Status Characteristic Monitor Catch: $it")
+            }
+            .collect { data ->
+                DeviceStatus.fromRawData(data.toUByteArray())?.let {
+                    _deviceStatusFlow.emit(it)
+                }
         }
     }
 
     private suspend fun deviceStatusMonitor() {
-        _deviceStatusFlow.collect { status ->
-            deviceStatus = status
-            _probeStateFlow.emit(probe)
+        _deviceStatusFlow
+            .onCompletion {
+                Log.d(LOG_TAG, "Device Status Monitor Complete")
+            }
+            .catch {
+                Log.i(LOG_TAG, "Device Status Monitor Catch: $it")
+            }
+            .collect { status ->
+                deviceStatus = status
+                _probeStateFlow.emit(probe)
         }
     }
 
