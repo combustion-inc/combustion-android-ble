@@ -105,7 +105,7 @@ class CombustionService : LifecycleService() {
         var serviceNotification : Notification? = null
         var notificationId = 0
 
-        fun start(context: Context, notification: Notification): Int {
+        fun start(context: Context, notification: Notification?): Int {
             Log.d(LOG_TAG, "Starting Combustion Android Service ...")
             serviceNotification = notification
             notificationId = ThreadLocalRandom.current().asKotlinRandom().nextInt()

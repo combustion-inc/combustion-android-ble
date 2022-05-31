@@ -93,10 +93,11 @@ class DeviceManager {
         /**
          * Starts the Combustion Android Service as a Foreground Service
          *
-         * @param notification Foreground notification for the service
+         * @param notification Optional notification for the service.  If provided the service is run
+         *  in the foreground.
          * @return notification ID
          */
-        fun startCombustionService(notification: Notification): Int {
+        fun startCombustionService(notification: Notification?): Int {
             return CombustionService.start(app.applicationContext, notification)
         }
 
