@@ -59,10 +59,16 @@ internal data class DeviceStatus(
             val minSequenceNumber = data.getLittleEndianUIntAt(MIN_SEQ_INDEX)
             val maxSequenceNumber = data.getLittleEndianUIntAt(MAX_SEQ_INDEX)
             val temperatures = ProbeTemperatures.fromRawData(data.sliceArray(TEMPERATURE_RANGE))
-            val modeColorId = data.sliceArray(MODE_COLOR_ID_RANGE)[0]
-            val probeID = ProbeID.fromUByte(modeColorId)
-            val probeColor = ProbeColor.fromUByte(modeColorId)
-            val probeMode = ProbeMode.fromUByte(modeColorId)
+
+            // use mode and color ID if available
+            val modeColorId = if (data.size > 21)
+               data.sliceArray(MODE_COLOR_ID_RANGE)[0]
+            else
+                null
+
+            val probeColor = if(modeColorId != null) ProbeColor.fromUByte(modeColorId) else ProbeColor.COLOR1
+            val probeID = if(modeColorId != null) ProbeID.fromUByte(modeColorId) else ProbeID.ID1
+            val probeMode = if(modeColorId != null) ProbeMode.fromUByte(modeColorId) else ProbeMode.Normal
 
             return DeviceStatus(
                 minSequenceNumber,

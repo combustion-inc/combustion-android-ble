@@ -90,10 +90,15 @@ internal data class ProbeAdvertisingData (
                 manufacturerData.copyOf().sliceArray(TEMPERATURE_RANGE)
             )
 
-            val modeColorId = manufacturerData.copyOf().sliceArray(MODE_COLOR_ID_RANGE)[0]
-            val probeColor = ProbeColor.fromUByte(modeColorId)
-            val probeID = ProbeID.fromUByte(modeColorId)
-            val probeMode = ProbeMode.fromUByte(modeColorId)
+            // use mode and color ID if available
+            val modeColorId = if (manufacturerData.size > 18)
+                manufacturerData.copyOf().sliceArray(MODE_COLOR_ID_RANGE)[0]
+            else
+                null
+
+            val probeColor = if(modeColorId != null) ProbeColor.fromUByte(modeColorId) else ProbeColor.COLOR1
+            val probeID = if(modeColorId != null) ProbeID.fromUByte(modeColorId) else ProbeID.ID1
+            val probeMode = if(modeColorId != null) ProbeMode.fromUByte(modeColorId) else ProbeMode.Normal
 
             // API level 26 (Android 8) and Higher
             return if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
