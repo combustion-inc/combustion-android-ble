@@ -47,6 +47,7 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.concurrent.ThreadLocalRandom
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.random.Random
 import kotlin.random.asKotlinRandom
 
@@ -102,22 +103,24 @@ class CombustionService : LifecycleService() {
         private const val FLOW_CONFIG_REPLAY = 5
         private const val FLOW_CONFIG_BUFFER = FLOW_CONFIG_REPLAY * 2
 
+        private val serviceIsStarted = AtomicBoolean(false)
+
         var serviceNotification : Notification? = null
         var notificationId = 0
 
         fun start(context: Context, notification: Notification?): Int {
-            Log.d(LOG_TAG, "Starting Combustion Android Service ...")
-            serviceNotification = notification
-            notificationId = ThreadLocalRandom.current().asKotlinRandom().nextInt()
-            Intent(context, CombustionService::class.java).also { intent ->
-                context.startService(intent)
+            if(!serviceIsStarted.get()) {
+                serviceNotification = notification
+                notificationId = ThreadLocalRandom.current().asKotlinRandom().nextInt()
+                Intent(context, CombustionService::class.java).also { intent ->
+                    context.startService(intent)
+                }
             }
 
             return notificationId
         }
 
         fun bind(context: Context, connection: ServiceConnection) {
-            Log.d(LOG_TAG, "Binding to Combustion Android Service ...")
             Intent(context, CombustionService::class.java).also { intent ->
                 val flags = Context.BIND_AUTO_CREATE or Context.BIND_IMPORTANT or Context.BIND_ABOVE_CLIENT
                 context.bindService(intent, connection, flags)
@@ -125,7 +128,6 @@ class CombustionService : LifecycleService() {
         }
 
         fun stop(context: Context) {
-            Log.d(LOG_TAG, "Stopping Combustion Android Service ...")
             Intent(context, CombustionService::class.java).also { intent ->
                 context.stopService(intent)
             }
@@ -199,31 +201,26 @@ class CombustionService : LifecycleService() {
             startForeground(notificationId, serviceNotification)
         }
 
-        Log.d(LOG_TAG, "onStartCommand ...")
+        serviceIsStarted.set(true)
+
+        Log.d(LOG_TAG, "Combustion Android Service Started...")
 
         return START_NOT_STICKY
     }
 
     override fun onBind(intent: Intent): IBinder {
         super.onBind(intent)
-        Log.d(LOG_TAG, "onBind ...")
-
+        Log.d(LOG_TAG, "Combustion Android Service Bound...")
         return binder
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
-        serviceNotification = null
-        val service = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        service.cancel(notificationId)
-
-        stopForeground(true)
-
+        Log.d(LOG_TAG, "Combustion Android Service Unbound...")
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
-        Log.d(LOG_TAG, "onDestroy ...")
-
+        // stop the service notification
         serviceNotification = null
         val service = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         service.cancel(notificationId)
@@ -236,6 +233,9 @@ class CombustionService : LifecycleService() {
         periodicTimer.cancel()
         clearDevices()
 
+        serviceIsStarted.set(false)
+
+        Log.d(LOG_TAG, "Combustion Android Service Destroyed...")
         super.onDestroy()
     }
 
