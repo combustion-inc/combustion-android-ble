@@ -27,6 +27,9 @@
  */
 package inc.combustion.framework.ble
 
+import inc.combustion.framework.service.ProbeColor
+import inc.combustion.framework.service.ProbeID
+import inc.combustion.framework.service.ProbeMode
 import inc.combustion.framework.service.ProbeTemperatures
 
 /**
@@ -39,12 +42,16 @@ import inc.combustion.framework.service.ProbeTemperatures
 internal data class DeviceStatus(
     val minSequenceNumber: UInt,
     val maxSequenceNumber: UInt,
-    val temperatures: ProbeTemperatures
+    val temperatures: ProbeTemperatures,
+    val id: ProbeID,
+    val color: ProbeColor,
+    val mode: ProbeMode
 ) {
     companion object {
         private const val MIN_SEQ_INDEX = 0
         private const val MAX_SEQ_INDEX = 4
         private val TEMPERATURE_RANGE = 8..20
+        private val MODE_COLOR_ID_RANGE = 21..21
 
         fun fromRawData(data: UByteArray): DeviceStatus? {
             if (data.size < 21) return null
@@ -53,7 +60,24 @@ internal data class DeviceStatus(
             val maxSequenceNumber = data.getLittleEndianUIntAt(MAX_SEQ_INDEX)
             val temperatures = ProbeTemperatures.fromRawData(data.sliceArray(TEMPERATURE_RANGE))
 
-            return DeviceStatus(minSequenceNumber, maxSequenceNumber, temperatures)
+            // use mode and color ID if available
+            val modeColorId = if (data.size > 21)
+               data.sliceArray(MODE_COLOR_ID_RANGE)[0]
+            else
+                null
+
+            val probeColor = if(modeColorId != null) ProbeColor.fromUByte(modeColorId) else ProbeColor.COLOR1
+            val probeID = if(modeColorId != null) ProbeID.fromUByte(modeColorId) else ProbeID.ID1
+            val probeMode = if(modeColorId != null) ProbeMode.fromUByte(modeColorId) else ProbeMode.Normal
+
+            return DeviceStatus(
+                minSequenceNumber,
+                maxSequenceNumber,
+                temperatures,
+                probeID,
+                probeColor,
+                probeMode
+            )
         }
     }
 }

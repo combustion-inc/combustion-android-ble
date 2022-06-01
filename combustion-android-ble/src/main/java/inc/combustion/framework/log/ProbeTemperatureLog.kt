@@ -58,6 +58,15 @@ internal class ProbeTemperatureLog(private val serialNumber: String) {
 
     val logRequestIsStalled: Boolean get() = sessions[currentSessionId]?.logRequestIsStalled ?: false
 
+    val dataPointCount: Int
+        get() {
+            var count = 0
+            sessions.forEach {
+                count += it.value.dataPointCount
+            }
+            return count
+        }
+
     fun prepareForLogRequest(deviceMinSequence: UInt, deviceMaxSequence: UInt) : RecordRange {
         var minSeq = 0u
         var maxSeq = 0u

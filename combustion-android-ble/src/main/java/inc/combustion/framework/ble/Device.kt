@@ -86,6 +86,8 @@ internal open class Device (
     private val jobList = mutableListOf<Job>()
 
     protected val monitor = IdleMonitor()
+    protected val instantReadMonitor = IdleMonitor()
+
     protected var peripheral: Peripheral =
         owner.lifecycleScope.peripheral(adapter.getRemoteDevice(mac)) {
             logging {

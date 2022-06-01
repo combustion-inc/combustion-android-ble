@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: Probe.kt
+ * File: ProbeMode.kt
  * Author: https://github.com/miwright2
  *
  * MIT License
@@ -27,44 +27,24 @@
  */
 package inc.combustion.framework.service
 
-/**
- * Data class for the current state of a probe.
- *
- * @property serialNumber Serial Number
- * @property mac Bluetooth MAC Address
- * @property fwVersion Firmware Version
- * @property hwRevision Hardware Revision
- * @property temperatures Current temperature values
- * @property instantRead Current instant read value
- * @property rssi Received signal strength
- * @property minSequence Minimum log sequence number
- * @property maxSequence Current sequence number
- * @property connectionState Connection state
- * @property uploadState Upload State
- * @property id Probe ID
- * @property color Probe Color
- * @property mode Probe Mode
- *
- * @see DeviceConnectionState
- * @see ProbeUploadState
- * @see ProbeTemperatures
- * @see ProbeID
- * @see ProbeColor
- * @see ProbeMode
- */
-data class Probe(
-    val serialNumber: String,
-    val mac: String,
-    val fwVersion: String?,
-    val hwRevision: String?,
-    val temperatures: ProbeTemperatures?,
-    val instantRead: Double?,
-    val rssi: Int,
-    val minSequence: UInt,
-    val maxSequence: UInt,
-    val connectionState: DeviceConnectionState,
-    val uploadState: ProbeUploadState,
-    val id: ProbeID,
-    val color: ProbeColor,
-    val mode: ProbeMode
-)
+enum class ProbeMode(val type: UByte) {
+    Normal(0x00u),
+    InstantRead(0x01u),
+    Reserved(0x02u),
+    Error(0x03u);
+
+    companion object {
+        private const val PROBE_ID_MASK = 0x03
+
+        fun fromUByte(byte: UByte) : ProbeMode {
+            val probeMode = (byte.toUShort() and PROBE_ID_MASK.toUShort()).toUInt()
+            return when(probeMode) {
+                0x00u -> Normal
+                0x01u -> InstantRead
+                0x02u -> Reserved
+                0x03u -> Error
+                else -> Normal
+            }
+        }
+    }
+}
