@@ -129,7 +129,6 @@ internal data class ProbeAdvertisingData (
                     probeMode
                 )
             }
-
         }
     }
 
