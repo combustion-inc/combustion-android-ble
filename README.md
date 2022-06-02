@@ -39,7 +39,11 @@ A straightforward example Android app illustrating the use of this framework is 
 
 ## The API
 
-The public API and data access objects are contained in the [inc.combustion.framework.service](combustion-android-ble/src/main/java/inc/combustion/framework/service) package.  The [`DeviceManager`](combustion-android-ble/src/main/java/inc/combustion/framework/service/DeviceManager.kt) class is the primary entrypoint for the API.  See the [`DeviceManager`](combustion-android-ble/src/main/java/inc/combustion/framework/service/DeviceManager.kt) source documentation for more details on the API.
+The public API and data access objects are contained in the [inc.combustion.framework.service](combustion-android-ble/src/main/java/inc/combustion/framework/service) package.  The [`DeviceManager`](combustion-android-ble/src/main/java/inc/combustion/framework/service/DeviceManager.kt) class is the primary entrypoint for the API and encapsulates the [Combustion Service](https://github.com/combustion-inc/combustion-android-ble/blob/develop/combustion-android-ble/src/main/java/inc/combustion/framework/service/CombustionService.kt).  See the [`DeviceManager`](combustion-android-ble/src/main/java/inc/combustion/framework/service/DeviceManager.kt) source documentation for more details on the API.
+
+The [`CombustionService`](https://github.com/combustion-inc/combustion-android-ble/blob/develop/combustion-android-ble/src/main/java/inc/combustion/framework/service/CombustionService.kt) manages the communications and data buffer with Combustion devices.  The service can optionally be run in the Foreground, ensuring that it is long-lived, by passing a foreground notification when starting the service.  If your use-case is lighter weight and only needs to access BLE advertisements from the probe, then you can use the [`ProbeScanner`](https://github.com/combustion-inc/combustion-android-ble/blob/develop/combustion-android-ble/src/main/java/inc/combustion/framework/service/ProbeScanner.kt) and [`ProbeScanResult`](https://github.com/combustion-inc/combustion-android-ble/blob/develop/combustion-android-ble/src/main/java/inc/combustion/framework/service/ProbeScanResult.kt).
+
+The [Android example](https://github.com/combustion-inc/combustion-android-example) provides more detail on using these APIs.
 
 ## Adding the Library to Your Project
 You can find our library on [JitPack](https://jitpack.io/#combustion-inc/combustion-android-ble).  Go to that page for instructions on setting up your root `build.gradle` to use the JitPack repository and add the library dependency to your build.  See our [`build.gradle`](combustion-android-ble/build.gradle) for the compiler arguments and dependencies used by the library.
@@ -54,7 +58,4 @@ Your feedback is important.  For requesting new features or reporting issues use
 
 The following features are planned for near-term development:
 
-- **Set ring color**: Methods for setting a probe's identifying silicone ring color  (colors TBA).
-- **Set numeric ID**: Methods for setting a probe's numeric ID (1-8).
 - **Firmware update**: Methods for updating a Probe's firmware with a signed firmware image.
-- **Instant Read**: Receiving Instant Read temperature updates in real-time from the probe.

@@ -28,6 +28,7 @@
 package inc.combustion.framework.service
 
 import android.app.Application
+import android.app.Notification
 import android.content.ComponentName
 import android.content.ServiceConnection
 import android.os.IBinder
@@ -90,10 +91,14 @@ class DeviceManager {
         }
 
         /**
-         * Starts the Combustion Android Service
+         * Starts the Combustion Android Service as a Foreground Service
+         *
+         * @param notification Optional notification for the service.  If provided the service is run
+         *  in the foreground.
+         * @return notification ID
          */
-        fun startCombustionService() {
-            CombustionService.start(app.applicationContext)
+        fun startCombustionService(notification: Notification?): Int {
+            return CombustionService.start(app.applicationContext, notification)
         }
 
         /**

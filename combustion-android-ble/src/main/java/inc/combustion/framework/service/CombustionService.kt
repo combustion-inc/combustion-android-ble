@@ -27,6 +27,8 @@
  */
 package inc.combustion.framework.service
 
+import android.app.Notification
+import android.app.NotificationManager
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.content.*
@@ -44,6 +46,10 @@ import inc.combustion.framework.log.LogManager
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.util.concurrent.ThreadLocalRandom
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.random.Random
+import kotlin.random.asKotlinRandom
 
 /**
  * Android Service for managing Combustion Inc. Predictive Thermometers
@@ -97,15 +103,24 @@ class CombustionService : LifecycleService() {
         private const val FLOW_CONFIG_REPLAY = 5
         private const val FLOW_CONFIG_BUFFER = FLOW_CONFIG_REPLAY * 2
 
-        fun start(context: Context) {
-            Log.d(LOG_TAG, "Starting Combustion Android Service ...")
-            Intent(context, CombustionService::class.java).also { intent ->
-                context.startService(intent)
+        private val serviceIsStarted = AtomicBoolean(false)
+
+        var serviceNotification : Notification? = null
+        var notificationId = 0
+
+        fun start(context: Context, notification: Notification?): Int {
+            if(!serviceIsStarted.get()) {
+                serviceNotification = notification
+                notificationId = ThreadLocalRandom.current().asKotlinRandom().nextInt()
+                Intent(context, CombustionService::class.java).also { intent ->
+                    context.startService(intent)
+                }
             }
+
+            return notificationId
         }
 
         fun bind(context: Context, connection: ServiceConnection) {
-            Log.d(LOG_TAG, "Binding to Combustion Android Service ...")
             Intent(context, CombustionService::class.java).also { intent ->
                 val flags = Context.BIND_AUTO_CREATE or Context.BIND_IMPORTANT or Context.BIND_ABOVE_CLIENT
                 context.bindService(intent, connection, flags)
@@ -113,7 +128,6 @@ class CombustionService : LifecycleService() {
         }
 
         fun stop(context: Context) {
-            Log.d(LOG_TAG, "Stopping Combustion Android Service ...")
             Intent(context, CombustionService::class.java).also { intent ->
                 context.stopService(intent)
             }
@@ -183,19 +197,35 @@ class CombustionService : LifecycleService() {
             emitBluetoothOffEvent()
         }
 
-        Log.d(LOG_TAG, "onStartCommand ...")
+        serviceNotification?.let {
+            startForeground(notificationId, serviceNotification)
+        }
 
-        return START_STICKY
+        serviceIsStarted.set(true)
+
+        Log.d(LOG_TAG, "Combustion Android Service Started...")
+
+        return START_NOT_STICKY
     }
 
     override fun onBind(intent: Intent): IBinder {
         super.onBind(intent)
-        Log.d(LOG_TAG, "onBind ...")
+        Log.d(LOG_TAG, "Combustion Android Service Bound...")
         return binder
     }
 
+    override fun onUnbind(intent: Intent?): Boolean {
+        Log.d(LOG_TAG, "Combustion Android Service Unbound...")
+        return super.onUnbind(intent)
+    }
+
     override fun onDestroy() {
-        Log.d(LOG_TAG, "onDestroy ...")
+        // stop the service notification
+        serviceNotification = null
+        val service = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        service.cancel(notificationId)
+
+        stopForeground(true)
 
         // always try to unregister, even if the previous register didn't complete.
         try { unregisterReceiver(_bluetoothReceiver) } catch (e: Exception) { }
@@ -203,6 +233,9 @@ class CombustionService : LifecycleService() {
         periodicTimer.cancel()
         clearDevices()
 
+        serviceIsStarted.set(false)
+
+        Log.d(LOG_TAG, "Combustion Android Service Destroyed...")
         super.onDestroy()
     }
 
