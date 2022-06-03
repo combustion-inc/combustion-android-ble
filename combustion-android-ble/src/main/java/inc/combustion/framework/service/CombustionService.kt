@@ -123,7 +123,7 @@ class CombustionService : LifecycleService() {
 
         fun bind(context: Context, connection: ServiceConnection) {
             Intent(context, CombustionService::class.java).also { intent ->
-                val flags = Context.BIND_AUTO_CREATE or Context.BIND_IMPORTANT or Context.BIND_ABOVE_CLIENT
+                val flags = Context.BIND_AUTO_CREATE
                 context.bindService(intent, connection, flags)
             }
         }
@@ -214,6 +214,7 @@ class CombustionService : LifecycleService() {
         }
 
         startForeground()
+
         serviceIsStarted.set(true)
 
         Log.d(LOG_TAG, "Combustion Android Service Started...")

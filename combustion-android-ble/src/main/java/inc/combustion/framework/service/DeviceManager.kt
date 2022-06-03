@@ -30,6 +30,7 @@ package inc.combustion.framework.service
 import android.app.Application
 import android.app.Notification
 import android.content.ComponentName
+import android.content.Context
 import android.content.ServiceConnection
 import android.os.IBinder
 import android.util.Log
@@ -99,9 +100,13 @@ class DeviceManager {
          * @return notification ID
          */
         fun startCombustionService(notification: Notification?): Int {
-            if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
-                Log.d(LOG_TAG, "Start Service")
-            return CombustionService.start(app.applicationContext, notification)
+            if(!connected.get()) {
+                if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
+                    Log.d(LOG_TAG, "Start Service")
+
+                return CombustionService.start(app.applicationContext, notification)
+            }
+            return 0;
         }
 
         /**
@@ -109,7 +114,7 @@ class DeviceManager {
          */
         fun bindCombustionService() {
             val count = bindingCount.getAndIncrement()
-            if(!connected.get() && count == 0) {
+            if(count <= 0) {
                 if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
                     Log.d(LOG_TAG, "Binding Service")
 
@@ -125,15 +130,14 @@ class DeviceManager {
          */
         fun unbindCombustionService() {
             val count = bindingCount.decrementAndGet()
-            if(connected.get() && count <= 0) {
-                if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
-                    Log.d(LOG_TAG, "Unbinding Service")
 
-                app.unbindService(connection)
+            if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE) {
+                Log.d(LOG_TAG, "Unbinding Reference Count ($count)")
             }
 
-            if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
-                Log.d(LOG_TAG, "Binding Reference Count ($count)")
+            if(connected.get() && count <= 0) {
+                stopCombustionService()
+            }
         }
 
         /**
@@ -141,11 +145,12 @@ class DeviceManager {
          */
         fun stopCombustionService() {
             if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
-                Log.d(LOG_TAG, "Unbinding & Binding Service")
+                Log.d(LOG_TAG, "Unbinding & Stopping Service")
 
             bindingCount.set(0)
             app.unbindService(connection)
             CombustionService.stop(app.applicationContext)
+            connected.set(false)
         }
     }
 
