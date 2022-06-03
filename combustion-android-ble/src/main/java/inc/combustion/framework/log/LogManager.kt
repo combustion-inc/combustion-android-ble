@@ -145,6 +145,10 @@ internal class LogManager {
                                         )
                                     }
 
+                                    // only log normal mode packets
+                                    if(deviceStatus.mode != ProbeMode.Normal)
+                                        return@collect
+
                                     // add the device status to the temperature log
                                     val sessionStatus = temperatureLog.addFromDeviceStatus(deviceStatus)
 
