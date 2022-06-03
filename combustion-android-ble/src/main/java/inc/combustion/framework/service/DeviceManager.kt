@@ -30,6 +30,7 @@ package inc.combustion.framework.service
 import android.app.Application
 import android.app.Notification
 import android.content.ComponentName
+import android.content.Context
 import android.content.ServiceConnection
 import android.os.IBinder
 import android.util.Log
@@ -37,6 +38,7 @@ import inc.combustion.framework.LOG_TAG
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Singleton instance for managing communications with Combustion Inc. devices.
@@ -50,7 +52,8 @@ class DeviceManager {
         private lateinit var app : Application
         private lateinit var onServiceBound : (deviceManager: DeviceManager) -> Unit
         private val initialized = AtomicBoolean(false)
-        private val bound = AtomicBoolean(false)
+        private val connected = AtomicBoolean(false)
+        private val bindingCount = AtomicInteger(0)
 
         private val connection = object : ServiceConnection {
 
@@ -58,7 +61,7 @@ class DeviceManager {
                 val binder = serviceBinder as CombustionService.CombustionServiceBinder
                 INSTANCE.service = binder.getService()
 
-                bound.set(true)
+                connected.set(true)
                 onServiceBound(INSTANCE)
 
                 INSTANCE.onBoundInitList.forEach{ initCallback ->
@@ -67,8 +70,7 @@ class DeviceManager {
             }
 
             override fun onServiceDisconnected(arg0: ComponentName) {
-                bound.set(false)
-                bindCombustionService()
+                connected.set(false)
             }
         }
 
@@ -80,7 +82,7 @@ class DeviceManager {
         /**
          * Initializes the singleton
          * @param application Application context.
-         * @param onBound Lambda to be called when the service is bound to an Activity.
+         * @param onBound Lambda to be called when the service is connected to an Activity.
          */
         fun initialize(application: Application, onBound: (deviceManager: DeviceManager) -> Unit) {
             if(!initialized.getAndSet(true)) {
@@ -98,31 +100,57 @@ class DeviceManager {
          * @return notification ID
          */
         fun startCombustionService(notification: Notification?): Int {
-            return CombustionService.start(app.applicationContext, notification)
+            if(!connected.get()) {
+                if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
+                    Log.d(LOG_TAG, "Start Service")
+
+                return CombustionService.start(app.applicationContext, notification)
+            }
+            return 0;
         }
 
         /**
          * Binds to the Combustion Android Service
          */
         fun bindCombustionService() {
-            if(!bound.get()) {
+            val count = bindingCount.getAndIncrement()
+            if(count <= 0) {
+                if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
+                    Log.d(LOG_TAG, "Binding Service")
+
                 CombustionService.bind(app.applicationContext, connection)
             }
+
+            if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
+                Log.d(LOG_TAG, "Binding Reference Count (${count + 1})")
         }
 
         /**
          * Unbinds from the Combustion Android Service
          */
         fun unbindCombustionService() {
-            app.unbindService(connection)
-            bound.set(false)
+            val count = bindingCount.decrementAndGet()
+
+            if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE) {
+                Log.d(LOG_TAG, "Unbinding Reference Count ($count)")
+            }
+
+            if(connected.get() && count <= 0) {
+                stopCombustionService()
+            }
         }
 
         /**
-         * Stops the Combustion Android Sevice
+         * Stops the Combustion Android Service
          */
         fun stopCombustionService() {
+            if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
+                Log.d(LOG_TAG, "Unbinding & Stopping Service")
+
+            bindingCount.set(0)
+            app.unbindService(connection)
             CombustionService.stop(app.applicationContext)
+            connected.set(false)
         }
     }
 
@@ -155,8 +183,8 @@ class DeviceManager {
      * @param callback Lambda to be called by the Device Manager upon completing initialization.
      */
     fun registerOnBoundInitialization(callback : () -> Unit) {
-        // if service is already bound, then run the callback right away.
-        if(bound.get()) {
+        // if service is already connected, then run the callback right away.
+        if(connected.get()) {
             callback()
         }
         // otherwise queue the callback to be run when the service is bound.

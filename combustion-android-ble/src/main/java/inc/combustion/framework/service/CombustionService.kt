@@ -48,6 +48,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.concurrent.ThreadLocalRandom
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.random.Random
 import kotlin.random.asKotlinRandom
 
@@ -122,7 +123,7 @@ class CombustionService : LifecycleService() {
 
         fun bind(context: Context, connection: ServiceConnection) {
             Intent(context, CombustionService::class.java).also { intent ->
-                val flags = Context.BIND_AUTO_CREATE or Context.BIND_IMPORTANT or Context.BIND_ABOVE_CLIENT
+                val flags = Context.BIND_AUTO_CREATE
                 context.bindService(intent, connection, flags)
             }
         }
@@ -171,6 +172,21 @@ class CombustionService : LifecycleService() {
         }
     }
 
+    private fun startForeground() {
+        serviceNotification?.let {
+            startForeground(notificationId, serviceNotification)
+        }
+    }
+
+    private fun stopForeground() {
+        serviceNotification?.let {
+            val service = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            service.cancel(notificationId)
+
+            stopForeground(true)
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
 
@@ -197,9 +213,7 @@ class CombustionService : LifecycleService() {
             emitBluetoothOffEvent()
         }
 
-        serviceNotification?.let {
-            startForeground(notificationId, serviceNotification)
-        }
+        startForeground()
 
         serviceIsStarted.set(true)
 
@@ -210,22 +224,18 @@ class CombustionService : LifecycleService() {
 
     override fun onBind(intent: Intent): IBinder {
         super.onBind(intent)
-        Log.d(LOG_TAG, "Combustion Android Service Bound...")
         return binder
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
-        Log.d(LOG_TAG, "Combustion Android Service Unbound...")
+        stopForeground()
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
         // stop the service notification
+        stopForeground()
         serviceNotification = null
-        val service = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        service.cancel(notificationId)
-
-        stopForeground(true)
 
         // always try to unregister, even if the previous register didn't complete.
         try { unregisterReceiver(_bluetoothReceiver) } catch (e: Exception) { }
