@@ -193,6 +193,14 @@ internal open class ProbeManager (
         sendUartRequest(owner, LogRequest(minSequence, maxSequence))
     }
 
+    open fun sendSetProbeColor(owner: LifecycleOwner, color: ProbeColor) {
+        sendUartRequest(owner, SetColor(color))
+    }
+
+    open fun sendSetProbeID(owner: LifecycleOwner, id: ProbeID) {
+        sendUartRequest(owner, SetID(id))
+    }
+
     suspend fun onNewUploadState(newUploadState: ProbeUploadState) {
         // only update and emit on state change
         if (uploadState != newUploadState ) {
