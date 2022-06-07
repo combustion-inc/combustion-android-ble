@@ -30,7 +30,7 @@ package inc.combustion.framework.ble.uart
 
 import inc.combustion.framework.service.ProbeColor
 
-internal class SetColor(
+internal class SetColorRequest(
     color: ProbeColor
 ) : Request(PAYLOAD_LENGTH, MessageType.SET_PROBE_COLOR) {
 
@@ -42,3 +42,4 @@ internal class SetColor(
         data[(HEADER_SIZE).toInt()] = color.type
     }
 }
+

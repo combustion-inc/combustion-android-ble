@@ -65,6 +65,7 @@ internal open class ProbeManager (
     companion object {
         private const val PROBE_IDLE_TIMEOUT_MS = 15000L
         private const val PROBE_REMOTE_RSSI_POLL_RATE_MS = 1000L
+        private const val MESSAGE_HANDLER_POLL_RATE_MS = 1000L
         private const val DEV_INFO_SERVICE_UUID_STRING = "0000180A-0000-1000-8000-00805F9B34FB"
         private const val NEEDLE_SERVICE_UUID_STRING = "00000100-CAAB-3792-3D44-97AE51C1407A"
         private const val UART_SERVICE_UUID_STRING   = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
@@ -110,6 +111,15 @@ internal open class ProbeManager (
 
     internal var fwVersion: String? = null
     internal var hwRevision: String? = null
+
+    // Class to store when BLE message was sent and the completion handler for message
+    private data class MessageHandler (
+        val timeSentMillis: Long,
+        val completionHandler : (Boolean) -> Unit
+    )
+
+    private var setProbeColorMessageHandler: MessageHandler? = null
+    private var setProbeIDMessageHandler: MessageHandler? = null
 
     private val _probeStateFlow =
         MutableSharedFlow<Probe>(
@@ -168,6 +178,26 @@ internal open class ProbeManager (
                 delay(PROBE_REMOTE_RSSI_POLL_RATE_MS)
             }
         })
+        // Message handler polling job
+        addJob(owner.lifecycleScope.launch(Dispatchers.IO) {
+            while(isActive) {
+                if(isConnected.get() && mac != SimulatedProbeManager.SIMULATED_MAC) {
+                    setProbeColorMessageHandler?.let { messageHandler ->
+                        if((System.currentTimeMillis() - messageHandler.timeSentMillis) > 5000) {
+                            messageHandler.completionHandler(false)
+                            setProbeColorMessageHandler = null
+                        }
+                    }
+                    setProbeIDMessageHandler?.let { messageHandler ->
+                        if((System.currentTimeMillis() - messageHandler.timeSentMillis) > 5000) {
+                            messageHandler.completionHandler(false)
+                            setProbeIDMessageHandler = null
+                        }
+                    }
+                }
+                delay(MESSAGE_HANDLER_POLL_RATE_MS)
+            }
+        })
     }
 
     override suspend fun checkIdle() {
@@ -193,12 +223,16 @@ internal open class ProbeManager (
         sendUartRequest(owner, LogRequest(minSequence, maxSequence))
     }
 
-    open fun sendSetProbeColor(owner: LifecycleOwner, color: ProbeColor) {
-        sendUartRequest(owner, SetColor(color))
+    open fun sendSetProbeColor(owner: LifecycleOwner, color: ProbeColor, completionHandler: (Boolean) -> Unit ) {
+        setProbeColorMessageHandler = MessageHandler(System.currentTimeMillis(), completionHandler)
+
+        sendUartRequest(owner, SetColorRequest(color))
     }
 
-    open fun sendSetProbeID(owner: LifecycleOwner, id: ProbeID) {
-        sendUartRequest(owner, SetID(id))
+    open fun sendSetProbeID(owner: LifecycleOwner, id: ProbeID, completionHandler: (Boolean) -> Unit) {
+        setProbeIDMessageHandler = MessageHandler(System.currentTimeMillis(), completionHandler)
+
+        sendUartRequest(owner, SetIDRequest(id))
     }
 
     suspend fun onNewUploadState(newUploadState: ProbeUploadState) {
@@ -367,6 +401,18 @@ internal open class ProbeManager (
                     when (response) {
                         is LogResponse -> {
                             _logResponseFlow.emit(response)
+                        }
+                        is SetColorResponse -> {
+                            setProbeColorMessageHandler?.let {
+                                it.completionHandler(response.success)
+                                setProbeColorMessageHandler = null
+                            }
+                        }
+                        is SetIDResponse -> {
+                            setProbeIDMessageHandler?.let {
+                                it.completionHandler(response.success)
+                                setProbeIDMessageHandler = null
+                            }
                         }
                     }
                 }

@@ -30,7 +30,7 @@ package inc.combustion.framework.ble.uart
 
 import inc.combustion.framework.service.ProbeID
 
-internal class SetID(
+internal class SetIDRequest(
     id: ProbeID
 ) : Request(PAYLOAD_LENGTH, MessageType.SET_PROBE_ID) {
 

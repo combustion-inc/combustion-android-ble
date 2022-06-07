@@ -46,7 +46,11 @@ enum class ProbeColor(val type: UByte) {
 
         fun fromUByte(byte: UByte) : ProbeColor {
             val rawProbeColor = ((byte.toUShort() and (PROBE_COLOR_MASK.toUShort() shl PROBE_COLOR_SHIFT)) shr PROBE_COLOR_SHIFT).toUInt()
-            return when(rawProbeColor) {
+            return fromRaw(rawProbeColor)
+        }
+
+        fun fromRaw(raw: UInt) : ProbeColor {
+            return when(raw) {
                 0x00u -> COLOR1
                 0x01u -> COLOR2
                 0x02u -> COLOR3
@@ -57,6 +61,10 @@ enum class ProbeColor(val type: UByte) {
                 0x07u -> COLOR8
                 else -> COLOR1
             }
+        }
+
+        fun stringValues() : List<String> {
+            return values().toList().map { it.toString() }
         }
     }
 }

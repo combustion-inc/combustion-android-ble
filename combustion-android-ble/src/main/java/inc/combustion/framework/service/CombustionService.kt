@@ -331,6 +331,14 @@ class CombustionService : LifecycleService() {
         }
     }
 
+    internal fun setProbeColor(serialNumber: String, color: ProbeColor, completionHandler: (Boolean) -> Unit) {
+        _probes[serialNumber]?.sendSetProbeColor(this, color, completionHandler)
+    }
+
+    internal fun setProbeID(serialNumber: String, id: ProbeID, completionHandler: (Boolean) -> Unit) {
+        _probes[serialNumber]?.sendSetProbeID(this, id, completionHandler)
+    }
+
     private fun emitBluetoothOnEvent() = _discoveredProbesFlow.tryEmit(
         DeviceDiscoveredEvent.BluetoothOn
     )

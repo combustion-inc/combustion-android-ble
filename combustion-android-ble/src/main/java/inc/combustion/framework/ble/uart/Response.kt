@@ -38,7 +38,7 @@ import java.util.concurrent.atomic.AtomicInteger
  *  error handling request.
  */
 internal open class Response(
-    private val success: Boolean,
+    val success: Boolean,
     val payLoadLength: UInt
 ) {
     class Statistics {
@@ -116,6 +116,12 @@ internal open class Response(
                             "$LOG_TAG.Response",
                             "Dropped Packet.  Invalid Payload Length ($length) (total: ${stats.invalidPayloadLength.incrementAndGet()})"
                         )
+                }
+                MessageType.SET_PROBE_COLOR -> {
+                    return SetColorResponse(success, SetColorResponse.PAYLOAD_LENGTH)
+                }
+                MessageType.SET_PROBE_ID -> {
+                    return SetIDResponse(success, SetColorResponse.PAYLOAD_LENGTH)
                 }
             }
 
