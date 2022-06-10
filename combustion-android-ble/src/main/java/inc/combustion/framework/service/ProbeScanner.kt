@@ -61,37 +61,58 @@ class ProbeScanner private constructor() {
                 .build()
         }
 
+        /**
+         * true if currently scanning, false otherwise.
+         */
         val isScanning: Boolean
             get() = scanning.get()
 
+        /**
+         * Suspending scan call.  The caller is responsible for managing the coroutine
+         * used to run this function.  This call and start cannot be used simultaneously.
+         * The scan is stopped by cancelling the associated coroutine, managed by the caller.
+         */
+        suspend fun scan() {
+            if(!scanning.getAndSet(true)) {
+                probeAllMatchesScanner
+                    .advertisements
+                    .catch { cause ->
+                        stop()
+                        scanning.set(false)
+                        Log.e(LOG_TAG, "ProbeScanner Error: ${cause.localizedMessage}")
+                        Log.e(LOG_TAG, Log.getStackTraceString(cause))
+                    }
+                    .onCompletion {
+                        Log.d(LOG_TAG, "ProbeScanner Complete...")
+                        scanning.set(false)
+                    }
+                    .collect { advertisement ->
+                        ProbeScanResult.fromAdvertisement(advertisement).let {
+                            it?.let {
+                                _results.emit(it)
+                            }
+                        }
+                    }
+            }
+        }
+
+        /**
+         * Starts canning and attached to the passed in LifecycleOwner
+         * @param owner owner for the coroutine scope.
+         */
         fun start(owner: LifecycleOwner) {
             if(!scanning.getAndSet(true)) {
                 job = owner.lifecycleScope.launch {
                     owner.repeatOnLifecycle(Lifecycle.State.CREATED) {
-                        probeAllMatchesScanner
-                            .advertisements
-                            .catch { cause ->
-                                stop()
-                                scanning.set(false)
-                                Log.e(LOG_TAG, "ProbeScanner Error: ${cause.localizedMessage}")
-                                Log.e(LOG_TAG, Log.getStackTraceString(cause))
-                            }
-                            .onCompletion {
-                                Log.d(LOG_TAG, "ProbeScanner Complete...")
-                                scanning.set(false)
-                            }
-                            .collect { advertisement ->
-                                ProbeScanResult.fromAdvertisement(advertisement).let {
-                                    it?.let {
-                                        _results.emit(it)
-                                    }
-                                }
-                            }
+                        scan()
                     }
                 }
             }
         }
 
+        /**
+         * Stops an active scan that was started using the start call.
+         */
         fun stop() {
             job?.cancelChildren()
             job = null
