@@ -30,7 +30,6 @@ package inc.combustion.framework.service
 import android.app.Application
 import android.app.Notification
 import android.content.ComponentName
-import android.content.Context
 import android.content.ServiceConnection
 import android.os.IBinder
 import android.util.Log
@@ -339,4 +338,26 @@ class DeviceManager {
      * @see probeFlow
      */
     fun addSimulatedProbe() = service.addSimulatedProbe()
+
+    /**
+     * Sends a request to the device to the set the probe color. The completion handler will
+     * be called when a response is received or after timeout.
+     *
+     * @param serialNumber the serial number of the probe.
+     * @param color the color to set the probe.
+     * @param completionHandler completion handler to be called operation is complete
+     *
+     */
+    fun setProbeColor(serialNumber: String, color: ProbeColor, completionHandler: (Boolean) -> Unit) = service.setProbeColor(serialNumber, color, completionHandler)
+
+    /**
+     * Sends a request to the device to the set the probe ID. The completion handler will
+     * be called when a response is received or after timeout.
+     *
+     * @param serialNumber the serial number of the probe.
+     * @param id the ID to set the probe.
+     * @param completionHandler completion handler to be called operation is complete
+     *
+     */
+    fun setProbeID(serialNumber: String, id: ProbeID, completionHandler: (Boolean) -> Unit) = service.setProbeID(serialNumber, id, completionHandler)
 }

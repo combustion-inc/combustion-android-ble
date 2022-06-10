@@ -33,9 +33,11 @@ package inc.combustion.framework.ble.uart
  * @property value byte value for message type.
  */
 internal enum class MessageType(val value: UByte) {
+    SET_PROBE_ID(0x01u),
+    SET_PROBE_COLOR(0x02u),
     LOG(0x04u);
 
     companion object {
-        fun fromUByte(value: UByte) = MessageType.values().firstOrNull { it.value == value }
+        fun fromUByte(value: UByte) = values().firstOrNull { it.value == value }
     }
 }
