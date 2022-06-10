@@ -224,15 +224,25 @@ internal open class ProbeManager (
     }
 
     open fun sendSetProbeColor(owner: LifecycleOwner, color: ProbeColor, completionHandler: (Boolean) -> Unit ) {
-        setProbeColorMessageHandler = MessageHandler(System.currentTimeMillis(), completionHandler)
-
-        sendUartRequest(owner, SetColorRequest(color))
+        if(setProbeColorMessageHandler == null) {
+            setProbeColorMessageHandler = MessageHandler(System.currentTimeMillis(), completionHandler)
+            sendUartRequest(owner, SetColorRequest(color))
+        }
+        else {
+            // Respond with failure because a set Color is already in progress
+            completionHandler(false)
+        }
     }
 
     open fun sendSetProbeID(owner: LifecycleOwner, id: ProbeID, completionHandler: (Boolean) -> Unit) {
-        setProbeIDMessageHandler = MessageHandler(System.currentTimeMillis(), completionHandler)
-
-        sendUartRequest(owner, SetIDRequest(id))
+        if(setProbeIDMessageHandler == null) {
+            setProbeIDMessageHandler = MessageHandler(System.currentTimeMillis(), completionHandler)
+            sendUartRequest(owner, SetIDRequest(id))
+        }
+        else {
+            // Respond with failure because a set Color is already in progress
+            completionHandler(false)
+        }
     }
 
     suspend fun onNewUploadState(newUploadState: ProbeUploadState) {
