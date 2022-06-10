@@ -1,7 +1,7 @@
 /*
  * Project: Combustion Inc. Android Framework
  * File: SetColor.kt
- * Author:
+ * Author: https://github.com/jjohnstz
  *
  * MIT License
  *
