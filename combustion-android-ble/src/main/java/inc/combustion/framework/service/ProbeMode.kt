@@ -28,10 +28,10 @@
 package inc.combustion.framework.service
 
 enum class ProbeMode(val type: UByte) {
-    Normal(0x00u),
-    InstantRead(0x01u),
-    Reserved(0x02u),
-    Error(0x03u);
+    NORMAL(0x00u),
+    INSTANT_READ(0x01u),
+    RESERVED(0x02u),
+    ERROR(0x03u);
 
     companion object {
         private const val PROBE_ID_MASK = 0x03
@@ -39,11 +39,11 @@ enum class ProbeMode(val type: UByte) {
         fun fromUByte(byte: UByte) : ProbeMode {
             val probeMode = (byte.toUShort() and PROBE_ID_MASK.toUShort()).toUInt()
             return when(probeMode) {
-                0x00u -> Normal
-                0x01u -> InstantRead
-                0x02u -> Reserved
-                0x03u -> Error
-                else -> Normal
+                0x00u -> NORMAL
+                0x01u -> INSTANT_READ
+                0x02u -> RESERVED
+                0x03u -> ERROR
+                else -> NORMAL
             }
         }
     }

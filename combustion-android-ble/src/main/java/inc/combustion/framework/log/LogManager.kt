@@ -122,7 +122,7 @@ internal class LogManager {
                                 }
                                 is ProbeUploadState.ProbeUploadInProgress -> {
                                     // only log normal mode packets
-                                    if(deviceStatus.mode != ProbeMode.Normal)
+                                    if(deviceStatus.mode != ProbeMode.NORMAL)
                                         return@collect
 
                                     // add device status data points to the log while the upload
@@ -146,7 +146,7 @@ internal class LogManager {
                                     }
 
                                     // only log normal mode packets
-                                    if(deviceStatus.mode != ProbeMode.Normal)
+                                    if(deviceStatus.mode != ProbeMode.NORMAL)
                                         return@collect
 
                                     // add the device status to the temperature log
@@ -318,7 +318,7 @@ internal class LogManager {
                             }
 
                             // only log normal mode packets
-                            if(deviceStatus.mode != ProbeMode.Normal)
+                            if(deviceStatus.mode != ProbeMode.NORMAL)
                                 return@collect
 
                             emit(LoggedProbeDataPoint.fromDeviceStatus(sessionId, deviceStatus))

@@ -81,8 +81,8 @@ internal class SimulatedProbeManager (
                 ProbeTemperatures.withRandomData(),
                 ProbeID.ID1,
                 ProbeColor.COLOR1,
-                ProbeMode.Normal,
-                ProbeBatteryStatus.Ok
+                ProbeMode.NORMAL,
+                ProbeBatteryStatus.OK
             )
 
             return SimulatedProbeManager(SIMULATED_MAC, owner, data, adapter)
@@ -134,8 +134,8 @@ internal class SimulatedProbeManager (
             ProbeTemperatures.withRandomData(),
             ProbeID.ID1,
             ProbeColor.COLOR1,
-            ProbeMode.Normal,
-            ProbeBatteryStatus.Ok
+            ProbeMode.NORMAL,
+            ProbeBatteryStatus.OK
         )
 
         super.onNewAdvertisement(data)
@@ -155,8 +155,8 @@ internal class SimulatedProbeManager (
                 ProbeTemperatures.withRandomData(),
                 ProbeID.ID1,
                 ProbeColor.COLOR1,
-                ProbeMode.Normal,
-                ProbeBatteryStatus.Ok
+                ProbeMode.NORMAL,
+                ProbeBatteryStatus.OK
             )
         )
     }

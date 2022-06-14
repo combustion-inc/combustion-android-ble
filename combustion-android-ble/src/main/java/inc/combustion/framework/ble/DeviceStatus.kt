@@ -71,7 +71,7 @@ internal data class DeviceStatus(
 
             val probeColor = if(modeColorId != null) ProbeColor.fromUByte(modeColorId) else ProbeColor.COLOR1
             val probeID = if(modeColorId != null) ProbeID.fromUByte(modeColorId) else ProbeID.ID1
-            val probeMode = if(modeColorId != null) ProbeMode.fromUByte(modeColorId) else ProbeMode.Normal
+            val probeMode = if(modeColorId != null) ProbeMode.fromUByte(modeColorId) else ProbeMode.NORMAL
 
             // use status if available
             val status = if (data.size > 22)
@@ -79,7 +79,7 @@ internal data class DeviceStatus(
             else
                 null
 
-            val batteryStatus = if(status != null) ProbeBatteryStatus.fromUByte(status) else ProbeBatteryStatus.Ok
+            val batteryStatus = if(status != null) ProbeBatteryStatus.fromUByte(status) else ProbeBatteryStatus.OK
 
             return DeviceStatus(
                 minSequenceNumber,
