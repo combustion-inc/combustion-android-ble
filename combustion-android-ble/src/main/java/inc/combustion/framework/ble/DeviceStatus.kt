@@ -27,10 +27,7 @@
  */
 package inc.combustion.framework.ble
 
-import inc.combustion.framework.service.ProbeColor
-import inc.combustion.framework.service.ProbeID
-import inc.combustion.framework.service.ProbeMode
-import inc.combustion.framework.service.ProbeTemperatures
+import inc.combustion.framework.service.*
 
 /**
  * Data object for Device Status packet.
@@ -45,13 +42,15 @@ internal data class DeviceStatus(
     val temperatures: ProbeTemperatures,
     val id: ProbeID,
     val color: ProbeColor,
-    val mode: ProbeMode
+    val mode: ProbeMode,
+    val batteryStatus: ProbeBatteryStatus
 ) {
     companion object {
         private const val MIN_SEQ_INDEX = 0
         private const val MAX_SEQ_INDEX = 4
         private val TEMPERATURE_RANGE = 8..20
         private val MODE_COLOR_ID_RANGE = 21..21
+        private val STATUS_RANGE = 22..22
 
         fun fromRawData(data: UByteArray): DeviceStatus? {
             if (data.size < 21) return null
@@ -66,9 +65,16 @@ internal data class DeviceStatus(
             else
                 null
 
-            val probeColor = if(modeColorId != null) ProbeColor.fromUByte(modeColorId) else ProbeColor.COLOR1
-            val probeID = if(modeColorId != null) ProbeID.fromUByte(modeColorId) else ProbeID.ID1
-            val probeMode = if(modeColorId != null) ProbeMode.fromUByte(modeColorId) else ProbeMode.Normal
+            // use status if available
+            val status = if (data.size > 22)
+                data.sliceArray(STATUS_RANGE)[0]
+            else
+                null
+
+            val probeColor = modeColorId?.let { ProbeColor.fromUByte(it) } ?: run { ProbeColor.COLOR1 }
+            val probeID = modeColorId?.let { ProbeID.fromUByte(it) } ?: run { ProbeID.ID1 }
+            val probeMode = modeColorId?.let { ProbeMode.fromUByte(it) } ?: run { ProbeMode.NORMAL }
+            val batteryStatus = status?.let { ProbeBatteryStatus.fromUByte(it) } ?: run { ProbeBatteryStatus.OK }
 
             return DeviceStatus(
                 minSequenceNumber,
@@ -76,7 +82,8 @@ internal data class DeviceStatus(
                 temperatures,
                 probeID,
                 probeColor,
-                probeMode
+                probeMode,
+                batteryStatus
             )
         }
     }

@@ -44,6 +44,7 @@ package inc.combustion.framework.service
  * @property id Probe ID
  * @property color Probe Color
  * @property mode Probe Mode
+ * @property batteryStatus Probe battery status
  *
  * @see DeviceConnectionState
  * @see ProbeUploadState
@@ -66,5 +67,6 @@ data class Probe(
     val uploadState: ProbeUploadState,
     val id: ProbeID,
     val color: ProbeColor,
-    val mode: ProbeMode
+    val mode: ProbeMode,
+    val batteryStatus: ProbeBatteryStatus
 )

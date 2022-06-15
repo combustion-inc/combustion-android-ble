@@ -52,12 +52,12 @@ data class ProbeScanResult(
 
                 val serialNumber = it.serialNumber
 
-                val temperatures = if (it.mode == ProbeMode.Normal)
+                val temperatures = if (it.mode == ProbeMode.NORMAL)
                     it.probeTemperatures
                 else
                     null
 
-                val instantReadTemperature = if (it.mode == ProbeMode.InstantRead)
+                val instantReadTemperature = if (it.mode == ProbeMode.INSTANT_READ)
                     it.probeTemperatures.values[0]
                 else
                     null

@@ -437,8 +437,9 @@ internal open class ProbeManager (
         val id = deviceStatus?.id ?: advertisingData.id
         val color = deviceStatus?.color ?: advertisingData.color
         val mode = deviceStatus?.mode ?: advertisingData.mode
+        val batteryStatus = deviceStatus?.batteryStatus ?: advertisingData.batteryStatus
 
-        if(mode == ProbeMode.InstantRead) {
+        if(mode == ProbeMode.INSTANT_READ) {
             instantReadMonitor.activity()
             instantRead = temps.values[0]
         } else {
@@ -461,7 +462,8 @@ internal open class ProbeManager (
             uploadState,
             id,
             color,
-            mode
+            mode,
+            batteryStatus
         )
     }
 }
