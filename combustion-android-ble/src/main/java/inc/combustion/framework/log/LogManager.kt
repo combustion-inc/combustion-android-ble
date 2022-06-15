@@ -33,15 +33,10 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.ble.ProbeManager
-import inc.combustion.framework.service.DebugSettings
-import inc.combustion.framework.service.LoggedProbeDataPoint
-import inc.combustion.framework.service.ProbeUploadState
+import inc.combustion.framework.service.*
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.*
 import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -82,102 +77,146 @@ internal class LogManager {
             // monitor this probes state flow
             probeManager.addJob(owner.lifecycleScope.launch {
                 owner.repeatOnLifecycle(Lifecycle.State.CREATED) {
-                    probeManager.probeStateFlow.collect {
-
-                        // if device is disconnected, uploading is unavailable, so update
-                        // the state if it hs not already been updated and let the log know
-                        // to expect another log request at some point in the future, for its
-                        // internal bookkeeping.
-                        if(it.connectionState != DeviceConnectionState.CONNECTED
-                            && probeManager.probe.uploadState != ProbeUploadState.Unavailable) {
-                            probeManager.onNewUploadState(ProbeUploadState.Unavailable)
-                            temperatureLog?.expectFutureLogRequest()
+                    probeManager.probeStateFlow
+                        .onCompletion {
+                            Log.d(LOG_TAG, "Probe State Flow Complete")
                         }
+                        .catch {
+                            Log.i(LOG_TAG, "Probe State Flow Catch: $it")
+                        }
+                        .collect {
+                            // if device is disconnected, uploading is unavailable, so update
+                            // the state if it hs not already been updated and let the log know
+                            // to expect another log request at some point in the future, for its
+                            // internal bookkeeping.
+                            if(it.connectionState != DeviceConnectionState.CONNECTED
+                                && probeManager.probe.uploadState != ProbeUploadState.Unavailable) {
+                                probeManager.onNewUploadState(ProbeUploadState.Unavailable)
+                                temperatureLog?.expectFutureLogRequest()
+                            }
                     }
                 }
             })
             // monitor this probes device status flow
             probeManager.addJob(owner.lifecycleScope.launch {
                 owner.repeatOnLifecycle(Lifecycle.State.CREATED) {
-                    probeManager.deviceStatusFlow.collect { deviceStatus ->
-
-                        when(probeManager.probe.uploadState) {
-                            // if upload state is currently unavailable, and we now have a
-                            // DeviceStatus, then we have everything we need to start an upload.
-                            //
-                            // event the new upload state to the client, and they can initiate
-                            // the record transfer when they are ready.
-                            ProbeUploadState.Unavailable -> {
-                                probeManager.onNewUploadState(ProbeUploadState.ProbeUploadNeeded)
-                            }
-                            ProbeUploadState.ProbeUploadNeeded -> {
-                                // do nothing, wait for the client to request the transfer
-                            }
-                            is ProbeUploadState.ProbeUploadInProgress -> {
-                                // add device status data points to the log while the upload
-                                // is in progress.  don't event the status, because we will
-                                // do that below in processing the log response.
-                                temperatureLog.addFromDeviceStatus(deviceStatus)
-
-                                // not receiving expected log responses, then complete the log
-                                // request and transition state.
-                                if(temperatureLog.logRequestIsStalled) {
-                                    val sessionStatus = temperatureLog.completeLogRequest()
-                                    probeManager.onNewUploadState(sessionStatus.toProbeUploadState())
-                                }
-                            }
-                            is ProbeUploadState.ProbeUploadComplete -> {
-                                if(DebugSettings.DEBUG_LOG_LOG_MANAGER_IO) {
-                                    Log.d(
-                                        LOG_TAG, "STATUS-RX : " +
-                                                "${deviceStatus.maxSequenceNumber}"
-                                    )
-                                }
-
-                                // add the device status to the temperature log
-                                val sessionStatus = temperatureLog.addFromDeviceStatus(deviceStatus)
-
-                                // if we have any dropped records then initiate a log request to
-                                // backfill from the missing records.
-                                if(sessionStatus.droppedRecords.isNotEmpty()) {
-                                    val drop = sessionStatus.droppedRecords.first()
-                                    val range = RecordRange(drop, drop)
-                                    startBackfillLogRequest(
-                                        owner, temperatureLog, probeManager, range, deviceStatus.maxSequenceNumber)
-                                }
-                                // we've synchronized the log on the device here, now maintain
-                                // the log with the data points from the device status message.
-                                // and report out the progress as part of the complete state.
-                                else {
-                                    probeManager.onNewUploadState(sessionStatus.toProbeUploadState())
-                                }
-                            }
+                    probeManager.deviceStatusFlow
+                        .onCompletion {
+                            Log.d(LOG_TAG, "Device Status Flow Complete")
                         }
+                        .catch {
+                            Log.i(LOG_TAG, "Device Status Flow Catch: $it")
+                        }
+                        .collect { deviceStatus ->
+                            when(probeManager.probe.uploadState) {
+                                // if upload state is currently unavailable, and we now have a
+                                // DeviceStatus, then we have everything we need to start an upload.
+                                //
+                                // event the new upload state to the client, and they can initiate
+                                // the record transfer when they are ready.
+                                ProbeUploadState.Unavailable -> {
+                                    probeManager.onNewUploadState(ProbeUploadState.ProbeUploadNeeded)
+                                }
+                                ProbeUploadState.ProbeUploadNeeded -> {
+                                    // do nothing, wait for the client to request the transfer
+                                }
+                                is ProbeUploadState.ProbeUploadInProgress -> {
+                                    // only log normal mode packets
+                                    if(deviceStatus.mode != ProbeMode.NORMAL)
+                                        return@collect
+
+                                    // add device status data points to the log while the upload
+                                    // is in progress.  don't event the status, because we will
+                                    // do that below in processing the log response.
+                                    temperatureLog.addFromDeviceStatus(deviceStatus)
+
+                                    // not receiving expected log responses, then complete the log
+                                    // request and transition state.
+                                    if(temperatureLog.logRequestIsStalled) {
+                                        val sessionStatus = temperatureLog.completeLogRequest()
+                                        probeManager.onNewUploadState(sessionStatus.toProbeUploadState())
+                                    }
+                                }
+                                is ProbeUploadState.ProbeUploadComplete -> {
+                                    if(DebugSettings.DEBUG_LOG_LOG_MANAGER_IO) {
+                                        Log.d(
+                                            LOG_TAG, "STATUS-RX : " +
+                                                    "${deviceStatus.maxSequenceNumber}"
+                                        )
+                                    }
+
+                                    // only log normal mode packets
+                                    if(deviceStatus.mode != ProbeMode.NORMAL)
+                                        return@collect
+
+                                    // add the device status to the temperature log
+                                    val sessionStatus = temperatureLog.addFromDeviceStatus(deviceStatus)
+
+                                    // if we have any dropped records then initiate a log request to
+                                    // backfill from the missing records.
+                                    if(sessionStatus.droppedRecords.isNotEmpty()) {
+
+                                        // find the first set of consecutive sequence numbers and
+                                        // request that range to backfill.
+                                        val (first, last) = if(sessionStatus.droppedRecords.size <= 1) {
+                                            Pair(sessionStatus.droppedRecords[0], sessionStatus.droppedRecords[0])
+                                        } else {
+                                            val first = sessionStatus.droppedRecords[0]
+                                            var last = first
+                                            for(i in 1 until sessionStatus.droppedRecords.size) {
+                                                if(last + 1u == sessionStatus.droppedRecords[i]) {
+                                                    last++
+                                                }
+                                                else {
+                                                    break
+                                                }
+                                            }
+                                            Pair(first, last)
+                                        }
+
+                                        val range = RecordRange(first, last)
+                                        startBackfillLogRequest(
+                                            owner, temperatureLog, probeManager, range, deviceStatus.maxSequenceNumber)
+                                    }
+                                    // we've synchronized the log on the device here, now maintain
+                                    // the log with the data points from the device status message.
+                                    // and report out the progress as part of the complete state.
+                                    else {
+                                        probeManager.onNewUploadState(sessionStatus.toProbeUploadState())
+                                    }
+                                }
+                            }
                     }
                 }
             })
             // monitor this probes log response flow
             probeManager.addJob(owner.lifecycleScope.launch {
                 owner.repeatOnLifecycle(Lifecycle.State.CREATED) {
-                    probeManager.logResponseFlow.collect { response ->
-
-                        // debug log BLE IO if enabled.
-                        if(DebugSettings.DEBUG_LOG_LOG_MANAGER_IO) {
-                            Log.d(LOG_TAG, "LOG-RX    : ${response.sequenceNumber}")
+                    probeManager.logResponseFlow
+                        .onCompletion {
+                            Log.d(LOG_TAG, "Log Response Flow Complete")
                         }
-
-                        // add the response to the temperature log and handle upload progress
-                        val uploadProgress = temperatureLog.addFromLogResponse(response)
-
-                        // if we aren't complete, then update the stats of the uploading state
-                        if(!uploadProgress.isComplete) {
-                            probeManager.onNewUploadState(uploadProgress.toProbeUploadState())
+                        .catch {
+                            Log.i(LOG_TAG, "Log Response Flow Catch: $it")
                         }
-                        // otherwise complete the request, and change the state to complete
-                        else {
-                            val sessionStatus = temperatureLog.completeLogRequest()
-                            probeManager.onNewUploadState(sessionStatus.toProbeUploadState())
-                        }
+                        .collect { response ->
+                            // debug log BLE IO if enabled.
+                            if(DebugSettings.DEBUG_LOG_LOG_MANAGER_IO) {
+                                Log.d(LOG_TAG, "LOG-RX    : ${response.sequenceNumber}")
+                            }
+
+                            // add the response to the temperature log and handle upload progress
+                            val uploadProgress = temperatureLog.addFromLogResponse(response)
+
+                            // if we aren't complete, then update the stats of the uploading state
+                            if(!uploadProgress.isComplete) {
+                                probeManager.onNewUploadState(uploadProgress.toProbeUploadState())
+                            }
+                            // otherwise complete the request, and change the state to complete
+                            else {
+                                val sessionStatus = temperatureLog.completeLogRequest()
+                                probeManager.onNewUploadState(sessionStatus.toProbeUploadState())
+                            }
                     }
                 }
             })
@@ -227,6 +266,10 @@ internal class LogManager {
         }
     }
 
+    fun recordsDownloaded(serialNumber: String): Int {
+        return temperatureLogs[serialNumber]?.dataPointCount ?: 0
+    }
+
     fun exportLogsForDevice(serialNumber: String): List<LoggedProbeDataPoint>? {
         return temperatureLogs[serialNumber]?.dataPoints
     }
@@ -261,14 +304,24 @@ internal class LogManager {
                     // into the flow for the consumer.  if we are no longer in an upload complete
                     // syncing state, then exit out of this flow.
                     val sessionId = log.currentSessionId
-                    probe.deviceStatusFlow.collect { deviceStatus ->
-
-                        if(probe.probe.uploadState !is ProbeUploadState.ProbeUploadInProgress &&
-                            probe.probe.uploadState !is ProbeUploadState.ProbeUploadComplete)  {
-                                throw CancellationException("Upload State is Now Invalid")
+                    probe.deviceStatusFlow
+                        .onCompletion {
+                            Log.d(LOG_TAG, "Device Status Flow Complete")
                         }
+                        .catch {
+                            Log.i(LOG_TAG, "Device Status Flow Catch: $it")
+                        }
+                        .collect { deviceStatus ->
+                            if(probe.probe.uploadState !is ProbeUploadState.ProbeUploadInProgress &&
+                                probe.probe.uploadState !is ProbeUploadState.ProbeUploadComplete)  {
+                                    throw CancellationException("Upload State is Now Invalid")
+                            }
 
-                        emit(LoggedProbeDataPoint.fromDeviceStatus(sessionId, deviceStatus))
+                            // only log normal mode packets
+                            if(deviceStatus.mode != ProbeMode.NORMAL)
+                                return@collect
+
+                            emit(LoggedProbeDataPoint.fromDeviceStatus(sessionId, deviceStatus))
                     }
                 }
             }

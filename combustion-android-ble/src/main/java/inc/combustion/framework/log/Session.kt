@@ -50,7 +50,7 @@ internal class Session(seqNum: UInt, private val serialNumber: String) {
          * If > than this threshold of device status packets are received, then
          * consider the log request stalled.
          */
-        const val STALE_LOG_REQUEST_PACKET_COUNT = 15u
+        const val STALE_LOG_REQUEST_PACKET_COUNT = 3u
     }
 
     private val _logs: SortedMap<UInt, LoggedProbeDataPoint> = sortedMapOf()
@@ -96,6 +96,12 @@ internal class Session(seqNum: UInt, private val serialNumber: String) {
     val dataPoints: List<LoggedProbeDataPoint>
         get() {
             return _logs.values.toList()
+
+        }
+
+    val dataPointCount: Int
+        get() {
+            return _logs.values.size
         }
 
     fun startLogRequest(range: RecordRange) : UploadProgress {

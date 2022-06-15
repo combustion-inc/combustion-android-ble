@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: MessageType.kt
+ * File: BitFunctions.kt
  * Author: https://github.com/miwright2
  *
  * MIT License
@@ -25,19 +25,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package inc.combustion.framework.ble.uart
+package inc.combustion.framework.ble
 
-/**
- * Enumerates message types in Combustion's UART protocol.
- *
- * @property value byte value for message type.
- */
-internal enum class MessageType(val value: UByte) {
-    SET_PROBE_ID(0x01u),
-    SET_PROBE_COLOR(0x02u),
-    LOG(0x04u);
+infix fun UShort.shl(shift: Int) = ((this.toInt() shl shift) and (0x0000FFFF)).toUShort()
+infix fun UShort.shr(shift: Int) = ((this.toInt() shr shift) and (0x0000FFFF)).toUShort()
 
-    companion object {
-        fun fromUByte(value: UByte) = values().firstOrNull { it.value == value }
-    }
-}

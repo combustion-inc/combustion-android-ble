@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: MessageType.kt
+ * File: ProbeID.kt
  * Author: https://github.com/miwright2
  *
  * MIT License
@@ -25,19 +25,46 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package inc.combustion.framework.ble.uart
+package inc.combustion.framework.service
 
-/**
- * Enumerates message types in Combustion's UART protocol.
- *
- * @property value byte value for message type.
- */
-internal enum class MessageType(val value: UByte) {
-    SET_PROBE_ID(0x01u),
-    SET_PROBE_COLOR(0x02u),
-    LOG(0x04u);
+import inc.combustion.framework.ble.shl
+import inc.combustion.framework.ble.shr
+
+enum class ProbeID(val type: UByte) {
+    ID1(0x00u),
+    ID2(0x01u),
+    ID3(0x02u),
+    ID4(0x03u),
+    ID5(0x04u),
+    ID6(0x05u),
+    ID7(0x06u),
+    ID8(0x07u);
 
     companion object {
-        fun fromUByte(value: UByte) = values().firstOrNull { it.value == value }
+        private const val PROBE_ID_MASK = 0x07
+        private const val PROBE_ID_SHIFT = 5
+
+        fun fromUByte(byte: UByte) : ProbeID {
+            val rawProbeID = ((byte.toUShort() and (PROBE_ID_MASK.toUShort() shl PROBE_ID_SHIFT)) shr PROBE_ID_SHIFT).toUInt()
+            return fromRaw(rawProbeID)
+        }
+
+        fun fromRaw(raw: UInt) : ProbeID {
+            return when(raw) {
+                0x00u -> ID1
+                0x01u -> ID2
+                0x02u -> ID3
+                0x03u -> ID4
+                0x04u -> ID5
+                0x05u -> ID6
+                0x06u -> ID7
+                0x07u -> ID8
+                else -> ID1
+            }
+        }
+
+        fun stringValues() : List<String> {
+            return values().toList().map { it.toString() }
+        }
     }
 }

@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: MessageType.kt
+ * File: ProbeColor.kt
  * Author: https://github.com/miwright2
  *
  * MIT License
@@ -25,19 +25,46 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package inc.combustion.framework.ble.uart
+package inc.combustion.framework.service
 
-/**
- * Enumerates message types in Combustion's UART protocol.
- *
- * @property value byte value for message type.
- */
-internal enum class MessageType(val value: UByte) {
-    SET_PROBE_ID(0x01u),
-    SET_PROBE_COLOR(0x02u),
-    LOG(0x04u);
+import inc.combustion.framework.ble.shl
+import inc.combustion.framework.ble.shr
+
+enum class ProbeColor(val type: UByte) {
+    COLOR1(0x00u),
+    COLOR2(0x01u),
+    COLOR3(0x02u),
+    COLOR4(0x03u),
+    COLOR5(0x04u),
+    COLOR6(0x05u),
+    COLOR7(0x06u),
+    COLOR8(0x07u);
 
     companion object {
-        fun fromUByte(value: UByte) = values().firstOrNull { it.value == value }
+        private const val PROBE_COLOR_MASK = 0x07
+        private const val PROBE_COLOR_SHIFT = 2
+
+        fun fromUByte(byte: UByte) : ProbeColor {
+            val rawProbeColor = ((byte.toUShort() and (PROBE_COLOR_MASK.toUShort() shl PROBE_COLOR_SHIFT)) shr PROBE_COLOR_SHIFT).toUInt()
+            return fromRaw(rawProbeColor)
+        }
+
+        fun fromRaw(raw: UInt) : ProbeColor {
+            return when(raw) {
+                0x00u -> COLOR1
+                0x01u -> COLOR2
+                0x02u -> COLOR3
+                0x03u -> COLOR4
+                0x04u -> COLOR5
+                0x05u -> COLOR6
+                0x06u -> COLOR7
+                0x07u -> COLOR8
+                else -> COLOR1
+            }
+        }
+
+        fun stringValues() : List<String> {
+            return values().toList().map { it.toString() }
+        }
     }
 }

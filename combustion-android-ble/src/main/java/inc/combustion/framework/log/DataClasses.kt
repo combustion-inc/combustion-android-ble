@@ -27,11 +27,15 @@
  */
 package inc.combustion.framework.log
 
+
+import android.os.Build
 import inc.combustion.framework.service.ProbeUploadState
+import java.text.SimpleDateFormat
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.*
 
 /**
  * Range range data object
@@ -131,13 +135,25 @@ internal data class SessionId(val seqNumber: UInt, val id: Long = create()) : Co
 
     override fun toString(): String {
         // convert to date string in UTC
-        val timestamp = formatter.format(
+        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
+            val timestamp = formatter.format(
                 LocalDateTime.ofInstant(
                     Instant.ofEpochMilli(id),
                     ZoneId.of("UTC")
                 )
             )
-        return timestamp + "_$seqNumber"
+            return timestamp + "_$seqNumber"
+        } else {
+            val format = "yyyy-MMM-dd HH:mm:ss"
+            val dateFormatGmt = SimpleDateFormat(format)
+            dateFormatGmt.setTimeZone(TimeZone.getTimeZone("GMT"))
+            val dateFormatLocal = SimpleDateFormat(format);
+            val timestamp = dateFormatLocal.parse(dateFormatGmt.format(Date()))
+            // return time in milliseconds and then return string to make
+            return timestamp.getTime().toString() + "_$seqNumber"
+
+        }
     }
 
     companion object {
@@ -146,6 +162,5 @@ internal data class SessionId(val seqNumber: UInt, val id: Long = create()) : Co
             // use timestamp for session ID.
             return System.currentTimeMillis()
         }
-        private val formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
     }
 }

@@ -30,6 +30,10 @@ package inc.combustion.framework.ble
 import android.bluetooth.BluetoothAdapter
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import inc.combustion.framework.service.ProbeBatteryStatus
+import inc.combustion.framework.service.ProbeColor
+import inc.combustion.framework.service.ProbeID
+import inc.combustion.framework.service.ProbeMode
 import inc.combustion.framework.service.ProbeTemperatures
 import kotlinx.coroutines.launch
 import kotlin.concurrent.fixedRateTimer
@@ -74,7 +78,11 @@ internal class SimulatedProbeManager (
                 fakeSerialNumber,
                 ProbeAdvertisingData.CombustionProductType.PROBE,
                 true,
-                ProbeTemperatures.withRandomData()
+                ProbeTemperatures.withRandomData(),
+                ProbeID.ID1,
+                ProbeColor.COLOR1,
+                ProbeMode.NORMAL,
+                ProbeBatteryStatus.OK
             )
 
             return SimulatedProbeManager(SIMULATED_MAC, owner, data, adapter)
@@ -105,6 +113,7 @@ internal class SimulatedProbeManager (
     override fun connect() {
         isConnected.set(true)
         fwVersion = "v1.2.3"
+        hwRevision = "v2.3.4"
     }
 
     override fun disconnect() {
@@ -122,7 +131,11 @@ internal class SimulatedProbeManager (
             advertisingData.serialNumber,
             ProbeAdvertisingData.CombustionProductType.PROBE,
             true,
-            ProbeTemperatures.withRandomData()
+            ProbeTemperatures.withRandomData(),
+            ProbeID.ID1,
+            ProbeColor.COLOR1,
+            ProbeMode.NORMAL,
+            ProbeBatteryStatus.OK
         )
 
         super.onNewAdvertisement(data)
@@ -136,7 +149,15 @@ internal class SimulatedProbeManager (
         maxSequence += 1u
 
         _deviceStatusFlow.emit(
-            DeviceStatus(0u, maxSequence, ProbeTemperatures.withRandomData())
+            DeviceStatus(
+                0u,
+                maxSequence,
+                ProbeTemperatures.withRandomData(),
+                ProbeID.ID1,
+                ProbeColor.COLOR1,
+                ProbeMode.NORMAL,
+                ProbeBatteryStatus.OK
+            )
         )
     }
 }

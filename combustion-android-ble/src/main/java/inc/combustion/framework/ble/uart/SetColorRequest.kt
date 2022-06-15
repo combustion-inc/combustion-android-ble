@@ -1,7 +1,7 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: MessageType.kt
- * Author: https://github.com/miwright2
+ * File: SetColor.kt
+ * Author: https://github.com/jjohnstz
  *
  * MIT License
  *
@@ -25,19 +25,21 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+
 package inc.combustion.framework.ble.uart
 
-/**
- * Enumerates message types in Combustion's UART protocol.
- *
- * @property value byte value for message type.
- */
-internal enum class MessageType(val value: UByte) {
-    SET_PROBE_ID(0x01u),
-    SET_PROBE_COLOR(0x02u),
-    LOG(0x04u);
+import inc.combustion.framework.service.ProbeColor
+
+internal class SetColorRequest(
+    color: ProbeColor
+) : Request(PAYLOAD_LENGTH, MessageType.SET_PROBE_COLOR) {
 
     companion object {
-        fun fromUByte(value: UByte) = values().firstOrNull { it.value == value }
+        const val PAYLOAD_LENGTH: UByte = 1u
+    }
+
+    init {
+        data[(HEADER_SIZE).toInt()] = color.type
     }
 }
+

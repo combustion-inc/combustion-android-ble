@@ -38,7 +38,8 @@ import java.util.concurrent.atomic.AtomicInteger
  *  error handling request.
  */
 internal open class Response(
-    private val success: Boolean
+    val success: Boolean,
+    val payLoadLength: UInt
 ) {
     class Statistics {
         val droppedPackets = AtomicInteger(0)
@@ -58,7 +59,28 @@ internal open class Response(
          * @param data data received over BLE from UART service.
          * @return Instance of the response or null on data error.
          */
-        fun fromData(data: UByteArray) : Response? {
+        fun fromData(data: UByteArray): List<Response> {
+            val responses = mutableListOf<Response>()
+
+            var numberBytesRead = 0
+
+            while(numberBytesRead < data.size) {
+                val bytesToDecode = data.copyOfRange(numberBytesRead, data.size)
+                val response = responseFromData(bytesToDecode)
+                if (response != null) {
+                    responses.add(response)
+                    numberBytesRead += (response.payLoadLength + HEADER_SIZE).toInt()
+                }
+                else {
+                    // Found invalid response, break out of while loop
+                    break
+                }
+            }
+
+            return responses
+        }
+
+        private fun responseFromData(data: UByteArray) : Response? {
 
             // Validate Sync Bytes { 0xCA, 0xFE }
             if((data[0].toUInt() != 0xCAu) or (data[1].toUInt() != 0xFEu)) {
@@ -71,12 +93,12 @@ internal open class Response(
 
             // Message type
             val messageType = MessageType.fromUByte(data[4]) ?:
-                Log.w(
-                    "$LOG_TAG.Response",
-                    "Dropped Packet.  Invalid Message Type (total: ${stats.invalidMessageType.incrementAndGet()})"
-                ).also {
-                    return@fromData null
-                }
+            Log.w(
+                "$LOG_TAG.Response",
+                "Dropped Packet.  Invalid Message Type (total: ${stats.invalidMessageType.incrementAndGet()})"
+            ).also {
+                return null
+            }
 
             // Success/Fail
             val success = data[5] > 0u
@@ -88,12 +110,18 @@ internal open class Response(
             when(messageType) {
                 MessageType.LOG -> {
                     if (length >= LogResponse.PAYLOAD_LENGTH)
-                        return LogResponse(data, success)
+                        return LogResponse.fromData(data, success)
                     else
                         Log.w(
                             "$LOG_TAG.Response",
                             "Dropped Packet.  Invalid Payload Length ($length) (total: ${stats.invalidPayloadLength.incrementAndGet()})"
                         )
+                }
+                MessageType.SET_PROBE_COLOR -> {
+                    return SetColorResponse(success, SetColorResponse.PAYLOAD_LENGTH)
+                }
+                MessageType.SET_PROBE_ID -> {
+                    return SetIDResponse(success, SetColorResponse.PAYLOAD_LENGTH)
                 }
             }
 

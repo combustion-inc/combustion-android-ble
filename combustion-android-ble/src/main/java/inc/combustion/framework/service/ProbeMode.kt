@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: MessageType.kt
+ * File: ProbeMode.kt
  * Author: https://github.com/miwright2
  *
  * MIT License
@@ -25,19 +25,26 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package inc.combustion.framework.ble.uart
+package inc.combustion.framework.service
 
-/**
- * Enumerates message types in Combustion's UART protocol.
- *
- * @property value byte value for message type.
- */
-internal enum class MessageType(val value: UByte) {
-    SET_PROBE_ID(0x01u),
-    SET_PROBE_COLOR(0x02u),
-    LOG(0x04u);
+enum class ProbeMode(val type: UByte) {
+    NORMAL(0x00u),
+    INSTANT_READ(0x01u),
+    RESERVED(0x02u),
+    ERROR(0x03u);
 
     companion object {
-        fun fromUByte(value: UByte) = values().firstOrNull { it.value == value }
+        private const val PROBE_ID_MASK = 0x03
+
+        fun fromUByte(byte: UByte) : ProbeMode {
+            val probeMode = (byte.toUShort() and PROBE_ID_MASK.toUShort()).toUInt()
+            return when(probeMode) {
+                0x00u -> NORMAL
+                0x01u -> INSTANT_READ
+                0x02u -> RESERVED
+                0x03u -> ERROR
+                else -> NORMAL
+            }
+        }
     }
 }

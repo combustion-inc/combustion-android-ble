@@ -40,17 +40,23 @@ import inc.combustion.framework.service.ProbeTemperatures
  * @param success Base response status code.
  */
 internal class LogResponse(
-    data: UByteArray,
-    success: Boolean
-) : Response(success) {
-
-    val sequenceNumber: UInt = data.getLittleEndianUIntAt(Response.HEADER_SIZE.toInt())
-
-    val temperatures: ProbeTemperatures = ProbeTemperatures.fromRawData(
-        data.sliceArray((HEADER_SIZE + 4u).toInt()..(HEADER_SIZE + PAYLOAD_LENGTH - 1u).toInt())
-    )
+    val sequenceNumber: UInt,
+    val temperatures: ProbeTemperatures,
+    success: Boolean,
+    payLoadLength: UInt
+) : Response(success, payLoadLength) {
 
     companion object {
-        const val PAYLOAD_LENGTH = 17u
+        const val PAYLOAD_LENGTH: UInt = 17u
+
+        fun fromData(data: UByteArray, success: Boolean): LogResponse {
+            val sequenceNumber: UInt = data.getLittleEndianUIntAt(HEADER_SIZE.toInt())
+
+            val temperatures: ProbeTemperatures = ProbeTemperatures.fromRawData(
+                data.sliceArray((HEADER_SIZE + 4u).toInt()..(HEADER_SIZE + PAYLOAD_LENGTH - 1u).toInt())
+            )
+
+            return LogResponse(sequenceNumber, temperatures, success, PAYLOAD_LENGTH)
+        }
     }
 }

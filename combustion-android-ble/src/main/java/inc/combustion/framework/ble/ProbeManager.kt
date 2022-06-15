@@ -36,10 +36,7 @@ import com.juul.kable.State
 import com.juul.kable.characteristicOf
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.uart.*
-import inc.combustion.framework.service.ProbeUploadState
-import inc.combustion.framework.service.DebugSettings
-import inc.combustion.framework.service.DeviceConnectionState
-import inc.combustion.framework.service.Probe
+import inc.combustion.framework.service.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -68,16 +65,23 @@ internal open class ProbeManager (
     companion object {
         private const val PROBE_IDLE_TIMEOUT_MS = 15000L
         private const val PROBE_REMOTE_RSSI_POLL_RATE_MS = 1000L
+        private const val MESSAGE_HANDLER_POLL_RATE_MS = 1000L
         private const val DEV_INFO_SERVICE_UUID_STRING = "0000180A-0000-1000-8000-00805F9B34FB"
         private const val NEEDLE_SERVICE_UUID_STRING = "00000100-CAAB-3792-3D44-97AE51C1407A"
         private const val UART_SERVICE_UUID_STRING   = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
         private const val FLOW_CONFIG_REPLAY = 5
         private const val FLOW_CONFIG_BUFFER = FLOW_CONFIG_REPLAY * 2
+        private const val PROBE_INSTANT_READ_IDLE_TIMEOUT_MS = 5000L
 
         val FW_VERSION_CHARACTERISTIC = characteristicOf(
             service = DEV_INFO_SERVICE_UUID_STRING,
             characteristic = "00002A26-0000-1000-8000-00805F9B34FB"
         )
+        val HW_REVISION_CHARACTERISTIC = characteristicOf(
+            service = DEV_INFO_SERVICE_UUID_STRING,
+            characteristic = "00002A27-0000-1000-8000-00805F9B34FB"
+        )
+
         val NEEDLE_SERVICE_UUID: ParcelUuid = ParcelUuid.fromString(
             NEEDLE_SERVICE_UUID_STRING
         )
@@ -99,9 +103,23 @@ internal open class ProbeManager (
     private var connectionState = DeviceConnectionState.OUT_OF_RANGE
     private var uploadState: ProbeUploadState = ProbeUploadState.Unavailable
 
+    private var temperatures: ProbeTemperatures? = null
+    private var instantRead: Double? = null
+
     internal val isConnected = AtomicBoolean(false)
     internal val remoteRssi = AtomicInteger(0)
+
     internal var fwVersion: String? = null
+    internal var hwRevision: String? = null
+
+    // Class to store when BLE message was sent and the completion handler for message
+    private data class MessageHandler (
+        val timeSentMillis: Long,
+        val completionHandler : (Boolean) -> Unit
+    )
+
+    private var setProbeColorMessageHandler: MessageHandler? = null
+    private var setProbeIDMessageHandler: MessageHandler? = null
 
     private val _probeStateFlow =
         MutableSharedFlow<Probe>(
@@ -160,6 +178,26 @@ internal open class ProbeManager (
                 delay(PROBE_REMOTE_RSSI_POLL_RATE_MS)
             }
         })
+        // Message handler polling job
+        addJob(owner.lifecycleScope.launch(Dispatchers.IO) {
+            while(isActive) {
+                if(isConnected.get() && mac != SimulatedProbeManager.SIMULATED_MAC) {
+                    setProbeColorMessageHandler?.let { messageHandler ->
+                        if((System.currentTimeMillis() - messageHandler.timeSentMillis) > 5000) {
+                            messageHandler.completionHandler(false)
+                            setProbeColorMessageHandler = null
+                        }
+                    }
+                    setProbeIDMessageHandler?.let { messageHandler ->
+                        if((System.currentTimeMillis() - messageHandler.timeSentMillis) > 5000) {
+                            messageHandler.completionHandler(false)
+                            setProbeIDMessageHandler = null
+                        }
+                    }
+                }
+                delay(MESSAGE_HANDLER_POLL_RATE_MS)
+            }
+        })
     }
 
     override suspend fun checkIdle() {
@@ -183,6 +221,28 @@ internal open class ProbeManager (
 
     open fun sendLogRequest(owner: LifecycleOwner, minSequence: UInt, maxSequence: UInt) {
         sendUartRequest(owner, LogRequest(minSequence, maxSequence))
+    }
+
+    open fun sendSetProbeColor(owner: LifecycleOwner, color: ProbeColor, completionHandler: (Boolean) -> Unit ) {
+        if(setProbeColorMessageHandler == null) {
+            setProbeColorMessageHandler = MessageHandler(System.currentTimeMillis(), completionHandler)
+            sendUartRequest(owner, SetColorRequest(color))
+        }
+        else {
+            // Respond with failure because a set Color is already in progress
+            completionHandler(false)
+        }
+    }
+
+    open fun sendSetProbeID(owner: LifecycleOwner, id: ProbeID, completionHandler: (Boolean) -> Unit) {
+        if(setProbeIDMessageHandler == null) {
+            setProbeIDMessageHandler = MessageHandler(System.currentTimeMillis(), completionHandler)
+            sendUartRequest(owner, SetIDRequest(id))
+        }
+        else {
+            // Respond with failure because a set Color is already in progress
+            completionHandler(false)
+        }
     }
 
     suspend fun onNewUploadState(newUploadState: ProbeUploadState) {
@@ -243,7 +303,13 @@ internal open class ProbeManager (
     }
 
     private suspend fun connectionStateMonitor() {
-        peripheral.state.collect { state ->
+        peripheral.state.onCompletion {
+            Log.d(LOG_TAG, "Connection Stater Monitor Complete")
+        }
+        .catch {
+            Log.i(LOG_TAG, "Connection State Monitor Catch: $it")
+        }
+        .collect { state ->
             monitor.activity()
 
             connectionState = when(state) {
@@ -257,8 +323,10 @@ internal open class ProbeManager (
 
             if(connectionState != DeviceConnectionState.CONNECTED)
                 deviceStatus = null
-            else
+            else {
                 readFirmwareVersion()
+                readHardwareRevision()
+            }
 
             if(DebugSettings.DEBUG_LOG_CONNECTION_STATE) {
                 Log.d(LOG_TAG, "${probe.serialNumber} is ${probe.connectionState}")
@@ -279,18 +347,44 @@ internal open class ProbeManager (
         }
     }
 
-    private suspend fun deviceStatusCharacteristicMonitor() {
-        peripheral.observe(DEVICE_STATUS_CHARACTERISTIC).collect { data ->
-            DeviceStatus.fromRawData(data.toUByteArray())?.let {
-                _deviceStatusFlow.emit(it)
+    private suspend fun readHardwareRevision() {
+        withContext(Dispatchers.IO) {
+            try {
+                val hwRevisionBytes = peripheral.read(HW_REVISION_CHARACTERISTIC)
+                hwRevision = hwRevisionBytes.toString(Charsets.UTF_8)
+            } catch (e: Exception) {
+                Log.w(LOG_TAG,
+                    "Exception while reading remote HW revision: \n${e.stackTrace}")
             }
         }
     }
 
+    private suspend fun deviceStatusCharacteristicMonitor() {
+        peripheral.observe(DEVICE_STATUS_CHARACTERISTIC)
+            .onCompletion {
+                Log.d(LOG_TAG, "Device Status Characteristic Monitor Complete")
+            }
+            .catch {
+                Log.i(LOG_TAG, "Device Status Characteristic Monitor Catch: $it")
+            }
+            .collect { data ->
+                DeviceStatus.fromRawData(data.toUByteArray())?.let {
+                    _deviceStatusFlow.emit(it)
+                }
+        }
+    }
+
     private suspend fun deviceStatusMonitor() {
-        _deviceStatusFlow.collect { status ->
-            deviceStatus = status
-            _probeStateFlow.emit(probe)
+        _deviceStatusFlow
+            .onCompletion {
+                Log.d(LOG_TAG, "Device Status Monitor Complete")
+            }
+            .catch {
+                Log.i(LOG_TAG, "Device Status Monitor Catch: $it")
+            }
+            .collect { status ->
+                deviceStatus = status
+                _probeStateFlow.emit(probe)
         }
     }
 
@@ -311,12 +405,28 @@ internal open class ProbeManager (
                     }
                     Log.d(LOG_TAG, "UART-RX: $packet")
                 }
-                when(val response = Response.fromData(data.toUByteArray())) {
-                    is LogResponse -> {
-                        _logResponseFlow.emit(response)
+                val responses = Response.fromData(data.toUByteArray())
+
+                for (response in responses) {
+                    when (response) {
+                        is LogResponse -> {
+                            _logResponseFlow.emit(response)
+                        }
+                        is SetColorResponse -> {
+                            setProbeColorMessageHandler?.let {
+                                it.completionHandler(response.success)
+                                setProbeColorMessageHandler = null
+                            }
+                        }
+                        is SetIDResponse -> {
+                            setProbeIDMessageHandler?.let {
+                                it.completionHandler(response.success)
+                                setProbeIDMessageHandler = null
+                            }
+                        }
                     }
+                }
             }
-        }
     }
 
     private fun toProbe(): Probe {
@@ -324,17 +434,36 @@ internal open class ProbeManager (
         val minSeq = deviceStatus?.minSequenceNumber ?: 0u
         val maxSeq = deviceStatus?.maxSequenceNumber ?: 0u
         val rssi  = if(isConnected.get()) remoteRssi.get() else advertisingData.rssi
+        val id = deviceStatus?.id ?: advertisingData.id
+        val color = deviceStatus?.color ?: advertisingData.color
+        val mode = deviceStatus?.mode ?: advertisingData.mode
+        val batteryStatus = deviceStatus?.batteryStatus ?: advertisingData.batteryStatus
+
+        if(mode == ProbeMode.INSTANT_READ) {
+            instantReadMonitor.activity()
+            instantRead = temps.values[0]
+        } else {
+            temperatures = temps
+            if(instantReadMonitor.isIdle(PROBE_INSTANT_READ_IDLE_TIMEOUT_MS))
+                instantRead = null
+        }
 
         return Probe(
             advertisingData.serialNumber,
             advertisingData.mac,
             fwVersion,
-            temps,
+            hwRevision,
+            temperatures,
+            instantRead,
             rssi,
             minSeq,
             maxSeq,
             connectionState,
-            uploadState
+            uploadState,
+            id,
+            color,
+            mode,
+            batteryStatus
         )
     }
 }

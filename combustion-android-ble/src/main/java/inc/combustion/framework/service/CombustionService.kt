@@ -27,6 +27,8 @@
  */
 package inc.combustion.framework.service
 
+import android.app.Notification
+import android.app.NotificationManager
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.content.*
@@ -44,6 +46,11 @@ import inc.combustion.framework.log.LogManager
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.util.concurrent.ThreadLocalRandom
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.random.Random
+import kotlin.random.asKotlinRandom
 
 /**
  * Android Service for managing Combustion Inc. Predictive Thermometers
@@ -97,23 +104,31 @@ class CombustionService : LifecycleService() {
         private const val FLOW_CONFIG_REPLAY = 5
         private const val FLOW_CONFIG_BUFFER = FLOW_CONFIG_REPLAY * 2
 
-        fun start(context: Context) {
-            Log.d(LOG_TAG, "Starting Combustion Android Service ...")
-            Intent(context, CombustionService::class.java).also { intent ->
-                context.startService(intent)
+        private val serviceIsStarted = AtomicBoolean(false)
+
+        var serviceNotification : Notification? = null
+        var notificationId = 0
+
+        fun start(context: Context, notification: Notification?): Int {
+            if(!serviceIsStarted.get()) {
+                serviceNotification = notification
+                notificationId = ThreadLocalRandom.current().asKotlinRandom().nextInt()
+                Intent(context, CombustionService::class.java).also { intent ->
+                    context.startService(intent)
+                }
             }
+
+            return notificationId
         }
 
         fun bind(context: Context, connection: ServiceConnection) {
-            Log.d(LOG_TAG, "Binding to Combustion Android Service ...")
             Intent(context, CombustionService::class.java).also { intent ->
-                val flags = Context.BIND_AUTO_CREATE or Context.BIND_IMPORTANT or Context.BIND_ABOVE_CLIENT
+                val flags = Context.BIND_AUTO_CREATE
                 context.bindService(intent, connection, flags)
             }
         }
 
         fun stop(context: Context) {
-            Log.d(LOG_TAG, "Stopping Combustion Android Service ...")
             Intent(context, CombustionService::class.java).also { intent ->
                 context.stopService(intent)
             }
@@ -131,28 +146,44 @@ class CombustionService : LifecycleService() {
             // service is destroyed
             repeatOnLifecycle(Lifecycle.State.CREATED) {
                 DeviceScanner.probeAdvertisements.collect {
-                    _probes.getOrPut(key = it.serialNumber) {
+                    if(it.type == ProbeAdvertisingData.CombustionProductType.PROBE) {
+                        _probes.getOrPut(key = it.serialNumber) {
+                            // create new probe instance
+                            var newProbe =
+                                ProbeManager(
+                                    it.mac,
+                                    this@CombustionService,
+                                    it,
+                                    (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter)
 
-                        // create new probe instance
-                        var newProbe =
-                            ProbeManager(
-                                it.mac,
-                                this@CombustionService,
-                                it,
-                                (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter)
+                            // add it to the LogManager
+                            LogManager.instance.manage(this@CombustionService, newProbe)
 
-                        // add it to the LogManager
-                        LogManager.instance.manage(this@CombustionService, newProbe)
+                            // new probe discovered, so emit into the discovered probes flow
+                            _discoveredProbesFlow.emit(
+                                DeviceDiscoveredEvent.DeviceDiscovered(it.serialNumber)
+                            )
 
-                        // new probe discovered, so emit into the discovered probes flow
-                        _discoveredProbesFlow.emit(
-                            DeviceDiscoveredEvent.DeviceDiscovered(it.serialNumber)
-                        )
-
-                        newProbe
-                    }.onNewAdvertisement(it)
+                            newProbe
+                        }.onNewAdvertisement(it)
+                    }
                 }
             }
+        }
+    }
+
+    private fun startForeground() {
+        serviceNotification?.let {
+            startForeground(notificationId, serviceNotification)
+        }
+    }
+
+    private fun stopForeground() {
+        serviceNotification?.let {
+            val service = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            service.cancel(notificationId)
+
+            stopForeground(true)
         }
     }
 
@@ -182,19 +213,29 @@ class CombustionService : LifecycleService() {
             emitBluetoothOffEvent()
         }
 
-        Log.d(LOG_TAG, "onStartCommand ...")
+        startForeground()
 
-        return START_STICKY
+        serviceIsStarted.set(true)
+
+        Log.d(LOG_TAG, "Combustion Android Service Started...")
+
+        return START_NOT_STICKY
     }
 
     override fun onBind(intent: Intent): IBinder {
         super.onBind(intent)
-        Log.d(LOG_TAG, "onBind ...")
         return binder
     }
 
+    override fun onUnbind(intent: Intent?): Boolean {
+        stopForeground()
+        return super.onUnbind(intent)
+    }
+
     override fun onDestroy() {
-        Log.d(LOG_TAG, "onDestroy ...")
+        // stop the service notification
+        stopForeground()
+        serviceNotification = null
 
         // always try to unregister, even if the previous register didn't complete.
         try { unregisterReceiver(_bluetoothReceiver) } catch (e: Exception) { }
@@ -202,6 +243,9 @@ class CombustionService : LifecycleService() {
         periodicTimer.cancel()
         clearDevices()
 
+        serviceIsStarted.set(false)
+
+        Log.d(LOG_TAG, "Combustion Android Service Destroyed...")
         super.onDestroy()
     }
 
@@ -258,6 +302,9 @@ class CombustionService : LifecycleService() {
     internal fun createLogFlowForDevice(serialNumber: String): Flow<LoggedProbeDataPoint> =
         LogManager.instance.createLogFlowForDevice(serialNumber)
 
+    internal fun recordsDownloaded(serialNumber: String): Int =
+        LogManager.instance.recordsDownloaded(serialNumber)
+
     internal fun clearDevices() {
         LogManager.instance.clear()
         _probes.forEach { (_, probe) -> probe.finish() }
@@ -282,6 +329,14 @@ class CombustionService : LifecycleService() {
                 DeviceDiscoveredEvent.DeviceDiscovered(simulatedProbeManager.probe.serialNumber)
             )
         }
+    }
+
+    internal fun setProbeColor(serialNumber: String, color: ProbeColor, completionHandler: (Boolean) -> Unit) {
+        _probes[serialNumber]?.sendSetProbeColor(this, color, completionHandler)
+    }
+
+    internal fun setProbeID(serialNumber: String, id: ProbeID, completionHandler: (Boolean) -> Unit) {
+        _probes[serialNumber]?.sendSetProbeID(this, id, completionHandler)
     }
 
     private fun emitBluetoothOnEvent() = _discoveredProbesFlow.tryEmit(
