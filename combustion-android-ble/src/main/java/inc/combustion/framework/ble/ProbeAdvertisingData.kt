@@ -99,17 +99,16 @@ internal data class ProbeAdvertisingData (
             else
                 null
 
-            val probeColor = if(modeColorId != null) ProbeColor.fromUByte(modeColorId) else ProbeColor.COLOR1
-            val probeID = if(modeColorId != null) ProbeID.fromUByte(modeColorId) else ProbeID.ID1
-            val probeMode = if(modeColorId != null) ProbeMode.fromUByte(modeColorId) else ProbeMode.NORMAL
-
             // use status if available
             val status = if (manufacturerData.size > 19)
                 manufacturerData.copyOf().sliceArray(STATUS_RANGE)[0]
             else
                 null
 
-            val batteryStatus = if(status != null) ProbeBatteryStatus.fromUByte(status) else ProbeBatteryStatus.OK
+            val probeColor = modeColorId?.let { ProbeColor.fromUByte(it) } ?: run { ProbeColor.COLOR1 }
+            val probeID = modeColorId?.let { ProbeID.fromUByte(it) } ?: run { ProbeID.ID1 }
+            val probeMode = modeColorId?.let { ProbeMode.fromUByte(it) } ?: run { ProbeMode.NORMAL }
+            val batteryStatus = status?.let { ProbeBatteryStatus.fromUByte(it) } ?: run { ProbeBatteryStatus.OK }
 
             // API level 26 (Android 8) and Higher
             return if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

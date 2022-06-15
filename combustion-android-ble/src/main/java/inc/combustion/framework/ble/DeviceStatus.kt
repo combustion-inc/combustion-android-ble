@@ -27,11 +27,7 @@
  */
 package inc.combustion.framework.ble
 
-import inc.combustion.framework.service.ProbeBatteryStatus
-import inc.combustion.framework.service.ProbeColor
-import inc.combustion.framework.service.ProbeID
-import inc.combustion.framework.service.ProbeMode
-import inc.combustion.framework.service.ProbeTemperatures
+import inc.combustion.framework.service.*
 
 /**
  * Data object for Device Status packet.
@@ -69,17 +65,16 @@ internal data class DeviceStatus(
             else
                 null
 
-            val probeColor = if(modeColorId != null) ProbeColor.fromUByte(modeColorId) else ProbeColor.COLOR1
-            val probeID = if(modeColorId != null) ProbeID.fromUByte(modeColorId) else ProbeID.ID1
-            val probeMode = if(modeColorId != null) ProbeMode.fromUByte(modeColorId) else ProbeMode.NORMAL
-
             // use status if available
             val status = if (data.size > 22)
                 data.sliceArray(STATUS_RANGE)[0]
             else
                 null
 
-            val batteryStatus = if(status != null) ProbeBatteryStatus.fromUByte(status) else ProbeBatteryStatus.OK
+            val probeColor = modeColorId?.let { ProbeColor.fromUByte(it) } ?: run { ProbeColor.COLOR1 }
+            val probeID = modeColorId?.let { ProbeID.fromUByte(it) } ?: run { ProbeID.ID1 }
+            val probeMode = modeColorId?.let { ProbeMode.fromUByte(it) } ?: run { ProbeMode.NORMAL }
+            val batteryStatus = status?.let { ProbeBatteryStatus.fromUByte(it) } ?: run { ProbeBatteryStatus.OK }
 
             return DeviceStatus(
                 minSequenceNumber,
