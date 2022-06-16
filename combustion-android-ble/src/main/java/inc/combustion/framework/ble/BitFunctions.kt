@@ -27,6 +27,9 @@
  */
 package inc.combustion.framework.ble
 
+infix fun UByte.shl(shift: Int) = ((this.toInt() shl shift) and (0x0000FFFF)).toUShort()
+infix fun UByte.shr(shift: Int) = ((this.toInt() shr shift) and (0x0000FFFF)).toUShort()
+
 infix fun UShort.shl(shift: Int) = ((this.toInt() shl shift) and (0x0000FFFF)).toUShort()
 infix fun UShort.shr(shift: Int) = ((this.toInt() shr shift) and (0x0000FFFF)).toUShort()
 

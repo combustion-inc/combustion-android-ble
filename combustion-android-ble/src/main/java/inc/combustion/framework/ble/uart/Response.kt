@@ -29,6 +29,8 @@ package inc.combustion.framework.ble.uart
 
 import android.util.Log
 import inc.combustion.framework.LOG_TAG
+import inc.combustion.framework.ble.getCRC16CCITT
+import inc.combustion.framework.ble.getLittleEndianUShortAt
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -105,6 +107,22 @@ internal open class Response(
 
             // Payload Length
             val length = data[6]
+
+            // Validate CRC--omit the first 4 elements (sync bytes and CRC), add 3 to payload length
+            // for message type, success, and payload length. Note that we slice data here because
+            // it potentially contains more than one packet.
+            val calculatedCrc: UShort = data.drop(4).slice(0 until length.toInt() + 3).toUByteArray().getCRC16CCITT()
+            val sentCrc: UShort = data.getLittleEndianUShortAt(2)
+
+            // TODO: Return bad packet when CRC is ill-formed
+            if (sentCrc != calculatedCrc) {
+                // Log.w(
+                //     "$LOG_TAG.Response",
+                //     "Incorrect CRC (got: $sentCrc; expected: $calculatedCrc) (total: ${stats.invalidCrc.incrementAndGet()})"
+                // )
+
+                // return null
+            }
 
             // validate payload length and construct response
             when(messageType) {
