@@ -40,6 +40,8 @@ internal class SetColorRequest(
 
     init {
         data[(HEADER_SIZE).toInt()] = color.type
+
+        setCRC()
     }
 }
 
