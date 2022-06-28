@@ -57,7 +57,7 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 internal open class ProbeManager (
     private val mac: String,
-    owner: LifecycleOwner,
+    private val owner: LifecycleOwner,
     private var advertisingData: ProbeAdvertisingData,
     adapter: BluetoothAdapter
 ): Device(mac, owner, adapter) {
@@ -326,6 +326,7 @@ internal open class ProbeManager (
             else {
                 readFirmwareVersion()
                 readHardwareRevision()
+                requestSessionInformation()
             }
 
             if(DebugSettings.DEBUG_LOG_CONNECTION_STATE) {
@@ -357,6 +358,10 @@ internal open class ProbeManager (
                     "Exception while reading remote HW revision: \n${e.stackTrace}")
             }
         }
+    }
+
+    private fun requestSessionInformation() {
+        sendUartRequest(owner, SessionInfoRequest())
     }
 
     private suspend fun deviceStatusCharacteristicMonitor() {
@@ -423,6 +428,9 @@ internal open class ProbeManager (
                                 it.completionHandler(response.success)
                                 setProbeIDMessageHandler = null
                             }
+                        }
+                        is SessionInfoResponse -> {
+                            Log.d("JDJ", "${response.sessionInformation}")
                         }
                     }
                 }

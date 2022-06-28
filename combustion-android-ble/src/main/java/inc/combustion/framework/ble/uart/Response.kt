@@ -123,6 +123,9 @@ internal open class Response(
                 MessageType.SET_PROBE_ID -> {
                     return SetIDResponse(success, SetColorResponse.PAYLOAD_LENGTH)
                 }
+                MessageType.READ_SESSION_INFO -> {
+                    return SessionInfoResponse.fromData(data, success)
+                }
             }
 
             return null
