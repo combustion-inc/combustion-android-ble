@@ -30,7 +30,7 @@ package inc.combustion.framework.service
 class DebugSettings {
     companion object {
         var DEBUG_LOG_TRANSFER = false
-        var DEBUG_LOG_SESSION_STATUS = true
+        var DEBUG_LOG_SESSION_STATUS = false
         var DEBUG_LOG_LOG_MANAGER_IO = false
         var DEBUG_LOG_BLE_UART_IO = false
         var DEBUG_LOG_CONNECTION_STATE = false
