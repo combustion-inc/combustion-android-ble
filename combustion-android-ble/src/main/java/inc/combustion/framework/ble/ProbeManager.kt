@@ -111,6 +111,7 @@ internal open class ProbeManager (
 
     internal var fwVersion: String? = null
     internal var hwRevision: String? = null
+    private var sessionInfo: SessionInformation? = null
 
     // Class to store when BLE message was sent and the completion handler for message
     private data class MessageHandler (
@@ -321,8 +322,10 @@ internal open class ProbeManager (
 
             isConnected.set(connectionState == DeviceConnectionState.CONNECTED)
 
-            if(connectionState != DeviceConnectionState.CONNECTED)
+            if(connectionState != DeviceConnectionState.CONNECTED) {
                 deviceStatus = null
+                sessionInfo = null
+            }
             else {
                 readFirmwareVersion()
                 readHardwareRevision()
@@ -430,7 +433,7 @@ internal open class ProbeManager (
                             }
                         }
                         is SessionInfoResponse -> {
-                            Log.d("JDJ", "${response.sessionInformation}")
+                            sessionInfo = response.sessionInformation
                         }
                     }
                 }
@@ -461,6 +464,7 @@ internal open class ProbeManager (
             advertisingData.mac,
             fwVersion,
             hwRevision,
+            sessionInfo,
             temperatures,
             instantRead,
             rssi,

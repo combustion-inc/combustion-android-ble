@@ -31,6 +31,7 @@ import android.util.Log
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.DeviceStatus
 import inc.combustion.framework.ble.uart.LogResponse
+import inc.combustion.framework.ble.uart.SessionInformation
 import inc.combustion.framework.service.DebugSettings
 import inc.combustion.framework.service.LoggedProbeDataPoint
 import java.util.*
@@ -41,9 +42,9 @@ import java.util.*
  * @property serialNumber Probe serial number
  * @constructor Constructs a new session.
  *
- * @param seqNum Starting sequence number
+ * @param sessionInfo Session information from probe
  */
-internal class Session(seqNum: UInt, private val serialNumber: String) {
+internal class Session(private val serialNumber: String, sessionInfo: SessionInformation) {
 
     companion object {
         /**
@@ -64,7 +65,7 @@ internal class Session(seqNum: UInt, private val serialNumber: String) {
     private val droppedRecords = mutableListOf<UInt>()
     private val minSequenceNumber: UInt get() = if(isEmpty) 0u else _logs.firstKey()
 
-    val id = SessionId(seqNum)
+    val id = sessionInfo.sessionID
     val isEmpty get() = _logs.isEmpty()
     private val maxSequenceNumber: UInt get() = if(isEmpty) 0u else _logs.lastKey()
 
