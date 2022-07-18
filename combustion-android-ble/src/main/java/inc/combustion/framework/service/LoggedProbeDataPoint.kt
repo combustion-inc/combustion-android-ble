@@ -29,7 +29,6 @@ package inc.combustion.framework.service
 
 import inc.combustion.framework.ble.DeviceStatus
 import inc.combustion.framework.ble.uart.LogResponse
-import inc.combustion.framework.log.SessionId
 
 /**
  * Data class for a logged probe data point.
@@ -39,7 +38,7 @@ import inc.combustion.framework.log.SessionId
  * @property temperatures Temperature measurements
  */
 data class LoggedProbeDataPoint (
-    val sessionId: String,
+    val sessionId: UInt,
     val sequenceNumber: UInt,
     val temperatures: ProbeTemperatures
 ) : Comparable<LoggedProbeDataPoint> {
@@ -53,12 +52,12 @@ data class LoggedProbeDataPoint (
     }
 
     internal companion object{
-        fun fromDeviceStatus(sessionId: SessionId, status: DeviceStatus): LoggedProbeDataPoint {
-            return LoggedProbeDataPoint(sessionId.toString(), status.maxSequenceNumber, status.temperatures)
+        fun fromDeviceStatus(sessionId: UInt, status: DeviceStatus): LoggedProbeDataPoint {
+            return LoggedProbeDataPoint(sessionId, status.maxSequenceNumber, status.temperatures)
         }
 
-        fun fromLogResponse(sessionId: SessionId, response: LogResponse): LoggedProbeDataPoint {
-            return LoggedProbeDataPoint(sessionId.toString(), response.sequenceNumber, response.temperatures)
+        fun fromLogResponse(sessionId: UInt, response: LogResponse): LoggedProbeDataPoint {
+            return LoggedProbeDataPoint(sessionId, response.sequenceNumber, response.temperatures)
         }
     }
 }

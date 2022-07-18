@@ -1,7 +1,7 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: LogRequest.kt
- * Author: https://github.com/miwright2
+ * File: SessionInfoRequest.kt
+ * Author: https://github.com/jjohnstz
  *
  * MIT License
  *
@@ -25,31 +25,13 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+
 package inc.combustion.framework.ble.uart
 
-import inc.combustion.framework.ble.putLittleEndianUInt32At
-
-/**
- * Request temperature logs message
- *
- * @constructor
- * Constructs the request message
- *
- * @param minSequence minimum sequence number
- * @param maxSequence maximum sequence number
- */
-internal class LogRequest(
-    minSequence: UInt,
-    maxSequence: UInt
-) : Request(PAYLOAD_LENGTH, MessageType.LOG) {
+internal class SessionInfoRequest(
+) : Request(PAYLOAD_LENGTH, MessageType.READ_SESSION_INFO) {
 
     companion object {
-        const val PAYLOAD_LENGTH: UByte = 8u
-        const val MAX_LOG_MESSAGES: UInt = 500u
-    }
-
-    init {
-        data.putLittleEndianUInt32At((HEADER_SIZE + 0u).toInt(), minSequence)
-        data.putLittleEndianUInt32At((HEADER_SIZE + 4u).toInt(), maxSequence)
+        const val PAYLOAD_LENGTH: UByte = 0u
     }
 }

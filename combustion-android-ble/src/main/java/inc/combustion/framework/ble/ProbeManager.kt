@@ -57,7 +57,7 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 internal open class ProbeManager (
     private val mac: String,
-    owner: LifecycleOwner,
+    private val owner: LifecycleOwner,
     private var advertisingData: ProbeAdvertisingData,
     adapter: BluetoothAdapter
 ): Device(mac, owner, adapter) {
@@ -111,6 +111,7 @@ internal open class ProbeManager (
 
     internal var fwVersion: String? = null
     internal var hwRevision: String? = null
+    private var sessionInfo: SessionInformation? = null
 
     // Class to store when BLE message was sent and the completion handler for message
     private data class MessageHandler (
@@ -321,11 +322,14 @@ internal open class ProbeManager (
 
             isConnected.set(connectionState == DeviceConnectionState.CONNECTED)
 
-            if(connectionState != DeviceConnectionState.CONNECTED)
+            if(connectionState != DeviceConnectionState.CONNECTED) {
                 deviceStatus = null
+                sessionInfo = null
+            }
             else {
                 readFirmwareVersion()
                 readHardwareRevision()
+                requestSessionInformation()
             }
 
             if(DebugSettings.DEBUG_LOG_CONNECTION_STATE) {
@@ -357,6 +361,10 @@ internal open class ProbeManager (
                     "Exception while reading remote HW revision: \n${e.stackTrace}")
             }
         }
+    }
+
+    private fun requestSessionInformation() {
+        sendUartRequest(owner, SessionInfoRequest())
     }
 
     private suspend fun deviceStatusCharacteristicMonitor() {
@@ -424,6 +432,9 @@ internal open class ProbeManager (
                                 setProbeIDMessageHandler = null
                             }
                         }
+                        is SessionInfoResponse -> {
+                            sessionInfo = response.sessionInformation
+                        }
                     }
                 }
             }
@@ -453,6 +464,7 @@ internal open class ProbeManager (
             advertisingData.mac,
             fwVersion,
             hwRevision,
+            sessionInfo,
             temperatures,
             instantRead,
             rssi,

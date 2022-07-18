@@ -31,8 +31,11 @@ import android.util.Log
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.DeviceStatus
 import inc.combustion.framework.ble.uart.LogResponse
+import inc.combustion.framework.ble.uart.SessionInformation
 import inc.combustion.framework.service.DebugSettings
 import inc.combustion.framework.service.LoggedProbeDataPoint
+import java.time.Instant
+import java.time.LocalDateTime
 import java.util.*
 
 /**
@@ -41,9 +44,10 @@ import java.util.*
  * @property serialNumber Probe serial number
  * @constructor Constructs a new session.
  *
- * @param seqNum Starting sequence number
+ * @param sessionInfo Session information from probe
  */
-internal class Session(seqNum: UInt, private val serialNumber: String) {
+internal class Session(private val serialNumber: String,
+                       private val sessionInfo: SessionInformation) {
 
     companion object {
         /**
@@ -63,10 +67,11 @@ internal class Session(seqNum: UInt, private val serialNumber: String) {
     private var staleLogRequestCount = STALE_LOG_REQUEST_PACKET_COUNT
     private val droppedRecords = mutableListOf<UInt>()
     private val minSequenceNumber: UInt get() = if(isEmpty) 0u else _logs.firstKey()
-
-    val id = SessionId(seqNum)
-    val isEmpty get() = _logs.isEmpty()
     private val maxSequenceNumber: UInt get() = if(isEmpty) 0u else _logs.lastKey()
+
+    val id = sessionInfo.sessionID
+    val isEmpty get() = _logs.isEmpty()
+    var startTime: Date? = null
 
     val maxSequentialSequenceNumber: UInt get() {
         val iterator = _logs.keys.sorted().iterator()
@@ -187,6 +192,11 @@ internal class Session(seqNum: UInt, private val serialNumber: String) {
     }
 
     fun addFromDeviceStatus(deviceStatus: DeviceStatus) : SessionStatus {
+        if(startTime == null) {
+            val milliSinceStart = (sessionInfo.samplePeriod * deviceStatus.maxSequenceNumber).toLong()
+            startTime = Date(System.currentTimeMillis() - milliSinceStart)
+        }
+
         val loggedProbeDataPoint = LoggedProbeDataPoint.fromDeviceStatus(id, deviceStatus)
 
         // decrement the stale log request counter

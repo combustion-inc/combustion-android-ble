@@ -1,7 +1,7 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: LogRequest.kt
- * Author: https://github.com/miwright2
+ * File: SessionInfoResponse.kt
+ * Author: https://github.com/jjohnstz
  *
  * MIT License
  *
@@ -25,31 +25,33 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+
 package inc.combustion.framework.ble.uart
 
-import inc.combustion.framework.ble.putLittleEndianUInt32At
+import inc.combustion.framework.ble.getLittleEndianUInt16At
+import inc.combustion.framework.ble.getLittleEndianUInt32At
 
-/**
- * Request temperature logs message
- *
- * @constructor
- * Constructs the request message
- *
- * @param minSequence minimum sequence number
- * @param maxSequence maximum sequence number
- */
-internal class LogRequest(
-    minSequence: UInt,
-    maxSequence: UInt
-) : Request(PAYLOAD_LENGTH, MessageType.LOG) {
+data class SessionInformation (
+    val sessionID: UInt,
+    val samplePeriod: UInt
+)
+
+internal class SessionInfoResponse(
+    val sessionInformation: SessionInformation,
+    success: Boolean,
+    payLoadLength: UInt
+) : Response(success, payLoadLength) {
 
     companion object {
-        const val PAYLOAD_LENGTH: UByte = 8u
-        const val MAX_LOG_MESSAGES: UInt = 500u
-    }
+        private const val PAYLOAD_LENGTH: UInt = 6u
 
-    init {
-        data.putLittleEndianUInt32At((HEADER_SIZE + 0u).toInt(), minSequence)
-        data.putLittleEndianUInt32At((HEADER_SIZE + 4u).toInt(), maxSequence)
+        fun fromData(data: UByteArray, success: Boolean): SessionInfoResponse {
+            val sessionID: UInt = data.getLittleEndianUInt32At(HEADER_SIZE.toInt())
+            val samplePeriod: UInt = data.getLittleEndianUInt16At(HEADER_SIZE.toInt() + 4)
+
+            val sessionInfo = SessionInformation(sessionID, samplePeriod)
+
+            return SessionInfoResponse(sessionInfo, success, PAYLOAD_LENGTH)
+        }
     }
 }
