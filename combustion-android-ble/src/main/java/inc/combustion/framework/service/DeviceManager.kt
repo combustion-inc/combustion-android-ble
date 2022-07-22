@@ -36,6 +36,7 @@ import android.util.Log
 import inc.combustion.framework.LOG_TAG
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
+import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -305,9 +306,18 @@ class DeviceManager {
      * @param serialNumber the serial number of the probe.
      * @return Count of downloaded records
      */
-    fun recordsDownloads(serialNumber: String): Int =
+    fun recordsDownloaded(serialNumber: String): Int =
         service.recordsDownloaded(serialNumber)
 
+    /**
+     * Retrieves the wall clock timestamp for the first record retrieved from the device
+     * in the log buffer, or default Date() if no logs have been retrieved.
+     *
+     * @param serialNumber the serial number of the probe.
+     * @return Timestamp or default Date()
+     */
+    fun logStartTimestampForDevice(serialNumber: String): Date =
+        service.logStartTimestampForDevice(serialNumber)
     /**
      * Retrieves the current temperature log as a Kotlin flow of LoggedProbeDataPoint for
      * the specified serial number.  All logs previously transferred are produced to the flow

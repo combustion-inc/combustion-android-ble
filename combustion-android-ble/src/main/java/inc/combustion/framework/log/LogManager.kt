@@ -267,6 +267,10 @@ internal class LogManager {
         return temperatureLogs[serialNumber]?.dataPointCount ?: 0
     }
 
+    fun logStartTimestampForDevice(serialNumber: String): Date {
+        return temperatureLogs[serialNumber]?.logStartTime ?: Date()
+    }
+
     fun exportLogsForDevice(serialNumber: String): List<LoggedProbeDataPoint>? {
         return temperatureLogs[serialNumber]?.dataPoints
     }
@@ -318,7 +322,12 @@ internal class LogManager {
                             if(deviceStatus.mode != ProbeMode.NORMAL)
                                 return@collect
 
-                            emit(LoggedProbeDataPoint.fromDeviceStatus(sessionId, deviceStatus))
+                            emit(LoggedProbeDataPoint.fromDeviceStatus(
+                                sessionId,
+                                deviceStatus,
+                                log.currentSessionStartTime,
+                                log.currentSessionSamplePeriod)
+                            )
                     }
                 }
             }
