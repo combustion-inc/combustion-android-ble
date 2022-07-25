@@ -166,15 +166,21 @@ internal open class ProbeManager (
         })
         // RSII polling job
         addJob(owner.lifecycleScope.launch(Dispatchers.IO) {
+            var exceptionCount = 0;
             while(isActive) {
                 if(isConnected.get() && mac != SimulatedProbeManager.SIMULATED_MAC) {
                     try {
                         remoteRssi.set(peripheral.rssi())
+                        exceptionCount = 0;
                     } catch (e: Exception) {
-                        Log.w(LOG_TAG,
-                            "Exception while reading remote RSSI: \n${e.stackTrace}")
+                        exceptionCount++
+                        Log.w(LOG_TAG, "Exception while reading remote RSSI: $exceptionCount\n${e.stackTrace}")
                     }
-                    _probeStateFlow.emit(probe)
+
+                    when {
+                        exceptionCount < 5 -> _probeStateFlow.emit(probe)
+                        else -> peripheral.disconnect()
+                    }
                 }
                 delay(PROBE_REMOTE_RSSI_POLL_RATE_MS)
             }
@@ -297,8 +303,8 @@ internal open class ProbeManager (
 
             try {
                 peripheral.write(UART_RX_CHARACTERISTIC, request.sData)
-            } catch(e: NotReadyException)  {
-                Log.w(LOG_TAG, "UART-TX: Attempt to write when connection is not ready")
+            } catch(e: Exception)  {
+                Log.w(LOG_TAG, "UART-TX: Unable to write to TX characteristic.")
             }
         }
     }
@@ -322,20 +328,38 @@ internal open class ProbeManager (
 
             isConnected.set(connectionState == DeviceConnectionState.CONNECTED)
 
-            if(connectionState != DeviceConnectionState.CONNECTED) {
-                deviceStatus = null
-                sessionInfo = null
+            if(isConnected.get()) {
+                getProbeConfiguration()
             }
             else {
-                readFirmwareVersion()
-                readHardwareRevision()
-                requestSessionInformation()
+                deviceStatus = null
+                sessionInfo = null
             }
 
             if(DebugSettings.DEBUG_LOG_CONNECTION_STATE) {
                 Log.d(LOG_TAG, "${probe.serialNumber} is ${probe.connectionState}")
             }
             _probeStateFlow.emit(probe)
+        }
+    }
+
+    private fun getProbeConfiguration() {
+        owner.lifecycleScope.launch(Dispatchers.IO) {
+
+            // the following operations can take some time to complete, so
+            // we run them in a separate coroutine, so that we can receive
+            // the state updates in connectionStatusMonitor above.  And if
+            // we are disconnected, then stop this sequence of trying to
+            // read configuration from the probe.
+
+            if(isConnected.get())
+                readFirmwareVersion()
+
+            if(isConnected.get())
+                readHardwareRevision()
+
+            if(isConnected.get())
+                requestSessionInformation()
         }
     }
 
