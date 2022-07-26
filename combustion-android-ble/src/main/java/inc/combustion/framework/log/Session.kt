@@ -70,6 +70,7 @@ internal class Session(private val serialNumber: String,
     private val maxSequenceNumber: UInt get() = if(isEmpty) 0u else _logs.lastKey()
 
     val id = sessionInfo.sessionID
+    val samplePeriod = sessionInfo.samplePeriod
     val isEmpty get() = _logs.isEmpty()
     var startTime: Date? = null
 
@@ -132,7 +133,12 @@ internal class Session(private val serialNumber: String,
     }
 
     fun addFromLogResponse(logResponse: LogResponse) : UploadProgress {
-        val loggedProbeDataPoint = LoggedProbeDataPoint.fromLogResponse(id, logResponse)
+        if(startTime == null) {
+            val milliSinceStart = (sessionInfo.samplePeriod * logResponse.sequenceNumber).toLong()
+            startTime = Date(System.currentTimeMillis() - milliSinceStart)
+        }
+
+        val loggedProbeDataPoint = LoggedProbeDataPoint.fromLogResponse(id, logResponse, startTime, sessionInfo.samplePeriod)
 
         // response received, reset the stalled counter.
         staleLogRequestCount = STALE_LOG_REQUEST_PACKET_COUNT
@@ -197,7 +203,7 @@ internal class Session(private val serialNumber: String,
             startTime = Date(System.currentTimeMillis() - milliSinceStart)
         }
 
-        val loggedProbeDataPoint = LoggedProbeDataPoint.fromDeviceStatus(id, deviceStatus)
+        val loggedProbeDataPoint = LoggedProbeDataPoint.fromDeviceStatus(id, deviceStatus, startTime, sessionInfo.samplePeriod)
 
         // decrement the stale log request counter
         staleLogRequestCount--

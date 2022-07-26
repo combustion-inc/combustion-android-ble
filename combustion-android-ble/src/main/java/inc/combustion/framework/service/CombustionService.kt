@@ -46,6 +46,7 @@ import inc.combustion.framework.log.LogManager
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.util.*
 import java.util.concurrent.ThreadLocalRandom
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -304,6 +305,9 @@ class CombustionService : LifecycleService() {
 
     internal fun recordsDownloaded(serialNumber: String): Int =
         LogManager.instance.recordsDownloaded(serialNumber)
+
+    internal fun logStartTimestampForDevice(serialNumber: String): Date =
+        LogManager.instance.logStartTimestampForDevice(serialNumber)
 
     internal fun clearDevices() {
         LogManager.instance.clear()

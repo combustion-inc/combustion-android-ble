@@ -29,17 +29,20 @@ package inc.combustion.framework.service
 
 import inc.combustion.framework.ble.DeviceStatus
 import inc.combustion.framework.ble.uart.LogResponse
+import java.util.*
 
 /**
  * Data class for a logged probe data point.
  *
  * @property sessionId Session ID for the data log.
  * @property sequenceNumber Sequence number for the data log
+ * @property timestamp Wall clock timestamp
  * @property temperatures Temperature measurements
  */
 data class LoggedProbeDataPoint (
     val sessionId: UInt,
     val sequenceNumber: UInt,
+    val timestamp: Date,
     val temperatures: ProbeTemperatures
 ) : Comparable<LoggedProbeDataPoint> {
 
@@ -52,12 +55,29 @@ data class LoggedProbeDataPoint (
     }
 
     internal companion object{
-        fun fromDeviceStatus(sessionId: UInt, status: DeviceStatus): LoggedProbeDataPoint {
-            return LoggedProbeDataPoint(sessionId, status.maxSequenceNumber, status.temperatures)
+        fun fromDeviceStatus(
+            sessionId: UInt,
+            status: DeviceStatus,
+            sessionStart: Date?,
+            samplePeriod: UInt
+        ): LoggedProbeDataPoint {
+            val timestamp = getTimestamp(sessionStart, status.maxSequenceNumber, samplePeriod)
+            return LoggedProbeDataPoint(sessionId, status.maxSequenceNumber, timestamp, status.temperatures)
         }
 
-        fun fromLogResponse(sessionId: UInt, response: LogResponse): LoggedProbeDataPoint {
-            return LoggedProbeDataPoint(sessionId, response.sequenceNumber, response.temperatures)
+        fun fromLogResponse(
+            sessionId: UInt,
+            response: LogResponse,
+            sessionStart: Date?,
+            samplePeriod: UInt
+        ): LoggedProbeDataPoint {
+            val timestamp = getTimestamp(sessionStart, response.sequenceNumber, samplePeriod)
+            return LoggedProbeDataPoint(sessionId, response.sequenceNumber, timestamp, response.temperatures)
+        }
+
+        private fun getTimestamp(sessionStart: Date?, sequenceNumber: UInt, samplePeriod: UInt): Date {
+            val start = (sessionStart ?: Date()).time
+            return Date(start + (sequenceNumber * samplePeriod).toLong())
         }
     }
 }

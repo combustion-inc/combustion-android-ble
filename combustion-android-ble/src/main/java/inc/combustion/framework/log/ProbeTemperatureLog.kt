@@ -34,6 +34,7 @@ import inc.combustion.framework.ble.uart.LogResponse
 import inc.combustion.framework.ble.uart.SessionInformation
 import inc.combustion.framework.service.DebugSettings
 import inc.combustion.framework.service.LoggedProbeDataPoint
+import java.util.*
 
 /**
  * Session log for a single probe.
@@ -56,6 +57,9 @@ internal class ProbeTemperatureLog(private val serialNumber: String) {
 
     val logRequestIsStalled: Boolean get() = sessions.lastOrNull()?.logRequestIsStalled ?: false
     val currentSessionId: UInt get() = sessions.lastOrNull()?.id ?: 0u
+    val currentSessionSamplePeriod: UInt get() = sessions.lastOrNull()?.samplePeriod ?: 0u
+    val currentSessionStartTime: Date? get() = sessions.lastOrNull()?.startTime
+    val logStartTime: Date? get() = sessions.firstOrNull()?.startTime
 
     val dataPointCount: Int
         get() {
