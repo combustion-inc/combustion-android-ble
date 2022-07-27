@@ -4,6 +4,20 @@ plugins {
     id("maven-publish")
 }
 
+def getVersionName = { ->
+    try {
+        def stdout = new ByteArrayOutputStream()
+        exec {
+            commandLine 'git', 'describe', '--tags', '--abbrev=4', 'HEAD'
+            standardOutput = stdout
+        }
+        return stdout.toString().trim()
+    }
+    catch (ignored) {
+        return null;
+    }
+}
+
 android {
     compileSdk 31
 
@@ -12,6 +26,9 @@ android {
         targetSdk 31
         versionCode 1
         versionName "0.0.3"
+
+        var versionName = getVersionName()
+        buildConfigField 'String', 'VERSION_NAME', "\"" + versionName + "\""
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -26,6 +43,7 @@ android {
         }
     }
     compileOptions {
+        coreLibraryDesugaringEnabled true
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
@@ -70,6 +88,7 @@ dependencies {
     implementation("com.juul.kable:core:$kable_core_version")
     implementation("androidx.lifecycle:lifecycle-service:$lifecycle_service_version")
     implementation("org.jetbrains.kotlin:kotlin-reflect:1.6.10")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:1.2.0")
     androidTestImplementation("androidx.test.ext:junit:$junit_version")
     androidTestImplementation("androidx.test.espresso:espresso-core:$espresso_core_version")
     testImplementation('junit:junit:4.13.2')

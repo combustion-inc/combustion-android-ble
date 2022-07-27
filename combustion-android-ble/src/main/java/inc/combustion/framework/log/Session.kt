@@ -34,8 +34,6 @@ import inc.combustion.framework.ble.uart.LogResponse
 import inc.combustion.framework.ble.uart.SessionInformation
 import inc.combustion.framework.service.DebugSettings
 import inc.combustion.framework.service.LoggedProbeDataPoint
-import java.time.Instant
-import java.time.LocalDateTime
 import java.util.*
 
 /**
@@ -46,8 +44,11 @@ import java.util.*
  *
  * @param sessionInfo Session information from probe
  */
-internal class Session(private val serialNumber: String,
-                       private val sessionInfo: SessionInformation) {
+internal class Session(
+    private val serialNumber: String,
+    private val sessionInfo: SessionInformation,
+    deviceStatusMaxSequence: UInt,
+) {
 
     companion object {
         /**
@@ -72,7 +73,7 @@ internal class Session(private val serialNumber: String,
     val id = sessionInfo.sessionID
     val samplePeriod = sessionInfo.samplePeriod
     val isEmpty get() = _logs.isEmpty()
-    var startTime: Date? = null
+    val startTime: Date
 
     val maxSequentialSequenceNumber: UInt get() {
         val iterator = _logs.keys.sorted().iterator()
@@ -91,6 +92,11 @@ internal class Session(private val serialNumber: String,
         }
 
         return lastKey
+    }
+
+    init {
+        val milliSinceStart = (sessionInfo.samplePeriod * deviceStatusMaxSequence).toLong()
+        startTime = Date(System.currentTimeMillis() - milliSinceStart)
     }
 
     val logRequestIsStalled: Boolean
@@ -133,11 +139,6 @@ internal class Session(private val serialNumber: String,
     }
 
     fun addFromLogResponse(logResponse: LogResponse) : UploadProgress {
-        if(startTime == null) {
-            val milliSinceStart = (sessionInfo.samplePeriod * logResponse.sequenceNumber).toLong()
-            startTime = Date(System.currentTimeMillis() - milliSinceStart)
-        }
-
         val loggedProbeDataPoint = LoggedProbeDataPoint.fromLogResponse(id, logResponse, startTime, sessionInfo.samplePeriod)
 
         // response received, reset the stalled counter.
@@ -198,11 +199,6 @@ internal class Session(private val serialNumber: String,
     }
 
     fun addFromDeviceStatus(deviceStatus: DeviceStatus) : SessionStatus {
-        if(startTime == null) {
-            val milliSinceStart = (sessionInfo.samplePeriod * deviceStatus.maxSequenceNumber).toLong()
-            startTime = Date(System.currentTimeMillis() - milliSinceStart)
-        }
-
         val loggedProbeDataPoint = LoggedProbeDataPoint.fromDeviceStatus(id, deviceStatus, startTime, sessionInfo.samplePeriod)
 
         // decrement the stale log request counter

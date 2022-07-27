@@ -33,9 +33,13 @@ import android.content.ComponentName
 import android.content.ServiceConnection
 import android.os.IBinder
 import android.util.Log
+import inc.combustion.framework.Combustion
 import inc.combustion.framework.LOG_TAG
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
+import java.lang.StringBuilder
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -299,6 +303,21 @@ class DeviceManager {
     fun exportLogsForDevice(serialNumber: String): List<LoggedProbeDataPoint>? =
         service.exportLogsForDevice(serialNumber)
 
+
+    /**
+     * Retrieves the current temperature log as a comma separate value string with header.
+     *
+     * @param serialNumber Serial number to export
+     * @param appNameAndVersion Name and version to include in the CSV header
+     * @return Pair: first is suggested name for the exported file, second is the CSV data.
+     */
+    fun exportLogsForDeviceAsCsv(serialNumber: String, appNameAndVersion: String): Pair<String, String> {
+        val logs = exportLogsForDevice(serialNumber)
+        val probe = probe(serialNumber)
+
+        return probeDataToCsv(probe, logs, appNameAndVersion)
+    }
+
     /**
      * Retrieves the number of records downloaded  from the probe and available in the
      * log buffer.
@@ -358,7 +377,8 @@ class DeviceManager {
      * @param completionHandler completion handler to be called operation is complete
      *
      */
-    fun setProbeColor(serialNumber: String, color: ProbeColor, completionHandler: (Boolean) -> Unit) = service.setProbeColor(serialNumber, color, completionHandler)
+    fun setProbeColor(serialNumber: String, color: ProbeColor, completionHandler: (Boolean) -> Unit) =
+        service.setProbeColor(serialNumber, color, completionHandler)
 
     /**
      * Sends a request to the device to the set the probe ID. The completion handler will
@@ -369,5 +389,64 @@ class DeviceManager {
      * @param completionHandler completion handler to be called operation is complete
      *
      */
-    fun setProbeID(serialNumber: String, id: ProbeID, completionHandler: (Boolean) -> Unit) = service.setProbeID(serialNumber, id, completionHandler)
+    fun setProbeID(serialNumber: String, id: ProbeID, completionHandler: (Boolean) -> Unit) =
+        service.setProbeID(serialNumber, id, completionHandler)
+
+    private fun probeDataToCsv(probe: Probe?, probeData: List<LoggedProbeDataPoint>?, appNameAndVersion: String): Pair<String, String> {
+        val csvVersion = 3
+        val sb = StringBuilder()
+        val serialNumber = probe?.serialNumber ?: "UNKNOWN"
+        val firmwareVersion = probe?.fwVersion ?: "UNKNOWN"
+        val hardwareVersion = probe?.hwRevision ?: "UNKNOWN"
+        val samplePeriod = probe?.sessionInfo?.samplePeriod ?: 0
+        val frameworkVersion = "Android ${Combustion.FRAMEWORK_VERSION_NAME} ${Combustion.FRAMEWORK_BUILD_TYPE}"
+
+        val now = LocalDateTime.now()
+        val headerDateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+        val createdDateTime = now.format(headerDateTimeFormatter)
+
+        // header
+        sb.appendLine("Combustion Inc. Probe Data")
+        sb.appendLine("App: $appNameAndVersion")
+        sb.appendLine("CSV version: $csvVersion")
+        sb.appendLine("Probe S/N: $serialNumber")
+        sb.appendLine("Probe FW version: $firmwareVersion")
+        sb.appendLine("Probe HW revision: $hardwareVersion")
+        sb.appendLine("Framework: $frameworkVersion")
+        sb.appendLine("Sample Period: $samplePeriod")
+        sb.appendLine("Created: $createdDateTime")
+        sb.appendLine()
+
+        // column headers
+        sb.appendLine("Timestamp,SessionID,SequenceNumber,T1,T2,T3,T4,T5,T6,T7,T8")
+
+        // the data
+        val startTime = probeData?.first()?.timestamp?.time ?: 0
+        probeData?.forEach { dataPoint ->
+            val timestamp = dataPoint.timestamp.time
+            val elapsed = (timestamp - startTime) / 1000.0f
+            sb.appendLine(
+                String.format(
+                    "%.3f,%s,%s,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f",
+                    elapsed,
+                    dataPoint.sessionId.toString(),
+                    dataPoint.sequenceNumber.toString(),
+                    dataPoint.temperatures.values[0],
+                    dataPoint.temperatures.values[1],
+                    dataPoint.temperatures.values[2],
+                    dataPoint.temperatures.values[3],
+                    dataPoint.temperatures.values[4],
+                    dataPoint.temperatures.values[5],
+                    dataPoint.temperatures.values[6],
+                    dataPoint.temperatures.values[7]
+                )
+            )
+        }
+
+        // recommended file name
+        val fileDateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
+        val recommendedFileName = "ProbeData_${serialNumber}_${now.format(fileDateTimeFormatter)}.csv"
+
+        return recommendedFileName to sb.toString()
+    }
 }

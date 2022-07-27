@@ -31,7 +31,6 @@ import android.bluetooth.BluetoothAdapter
 import android.os.ParcelUuid
 import android.util.Log
 import androidx.lifecycle.*
-import com.juul.kable.NotReadyException
 import com.juul.kable.State
 import com.juul.kable.characteristicOf
 import inc.combustion.framework.LOG_TAG
@@ -69,8 +68,6 @@ internal open class ProbeManager (
         private const val DEV_INFO_SERVICE_UUID_STRING = "0000180A-0000-1000-8000-00805F9B34FB"
         private const val NEEDLE_SERVICE_UUID_STRING = "00000100-CAAB-3792-3D44-97AE51C1407A"
         private const val UART_SERVICE_UUID_STRING   = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
-        private const val FLOW_CONFIG_REPLAY = 5
-        private const val FLOW_CONFIG_BUFFER = FLOW_CONFIG_REPLAY * 2
         private const val PROBE_INSTANT_READ_IDLE_TIMEOUT_MS = 5000L
 
         val FW_VERSION_CHARACTERISTIC = characteristicOf(
@@ -123,18 +120,15 @@ internal open class ProbeManager (
     private var setProbeIDMessageHandler: MessageHandler? = null
 
     private val _probeStateFlow =
-        MutableSharedFlow<Probe>(
-            FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.DROP_OLDEST)
+        MutableSharedFlow<Probe>(0, 10, BufferOverflow.DROP_OLDEST)
     val probeStateFlow = _probeStateFlow.asSharedFlow()
 
     internal val _deviceStatusFlow =
-        MutableSharedFlow<DeviceStatus>(
-            FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.DROP_OLDEST)
+        MutableSharedFlow<DeviceStatus>(0, 10, BufferOverflow.DROP_OLDEST)
     val deviceStatusFlow = _deviceStatusFlow.asSharedFlow()
 
     private val _logResponseFlow =
-        MutableSharedFlow<LogResponse>(
-            FLOW_CONFIG_REPLAY*5, FLOW_CONFIG_BUFFER*5, BufferOverflow.SUSPEND)
+        MutableSharedFlow<LogResponse>(0, 50, BufferOverflow.SUSPEND)
     val logResponseFlow = _logResponseFlow.asSharedFlow()
 
     val probe: Probe get() = toProbe()

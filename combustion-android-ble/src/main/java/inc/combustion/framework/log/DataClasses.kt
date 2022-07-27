@@ -27,15 +27,7 @@
  */
 package inc.combustion.framework.log
 
-
-import android.os.Build
 import inc.combustion.framework.service.ProbeUploadState
-import java.text.SimpleDateFormat
-import java.time.Instant
-import java.time.LocalDateTime
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.*
 
 /**
  * Range range data object
