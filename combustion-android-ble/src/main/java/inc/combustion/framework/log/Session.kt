@@ -31,9 +31,9 @@ import android.util.Log
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.DeviceStatus
 import inc.combustion.framework.ble.uart.LogResponse
-import inc.combustion.framework.ble.uart.SessionInformation
 import inc.combustion.framework.service.DebugSettings
 import inc.combustion.framework.service.LoggedProbeDataPoint
+import inc.combustion.framework.service.SessionInformation
 import java.util.*
 
 /**

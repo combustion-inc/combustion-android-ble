@@ -27,8 +27,6 @@
  */
 package inc.combustion.framework.service
 
-import inc.combustion.framework.ble.uart.SessionInformation
-
 /**
  * Data class for the current state of a probe.
  *

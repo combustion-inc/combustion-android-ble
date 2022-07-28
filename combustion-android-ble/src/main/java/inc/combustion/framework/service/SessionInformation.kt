@@ -1,6 +1,6 @@
 /*
- * Project: Combustion Inc. Android Framework
- * File: SessionInfoResponse.kt
+ * Project: Combustion Inc. Android Example
+ * File: SessionInformation.kt
  * Author: https://github.com/jjohnstz
  *
  * MIT License
@@ -26,28 +26,9 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble.uart
+package inc.combustion.framework.service
 
-import inc.combustion.framework.ble.getLittleEndianUInt16At
-import inc.combustion.framework.ble.getLittleEndianUInt32At
-import inc.combustion.framework.service.SessionInformation
-
-internal class SessionInfoResponse(
-    val sessionInformation: SessionInformation,
-    success: Boolean,
-    payLoadLength: UInt
-) : Response(success, payLoadLength) {
-
-    companion object {
-        private const val PAYLOAD_LENGTH: UInt = 6u
-
-        fun fromData(data: UByteArray, success: Boolean): SessionInfoResponse {
-            val sessionID: UInt = data.getLittleEndianUInt32At(HEADER_SIZE.toInt())
-            val samplePeriod: UInt = data.getLittleEndianUInt16At(HEADER_SIZE.toInt() + 4)
-
-            val sessionInfo = SessionInformation(sessionID, samplePeriod)
-
-            return SessionInfoResponse(sessionInfo, success, PAYLOAD_LENGTH)
-        }
-    }
-}
+data class SessionInformation (
+    val sessionID: UInt,
+    val samplePeriod: UInt
+)
