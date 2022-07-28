@@ -27,7 +27,7 @@
  */
 package inc.combustion.framework.ble.uart
 
-import inc.combustion.framework.ble.getLittleEndianUIntAt
+import inc.combustion.framework.ble.getLittleEndianUInt32At
 import inc.combustion.framework.service.ProbeTemperatures
 
 /**
@@ -50,7 +50,7 @@ internal class LogResponse(
         const val PAYLOAD_LENGTH: UInt = 17u
 
         fun fromData(data: UByteArray, success: Boolean): LogResponse {
-            val sequenceNumber: UInt = data.getLittleEndianUIntAt(HEADER_SIZE.toInt())
+            val sequenceNumber: UInt = data.getLittleEndianUInt32At(HEADER_SIZE.toInt())
 
             val temperatures: ProbeTemperatures = ProbeTemperatures.fromRawData(
                 data.sliceArray((HEADER_SIZE + 4u).toInt()..(HEADER_SIZE + PAYLOAD_LENGTH - 1u).toInt())

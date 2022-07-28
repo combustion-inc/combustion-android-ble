@@ -1,6 +1,6 @@
 /*
- * Project: Combustion Inc. Android Framework
- * File: LogRequest.kt
+ * Project: Combustion Inc. Android Example
+ * File: Combustion.kt
  * Author: https://github.com/miwright2
  *
  * MIT License
@@ -25,31 +25,12 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package inc.combustion.framework.ble.uart
 
-import inc.combustion.framework.ble.putLittleEndianUInt32At
+package inc.combustion.framework
 
-/**
- * Request temperature logs message
- *
- * @constructor
- * Constructs the request message
- *
- * @param minSequence minimum sequence number
- * @param maxSequence maximum sequence number
- */
-internal class LogRequest(
-    minSequence: UInt,
-    maxSequence: UInt
-) : Request(PAYLOAD_LENGTH, MessageType.LOG) {
-
+class Combustion {
     companion object {
-        const val PAYLOAD_LENGTH: UByte = 8u
-        const val MAX_LOG_MESSAGES: UInt = 500u
-    }
-
-    init {
-        data.putLittleEndianUInt32At((HEADER_SIZE + 0u).toInt(), minSequence)
-        data.putLittleEndianUInt32At((HEADER_SIZE + 4u).toInt(), maxSequence)
+        const val FRAMEWORK_VERSION_NAME = BuildConfig.VERSION_NAME
+        const val FRAMEWORK_BUILD_TYPE = BuildConfig.BUILD_TYPE
     }
 }

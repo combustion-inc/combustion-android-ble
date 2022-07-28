@@ -55,8 +55,8 @@ internal data class DeviceStatus(
         fun fromRawData(data: UByteArray): DeviceStatus? {
             if (data.size < 21) return null
 
-            val minSequenceNumber = data.getLittleEndianUIntAt(MIN_SEQ_INDEX)
-            val maxSequenceNumber = data.getLittleEndianUIntAt(MAX_SEQ_INDEX)
+            val minSequenceNumber = data.getLittleEndianUInt32At(MIN_SEQ_INDEX)
+            val maxSequenceNumber = data.getLittleEndianUInt32At(MAX_SEQ_INDEX)
             val temperatures = ProbeTemperatures.fromRawData(data.sliceArray(TEMPERATURE_RANGE))
 
             // use mode and color ID if available

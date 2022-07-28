@@ -31,7 +31,6 @@ import android.bluetooth.BluetoothAdapter
 import android.os.ParcelUuid
 import android.util.Log
 import androidx.lifecycle.*
-import com.juul.kable.NotReadyException
 import com.juul.kable.State
 import com.juul.kable.characteristicOf
 import inc.combustion.framework.LOG_TAG
@@ -57,7 +56,7 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 internal open class ProbeManager (
     private val mac: String,
-    owner: LifecycleOwner,
+    private val owner: LifecycleOwner,
     private var advertisingData: ProbeAdvertisingData,
     adapter: BluetoothAdapter
 ): Device(mac, owner, adapter) {
@@ -69,8 +68,6 @@ internal open class ProbeManager (
         private const val DEV_INFO_SERVICE_UUID_STRING = "0000180A-0000-1000-8000-00805F9B34FB"
         private const val NEEDLE_SERVICE_UUID_STRING = "00000100-CAAB-3792-3D44-97AE51C1407A"
         private const val UART_SERVICE_UUID_STRING   = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
-        private const val FLOW_CONFIG_REPLAY = 5
-        private const val FLOW_CONFIG_BUFFER = FLOW_CONFIG_REPLAY * 2
         private const val PROBE_INSTANT_READ_IDLE_TIMEOUT_MS = 5000L
 
         val FW_VERSION_CHARACTERISTIC = characteristicOf(
@@ -111,6 +108,7 @@ internal open class ProbeManager (
 
     internal var fwVersion: String? = null
     internal var hwRevision: String? = null
+    private var sessionInfo: SessionInformation? = null
 
     // Class to store when BLE message was sent and the completion handler for message
     private data class MessageHandler (
@@ -122,18 +120,15 @@ internal open class ProbeManager (
     private var setProbeIDMessageHandler: MessageHandler? = null
 
     private val _probeStateFlow =
-        MutableSharedFlow<Probe>(
-            FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.DROP_OLDEST)
+        MutableSharedFlow<Probe>(0, 10, BufferOverflow.DROP_OLDEST)
     val probeStateFlow = _probeStateFlow.asSharedFlow()
 
     internal val _deviceStatusFlow =
-        MutableSharedFlow<DeviceStatus>(
-            FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.DROP_OLDEST)
+        MutableSharedFlow<DeviceStatus>(0, 10, BufferOverflow.DROP_OLDEST)
     val deviceStatusFlow = _deviceStatusFlow.asSharedFlow()
 
     private val _logResponseFlow =
-        MutableSharedFlow<LogResponse>(
-            FLOW_CONFIG_REPLAY*5, FLOW_CONFIG_BUFFER*5, BufferOverflow.SUSPEND)
+        MutableSharedFlow<LogResponse>(0, 50, BufferOverflow.SUSPEND)
     val logResponseFlow = _logResponseFlow.asSharedFlow()
 
     val probe: Probe get() = toProbe()
@@ -165,15 +160,21 @@ internal open class ProbeManager (
         })
         // RSII polling job
         addJob(owner.lifecycleScope.launch(Dispatchers.IO) {
+            var exceptionCount = 0;
             while(isActive) {
                 if(isConnected.get() && mac != SimulatedProbeManager.SIMULATED_MAC) {
                     try {
                         remoteRssi.set(peripheral.rssi())
+                        exceptionCount = 0;
                     } catch (e: Exception) {
-                        Log.w(LOG_TAG,
-                            "Exception while reading remote RSSI: \n${e.stackTrace}")
+                        exceptionCount++
+                        Log.w(LOG_TAG, "Exception while reading remote RSSI: $exceptionCount\n${e.stackTrace}")
                     }
-                    _probeStateFlow.emit(probe)
+
+                    when {
+                        exceptionCount < 5 -> _probeStateFlow.emit(probe)
+                        else -> peripheral.disconnect()
+                    }
                 }
                 delay(PROBE_REMOTE_RSSI_POLL_RATE_MS)
             }
@@ -296,8 +297,8 @@ internal open class ProbeManager (
 
             try {
                 peripheral.write(UART_RX_CHARACTERISTIC, request.sData)
-            } catch(e: NotReadyException)  {
-                Log.w(LOG_TAG, "UART-TX: Attempt to write when connection is not ready")
+            } catch(e: Exception)  {
+                Log.w(LOG_TAG, "UART-TX: Unable to write to TX characteristic.")
             }
         }
     }
@@ -321,17 +322,38 @@ internal open class ProbeManager (
 
             isConnected.set(connectionState == DeviceConnectionState.CONNECTED)
 
-            if(connectionState != DeviceConnectionState.CONNECTED)
-                deviceStatus = null
+            if(isConnected.get()) {
+                getProbeConfiguration()
+            }
             else {
-                readFirmwareVersion()
-                readHardwareRevision()
+                deviceStatus = null
+                sessionInfo = null
             }
 
             if(DebugSettings.DEBUG_LOG_CONNECTION_STATE) {
                 Log.d(LOG_TAG, "${probe.serialNumber} is ${probe.connectionState}")
             }
             _probeStateFlow.emit(probe)
+        }
+    }
+
+    private fun getProbeConfiguration() {
+        owner.lifecycleScope.launch(Dispatchers.IO) {
+
+            // the following operations can take some time to complete, so
+            // we run them in a separate coroutine, so that we can receive
+            // the state updates in connectionStatusMonitor above.  And if
+            // we are disconnected, then stop this sequence of trying to
+            // read configuration from the probe.
+
+            if(isConnected.get())
+                readFirmwareVersion()
+
+            if(isConnected.get())
+                readHardwareRevision()
+
+            if(isConnected.get())
+                requestSessionInformation()
         }
     }
 
@@ -357,6 +379,10 @@ internal open class ProbeManager (
                     "Exception while reading remote HW revision: \n${e.stackTrace}")
             }
         }
+    }
+
+    private fun requestSessionInformation() {
+        sendUartRequest(owner, SessionInfoRequest())
     }
 
     private suspend fun deviceStatusCharacteristicMonitor() {
@@ -424,6 +450,9 @@ internal open class ProbeManager (
                                 setProbeIDMessageHandler = null
                             }
                         }
+                        is SessionInfoResponse -> {
+                            sessionInfo = response.sessionInformation
+                        }
                     }
                 }
             }
@@ -453,6 +482,7 @@ internal open class ProbeManager (
             advertisingData.mac,
             fwVersion,
             hwRevision,
+            sessionInfo,
             temperatures,
             instantRead,
             rssi,

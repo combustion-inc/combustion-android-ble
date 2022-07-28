@@ -28,12 +28,24 @@
 package inc.combustion.framework.ble
 
 /**
- * Convert to UInt at the specified index.
+ * Convert to UInt16 at the specified index.
  *
  * @param index index into buffer
  * @return UInt at index.
  */
-internal fun UByteArray.getLittleEndianUIntAt(index: Int) : UInt {
+internal fun UByteArray.getLittleEndianUInt16At(index: Int) : UInt {
+    return ((this[index+1].toUInt() and 0xFFu) shl 8) or
+            (this[index].toUInt() and 0xFFu)
+}
+
+
+/**
+ * Convert to UInt32 at the specified index.
+ *
+ * @param index index into buffer
+ * @return UInt at index.
+ */
+internal fun UByteArray.getLittleEndianUInt32At(index: Int) : UInt {
     return ((this[index+3].toUInt() and 0xFFu) shl 24) or
             ((this[index+2].toUInt() and 0xFFu) shl 16) or
             ((this[index+1].toUInt() and 0xFFu) shl 8) or
@@ -41,14 +53,17 @@ internal fun UByteArray.getLittleEndianUIntAt(index: Int) : UInt {
 }
 
 /**
- * Stores a UInt at the specified index.
+ * Stores a UInt32 at the specified index.
  *
  * @param index index into buffer
  * @param value value to put into buffer at index.
  */
-internal fun UByteArray.putLittleEndianUIntAt(index: Int, value: UInt) {
+internal fun UByteArray.putLittleEndianUInt32At(index: Int, value: UInt) {
     this[index] = (value and 0x000000FFu).toUByte()
     this[index + 1] = ((value and 0x0000FF00u) shr 8).toUByte()
     this[index + 2] = ((value and 0x00FF0000u) shr 16).toUByte()
     this[index + 3] = ((value and 0xFF000000u) shr 24).toUByte()
 }
+
+infix fun UShort.shl(shift: Int) = ((this.toInt() shl shift) and (0x0000FFFF)).toUShort()
+infix fun UShort.shr(shift: Int) = ((this.toInt() shr shift) and (0x0000FFFF)).toUShort()

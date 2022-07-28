@@ -1,7 +1,7 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: BitFunctions.kt
- * Author: https://github.com/miwright2
+ * File: SessionInfoRequest.kt
+ * Author: https://github.com/jjohnstz
  *
  * MIT License
  *
@@ -25,8 +25,13 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package inc.combustion.framework.ble
 
-infix fun UShort.shl(shift: Int) = ((this.toInt() shl shift) and (0x0000FFFF)).toUShort()
-infix fun UShort.shr(shift: Int) = ((this.toInt() shr shift) and (0x0000FFFF)).toUShort()
+package inc.combustion.framework.ble.uart
 
+internal class SessionInfoRequest(
+) : Request(PAYLOAD_LENGTH, MessageType.READ_SESSION_INFO) {
+
+    companion object {
+        const val PAYLOAD_LENGTH: UByte = 0u
+    }
+}

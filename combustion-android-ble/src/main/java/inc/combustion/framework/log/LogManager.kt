@@ -229,45 +229,46 @@ internal class LogManager {
     }
 
     fun requestLogsFromDevice(owner: LifecycleOwner, serialNumber: String) {
-        val device = probes[serialNumber]
-        val temperatureLog = temperatureLogs[serialNumber]
+        val probe = probes[serialNumber] ?: return
+        val log = temperatureLogs[serialNumber] ?: return
+        val sessionInfo = probe.probe.sessionInfo ?: return
 
-        device?.let { probe ->
-            temperatureLog?.let { log ->
+        // prepare log for the request and determine the needed range
+        val range =  log.prepareForLogRequest(
+            probe.probe.minSequence,
+            probe.probe.maxSequence,
+            sessionInfo
+        )
 
-                // prepare log for the request and determine the needed range
-                val range =  log.prepareForLogRequest(
-                    probe.probe.minSequence,
-                    probe.probe.maxSequence
-                )
-
-                // if for some reason there isn't anything to request,
-                // log a message and return
-                if(range.size == 0u)  {
-                    if(DebugSettings.DEBUG_LOG_TRANSFER) {
-                        Log.w(LOG_TAG, "No need to request logs from device")
-                    }
-                    return
-                }
-
-                // initialize the start of the log request with the temperature log
-                val progress = log.startLogRequest(range)
-
-                // update the probe's upload state with the progress.
-                owner.lifecycleScope.launch {
-                    probe.onNewUploadState(progress.toProbeUploadState())
-                }
-
-                // send the request to the device to start the upload
-                probe.sendLogRequest(owner, range.minSeq, range.maxSeq)
-
-                // processing the resulting LogRequest flow happens in the coroutine above.
+        // if for some reason there isn't anything to request,
+        // log a message and return
+        if(range.size == 0u)  {
+            if(DebugSettings.DEBUG_LOG_TRANSFER) {
+                Log.w(LOG_TAG, "No need to request logs from device")
             }
+            return
         }
+
+        // initialize the start of the log request with the temperature log
+        val progress = log.startLogRequest(range)
+
+        // update the probe's upload state with the progress.
+        owner.lifecycleScope.launch {
+            probe.onNewUploadState(progress.toProbeUploadState())
+        }
+
+        // send the request to the device to start the upload
+        probe.sendLogRequest(owner, range.minSeq, range.maxSeq)
+
+        // processing the resulting LogRequest flow happens in the coroutine above.
     }
 
     fun recordsDownloaded(serialNumber: String): Int {
         return temperatureLogs[serialNumber]?.dataPointCount ?: 0
+    }
+
+    fun logStartTimestampForDevice(serialNumber: String): Date {
+        return temperatureLogs[serialNumber]?.logStartTime ?: Date()
     }
 
     fun exportLogsForDevice(serialNumber: String): List<LoggedProbeDataPoint>? {
@@ -306,10 +307,10 @@ internal class LogManager {
                     val sessionId = log.currentSessionId
                     probe.deviceStatusFlow
                         .onCompletion {
-                            Log.d(LOG_TAG, "Device Status Flow Complete")
+                            Log.i(LOG_TAG, "Log Flow: Device Status Flow Complete")
                         }
                         .catch {
-                            Log.i(LOG_TAG, "Device Status Flow Catch: $it")
+                            Log.w(LOG_TAG, "Log Flow: Device Status Flow Catch: $it")
                         }
                         .collect { deviceStatus ->
                             if(probe.probe.uploadState !is ProbeUploadState.ProbeUploadInProgress &&
@@ -321,7 +322,12 @@ internal class LogManager {
                             if(deviceStatus.mode != ProbeMode.NORMAL)
                                 return@collect
 
-                            emit(LoggedProbeDataPoint.fromDeviceStatus(sessionId, deviceStatus))
+                            emit(LoggedProbeDataPoint.fromDeviceStatus(
+                                sessionId,
+                                deviceStatus,
+                                log.currentSessionStartTime,
+                                log.currentSessionSamplePeriod)
+                            )
                     }
                 }
             }

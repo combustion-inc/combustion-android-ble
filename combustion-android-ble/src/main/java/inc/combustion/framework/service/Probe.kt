@@ -27,6 +27,8 @@
  */
 package inc.combustion.framework.service
 
+import inc.combustion.framework.ble.uart.SessionInformation
+
 /**
  * Data class for the current state of a probe.
  *
@@ -58,6 +60,7 @@ data class Probe(
     val mac: String,
     val fwVersion: String?,
     val hwRevision: String?,
+    val sessionInfo: SessionInformation?,
     val temperatures: ProbeTemperatures?,
     val instantRead: Double?,
     val rssi: Int,
