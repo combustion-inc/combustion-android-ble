@@ -33,7 +33,6 @@ import android.util.Log
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import com.juul.kable.Peripheral
-import com.juul.kable.characteristicOf
 import com.juul.kable.peripheral
 import inc.combustion.framework.LOG_TAG
 import kotlinx.coroutines.Job

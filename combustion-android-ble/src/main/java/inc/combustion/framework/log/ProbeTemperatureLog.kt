@@ -76,13 +76,13 @@ internal class ProbeTemperatureLog(private val serialNumber: String) {
 
         // handle initial condition
         if(sessions.isEmpty()) {
-            startNewSession(sessionInfo)
+            startNewSession(sessionInfo, deviceMaxSequence)
             if(DebugSettings.DEBUG_LOG_SESSION_STATUS) {
                 Log.d(LOG_TAG, "Created first session. ID ${sessionInfo.sessionID}")
             }
         }
         else if(sessions.last().id != sessionInfo.sessionID) {
-            startNewSession(sessionInfo)
+            startNewSession(sessionInfo, deviceMaxSequence)
             if(DebugSettings.DEBUG_LOG_SESSION_STATUS) {
                 Log.d(LOG_TAG, "Created new session. ID ${sessionInfo.sessionID}")
             }
@@ -135,9 +135,9 @@ internal class ProbeTemperatureLog(private val serialNumber: String) {
     fun expectFutureLogRequest() =
         sessions.lastOrNull()?.expectFutureLogRequest()
 
-    private fun startNewSession(sessionInfo: SessionInformation) {
+    private fun startNewSession(sessionInfo: SessionInformation, deviceMaxSequence: UInt) {
         // create new session and add to map
-        val session = Session(serialNumber, sessionInfo)
+        val session = Session(serialNumber, sessionInfo, deviceMaxSequence)
         sessions += session
     }
 }

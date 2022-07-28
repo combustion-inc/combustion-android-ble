@@ -27,7 +27,6 @@
  */
 package inc.combustion.framework.ble
 
-
 /**
  * Convert to UInt16 at the specified index.
  *
@@ -65,3 +64,6 @@ internal fun UByteArray.putLittleEndianUInt32At(index: Int, value: UInt) {
     this[index + 2] = ((value and 0x00FF0000u) shr 16).toUByte()
     this[index + 3] = ((value and 0xFF000000u) shr 24).toUByte()
 }
+
+infix fun UShort.shl(shift: Int) = ((this.toInt() shl shift) and (0x0000FFFF)).toUShort()
+infix fun UShort.shr(shift: Int) = ((this.toInt() shr shift) and (0x0000FFFF)).toUShort()

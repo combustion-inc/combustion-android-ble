@@ -307,10 +307,10 @@ internal class LogManager {
                     val sessionId = log.currentSessionId
                     probe.deviceStatusFlow
                         .onCompletion {
-                            Log.d(LOG_TAG, "Device Status Flow Complete")
+                            Log.i(LOG_TAG, "Log Flow: Device Status Flow Complete")
                         }
                         .catch {
-                            Log.i(LOG_TAG, "Device Status Flow Catch: $it")
+                            Log.w(LOG_TAG, "Log Flow: Device Status Flow Catch: $it")
                         }
                         .collect { deviceStatus ->
                             if(probe.probe.uploadState !is ProbeUploadState.ProbeUploadInProgress &&
