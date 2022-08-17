@@ -69,7 +69,6 @@ internal open class Request(
      * result in the correct location in the packet.
      */
     fun setCRC() {
-        // TODO: Uncomment this when it's time to add the CRC to outgoing messages
-        // data.putLittleEndianUShortAt(2, data.drop(4).toUByteArray().getCRC16CCITT())
+        data.putLittleEndianUShortAt(2, data.drop(4).toUByteArray().getCRC16CCITT())
     }
 }

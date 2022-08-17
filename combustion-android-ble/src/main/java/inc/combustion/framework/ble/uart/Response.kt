@@ -114,14 +114,13 @@ internal open class Response(
             val calculatedCrc: UShort = data.drop(4).slice(0 until length.toInt() + 3).toUByteArray().getCRC16CCITT()
             val sentCrc: UShort = data.getLittleEndianUShortAt(2)
 
-            // TODO: Return bad packet when CRC is ill-formed
             if (sentCrc != calculatedCrc) {
-                // Log.w(
-                //     "$LOG_TAG.Response",
-                //     "Incorrect CRC (got: $sentCrc; expected: $calculatedCrc) (total: ${stats.invalidCrc.incrementAndGet()})"
-                // )
+                Log.w(
+                     "$LOG_TAG.Response",
+                     "Incorrect CRC (got: $sentCrc; expected: $calculatedCrc) (total: ${stats.invalidCrc.incrementAndGet()})"
+                )
 
-                // return null
+                return null
             }
 
             // validate payload length and construct response
