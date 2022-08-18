@@ -51,5 +51,7 @@ internal class LogRequest(
     init {
         data.putLittleEndianUInt32At((HEADER_SIZE + 0u).toInt(), minSequence)
         data.putLittleEndianUInt32At((HEADER_SIZE + 4u).toInt(), maxSequence)
+
+        setCRC()
     }
 }

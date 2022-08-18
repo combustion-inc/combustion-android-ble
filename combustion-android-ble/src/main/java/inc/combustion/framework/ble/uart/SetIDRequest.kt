@@ -40,5 +40,7 @@ internal class SetIDRequest(
 
     init {
         data[(HEADER_SIZE).toInt()] = id.type
+
+        setCRC()
     }
 }
