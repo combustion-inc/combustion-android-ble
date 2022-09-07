@@ -61,6 +61,9 @@ data class Probe(
     val sessionInfo: SessionInformation?,
     val temperatures: ProbeTemperatures?,
     val instantRead: Double?,
+    val coreTemperature: Double?,
+    val surfaceTemperature: Double?,
+    val ambientTemperature: Double?,
     val rssi: Int,
     val minSequence: UInt,
     val maxSequence: UInt,
@@ -73,3 +76,4 @@ data class Probe(
     val virtualSensors: ProbeVirtualSensors,
     val hopCount: ProbeHopCount
 )
+

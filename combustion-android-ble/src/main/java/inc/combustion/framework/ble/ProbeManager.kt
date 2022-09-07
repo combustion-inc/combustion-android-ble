@@ -102,6 +102,9 @@ internal open class ProbeManager (
 
     private var temperatures: ProbeTemperatures? = null
     private var instantRead: Double? = null
+    private var coreTemperature: Double? = null
+    private var surfaceTemperature: Double? = null
+    private var ambientTemperature: Double? = null
 
     internal val isConnected = AtomicBoolean(false)
     internal val remoteRssi = AtomicInteger(0)
@@ -475,8 +478,27 @@ internal open class ProbeManager (
             instantRead = temps.values[0]
         } else {
             temperatures = temps
-            if(instantReadMonitor.isIdle(PROBE_INSTANT_READ_IDLE_TIMEOUT_MS))
+            ambientTemperature = temps.values[7]
+
+            coreTemperature = when(virtualSensors.virtualCoreSensor) {
+                ProbeVirtualSensors.VirtualCoreSensor.T1 -> temps.values[0]
+                ProbeVirtualSensors.VirtualCoreSensor.T2 -> temps.values[1]
+                ProbeVirtualSensors.VirtualCoreSensor.T3 -> temps.values[2]
+                ProbeVirtualSensors.VirtualCoreSensor.T4 -> temps.values[3]
+                ProbeVirtualSensors.VirtualCoreSensor.T5 -> temps.values[4]
+                ProbeVirtualSensors.VirtualCoreSensor.T6 -> temps.values[5]
+            }
+
+            surfaceTemperature = when(virtualSensors.virtualSurfaceSensor) {
+                ProbeVirtualSensors.VirtualSurfaceSensor.T4 -> temps.values[3]
+                ProbeVirtualSensors.VirtualSurfaceSensor.T5 -> temps.values[4]
+                ProbeVirtualSensors.VirtualSurfaceSensor.T6 -> temps.values[5]
+                ProbeVirtualSensors.VirtualSurfaceSensor.T7 -> temps.values[6]
+            }
+
+            if(instantReadMonitor.isIdle(PROBE_INSTANT_READ_IDLE_TIMEOUT_MS)) {
                 instantRead = null
+            }
         }
 
         return Probe(
@@ -487,6 +509,9 @@ internal open class ProbeManager (
             sessionInfo,
             temperatures,
             instantRead,
+            coreTemperature,
+            surfaceTemperature,
+            ambientTemperature,
             rssi,
             minSeq,
             maxSeq,
