@@ -30,11 +30,7 @@ package inc.combustion.framework.ble
 import android.os.Build
 import android.bluetooth.le.ScanResult
 import com.juul.kable.Advertisement
-import inc.combustion.framework.service.ProbeBatteryStatus
-import inc.combustion.framework.service.ProbeColor
-import inc.combustion.framework.service.ProbeID
-import inc.combustion.framework.service.ProbeMode
-import inc.combustion.framework.service.ProbeTemperatures
+import inc.combustion.framework.service.*
 import kotlin.reflect.full.memberProperties
 import kotlin.reflect.jvm.isAccessible
 
@@ -60,7 +56,9 @@ internal data class ProbeAdvertisingData (
     val id: ProbeID,
     val color: ProbeColor,
     val mode: ProbeMode,
-    val batteryStatus: ProbeBatteryStatus
+    val batteryStatus: ProbeBatteryStatus,
+    val virtualSensors: ProbeVirtualSensors,
+    val hopCount: ProbeHopCount
 ) {
     companion object {
         private const val VENDOR_ID = 0x09C7
@@ -99,8 +97,8 @@ internal data class ProbeAdvertisingData (
             else
                 null
 
-            // use status if available
-            val status = if (manufacturerData.size > 19)
+            // use device status if available
+            val deviceStatus = if (manufacturerData.size > 19)
                 manufacturerData.copyOf().sliceArray(STATUS_RANGE)[0]
             else
                 null
@@ -108,7 +106,9 @@ internal data class ProbeAdvertisingData (
             val probeColor = modeColorId?.let { ProbeColor.fromUByte(it) } ?: run { ProbeColor.COLOR1 }
             val probeID = modeColorId?.let { ProbeID.fromUByte(it) } ?: run { ProbeID.ID1 }
             val probeMode = modeColorId?.let { ProbeMode.fromUByte(it) } ?: run { ProbeMode.NORMAL }
-            val batteryStatus = status?.let { ProbeBatteryStatus.fromUByte(it) } ?: run { ProbeBatteryStatus.OK }
+            val batteryStatus = deviceStatus?.let { ProbeBatteryStatus.fromUByte(it) } ?: run { ProbeBatteryStatus.OK }
+            val virtualSensors = deviceStatus?.let { ProbeVirtualSensors.fromDeviceStatus(it) } ?: run { ProbeVirtualSensors.DEFAULT }
+            val hopCount = deviceStatus?.let { ProbeHopCount.fromUByte(it) } ?: run { ProbeHopCount.HOP1 }
 
             // API level 26 (Android 8) and Higher
             return if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -123,7 +123,9 @@ internal data class ProbeAdvertisingData (
                     probeID,
                     probeColor,
                     probeMode,
-                    batteryStatus
+                    batteryStatus,
+                    virtualSensors,
+                    hopCount
                 )
             // Lower than API level 26, always return true for isConnectable
             } else {
@@ -138,7 +140,9 @@ internal data class ProbeAdvertisingData (
                     probeID,
                     probeColor,
                     probeMode,
-                    batteryStatus
+                    batteryStatus,
+                    virtualSensors,
+                    hopCount
                 )
             }
         }

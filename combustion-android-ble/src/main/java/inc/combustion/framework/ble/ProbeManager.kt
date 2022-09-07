@@ -467,6 +467,8 @@ internal open class ProbeManager (
         val color = deviceStatus?.color ?: advertisingData.color
         val mode = deviceStatus?.mode ?: advertisingData.mode
         val batteryStatus = deviceStatus?.batteryStatus ?: advertisingData.batteryStatus
+        val virtualSensors = deviceStatus?.virtualSensors ?: advertisingData.virtualSensors
+        val hopCount = deviceStatus?.hopCount ?: advertisingData.hopCount
 
         if(mode == ProbeMode.INSTANT_READ) {
             instantReadMonitor.activity()
@@ -493,7 +495,9 @@ internal open class ProbeManager (
             id,
             color,
             mode,
-            batteryStatus
+            batteryStatus,
+            virtualSensors,
+            hopCount
         )
     }
 }

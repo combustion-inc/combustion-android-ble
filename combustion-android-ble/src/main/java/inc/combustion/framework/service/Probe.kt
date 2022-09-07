@@ -69,5 +69,7 @@ data class Probe(
     val id: ProbeID,
     val color: ProbeColor,
     val mode: ProbeMode,
-    val batteryStatus: ProbeBatteryStatus
+    val batteryStatus: ProbeBatteryStatus,
+    val virtualSensors: ProbeVirtualSensors,
+    val hopCount: ProbeHopCount
 )

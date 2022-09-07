@@ -43,7 +43,9 @@ internal data class DeviceStatus(
     val id: ProbeID,
     val color: ProbeColor,
     val mode: ProbeMode,
-    val batteryStatus: ProbeBatteryStatus
+    val batteryStatus: ProbeBatteryStatus,
+    val virtualSensors: ProbeVirtualSensors,
+    val hopCount: ProbeHopCount
 ) {
     companion object {
         private const val MIN_SEQ_INDEX = 0
@@ -65,8 +67,8 @@ internal data class DeviceStatus(
             else
                 null
 
-            // use status if available
-            val status = if (data.size > 22)
+            // use device status if available
+            val deviceStatus = if (data.size > 22)
                 data.sliceArray(STATUS_RANGE)[0]
             else
                 null
@@ -74,7 +76,9 @@ internal data class DeviceStatus(
             val probeColor = modeColorId?.let { ProbeColor.fromUByte(it) } ?: run { ProbeColor.COLOR1 }
             val probeID = modeColorId?.let { ProbeID.fromUByte(it) } ?: run { ProbeID.ID1 }
             val probeMode = modeColorId?.let { ProbeMode.fromUByte(it) } ?: run { ProbeMode.NORMAL }
-            val batteryStatus = status?.let { ProbeBatteryStatus.fromUByte(it) } ?: run { ProbeBatteryStatus.OK }
+            val batteryStatus = deviceStatus?.let { ProbeBatteryStatus.fromUByte(it) } ?: run { ProbeBatteryStatus.OK }
+            val virtualSensors = deviceStatus?.let { ProbeVirtualSensors.fromDeviceStatus(it) } ?: run { ProbeVirtualSensors.DEFAULT }
+            val hopCount = deviceStatus?.let { ProbeHopCount.fromUByte(it) } ?: run { ProbeHopCount.HOP1 }
 
             return DeviceStatus(
                 minSequenceNumber,
@@ -83,7 +87,9 @@ internal data class DeviceStatus(
                 probeID,
                 probeColor,
                 probeMode,
-                batteryStatus
+                batteryStatus,
+                virtualSensors,
+                hopCount
             )
         }
     }
