@@ -1,6 +1,6 @@
 /*
- * Project: Combustion Inc. Android Framework
- * File: MessageType.kt
+ * Project: Combustion Inc. Android Example
+ * File: SetPredictionResponse.kt
  * Author: https://github.com/miwright2
  *
  * MIT License
@@ -25,21 +25,15 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+
 package inc.combustion.framework.ble.uart
 
-/**
- * Enumerates message types in Combustion's UART protocol.
- *
- * @property value byte value for message type.
- */
-internal enum class MessageType(val value: UByte) {
-    SET_PROBE_ID(0x01u),
-    SET_PROBE_COLOR(0x02u),
-    READ_SESSION_INFO(0x03u),
-    LOG(0x04u),
-    SET_PREDICTION(0x05u);
+internal class SetPredictionResponse (
+    success: Boolean,
+    payLoadLength: UInt
+) : Response(success, payLoadLength) {
 
     companion object {
-        fun fromUByte(value: UByte) = values().firstOrNull { it.value == value }
+        const val PAYLOAD_LENGTH: UInt = 0u
     }
 }

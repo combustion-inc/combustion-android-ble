@@ -35,19 +35,19 @@ data class ProbeVirtualSensors(
     val virtualSurfaceSensor: VirtualSurfaceSensor
 ) {
     companion object {
-        val DEFAULT = ProbeVirtualSensors( VirtualCoreSensor.T1, VirtualSurfaceSensor.T4)
+        val DEFAULT = ProbeVirtualSensors(VirtualCoreSensor.T1, VirtualSurfaceSensor.T4)
 
         private const val DEVICE_STATUS_MASK = 0x3E
         private const val DEVICE_STATUS_SHIFT = 0x01
-        private const val LOG_RECORD_MASK = 0x1F
-        private const val LOG_RECORD_SHIFT = 0x00
+        private const val LOG_RESPONSE_MASK = 0x1F
+        private const val LOG_RESPONSE_SHIFT = 0x00
 
         fun fromDeviceStatus(byte: UByte) : ProbeVirtualSensors {
             return fromUByteWorker(byte, DEVICE_STATUS_MASK.toUShort(), DEVICE_STATUS_SHIFT)
         }
 
-        fun fromLog(byte: UByte) : ProbeVirtualSensors {
-            return fromUByteWorker(byte, LOG_RECORD_MASK.toUShort(), LOG_RECORD_SHIFT)
+        fun fromLogResponse(word: UShort) : ProbeVirtualSensors {
+            return fromUByteWorker(word.toUByte(), LOG_RESPONSE_MASK.toUShort(), LOG_RESPONSE_SHIFT)
         }
 
         private fun fromUByteWorker(byte: UByte, mask: UShort, shift: Int) : ProbeVirtualSensors{
@@ -59,7 +59,7 @@ data class ProbeVirtualSensors(
         }
     }
 
-    enum class VirtualCoreSensor(val type: UByte) {
+    enum class VirtualCoreSensor(val uByte: UByte) {
         T1(0x00u),
         T2(0x01u),
         T3(0x02u),
@@ -76,7 +76,7 @@ data class ProbeVirtualSensors(
                 return fromRaw(raw)
             }
 
-            fun fromRaw(raw: UInt) : VirtualCoreSensor{
+            private fun fromRaw(raw: UInt) : VirtualCoreSensor{
                 return when(raw) {
                     0x00u -> T1
                     0x01u -> T2
@@ -90,7 +90,7 @@ data class ProbeVirtualSensors(
         }
     }
 
-    enum class VirtualSurfaceSensor(val type: UByte) {
+    enum class VirtualSurfaceSensor(val uByte: UByte) {
         T4(0x00u),
         T5(0x01u),
         T6(0x02u),
@@ -105,7 +105,7 @@ data class ProbeVirtualSensors(
                 return fromRaw(raw)
             }
 
-            fun fromRaw(raw: UInt) : VirtualSurfaceSensor{
+            private fun fromRaw(raw: UInt) : VirtualSurfaceSensor{
                 return when(raw) {
                     0x00u -> T4
                     0x01u -> T5

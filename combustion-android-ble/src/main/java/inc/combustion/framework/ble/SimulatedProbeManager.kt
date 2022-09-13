@@ -147,8 +147,8 @@ internal class SimulatedProbeManager (
 
         maxSequence += 1u
 
-        _deviceStatusFlow.emit(
-            DeviceStatus(
+        _probeStatusFlow.emit(
+            ProbeStatus(
                 0u,
                 maxSequence,
                 ProbeTemperatures.withRandomData(),
@@ -157,7 +157,8 @@ internal class SimulatedProbeManager (
                 ProbeMode.NORMAL,
                 ProbeBatteryStatus.OK,
                 ProbeVirtualSensors.DEFAULT,
-                ProbeHopCount.HOP1
+                ProbeHopCount.HOP1,
+                PredictionStatus.withRandomData()
             )
         )
     }

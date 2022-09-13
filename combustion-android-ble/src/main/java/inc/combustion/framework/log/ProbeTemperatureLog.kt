@@ -29,7 +29,7 @@ package inc.combustion.framework.log
 
 import android.util.Log
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.DeviceStatus
+import inc.combustion.framework.ble.ProbeStatus
 import inc.combustion.framework.ble.uart.LogResponse
 import inc.combustion.framework.service.DebugSettings
 import inc.combustion.framework.service.LoggedProbeDataPoint
@@ -126,8 +126,8 @@ internal class ProbeTemperatureLog(private val serialNumber: String) {
     fun addFromLogResponse(logResponse: LogResponse) : UploadProgress =
         sessions.lastOrNull()?.addFromLogResponse(logResponse) ?: UploadProgress.NULL_UPLOAD_PROGRESS
 
-    fun addFromDeviceStatus(deviceStatus: DeviceStatus) : SessionStatus =
-        sessions.lastOrNull()?.addFromDeviceStatus(deviceStatus) ?: SessionStatus.NULL_SESSION_STATUS
+    fun addFromDeviceStatus(probeStatus: ProbeStatus) : SessionStatus =
+        sessions.lastOrNull()?.addFromDeviceStatus(probeStatus) ?: SessionStatus.NULL_SESSION_STATUS
 
     fun completeLogRequest() : SessionStatus =
         sessions.lastOrNull()?.completeLogRequest() ?: SessionStatus.NULL_SESSION_STATUS

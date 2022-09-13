@@ -1,6 +1,6 @@
 /*
- * Project: Combustion Inc. Android Framework
- * File: MessageType.kt
+ * Project: Combustion Inc. Android Example
+ * File: ProbePredictionType.kt
  * Author: https://github.com/miwright2
  *
  * MIT License
@@ -25,21 +25,34 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package inc.combustion.framework.ble.uart
 
-/**
- * Enumerates message types in Combustion's UART protocol.
- *
- * @property value byte value for message type.
- */
-internal enum class MessageType(val value: UByte) {
-    SET_PROBE_ID(0x01u),
-    SET_PROBE_COLOR(0x02u),
-    READ_SESSION_INFO(0x03u),
-    LOG(0x04u),
-    SET_PREDICTION(0x05u);
+package inc.combustion.framework.service
+
+import inc.combustion.framework.ble.shr
+
+enum class ProbePredictionType(val uByte: UByte) {
+    NONE(0x00u),
+    REMOVAL(0x01u),
+    RESTING(0x02u),
+    RESERVED(0x04u);
 
     companion object {
-        fun fromUByte(value: UByte) = values().firstOrNull { it.value == value }
+        private const val MASK = 0xC0
+        private const val SHIFT = 0x06
+
+        fun fromPredictionStatus(byte: UByte) : ProbePredictionType {
+            val raw = ((byte.toUShort() and MASK.toUShort()) shr SHIFT).toUInt()
+            return fromRaw(raw)
+        }
+
+        private fun fromRaw(raw: UInt) : ProbePredictionType {
+            return when(raw) {
+                0x00u -> NONE
+                0x01u -> REMOVAL
+                0x02u -> RESTING
+                0x04u -> RESERVED
+                else -> NONE
+            }
+        }
     }
 }

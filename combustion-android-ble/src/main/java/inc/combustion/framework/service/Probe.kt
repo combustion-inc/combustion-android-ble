@@ -45,6 +45,15 @@ package inc.combustion.framework.service
  * @property color Probe Color
  * @property mode Probe Mode
  * @property batteryStatus Probe battery status
+ * @property virtualSensors Virtual sensor positions
+ * @property hopCount Number of network hops
+ * @property predictionState Current state of cook
+ * @property predictionMode Current prediction mode
+ * @property predictionType Current type of prediction
+ * @property setPointTemperatureC Current setpoint temperature of prediction.
+ * @property heatStartTemperatureC Temperature at heat start of prediction, if known.
+ * @property predictionS The prediction in number of seconds from now.
+ * @property estimatedCoreC Current estimate of the core temperature for prediction.
  *
  * @see DeviceConnectionState
  * @see ProbeUploadState
@@ -74,6 +83,13 @@ data class Probe(
     val mode: ProbeMode,
     val batteryStatus: ProbeBatteryStatus,
     val virtualSensors: ProbeVirtualSensors,
-    val hopCount: ProbeHopCount
+    val hopCount: ProbeHopCount,
+    val predictionState: ProbePredictionState?,
+    val predictionMode: ProbePredictionMode?,
+    val predictionType: ProbePredictionType?,
+    val setPointTemperatureC: Double?,
+    val heatStartTemperatureC: Double?,
+    val predictionS: UInt?,
+    val estimatedCoreC: Double?
 )
 

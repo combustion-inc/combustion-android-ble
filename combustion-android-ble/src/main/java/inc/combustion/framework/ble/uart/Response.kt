@@ -31,6 +31,7 @@ import android.util.Log
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.getCRC16CCITT
 import inc.combustion.framework.ble.getLittleEndianUShortAt
+import inc.combustion.framework.ble.uart.SetIDRequest.Companion.PAYLOAD_LENGTH
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -43,17 +44,8 @@ internal open class Response(
     val success: Boolean,
     val payLoadLength: UInt
 ) {
-    class Statistics {
-        val droppedPackets = AtomicInteger(0)
-        val invalidCrc = AtomicInteger(0)
-        val invalidMessageType = AtomicInteger(0)
-        val invalidPayloadLength = AtomicInteger(0)
-    }
-
     companion object {
         const val HEADER_SIZE: UByte = 7u
-        var stats = Statistics()
-            private set
 
         /**
          * Factory method for constructing response from byte array.
@@ -86,21 +78,11 @@ internal open class Response(
 
             // Validate Sync Bytes { 0xCA, 0xFE }
             if((data[0].toUInt() != 0xCAu) or (data[1].toUInt() != 0xFEu)) {
-                Log.w(
-                    "$LOG_TAG.Response",
-                    "Dropped Packet.  Invalid Header Sync Bytes (total: ${stats.droppedPackets.incrementAndGet()})"
-                )
                 return null
             }
 
             // Message type
-            val messageType = MessageType.fromUByte(data[4]) ?:
-            Log.w(
-                "$LOG_TAG.Response",
-                "Dropped Packet.  Invalid Message Type (total: ${stats.invalidMessageType.incrementAndGet()})"
-            ).also {
-                return null
-            }
+            val messageType = MessageType.fromUByte(data[4]) ?: return null
 
             // Success/Fail
             val success = data[5] > 0u
@@ -115,37 +97,23 @@ internal open class Response(
             val sentCrc: UShort = data.getLittleEndianUShortAt(2)
 
             if (sentCrc != calculatedCrc) {
-                Log.w(
-                     "$LOG_TAG.Response",
-                     "Incorrect CRC (got: $sentCrc; expected: $calculatedCrc) (total: ${stats.invalidCrc.incrementAndGet()})"
-                )
-
                 return null
             }
 
-            // validate payload length and construct response
-            when(messageType) {
-                MessageType.LOG -> {
-                    if (length >= LogResponse.PAYLOAD_LENGTH)
-                        return LogResponse.fromData(data, success)
-                    else
-                        Log.w(
-                            "$LOG_TAG.Response",
-                            "Dropped Packet.  Invalid Payload Length ($length) (total: ${stats.invalidPayloadLength.incrementAndGet()})"
-                        )
-                }
-                MessageType.SET_PROBE_COLOR -> {
-                    return SetColorResponse(success, SetColorResponse.PAYLOAD_LENGTH)
-                }
-                MessageType.SET_PROBE_ID -> {
-                    return SetIDResponse(success, SetColorResponse.PAYLOAD_LENGTH)
-                }
-                MessageType.READ_SESSION_INFO -> {
-                    return SessionInfoResponse.fromData(data, success)
-                }
+            return when(messageType) {
+                MessageType.LOG -> LogResponse.fromData(data, success, length.toUInt())
+                MessageType.SET_PROBE_COLOR -> createGenericResponse(success,  SetColorResponse.PAYLOAD_LENGTH, length.toUInt(), ::SetColorResponse)
+                MessageType.SET_PROBE_ID -> createGenericResponse(success, SetIDResponse.PAYLOAD_LENGTH, length.toUInt(), ::SetIDResponse)
+                MessageType.READ_SESSION_INFO -> SessionInfoResponse.fromData(data, success, length.toUInt())
+                MessageType.SET_PREDICTION -> createGenericResponse(success, SetPredictionResponse.PAYLOAD_LENGTH, length.toUInt(), ::SetPredictionResponse)
             }
+        }
 
-            return null
+        private fun <T> createGenericResponse(success: Boolean, minPayloadLength: UInt, payloadLength: UInt, factory: (Boolean, UInt) -> T) : T? {
+            return if (minPayloadLength >= payloadLength)
+                factory(success, payloadLength)
+            else
+                null
         }
     }
 }
