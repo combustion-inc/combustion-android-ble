@@ -110,7 +110,7 @@ internal class LogManager {
                         .collect { deviceStatus ->
                             when(probeManager.probe.uploadState) {
                                 // if upload state is currently unavailable, and we now have a
-                                // DeviceStatus, then we have everything we need to start an upload.
+                                // ProbeStatus, then we have everything we need to start an upload.
                                 //
                                 // event the new upload state to the client, and they can initiate
                                 // the record transfer when they are ready.

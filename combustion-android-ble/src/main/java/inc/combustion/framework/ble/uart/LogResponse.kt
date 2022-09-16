@@ -28,7 +28,10 @@
 package inc.combustion.framework.ble.uart
 
 import inc.combustion.framework.ble.getLittleEndianUInt32At
+import inc.combustion.framework.ble.shl
+import inc.combustion.framework.service.ProbePredictionState
 import inc.combustion.framework.service.ProbeTemperatures
+import inc.combustion.framework.service.ProbeVirtualSensors
 
 /**
  * Response message to Log Request
@@ -42,21 +45,35 @@ import inc.combustion.framework.service.ProbeTemperatures
 internal class LogResponse(
     val sequenceNumber: UInt,
     val temperatures: ProbeTemperatures,
+    val virtualSensors: ProbeVirtualSensors?,
+    val predictionState: ProbePredictionState,
     success: Boolean,
     payLoadLength: UInt
 ) : Response(success, payLoadLength) {
 
     companion object {
-        const val PAYLOAD_LENGTH: UInt = 17u
+        const val MIN_PAYLOAD_LENGTH: UInt = 17u
 
-        fun fromData(data: UByteArray, success: Boolean): LogResponse {
+        fun fromData(data: UByteArray, success: Boolean, payloadLength: UInt): LogResponse? {
+            if(payloadLength < MIN_PAYLOAD_LENGTH) {
+                return null
+            }
+
             val sequenceNumber: UInt = data.getLittleEndianUInt32At(HEADER_SIZE.toInt())
 
             val temperatures: ProbeTemperatures = ProbeTemperatures.fromRawData(
-                data.sliceArray((HEADER_SIZE + 4u).toInt()..(HEADER_SIZE + PAYLOAD_LENGTH - 1u).toInt())
+                data.sliceArray((HEADER_SIZE + 4u).toInt()..(HEADER_SIZE + MIN_PAYLOAD_LENGTH - 1u).toInt())
             )
 
-            return LogResponse(sequenceNumber, temperatures, success, PAYLOAD_LENGTH)
+            var sensors: ProbeVirtualSensors? = null
+            var state: ProbePredictionState = ProbePredictionState.UNKNOWN
+            if(payloadLength >= 19u) {
+                val sensorsAndState = data[(HEADER_SIZE + 17u).toInt()].toUShort() or (data[(HEADER_SIZE + 18u).toInt()].toUShort() shl 8)
+                sensors = ProbeVirtualSensors.fromLogResponse(sensorsAndState)
+                state = ProbePredictionState.fromLogResponse(sensorsAndState)
+            }
+
+            return LogResponse(sequenceNumber, temperatures, sensors, state, success, payloadLength)
         }
     }
 }

@@ -30,11 +30,7 @@ package inc.combustion.framework.ble
 import android.bluetooth.BluetoothAdapter
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
-import inc.combustion.framework.service.ProbeBatteryStatus
-import inc.combustion.framework.service.ProbeColor
-import inc.combustion.framework.service.ProbeID
-import inc.combustion.framework.service.ProbeMode
-import inc.combustion.framework.service.ProbeTemperatures
+import inc.combustion.framework.service.*
 import kotlinx.coroutines.launch
 import kotlin.concurrent.fixedRateTimer
 import kotlin.random.Random
@@ -82,7 +78,9 @@ internal class SimulatedProbeManager (
                 ProbeID.ID1,
                 ProbeColor.COLOR1,
                 ProbeMode.NORMAL,
-                ProbeBatteryStatus.OK
+                ProbeBatteryStatus.OK,
+                ProbeVirtualSensors.DEFAULT,
+                ProbeHopCount.HOP1
             )
 
             return SimulatedProbeManager(SIMULATED_MAC, owner, data, adapter)
@@ -91,7 +89,6 @@ internal class SimulatedProbeManager (
         fun randomRSSI() : Int {
             return Random.nextInt(-80, -40)
         }
-
     }
 
     init {
@@ -135,7 +132,9 @@ internal class SimulatedProbeManager (
             ProbeID.ID1,
             ProbeColor.COLOR1,
             ProbeMode.NORMAL,
-            ProbeBatteryStatus.OK
+            ProbeBatteryStatus.OK,
+            ProbeVirtualSensors.DEFAULT,
+            ProbeHopCount.HOP1
         )
 
         super.onNewAdvertisement(data)
@@ -148,15 +147,18 @@ internal class SimulatedProbeManager (
 
         maxSequence += 1u
 
-        _deviceStatusFlow.emit(
-            DeviceStatus(
+        _probeStatusFlow.emit(
+            ProbeStatus(
                 0u,
                 maxSequence,
                 ProbeTemperatures.withRandomData(),
                 ProbeID.ID1,
                 ProbeColor.COLOR1,
                 ProbeMode.NORMAL,
-                ProbeBatteryStatus.OK
+                ProbeBatteryStatus.OK,
+                ProbeVirtualSensors.DEFAULT,
+                ProbeHopCount.HOP1,
+                PredictionStatus.withRandomData()
             )
         )
     }
