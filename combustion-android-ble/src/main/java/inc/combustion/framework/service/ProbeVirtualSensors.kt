@@ -28,18 +28,20 @@
 
 package inc.combustion.framework.service
 
+import android.util.Log
 import inc.combustion.framework.ble.shr
 
 data class ProbeVirtualSensors(
     val virtualCoreSensor: VirtualCoreSensor,
-    val virtualSurfaceSensor: VirtualSurfaceSensor
+    val virtualSurfaceSensor: VirtualSurfaceSensor,
+    val virtualAmbientSensor: VirtualAmbientSensor
 ) {
     companion object {
-        val DEFAULT = ProbeVirtualSensors(VirtualCoreSensor.T1, VirtualSurfaceSensor.T4)
+        val DEFAULT = ProbeVirtualSensors(VirtualCoreSensor.T1, VirtualSurfaceSensor.T4, VirtualAmbientSensor.T8)
 
-        private const val DEVICE_STATUS_MASK = 0x3E
+        private const val DEVICE_STATUS_MASK = 0xFE
         private const val DEVICE_STATUS_SHIFT = 0x01
-        private const val LOG_RESPONSE_MASK = 0x1F
+        private const val LOG_RESPONSE_MASK = 0x7F
         private const val LOG_RESPONSE_SHIFT = 0x00
 
         fun fromDeviceStatus(byte: UByte) : ProbeVirtualSensors {
@@ -54,7 +56,8 @@ data class ProbeVirtualSensors(
             val rawUByte = ((byte.toUShort() and mask) shr shift).toUByte()
             return ProbeVirtualSensors(
                 VirtualCoreSensor.fromUByte(rawUByte),
-                VirtualSurfaceSensor.fromUByte(rawUByte)
+                VirtualSurfaceSensor.fromUByte(rawUByte),
+                VirtualAmbientSensor.fromUByte(rawUByte)
             )
         }
     }
@@ -112,6 +115,33 @@ data class ProbeVirtualSensors(
                     0x02u -> T6
                     0x03u -> T7
                     else -> T4
+                }
+            }
+        }
+    }
+
+    enum class VirtualAmbientSensor(val uByte: UByte) {
+        T5(0x00u),
+        T6(0x01u),
+        T7(0x02u),
+        T8(0x03u);
+
+        companion object {
+            private const val MASK = 0x60
+            private const val SHIFT = 0x05
+
+            fun fromUByte(byte: UByte) : VirtualAmbientSensor {
+                val raw = ((byte.toUShort() and MASK.toUShort()) shr SHIFT).toUInt()
+                return fromRaw(raw)
+            }
+
+            private fun fromRaw(raw: UInt) : VirtualAmbientSensor{
+                return when(raw) {
+                    0x00u -> T5
+                    0x01u -> T6
+                    0x02u -> T7
+                    0x03u -> T8
+                    else -> T8
                 }
             }
         }

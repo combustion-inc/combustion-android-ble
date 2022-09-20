@@ -482,21 +482,19 @@ internal open class ProbeManager (
         val mode = probeStatus?.mode ?: advertisingData.mode
         val batteryStatus = probeStatus?.batteryStatus ?: advertisingData.batteryStatus
         val virtualSensors = probeStatus?.virtualSensors ?: advertisingData.virtualSensors
-        val hopCount = probeStatus?.hopCount ?: advertisingData.hopCount
-        val predictionState = probeStatus?.predictionStatus?.predictionState ?: null
-        val predictionMode = probeStatus?.predictionStatus?.predictionMode ?: null
-        val predictionType = probeStatus?.predictionStatus?.predictionType ?: null
-        val setPointTemperatureC = probeStatus?.predictionStatus?.setPointTemperature ?: null
-        val heatStartTemperatureC = probeStatus?.predictionStatus?.heatStartTemperature ?: null
-        val predictionS = probeStatus?.predictionStatus?.predictionValueSeconds ?: null
-        val estimatedCoreC = probeStatus?.predictionStatus?.estimatedCoreTemperature ?: null
+        val predictionState = probeStatus?.predictionStatus?.predictionState
+        val predictionMode = probeStatus?.predictionStatus?.predictionMode
+        val predictionType = probeStatus?.predictionStatus?.predictionType
+        val setPointTemperatureC = probeStatus?.predictionStatus?.setPointTemperature
+        val heatStartTemperatureC = probeStatus?.predictionStatus?.heatStartTemperature
+        val predictionS = probeStatus?.predictionStatus?.predictionValueSeconds
+        val estimatedCoreC = probeStatus?.predictionStatus?.estimatedCoreTemperature
 
         if(mode == ProbeMode.INSTANT_READ) {
             instantReadMonitor.activity()
             instantRead = temps.values[0]
         } else {
             temperatures = temps
-            ambientTemperature = temps.values[7]
 
             coreTemperature = when(virtualSensors.virtualCoreSensor) {
                 ProbeVirtualSensors.VirtualCoreSensor.T1 -> temps.values[0]
@@ -512,6 +510,13 @@ internal open class ProbeManager (
                 ProbeVirtualSensors.VirtualSurfaceSensor.T5 -> temps.values[4]
                 ProbeVirtualSensors.VirtualSurfaceSensor.T6 -> temps.values[5]
                 ProbeVirtualSensors.VirtualSurfaceSensor.T7 -> temps.values[6]
+            }
+
+            ambientTemperature = when(virtualSensors.virtualAmbientSensor) {
+                ProbeVirtualSensors.VirtualAmbientSensor.T5 -> temps.values[4]
+                ProbeVirtualSensors.VirtualAmbientSensor.T6 -> temps.values[5]
+                ProbeVirtualSensors.VirtualAmbientSensor.T7 -> temps.values[6]
+                ProbeVirtualSensors.VirtualAmbientSensor.T8 -> temps.values[7]
             }
 
             if(instantReadMonitor.isIdle(PROBE_INSTANT_READ_IDLE_TIMEOUT_MS)) {
@@ -540,7 +545,6 @@ internal open class ProbeManager (
             mode,
             batteryStatus,
             virtualSensors,
-            hopCount,
             predictionState,
             predictionMode,
             predictionType,
