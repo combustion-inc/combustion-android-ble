@@ -80,7 +80,6 @@ internal class SimulatedProbeManager (
                 ProbeMode.NORMAL,
                 ProbeBatteryStatus.OK,
                 ProbeVirtualSensors.DEFAULT,
-                ProbeHopCount.HOP1
             )
 
             return SimulatedProbeManager(SIMULATED_MAC, owner, data, adapter)
@@ -133,8 +132,7 @@ internal class SimulatedProbeManager (
             ProbeColor.COLOR1,
             ProbeMode.NORMAL,
             ProbeBatteryStatus.OK,
-            ProbeVirtualSensors.DEFAULT,
-            ProbeHopCount.HOP1
+            ProbeVirtualSensors.DEFAULT
         )
 
         super.onNewAdvertisement(data)
@@ -157,7 +155,6 @@ internal class SimulatedProbeManager (
                 ProbeMode.NORMAL,
                 ProbeBatteryStatus.OK,
                 ProbeVirtualSensors.DEFAULT,
-                ProbeHopCount.HOP1,
                 PredictionStatus.withRandomData()
             )
         )

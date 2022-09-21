@@ -83,7 +83,6 @@ data class Probe(
     val mode: ProbeMode,
     val batteryStatus: ProbeBatteryStatus,
     val virtualSensors: ProbeVirtualSensors,
-    val hopCount: ProbeHopCount,
     val predictionState: ProbePredictionState?,
     val predictionMode: ProbePredictionMode?,
     val predictionType: ProbePredictionType?,

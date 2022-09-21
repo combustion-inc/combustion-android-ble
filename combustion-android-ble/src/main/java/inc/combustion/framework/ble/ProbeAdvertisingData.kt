@@ -57,8 +57,7 @@ internal data class ProbeAdvertisingData (
     val color: ProbeColor,
     val mode: ProbeMode,
     val batteryStatus: ProbeBatteryStatus,
-    val virtualSensors: ProbeVirtualSensors,
-    val hopCount: ProbeHopCount
+    val virtualSensors: ProbeVirtualSensors
 ) {
     companion object {
         private const val VENDOR_ID = 0x09C7
@@ -108,41 +107,38 @@ internal data class ProbeAdvertisingData (
             val probeMode = modeColorId?.let { ProbeMode.fromUByte(it) } ?: run { ProbeMode.NORMAL }
             val batteryStatus = deviceStatus?.let { ProbeBatteryStatus.fromUByte(it) } ?: run { ProbeBatteryStatus.OK }
             val virtualSensors = deviceStatus?.let { ProbeVirtualSensors.fromDeviceStatus(it) } ?: run { ProbeVirtualSensors.DEFAULT }
-            val hopCount = deviceStatus?.let { ProbeHopCount.fromUByte(it) } ?: run { ProbeHopCount.HOP1 }
 
             // API level 26 (Android 8) and Higher
             return if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 ProbeAdvertisingData(
-                    name = advertisement.name ?: "Unknown",
-                    mac = advertisement.address,
-                    rssi = advertisement.rssi,
+                    advertisement.name ?: "",
+                    advertisement.address,
+                    advertisement.rssi,
                     serialNumber,
                     type,
-                    isConnectable = scanResult?.isConnectable ?: false,
+                    scanResult?.isConnectable ?: false,
                     probeTemperatures,
                     probeID,
                     probeColor,
                     probeMode,
                     batteryStatus,
-                    virtualSensors,
-                    hopCount
+                    virtualSensors
                 )
             // Lower than API level 26, always return true for isConnectable
             } else {
                 ProbeAdvertisingData(
-                    name = advertisement.name ?: "Unknown",
-                    mac = advertisement.address,
-                    rssi = advertisement.rssi,
+                    advertisement.name ?: "",
+                    advertisement.address,
+                    advertisement.rssi,
                     serialNumber,
                     type,
-                    isConnectable = true,
+                    true,
                     probeTemperatures,
                     probeID,
                     probeColor,
                     probeMode,
                     batteryStatus,
-                    virtualSensors,
-                    hopCount
+                    virtualSensors
                 )
             }
         }

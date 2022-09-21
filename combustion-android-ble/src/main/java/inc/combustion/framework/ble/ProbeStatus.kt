@@ -46,7 +46,6 @@ internal data class ProbeStatus(
     val mode: ProbeMode,
     val batteryStatus: ProbeBatteryStatus,
     val virtualSensors: ProbeVirtualSensors,
-    val hopCount: ProbeHopCount,
     val predictionStatus: PredictionStatus?
 ) {
     companion object {
@@ -86,7 +85,6 @@ internal data class ProbeStatus(
             val probeMode = modeColorId?.let { ProbeMode.fromUByte(it) } ?: run { ProbeMode.NORMAL }
             val batteryStatus = deviceStatus?.let { ProbeBatteryStatus.fromUByte(it) } ?: run { ProbeBatteryStatus.OK }
             val virtualSensors = deviceStatus?.let { ProbeVirtualSensors.fromDeviceStatus(it) } ?: run { ProbeVirtualSensors.DEFAULT }
-            val hopCount = deviceStatus?.let { ProbeHopCount.fromUByte(it) } ?: run { ProbeHopCount.HOP1 }
 
             return ProbeStatus(
                 minSequenceNumber,
@@ -97,7 +95,6 @@ internal data class ProbeStatus(
                 probeMode,
                 batteryStatus,
                 virtualSensors,
-                hopCount,
                 predictionStatus
             )
         }
