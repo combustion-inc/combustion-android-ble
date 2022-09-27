@@ -121,6 +121,7 @@ internal open class ProbeManager (
 
     private var setProbeColorMessageHandler: MessageHandler? = null
     private var setProbeIDMessageHandler: MessageHandler? = null
+    private var setPredictionMessageHandler: MessageHandler ?= null
 
     private val _probeStateFlow =
         MutableSharedFlow<Probe>(0, 10, BufferOverflow.DROP_OLDEST)
@@ -198,6 +199,12 @@ internal open class ProbeManager (
                             setProbeIDMessageHandler = null
                         }
                     }
+                    setPredictionMessageHandler?.let { messageHandler ->
+                        if((System.currentTimeMillis() - messageHandler.timeSentMillis) > 5000) {
+                            messageHandler.completionHandler(false)
+                            setPredictionMessageHandler = null
+                        }
+                    }
                 }
                 delay(MESSAGE_HANDLER_POLL_RATE_MS)
             }
@@ -233,7 +240,7 @@ internal open class ProbeManager (
             sendUartRequest(owner, SetColorRequest(color))
         }
         else {
-            // Respond with failure because a set Color is already in progress
+            // Respond with failure because a set color is already in progress
             completionHandler(false)
         }
     }
@@ -244,7 +251,18 @@ internal open class ProbeManager (
             sendUartRequest(owner, SetIDRequest(id))
         }
         else {
-            // Respond with failure because a set Color is already in progress
+            // Respond with failure because a set ID is already in progress
+            completionHandler(false)
+        }
+    }
+
+    open fun sendSetPrediction(owner: LifecycleOwner, setPointTemperatureC: Double, mode: ProbePredictionMode, completionHandler: (Boolean) -> Unit) {
+        if(setPredictionMessageHandler == null)  {
+            setPredictionMessageHandler = MessageHandler(System.currentTimeMillis(), completionHandler)
+            sendUartRequest(owner, SetPredictionRequest(setPointTemperatureC, mode))
+        }
+        else {
+            // Response with failure because a set prediction is already in progress.
             completionHandler(false)
         }
     }
@@ -357,13 +375,6 @@ internal open class ProbeManager (
 
             if(isConnected.get())
                 requestSessionInformation()
-
-            /* TODO -- Remove This Integration Code
-            if(isConnected.get()) {
-                Log.e(LOG_TAG, "Sending SetPredictionRequest")
-                sendUartRequest(owner, SetPredictionRequest(102.5, ProbePredictionMode.TIME_TO_REMOVAL))
-            }
-             */
         }
     }
 
@@ -464,8 +475,10 @@ internal open class ProbeManager (
                             sessionInfo = response.sessionInformation
                         }
                         is SetPredictionResponse -> {
-                            // TODO -- Plumb Through
-                            Log.e(LOG_TAG, "Set Prediction Response: ${response.success}")
+                            setPredictionMessageHandler?.let {
+                                it.completionHandler(response.success)
+                                setPredictionMessageHandler = null
+                            }
                         }
                     }
                 }
