@@ -27,6 +27,9 @@
  */
 package inc.combustion.framework.ble.uart
 
+import inc.combustion.framework.ble.getCRC16CCITT
+import inc.combustion.framework.ble.putLittleEndianUShortAt
+
 /**
  * Baseclass for UART request messages
  *
@@ -52,10 +55,20 @@ internal open class Request(
         data[0] = 0xCAu
         data[1] = 0xFEu
 
+        // CRC needs to be set after the payload's been added
+
         // Message type
         data[4] = type.value
 
         // Payload length
         data[5] = payloadLength
+    }
+
+    /**
+     * Calculates the CRC16 over the message type, payload length, and payload and inserts the
+     * result in the correct location in the packet.
+     */
+    fun setCRC() {
+        data.putLittleEndianUShortAt(2, data.drop(4).toUByteArray().getCRC16CCITT())
     }
 }

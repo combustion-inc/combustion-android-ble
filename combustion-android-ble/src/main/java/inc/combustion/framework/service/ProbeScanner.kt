@@ -101,11 +101,9 @@ class ProbeScanner private constructor() {
          * @param owner owner for the coroutine scope.
          */
         fun start(owner: LifecycleOwner) {
-            if(!scanning.getAndSet(true)) {
-                job = owner.lifecycleScope.launch {
-                    owner.repeatOnLifecycle(Lifecycle.State.CREATED) {
-                        scan()
-                    }
+            job = owner.lifecycleScope.launch {
+                owner.repeatOnLifecycle(Lifecycle.State.CREATED) {
+                    scan()
                 }
             }
         }

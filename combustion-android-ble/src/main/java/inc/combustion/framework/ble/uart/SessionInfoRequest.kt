@@ -34,4 +34,8 @@ internal class SessionInfoRequest(
     companion object {
         const val PAYLOAD_LENGTH: UByte = 0u
     }
+
+    init {
+        setCRC()
+    }
 }
