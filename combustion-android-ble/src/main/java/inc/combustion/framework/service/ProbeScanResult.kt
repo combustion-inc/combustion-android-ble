@@ -39,6 +39,8 @@ import inc.combustion.framework.ble.ProbeAdvertisingData
  */
 data class ProbeScanResult(
     val serialNumber: String?,
+    val mac: String?,
+    val rssi: Int,
     val temperatures: ProbeTemperatures?,
     val instantReadTemperature: Double?
 ){
@@ -51,6 +53,8 @@ data class ProbeScanResult(
                     return null
 
                 val serialNumber = it.serialNumber
+                val address = it.mac
+                val rssi = it.rssi
 
                 val temperatures = if (it.mode == ProbeMode.NORMAL)
                     it.probeTemperatures
@@ -62,8 +66,11 @@ data class ProbeScanResult(
                 else
                     null
 
+
                 return ProbeScanResult(
                     serialNumber,
+                    address,
+                    rssi,
                     temperatures ,
                     instantReadTemperature
                 )
