@@ -41,13 +41,18 @@ internal class SessionInfoResponse(
     companion object {
         private const val PAYLOAD_LENGTH: UInt = 6u
 
-        fun fromData(data: UByteArray, success: Boolean): SessionInfoResponse {
+        fun fromData(data: UByteArray, success: Boolean, payloadLength: UInt): SessionInfoResponse? {
+            if(payloadLength < PAYLOAD_LENGTH) {
+                return null
+            }
+
             val sessionID: UInt = data.getLittleEndianUInt32At(HEADER_SIZE.toInt())
             val samplePeriod: UInt = data.getLittleEndianUInt16At(HEADER_SIZE.toInt() + 4)
 
             val sessionInfo = SessionInformation(sessionID, samplePeriod)
 
-            return SessionInfoResponse(sessionInfo, success, PAYLOAD_LENGTH)
+            return SessionInfoResponse(sessionInfo, success, payloadLength)
         }
     }
 }
+
