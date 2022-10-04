@@ -27,8 +27,6 @@
  */
 package inc.combustion.framework.ble.uart
 
-import android.util.Log
-import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.getCRC16CCITT
 import inc.combustion.framework.ble.getLittleEndianUShortAt
 import inc.combustion.framework.ble.uart.SetIDRequest.Companion.PAYLOAD_LENGTH
