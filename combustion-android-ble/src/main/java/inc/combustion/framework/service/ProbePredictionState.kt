@@ -33,7 +33,7 @@ import inc.combustion.framework.ble.shr
 enum class ProbePredictionState(val uByte: UByte) {
     PROBE_NOT_INSERTED(0x00u),
     PROBE_INSERTED(0x01u),
-    WARMING(0x02u),
+    COOKING(0x02u),
     PREDICTING(0x03u),
     REMOVAL_PREDICTION_DONE(0x04u),
     RESERVED_STATE_5(0x05u),
@@ -71,7 +71,7 @@ enum class ProbePredictionState(val uByte: UByte) {
             return when(raw) {
                 0x00u -> PROBE_NOT_INSERTED
                 0x01u -> PROBE_INSERTED
-                0x02u -> WARMING
+                0x02u -> COOKING
                 0x03u -> PREDICTING
                 0x04u -> REMOVAL_PREDICTION_DONE
                 0x05u -> RESERVED_STATE_5
