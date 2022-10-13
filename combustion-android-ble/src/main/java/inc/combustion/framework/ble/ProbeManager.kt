@@ -97,6 +97,7 @@ internal open class ProbeManager (
     }
 
     private var probeStatus: ProbeStatus? = null
+    private var predictionStatus: PredictionStatus? = null
     private var connectionState = DeviceConnectionState.OUT_OF_RANGE
     private var uploadState: ProbeUploadState = ProbeUploadState.Unavailable
 
@@ -303,6 +304,7 @@ internal open class ProbeManager (
             monitor.activity()
             advertisingData = newAdvertisingData
             probeStatus = null
+            predictionStatus = null
             _probeStateFlow.emit(probe)
         }
     }
@@ -349,6 +351,7 @@ internal open class ProbeManager (
             else {
                 probeStatus = null
                 sessionInfo = null
+                predictionStatus = null
             }
 
             if(DebugSettings.DEBUG_LOG_CONNECTION_STATE) {
@@ -495,19 +498,13 @@ internal open class ProbeManager (
         val mode = probeStatus?.mode ?: advertisingData.mode
         val batteryStatus = probeStatus?.batteryStatus ?: advertisingData.batteryStatus
         val virtualSensors = probeStatus?.virtualSensors ?: advertisingData.virtualSensors
-        val predictionState = probeStatus?.predictionStatus?.predictionState
-        val predictionMode = probeStatus?.predictionStatus?.predictionMode
-        val predictionType = probeStatus?.predictionStatus?.predictionType
-        val setPointTemperatureC = probeStatus?.predictionStatus?.setPointTemperature
-        val heatStartTemperatureC = probeStatus?.predictionStatus?.heatStartTemperature
-        val predictionS = probeStatus?.predictionStatus?.predictionValueSeconds
-        val estimatedCoreC = probeStatus?.predictionStatus?.estimatedCoreTemperature
 
         if(mode == ProbeMode.INSTANT_READ) {
             instantReadMonitor.activity()
             instantRead = temps.values[0]
         } else {
             temperatures = temps
+            predictionStatus = probeStatus?.predictionStatus
 
             coreTemperature = when(virtualSensors.virtualCoreSensor) {
                 ProbeVirtualSensors.VirtualCoreSensor.T1 -> temps.values[0]
@@ -536,6 +533,14 @@ internal open class ProbeManager (
                 instantRead = null
             }
         }
+
+        val predictionState = predictionStatus?.predictionState
+        val predictionMode = predictionStatus?.predictionMode
+        val predictionType = predictionStatus?.predictionType
+        val setPointTemperatureC = predictionStatus?.setPointTemperature
+        val heatStartTemperatureC = predictionStatus?.heatStartTemperature
+        val predictionS = predictionStatus?.predictionValueSeconds
+        val estimatedCoreC = predictionStatus?.estimatedCoreTemperature
 
         return Probe(
             advertisingData.serialNumber,
