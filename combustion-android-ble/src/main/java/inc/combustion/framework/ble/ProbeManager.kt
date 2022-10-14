@@ -97,6 +97,7 @@ internal open class ProbeManager (
     }
 
     private var probeStatus: ProbeStatus? = null
+    private var predictionStatus: PredictionStatus? = null
     private var connectionState = DeviceConnectionState.OUT_OF_RANGE
     private var uploadState: ProbeUploadState = ProbeUploadState.Unavailable
 
@@ -121,6 +122,7 @@ internal open class ProbeManager (
 
     private var setProbeColorMessageHandler: MessageHandler? = null
     private var setProbeIDMessageHandler: MessageHandler? = null
+    private var setPredictionMessageHandler: MessageHandler ?= null
 
     private val _probeStateFlow =
         MutableSharedFlow<Probe>(0, 10, BufferOverflow.DROP_OLDEST)
@@ -198,6 +200,12 @@ internal open class ProbeManager (
                             setProbeIDMessageHandler = null
                         }
                     }
+                    setPredictionMessageHandler?.let { messageHandler ->
+                        if((System.currentTimeMillis() - messageHandler.timeSentMillis) > 5000) {
+                            messageHandler.completionHandler(false)
+                            setPredictionMessageHandler = null
+                        }
+                    }
                 }
                 delay(MESSAGE_HANDLER_POLL_RATE_MS)
             }
@@ -233,7 +241,7 @@ internal open class ProbeManager (
             sendUartRequest(owner, SetColorRequest(color))
         }
         else {
-            // Respond with failure because a set Color is already in progress
+            // Respond with failure because a set color is already in progress
             completionHandler(false)
         }
     }
@@ -244,7 +252,18 @@ internal open class ProbeManager (
             sendUartRequest(owner, SetIDRequest(id))
         }
         else {
-            // Respond with failure because a set Color is already in progress
+            // Respond with failure because a set ID is already in progress
+            completionHandler(false)
+        }
+    }
+
+    open fun sendSetPrediction(owner: LifecycleOwner, setPointTemperatureC: Double, mode: ProbePredictionMode, completionHandler: (Boolean) -> Unit) {
+        if(setPredictionMessageHandler == null)  {
+            setPredictionMessageHandler = MessageHandler(System.currentTimeMillis(), completionHandler)
+            sendUartRequest(owner, SetPredictionRequest(setPointTemperatureC, mode))
+        }
+        else {
+            // Response with failure because a set prediction is already in progress.
             completionHandler(false)
         }
     }
@@ -285,6 +304,7 @@ internal open class ProbeManager (
             monitor.activity()
             advertisingData = newAdvertisingData
             probeStatus = null
+            predictionStatus = null
             _probeStateFlow.emit(probe)
         }
     }
@@ -331,6 +351,7 @@ internal open class ProbeManager (
             else {
                 probeStatus = null
                 sessionInfo = null
+                predictionStatus = null
             }
 
             if(DebugSettings.DEBUG_LOG_CONNECTION_STATE) {
@@ -357,13 +378,6 @@ internal open class ProbeManager (
 
             if(isConnected.get())
                 requestSessionInformation()
-
-            /* TODO -- Remove This Integration Code
-            if(isConnected.get()) {
-                Log.e(LOG_TAG, "Sending SetPredictionRequest")
-                sendUartRequest(owner, SetPredictionRequest(102.5, ProbePredictionMode.TIME_TO_REMOVAL))
-            }
-             */
         }
     }
 
@@ -464,8 +478,10 @@ internal open class ProbeManager (
                             sessionInfo = response.sessionInformation
                         }
                         is SetPredictionResponse -> {
-                            // TODO -- Plumb Through
-                            Log.e(LOG_TAG, "Set Prediction Response: ${response.success}")
+                            setPredictionMessageHandler?.let {
+                                it.completionHandler(response.success)
+                                setPredictionMessageHandler = null
+                            }
                         }
                     }
                 }
@@ -482,19 +498,13 @@ internal open class ProbeManager (
         val mode = probeStatus?.mode ?: advertisingData.mode
         val batteryStatus = probeStatus?.batteryStatus ?: advertisingData.batteryStatus
         val virtualSensors = probeStatus?.virtualSensors ?: advertisingData.virtualSensors
-        val predictionState = probeStatus?.predictionStatus?.predictionState
-        val predictionMode = probeStatus?.predictionStatus?.predictionMode
-        val predictionType = probeStatus?.predictionStatus?.predictionType
-        val setPointTemperatureC = probeStatus?.predictionStatus?.setPointTemperature
-        val heatStartTemperatureC = probeStatus?.predictionStatus?.heatStartTemperature
-        val predictionS = probeStatus?.predictionStatus?.predictionValueSeconds
-        val estimatedCoreC = probeStatus?.predictionStatus?.estimatedCoreTemperature
 
         if(mode == ProbeMode.INSTANT_READ) {
             instantReadMonitor.activity()
             instantRead = temps.values[0]
         } else {
             temperatures = temps
+            predictionStatus = probeStatus?.predictionStatus
 
             coreTemperature = when(virtualSensors.virtualCoreSensor) {
                 ProbeVirtualSensors.VirtualCoreSensor.T1 -> temps.values[0]
@@ -523,6 +533,14 @@ internal open class ProbeManager (
                 instantRead = null
             }
         }
+
+        val predictionState = predictionStatus?.predictionState
+        val predictionMode = predictionStatus?.predictionMode
+        val predictionType = predictionStatus?.predictionType
+        val setPointTemperatureC = predictionStatus?.setPointTemperature
+        val heatStartTemperatureC = predictionStatus?.heatStartTemperature
+        val predictionS = predictionStatus?.predictionValueSeconds
+        val estimatedCoreC = predictionStatus?.estimatedCoreTemperature
 
         return Probe(
             advertisingData.serialNumber,
