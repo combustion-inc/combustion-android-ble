@@ -27,7 +27,7 @@
  */
 package inc.combustion.framework.service
 
-import inc.combustion.framework.ble.DeviceStatus
+import inc.combustion.framework.ble.ProbeStatus
 import inc.combustion.framework.ble.uart.LogResponse
 import java.util.*
 
@@ -57,7 +57,7 @@ data class LoggedProbeDataPoint (
     internal companion object{
         fun fromDeviceStatus(
             sessionId: UInt,
-            status: DeviceStatus,
+            status: ProbeStatus,
             sessionStart: Date?,
             samplePeriod: UInt
         ): LoggedProbeDataPoint {

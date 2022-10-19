@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: DeviceStatus.kt
+ * File: ProbeStatus.kt
  * Author: https://github.com/miwright2
  *
  * MIT License
@@ -27,23 +27,26 @@
  */
 package inc.combustion.framework.ble
 
+import android.util.Log
 import inc.combustion.framework.service.*
 
 /**
- * Data object for Device Status packet.
+ * Data object for the Probe Status packet.
  *
  * @property minSequenceNumber minimum sequence number available for probe.
  * @property maxSequenceNumber maximum/current sequence number available for probe.
  * @property temperatures probe's current temperature values.
  */
-internal data class DeviceStatus(
+internal data class ProbeStatus(
     val minSequenceNumber: UInt,
     val maxSequenceNumber: UInt,
     val temperatures: ProbeTemperatures,
     val id: ProbeID,
     val color: ProbeColor,
     val mode: ProbeMode,
-    val batteryStatus: ProbeBatteryStatus
+    val batteryStatus: ProbeBatteryStatus,
+    val virtualSensors: ProbeVirtualSensors,
+    val predictionStatus: PredictionStatus?
 ) {
     companion object {
         private const val MIN_SEQ_INDEX = 0
@@ -51,8 +54,9 @@ internal data class DeviceStatus(
         private val TEMPERATURE_RANGE = 8..20
         private val MODE_COLOR_ID_RANGE = 21..21
         private val STATUS_RANGE = 22..22
+        private val PREDICTION_STATUS_RANGE = 23 until 23 + PredictionStatus.SIZE_BYTES
 
-        fun fromRawData(data: UByteArray): DeviceStatus? {
+        fun fromRawData(data: UByteArray): ProbeStatus? {
             if (data.size < 21) return null
 
             val minSequenceNumber = data.getLittleEndianUInt32At(MIN_SEQ_INDEX)
@@ -65,25 +69,33 @@ internal data class DeviceStatus(
             else
                 null
 
-            // use status if available
-            val status = if (data.size > 22)
+            // use device status if available
+            val deviceStatus = if (data.size > 22)
                 data.sliceArray(STATUS_RANGE)[0]
+            else
+                null
+
+            val predictionStatus = if (data.size > 22 + PredictionStatus.SIZE_BYTES)
+                PredictionStatus.fromRawData(data.sliceArray(PREDICTION_STATUS_RANGE))
             else
                 null
 
             val probeColor = modeColorId?.let { ProbeColor.fromUByte(it) } ?: run { ProbeColor.COLOR1 }
             val probeID = modeColorId?.let { ProbeID.fromUByte(it) } ?: run { ProbeID.ID1 }
             val probeMode = modeColorId?.let { ProbeMode.fromUByte(it) } ?: run { ProbeMode.NORMAL }
-            val batteryStatus = status?.let { ProbeBatteryStatus.fromUByte(it) } ?: run { ProbeBatteryStatus.OK }
+            val batteryStatus = deviceStatus?.let { ProbeBatteryStatus.fromUByte(it) } ?: run { ProbeBatteryStatus.OK }
+            val virtualSensors = deviceStatus?.let { ProbeVirtualSensors.fromDeviceStatus(it) } ?: run { ProbeVirtualSensors.DEFAULT }
 
-            return DeviceStatus(
+            return ProbeStatus(
                 minSequenceNumber,
                 maxSequenceNumber,
                 temperatures,
                 probeID,
                 probeColor,
                 probeMode,
-                batteryStatus
+                batteryStatus,
+                virtualSensors,
+                predictionStatus
             )
         }
     }

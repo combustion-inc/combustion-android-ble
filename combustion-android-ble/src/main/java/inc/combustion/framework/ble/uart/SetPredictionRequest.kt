@@ -1,6 +1,6 @@
 /*
- * Project: Combustion Inc. Android Framework
- * File: MessageType.kt
+ * Project: Combustion Inc. Android Example
+ * File: SetPredictionRequest.kt
  * Author: https://github.com/miwright2
  *
  * MIT License
@@ -25,21 +25,27 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+
 package inc.combustion.framework.ble.uart
 
-/**
- * Enumerates message types in Combustion's UART protocol.
- *
- * @property value byte value for message type.
- */
-internal enum class MessageType(val value: UByte) {
-    SET_PROBE_ID(0x01u),
-    SET_PROBE_COLOR(0x02u),
-    READ_SESSION_INFO(0x03u),
-    LOG(0x04u),
-    SET_PREDICTION(0x05u);
+import inc.combustion.framework.service.ProbePredictionMode
+
+internal class SetPredictionRequest(
+   setPointTemperatureC: Double,
+   mode: ProbePredictionMode
+) : Request(PAYLOAD_LENGTH, MessageType.SET_PREDICTION) {
 
     companion object {
-        fun fromUByte(value: UByte) = values().firstOrNull { it.value == value }
+        const val PAYLOAD_LENGTH: UByte = 2u
+    }
+
+    init {
+        val converted = (setPointTemperatureC * 10.0).toUInt()
+        val clamped = if(converted > 0x3FFu) 0x3FFu else converted
+
+        val predictionData = (clamped and 0x3FFu) or (mode.uByte.toUInt() shl 10)
+        data[(HEADER_SIZE).toInt() + 0] = ((predictionData and 0x00FFu) shr 0x0).toUByte()
+        data[(HEADER_SIZE).toInt() + 1] = ((predictionData and 0xFF00u) shr 0x8).toUByte()
+        setCRC()
     }
 }

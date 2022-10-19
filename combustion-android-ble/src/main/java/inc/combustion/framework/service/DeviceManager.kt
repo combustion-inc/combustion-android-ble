@@ -78,6 +78,9 @@ class DeviceManager {
             }
         }
 
+        const val MINIMUM_PREDICTION_SETPOINT_CELSIUS = 0.0
+        const val MAXIMUM_PREDICTION_SETPOINT_CELSIUS = 102.0
+
         /**
          * Instance property for the singleton
          */
@@ -391,6 +394,33 @@ class DeviceManager {
      */
     fun setProbeID(serialNumber: String, id: ProbeID, completionHandler: (Boolean) -> Unit) =
         service.setProbeID(serialNumber, id, completionHandler)
+
+    /**
+     * Sends a request to the device to set/change the set point temperature for the time to
+     * removal prediction.  If a prediction is not currently active, it will be started.  If a
+     * removal prediction is currently active, then the set point will be modified.  If another
+     * type of prediction is active, then the probe will start predicting removal.
+     *
+     * @param serialNumber the serial number of the probe.
+     * @param removalTemperatureC the target removal temperature in Celsius.
+     * @param completionHandler completion handler to be called operation is complete
+     */
+    fun setRemovalPrediction(serialNumber: String, removalTemperatureC: Double, completionHandler: (Boolean) -> Unit) {
+        if(removalTemperatureC > MAXIMUM_PREDICTION_SETPOINT_CELSIUS || removalTemperatureC < MINIMUM_PREDICTION_SETPOINT_CELSIUS) {
+            completionHandler(false)
+            return
+        }
+        service.setRemovalPrediction(serialNumber, removalTemperatureC, completionHandler)
+    }
+
+    /**
+     * Sends a request to the device to set the prediction mode to none, stopping any active prediction.
+     *
+     * @param serialNumber the serial number of the probe.
+     * @param completionHandler completion handler to be called operation is complete
+     */
+    fun cancelPrediction(serialNumber: String, completionHandler: (Boolean) -> Unit) =
+        service.cancelPrediction(serialNumber, completionHandler)
 
     private fun probeDataToCsv(probe: Probe?, probeData: List<LoggedProbeDataPoint>?, appNameAndVersion: String): Pair<String, String> {
         val csvVersion = 3

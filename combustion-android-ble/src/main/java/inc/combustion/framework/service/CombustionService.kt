@@ -334,11 +334,27 @@ class CombustionService : LifecycleService() {
     }
 
     internal fun setProbeColor(serialNumber: String, color: ProbeColor, completionHandler: (Boolean) -> Unit) {
-        _probes[serialNumber]?.sendSetProbeColor(this, color, completionHandler)
+        _probes[serialNumber]?.sendSetProbeColor(this, color, completionHandler) ?: run {
+            completionHandler(false)
+        }
     }
 
     internal fun setProbeID(serialNumber: String, id: ProbeID, completionHandler: (Boolean) -> Unit) {
-        _probes[serialNumber]?.sendSetProbeID(this, id, completionHandler)
+        _probes[serialNumber]?.sendSetProbeID(this, id, completionHandler) ?: run {
+            completionHandler(false)
+        }
+    }
+
+    internal fun setRemovalPrediction(serialNumber: String, removalTemperatureC: Double, completionHandler: (Boolean) -> Unit) {
+        _probes[serialNumber]?.sendSetPrediction(this, removalTemperatureC, ProbePredictionMode.TIME_TO_REMOVAL, completionHandler) ?: run {
+            completionHandler(false)
+        }
+    }
+
+    internal fun cancelPrediction(serialNumber: String, completionHandler: (Boolean) -> Unit) {
+        _probes[serialNumber]?.sendSetPrediction(this, DeviceManager.MINIMUM_PREDICTION_SETPOINT_CELSIUS, ProbePredictionMode.NONE, completionHandler) ?: run {
+            completionHandler(false)
+        }
     }
 
     private fun emitBluetoothOnEvent() = _discoveredProbesFlow.tryEmit(

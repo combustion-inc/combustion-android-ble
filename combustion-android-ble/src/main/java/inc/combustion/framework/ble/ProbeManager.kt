@@ -96,12 +96,16 @@ internal open class ProbeManager (
         )
     }
 
-    private var deviceStatus: DeviceStatus? = null
+    private var probeStatus: ProbeStatus? = null
+    private var predictionStatus: PredictionStatus? = null
     private var connectionState = DeviceConnectionState.OUT_OF_RANGE
     private var uploadState: ProbeUploadState = ProbeUploadState.Unavailable
 
     private var temperatures: ProbeTemperatures? = null
     private var instantRead: Double? = null
+    private var coreTemperature: Double? = null
+    private var surfaceTemperature: Double? = null
+    private var ambientTemperature: Double? = null
 
     internal val isConnected = AtomicBoolean(false)
     internal val remoteRssi = AtomicInteger(0)
@@ -118,14 +122,15 @@ internal open class ProbeManager (
 
     private var setProbeColorMessageHandler: MessageHandler? = null
     private var setProbeIDMessageHandler: MessageHandler? = null
+    private var setPredictionMessageHandler: MessageHandler ?= null
 
     private val _probeStateFlow =
         MutableSharedFlow<Probe>(0, 10, BufferOverflow.DROP_OLDEST)
     val probeStateFlow = _probeStateFlow.asSharedFlow()
 
-    internal val _deviceStatusFlow =
-        MutableSharedFlow<DeviceStatus>(0, 10, BufferOverflow.DROP_OLDEST)
-    val deviceStatusFlow = _deviceStatusFlow.asSharedFlow()
+    internal val _probeStatusFlow =
+        MutableSharedFlow<ProbeStatus>(0, 10, BufferOverflow.DROP_OLDEST)
+    val deviceStatusFlow = _probeStatusFlow.asSharedFlow()
 
     private val _logResponseFlow =
         MutableSharedFlow<LogResponse>(0, 50, BufferOverflow.SUSPEND)
@@ -195,6 +200,12 @@ internal open class ProbeManager (
                             setProbeIDMessageHandler = null
                         }
                     }
+                    setPredictionMessageHandler?.let { messageHandler ->
+                        if((System.currentTimeMillis() - messageHandler.timeSentMillis) > 5000) {
+                            messageHandler.completionHandler(false)
+                            setPredictionMessageHandler = null
+                        }
+                    }
                 }
                 delay(MESSAGE_HANDLER_POLL_RATE_MS)
             }
@@ -230,7 +241,7 @@ internal open class ProbeManager (
             sendUartRequest(owner, SetColorRequest(color))
         }
         else {
-            // Respond with failure because a set Color is already in progress
+            // Respond with failure because a set color is already in progress
             completionHandler(false)
         }
     }
@@ -241,7 +252,18 @@ internal open class ProbeManager (
             sendUartRequest(owner, SetIDRequest(id))
         }
         else {
-            // Respond with failure because a set Color is already in progress
+            // Respond with failure because a set ID is already in progress
+            completionHandler(false)
+        }
+    }
+
+    open fun sendSetPrediction(owner: LifecycleOwner, setPointTemperatureC: Double, mode: ProbePredictionMode, completionHandler: (Boolean) -> Unit) {
+        if(setPredictionMessageHandler == null)  {
+            setPredictionMessageHandler = MessageHandler(System.currentTimeMillis(), completionHandler)
+            sendUartRequest(owner, SetPredictionRequest(setPointTemperatureC, mode))
+        }
+        else {
+            // Response with failure because a set prediction is already in progress.
             completionHandler(false)
         }
     }
@@ -281,7 +303,8 @@ internal open class ProbeManager (
             connectionState == DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE ) {
             monitor.activity()
             advertisingData = newAdvertisingData
-            deviceStatus = null
+            probeStatus = null
+            predictionStatus = null
             _probeStateFlow.emit(probe)
         }
     }
@@ -326,8 +349,9 @@ internal open class ProbeManager (
                 getProbeConfiguration()
             }
             else {
-                deviceStatus = null
+                probeStatus = null
                 sessionInfo = null
+                predictionStatus = null
             }
 
             if(DebugSettings.DEBUG_LOG_CONNECTION_STATE) {
@@ -394,14 +418,14 @@ internal open class ProbeManager (
                 Log.i(LOG_TAG, "Device Status Characteristic Monitor Catch: $it")
             }
             .collect { data ->
-                DeviceStatus.fromRawData(data.toUByteArray())?.let {
-                    _deviceStatusFlow.emit(it)
+                ProbeStatus.fromRawData(data.toUByteArray())?.let {
+                    _probeStatusFlow.emit(it)
                 }
         }
     }
 
     private suspend fun deviceStatusMonitor() {
-        _deviceStatusFlow
+        _probeStatusFlow
             .onCompletion {
                 Log.d(LOG_TAG, "Device Status Monitor Complete")
             }
@@ -409,7 +433,7 @@ internal open class ProbeManager (
                 Log.i(LOG_TAG, "Device Status Monitor Catch: $it")
             }
             .collect { status ->
-                deviceStatus = status
+                probeStatus = status
                 _probeStateFlow.emit(probe)
         }
     }
@@ -453,29 +477,70 @@ internal open class ProbeManager (
                         is SessionInfoResponse -> {
                             sessionInfo = response.sessionInformation
                         }
+                        is SetPredictionResponse -> {
+                            setPredictionMessageHandler?.let {
+                                it.completionHandler(response.success)
+                                setPredictionMessageHandler = null
+                            }
+                        }
                     }
                 }
             }
     }
 
     private fun toProbe(): Probe {
-        val temps = deviceStatus?.temperatures ?: advertisingData.probeTemperatures
-        val minSeq = deviceStatus?.minSequenceNumber ?: 0u
-        val maxSeq = deviceStatus?.maxSequenceNumber ?: 0u
+        val temps = probeStatus?.temperatures ?: advertisingData.probeTemperatures
+        val minSeq = probeStatus?.minSequenceNumber ?: 0u
+        val maxSeq = probeStatus?.maxSequenceNumber ?: 0u
         val rssi  = if(isConnected.get()) remoteRssi.get() else advertisingData.rssi
-        val id = deviceStatus?.id ?: advertisingData.id
-        val color = deviceStatus?.color ?: advertisingData.color
-        val mode = deviceStatus?.mode ?: advertisingData.mode
-        val batteryStatus = deviceStatus?.batteryStatus ?: advertisingData.batteryStatus
+        val id = probeStatus?.id ?: advertisingData.id
+        val color = probeStatus?.color ?: advertisingData.color
+        val mode = probeStatus?.mode ?: advertisingData.mode
+        val batteryStatus = probeStatus?.batteryStatus ?: advertisingData.batteryStatus
+        val virtualSensors = probeStatus?.virtualSensors ?: advertisingData.virtualSensors
 
         if(mode == ProbeMode.INSTANT_READ) {
             instantReadMonitor.activity()
             instantRead = temps.values[0]
         } else {
             temperatures = temps
-            if(instantReadMonitor.isIdle(PROBE_INSTANT_READ_IDLE_TIMEOUT_MS))
+            predictionStatus = probeStatus?.predictionStatus
+
+            coreTemperature = when(virtualSensors.virtualCoreSensor) {
+                ProbeVirtualSensors.VirtualCoreSensor.T1 -> temps.values[0]
+                ProbeVirtualSensors.VirtualCoreSensor.T2 -> temps.values[1]
+                ProbeVirtualSensors.VirtualCoreSensor.T3 -> temps.values[2]
+                ProbeVirtualSensors.VirtualCoreSensor.T4 -> temps.values[3]
+                ProbeVirtualSensors.VirtualCoreSensor.T5 -> temps.values[4]
+                ProbeVirtualSensors.VirtualCoreSensor.T6 -> temps.values[5]
+            }
+
+            surfaceTemperature = when(virtualSensors.virtualSurfaceSensor) {
+                ProbeVirtualSensors.VirtualSurfaceSensor.T4 -> temps.values[3]
+                ProbeVirtualSensors.VirtualSurfaceSensor.T5 -> temps.values[4]
+                ProbeVirtualSensors.VirtualSurfaceSensor.T6 -> temps.values[5]
+                ProbeVirtualSensors.VirtualSurfaceSensor.T7 -> temps.values[6]
+            }
+
+            ambientTemperature = when(virtualSensors.virtualAmbientSensor) {
+                ProbeVirtualSensors.VirtualAmbientSensor.T5 -> temps.values[4]
+                ProbeVirtualSensors.VirtualAmbientSensor.T6 -> temps.values[5]
+                ProbeVirtualSensors.VirtualAmbientSensor.T7 -> temps.values[6]
+                ProbeVirtualSensors.VirtualAmbientSensor.T8 -> temps.values[7]
+            }
+
+            if(instantReadMonitor.isIdle(PROBE_INSTANT_READ_IDLE_TIMEOUT_MS)) {
                 instantRead = null
+            }
         }
+
+        val predictionState = predictionStatus?.predictionState
+        val predictionMode = predictionStatus?.predictionMode
+        val predictionType = predictionStatus?.predictionType
+        val setPointTemperatureC = predictionStatus?.setPointTemperature
+        val heatStartTemperatureC = predictionStatus?.heatStartTemperature
+        val predictionS = predictionStatus?.predictionValueSeconds
+        val estimatedCoreC = predictionStatus?.estimatedCoreTemperature
 
         return Probe(
             advertisingData.serialNumber,
@@ -485,6 +550,9 @@ internal open class ProbeManager (
             sessionInfo,
             temperatures,
             instantRead,
+            coreTemperature,
+            surfaceTemperature,
+            ambientTemperature,
             rssi,
             minSeq,
             maxSeq,
@@ -493,7 +561,15 @@ internal open class ProbeManager (
             id,
             color,
             mode,
-            batteryStatus
+            batteryStatus,
+            virtualSensors,
+            predictionState,
+            predictionMode,
+            predictionType,
+            setPointTemperatureC,
+            heatStartTemperatureC,
+            predictionS,
+            estimatedCoreC
         )
     }
 }

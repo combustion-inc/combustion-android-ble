@@ -29,7 +29,7 @@ package inc.combustion.framework.log
 
 import android.util.Log
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.DeviceStatus
+import inc.combustion.framework.ble.ProbeStatus
 import inc.combustion.framework.ble.uart.LogResponse
 import inc.combustion.framework.service.DebugSettings
 import inc.combustion.framework.service.LoggedProbeDataPoint
@@ -198,51 +198,51 @@ internal class Session(
         return UploadProgress(transferCount, logResponseDropCount, totalExpected)
     }
 
-    fun addFromDeviceStatus(deviceStatus: DeviceStatus) : SessionStatus {
-        val loggedProbeDataPoint = LoggedProbeDataPoint.fromDeviceStatus(id, deviceStatus, startTime, sessionInfo.samplePeriod)
+    fun addFromDeviceStatus(probeStatus: ProbeStatus) : SessionStatus {
+        val loggedProbeDataPoint = LoggedProbeDataPoint.fromDeviceStatus(id, probeStatus, startTime, sessionInfo.samplePeriod)
 
         // decrement the stale log request counter
         staleLogRequestCount--
 
-        // sanity check -- if LogManger is adding DeviceStatus to the Session log, but has not
+        // sanity check -- if LogManger is adding ProbeStatus to the Session log, but has not
         // started the log request, then force nextExpectedDeviceStatus here.
         if(nextExpectedDeviceStatus == UInt.MAX_VALUE)  {
-           nextExpectedDeviceStatus = deviceStatus.maxSequenceNumber - 1u
+           nextExpectedDeviceStatus = probeStatus.maxSequenceNumber - 1u
            if(DebugSettings.DEBUG_LOG_TRANSFER) {
                Log.d(LOG_TAG, "Forcing nextExpectedDeviceStatue: $nextExpectedDeviceStatus")
            }
         }
 
         // check to see if we dropped data
-        if(deviceStatus.maxSequenceNumber > nextExpectedDeviceStatus) {
-            deviceStatusDropCount += (deviceStatus.maxSequenceNumber - nextExpectedDeviceStatus)
+        if(probeStatus.maxSequenceNumber > nextExpectedDeviceStatus) {
+            deviceStatusDropCount += (probeStatus.maxSequenceNumber - nextExpectedDeviceStatus)
 
             // track and log the dropped packet
-            for(sequence in nextExpectedDeviceStatus..(deviceStatus.maxSequenceNumber-1u)) {
+            for(sequence in nextExpectedDeviceStatus..(probeStatus.maxSequenceNumber-1u)) {
                 droppedRecords.add(sequence)
             }
 
             // log a warning message
             Log.w(LOG_TAG, "Detected device status data drop ($serialNumber). " +
-                "Drop range ${nextExpectedDeviceStatus}..${deviceStatus.maxSequenceNumber-1u}")
+                "Drop range ${nextExpectedDeviceStatus}..${probeStatus.maxSequenceNumber-1u}")
 
             // but still add this data and resync.
             _logs[loggedProbeDataPoint.sequenceNumber] = loggedProbeDataPoint
             nextExpectedDeviceStatus = loggedProbeDataPoint.sequenceNumber + 1u
         }
         // check to see if we received duplicate data
-        else if(deviceStatus.maxSequenceNumber < nextExpectedDeviceStatus) {
-            if(_logs.containsKey(deviceStatus.maxSequenceNumber)) {
+        else if(probeStatus.maxSequenceNumber < nextExpectedDeviceStatus) {
+            if(_logs.containsKey(probeStatus.maxSequenceNumber)) {
                 Log.w(LOG_TAG,
                     "Tried to add duplicate device status? " +
-                            "$serialNumber.${deviceStatus.maxSequenceNumber} " +
-                            "($nextExpectedDeviceStatus)(${deviceStatus.maxSequenceNumber})")
+                            "$serialNumber.${probeStatus.maxSequenceNumber} " +
+                            "($nextExpectedDeviceStatus)(${probeStatus.maxSequenceNumber})")
             }
             else {
                 Log.w(LOG_TAG,
                     "Received unexpected old record? " +
-                            "$serialNumber.${deviceStatus.maxSequenceNumber} " +
-                            "($nextExpectedDeviceStatus)(${deviceStatus.maxSequenceNumber})")
+                            "$serialNumber.${probeStatus.maxSequenceNumber} " +
+                            "($nextExpectedDeviceStatus)(${probeStatus.maxSequenceNumber})")
             }
         }
         // happy path, add the device status, update the next expected.
@@ -263,7 +263,7 @@ internal class Session(
 
         if(DebugSettings.DEBUG_LOG_SESSION_STATUS) {
             Log.d(LOG_TAG, "$status " +
-                    "[${deviceStatus.minSequenceNumber.toInt()} - ${deviceStatus.maxSequenceNumber.toInt()}]"
+                    "[${probeStatus.minSequenceNumber.toInt()} - ${probeStatus.maxSequenceNumber.toInt()}]"
             )
         }
 
