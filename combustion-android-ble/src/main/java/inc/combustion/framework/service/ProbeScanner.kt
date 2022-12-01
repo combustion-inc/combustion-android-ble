@@ -30,6 +30,7 @@ package inc.combustion.framework.service
 import android.bluetooth.le.ScanSettings
 import android.util.Log
 import androidx.lifecycle.*
+import com.juul.kable.Filter
 import com.juul.kable.Scanner
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.ProbeManager
@@ -53,7 +54,7 @@ class ProbeScanner private constructor() {
         val scanResults = _results.asSharedFlow()
 
         private val probeAllMatchesScanner = Scanner {
-            services = listOf(ProbeManager.NEEDLE_SERVICE_UUID.uuid)
+            filters = listOf(Filter.Service(ProbeManager.NEEDLE_SERVICE_UUID.uuid))
             scanSettings = ScanSettings.Builder()
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
                 .setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
