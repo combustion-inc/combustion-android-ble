@@ -73,17 +73,16 @@ internal open class Device (
 
     protected val monitor = IdleMonitor()
     protected val instantReadMonitor = IdleMonitor()
+    protected val predictionStatusMonitor = IdleMonitor()
 
     protected var peripheral: Peripheral =
         owner.lifecycleScope.peripheral(adapter.getRemoteDevice(mac)) {
             logging {
                 // The following enables logging in Kable
-
                 // engine = SystemLogEngine
                 // level = Logging.Level.Events
                 // format = Logging.Format.Multiline
                 // data = Hex
-
             }
         }
 

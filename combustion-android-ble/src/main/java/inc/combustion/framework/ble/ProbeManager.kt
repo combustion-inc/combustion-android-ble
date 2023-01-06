@@ -69,6 +69,11 @@ internal open class ProbeManager (
         private const val NEEDLE_SERVICE_UUID_STRING = "00000100-CAAB-3792-3D44-97AE51C1407A"
         private const val UART_SERVICE_UUID_STRING   = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
         private const val PROBE_INSTANT_READ_IDLE_TIMEOUT_MS = 5000L
+        private const val PROBE_PREDICTION_IDLE_TIMEOUT_MS = 15000L
+        private val MAX_PREDICTION_SECONDS = 60u * 60u * 4u
+        private val LOW_RESOLUTION_CUTOFF_SECONDS = 60u * 5u
+        private val LOW_RESOLUTION_PRECISION_SECONDS = 15u
+        private val PREDICTION_TIME_UPDATE_COUNT = 3u
 
         val FW_VERSION_CHARACTERISTIC = characteristicOf(
             service = DEV_INFO_SERVICE_UUID_STRING,
@@ -98,14 +103,9 @@ internal open class ProbeManager (
 
     private var probeStatus: ProbeStatus? = null
     private var predictionStatus: PredictionStatus? = null
+    private var predictionCountdownSeconds: UInt? = null
     private var connectionState = DeviceConnectionState.OUT_OF_RANGE
     private var uploadState: ProbeUploadState = ProbeUploadState.Unavailable
-
-    private var temperatures: ProbeTemperatures? = null
-    private var instantRead: Double? = null
-    private var coreTemperature: Double? = null
-    private var surfaceTemperature: Double? = null
-    private var ambientTemperature: Double? = null
 
     internal val isConnected = AtomicBoolean(false)
     internal val remoteRssi = AtomicInteger(0)
@@ -136,7 +136,8 @@ internal open class ProbeManager (
         MutableSharedFlow<LogResponse>(0, 50, BufferOverflow.SUSPEND)
     val logResponseFlow = _logResponseFlow.asSharedFlow()
 
-    val probe: Probe get() = toProbe()
+    private var _probe: Probe = Probe(mac = mac)
+    val probe: Probe get() = update()
 
     init {
         // connection state flow monitor
@@ -304,7 +305,6 @@ internal open class ProbeManager (
             monitor.activity()
             advertisingData = newAdvertisingData
             probeStatus = null
-            predictionStatus = null
             _probeStateFlow.emit(probe)
         }
     }
@@ -351,7 +351,6 @@ internal open class ProbeManager (
             else {
                 probeStatus = null
                 sessionInfo = null
-                predictionStatus = null
             }
 
             if(DebugSettings.DEBUG_LOG_CONNECTION_STATE) {
@@ -386,9 +385,10 @@ internal open class ProbeManager (
             try {
                 val fwVersionBytes = peripheral.read(FW_VERSION_CHARACTERISTIC)
                 fwVersion = fwVersionBytes.toString(Charsets.UTF_8)
+
+                _probe = _probe.copy(fwVersion = fwVersion)
             } catch (e: Exception) {
-                Log.w(LOG_TAG,
-                    "Exception while reading remote FW version: \n${e.stackTrace}")
+                Log.w(LOG_TAG, "Exception while reading remote FW version: \n${e.stackTrace}")
             }
         }
     }
@@ -397,10 +397,11 @@ internal open class ProbeManager (
         withContext(Dispatchers.IO) {
             try {
                 val hwRevisionBytes = peripheral.read(HW_REVISION_CHARACTERISTIC)
-                hwRevision = hwRevisionBytes.toString(Charsets.UTF_8)
+                val rev = hwRevisionBytes.toString(Charsets.UTF_8)
+
+                _probe = _probe.copy(hwRevision = rev)
             } catch (e: Exception) {
-                Log.w(LOG_TAG,
-                    "Exception while reading remote HW revision: \n${e.stackTrace}")
+                Log.w(LOG_TAG, "Exception while reading remote HW revision: \n${e.stackTrace}")
             }
         }
     }
@@ -488,6 +489,112 @@ internal open class ProbeManager (
             }
     }
 
+    private fun update(): Probe {
+        _probe = _probe.copy(
+                serialNumber = advertisingData.serialNumber,
+                mac = advertisingData.mac,
+                sessionInfo = sessionInfo,
+                minSequenceNumber = probeStatus?.minSequenceNumber ?: _probe.minSequenceNumber,
+                maxSequenceNumber = probeStatus?.maxSequenceNumber ?: _probe.maxSequenceNumber,
+                rssi = if(isConnected.get()) remoteRssi.get() else advertisingData.rssi,
+                id = probeStatus?.id ?: advertisingData.id,
+                color = probeStatus?.color ?: advertisingData.color,
+                batteryStatus = probeStatus?.batteryStatus ?: advertisingData.batteryStatus,
+                connectionState = connectionState,
+                uploadState = uploadState
+        )
+
+        val temperatures = probeStatus?.temperatures ?: advertisingData.probeTemperatures
+        val mode = probeStatus?.mode ?: advertisingData.mode
+
+        if(mode == ProbeMode.INSTANT_READ) {
+            instantReadMonitor.activity()
+
+            _probe = _probe.copy(
+                instantReadCelsius = temperatures.values[0]
+            )
+        }
+        else if(mode == ProbeMode.NORMAL) {
+            val virtualSensors = probeStatus?.virtualSensors ?: advertisingData.virtualSensors
+            val instantReadCelsius = if(!instantReadMonitor.isIdle(PROBE_INSTANT_READ_IDLE_TIMEOUT_MS)) _probe.instantReadCelsius else null
+
+            predictionStatusMonitor.activity()
+
+            predictionStatus = probeStatus?.predictionStatus
+
+            // handle large predictions and prediction resolution
+            predictionStatus?.let {
+                val rawPrediction = it.predictionValueSeconds
+
+                predictionCountdownSeconds = if(rawPrediction > MAX_PREDICTION_SECONDS) {
+                    null
+                }
+                else if(rawPrediction < LOW_RESOLUTION_CUTOFF_SECONDS) {
+                    rawPrediction
+                }
+                else if(predictionCountdownSeconds == null || (_probe.maxSequenceNumber % PREDICTION_TIME_UPDATE_COUNT) == 0u) {
+                    val remainder = rawPrediction % LOW_RESOLUTION_PRECISION_SECONDS
+                    if(remainder > (LOW_RESOLUTION_PRECISION_SECONDS / 2u)) {
+                        // round up
+                        rawPrediction + (LOW_RESOLUTION_PRECISION_SECONDS - remainder)
+                    }
+                    else {
+                        // round down
+                        rawPrediction - remainder
+                    }
+                }
+                else {
+                    predictionCountdownSeconds
+                }
+            }
+
+            _probe = _probe.copy(
+                instantReadCelsius = instantReadCelsius,
+                temperaturesCelsius = temperatures,
+                virtualSensors = virtualSensors,
+                coreTemperatureCelsius = when(virtualSensors.virtualCoreSensor) {
+                    ProbeVirtualSensors.VirtualCoreSensor.T1 -> temperatures.values[0]
+                    ProbeVirtualSensors.VirtualCoreSensor.T2 -> temperatures.values[1]
+                    ProbeVirtualSensors.VirtualCoreSensor.T3 -> temperatures.values[2]
+                    ProbeVirtualSensors.VirtualCoreSensor.T4 -> temperatures.values[3]
+                    ProbeVirtualSensors.VirtualCoreSensor.T5 -> temperatures.values[4]
+                    ProbeVirtualSensors.VirtualCoreSensor.T6 -> temperatures.values[5]
+                },
+                surfaceTemperatureCelsius = when(virtualSensors.virtualSurfaceSensor) {
+                    ProbeVirtualSensors.VirtualSurfaceSensor.T4 -> temperatures.values[3]
+                    ProbeVirtualSensors.VirtualSurfaceSensor.T5 -> temperatures.values[4]
+                    ProbeVirtualSensors.VirtualSurfaceSensor.T6 -> temperatures.values[5]
+                    ProbeVirtualSensors.VirtualSurfaceSensor.T7 -> temperatures.values[6]
+                },
+                ambientTemperatureCelsius = when(virtualSensors.virtualAmbientSensor) {
+                    ProbeVirtualSensors.VirtualAmbientSensor.T5 -> temperatures.values[4]
+                    ProbeVirtualSensors.VirtualAmbientSensor.T6 -> temperatures.values[5]
+                    ProbeVirtualSensors.VirtualAmbientSensor.T7 -> temperatures.values[6]
+                    ProbeVirtualSensors.VirtualAmbientSensor.T8 -> temperatures.values[7]
+                }
+            )
+        }
+
+        if(predictionStatusMonitor.isIdle(PROBE_PREDICTION_IDLE_TIMEOUT_MS)) {
+            predictionStatus = null
+            predictionCountdownSeconds = null
+        }
+
+        _probe = _probe.copy(
+            predictionState = predictionStatus?.predictionState,
+            predictionMode = predictionStatus?.predictionMode,
+            predictionType = predictionStatus?.predictionType,
+            setPointTemperatureCelsius = predictionStatus?.setPointTemperature,
+            heatStartTemperatureCelsius = predictionStatus?.heatStartTemperature,
+            rawPredictionSeconds = predictionStatus?.predictionValueSeconds,
+            predictionSeconds = predictionCountdownSeconds,
+            estimatedCoreCelsius = predictionStatus?.estimatedCoreTemperature
+        )
+
+        return _probe
+    }
+
+    /*
     private fun toProbe(): Probe {
         val temps = probeStatus?.temperatures ?: advertisingData.probeTemperatures
         val minSeq = probeStatus?.minSequenceNumber ?: 0u
@@ -503,7 +610,7 @@ internal open class ProbeManager (
             instantReadMonitor.activity()
             instantRead = temps.values[0]
         } else {
-            temperatures = temps
+            //temperatures = temps
             predictionStatus = probeStatus?.predictionStatus
 
             coreTemperature = when(virtualSensors.virtualCoreSensor) {
@@ -560,7 +667,6 @@ internal open class ProbeManager (
             uploadState,
             id,
             color,
-            mode,
             batteryStatus,
             virtualSensors,
             predictionState,
@@ -569,7 +675,9 @@ internal open class ProbeManager (
             setPointTemperatureC,
             heatStartTemperatureC,
             predictionS,
+            predictionS,
             estimatedCoreC
         )
     }
+     */
 }
