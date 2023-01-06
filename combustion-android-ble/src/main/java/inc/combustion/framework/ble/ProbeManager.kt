@@ -523,11 +523,11 @@ internal open class ProbeManager (
             predictionStatus = probeStatus?.predictionStatus
 
             // handle large predictions and prediction resolution
-            if(predictionStatus != null) {
-                val rawPrediction = predictionStatus!!.predictionValueSeconds
+            predictionStatus?.let {
+                val rawPrediction = it.predictionValueSeconds
 
                 predictionCountdownSeconds = if(rawPrediction > MAX_PREDICTION_SECONDS) {
-                    MAX_PREDICTION_SECONDS
+                    null
                 }
                 else if(rawPrediction < LOW_RESOLUTION_CUTOFF_SECONDS) {
                     rawPrediction
@@ -550,7 +550,7 @@ internal open class ProbeManager (
 
             _probe = _probe.copy(
                 instantReadCelsius = instantReadCelsius,
-                temperatures = temperatures,
+                temperaturesCelsius = temperatures,
                 virtualSensors = virtualSensors,
                 coreTemperatureCelsius = when(virtualSensors.virtualCoreSensor) {
                     ProbeVirtualSensors.VirtualCoreSensor.T1 -> temperatures.values[0]
