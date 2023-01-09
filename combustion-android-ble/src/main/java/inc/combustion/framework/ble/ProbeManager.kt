@@ -31,7 +31,6 @@ import android.bluetooth.BluetoothAdapter
 import android.os.ParcelUuid
 import android.util.Log
 import androidx.lifecycle.*
-import com.juul.kable.State
 import com.juul.kable.characteristicOf
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.uart.*
@@ -41,7 +40,6 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.*
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -65,7 +63,7 @@ internal open class ProbeManager (
         private const val PROBE_IDLE_TIMEOUT_MS = 15000L
         private const val PROBE_REMOTE_RSSI_POLL_RATE_MS = 1000L
         private const val MESSAGE_HANDLER_POLL_RATE_MS = 1000L
-        private const val DEV_INFO_SERVICE_UUID_STRING = "0000180A-0000-1000-8000-00805F9B34FB"
+        //private const val DEV_INFO_SERVICE_UUID_STRING = "0000180A-0000-1000-8000-00805F9B34FB"
         private const val NEEDLE_SERVICE_UUID_STRING = "00000100-CAAB-3792-3D44-97AE51C1407A"
         private const val UART_SERVICE_UUID_STRING   = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
         private const val PROBE_INSTANT_READ_IDLE_TIMEOUT_MS = 5000L
@@ -75,6 +73,7 @@ internal open class ProbeManager (
         private val LOW_RESOLUTION_PRECISION_SECONDS = 15u
         private val PREDICTION_TIME_UPDATE_COUNT = 3u
 
+        /*
         val FW_VERSION_CHARACTERISTIC = characteristicOf(
             service = DEV_INFO_SERVICE_UUID_STRING,
             characteristic = "00002A26-0000-1000-8000-00805F9B34FB"
@@ -83,6 +82,7 @@ internal open class ProbeManager (
             service = DEV_INFO_SERVICE_UUID_STRING,
             characteristic = "00002A27-0000-1000-8000-00805F9B34FB"
         )
+         */
 
         val NEEDLE_SERVICE_UUID: ParcelUuid = ParcelUuid.fromString(
             NEEDLE_SERVICE_UUID_STRING
@@ -104,14 +104,14 @@ internal open class ProbeManager (
     private var probeStatus: ProbeStatus? = null
     private var predictionStatus: PredictionStatus? = null
     private var predictionCountdownSeconds: UInt? = null
-    private var connectionState = DeviceConnectionState.OUT_OF_RANGE
+    // private var connectionState = DeviceConnectionState.OUT_OF_RANGE
     private var uploadState: ProbeUploadState = ProbeUploadState.Unavailable
 
-    internal val isConnected = AtomicBoolean(false)
+    // internal val isConnected = AtomicBoolean(false)
     internal val remoteRssi = AtomicInteger(0)
 
-    internal var fwVersion: String? = null
-    internal var hwRevision: String? = null
+    // internal var fwVersion: String? = null
+    // internal var hwRevision: String? = null
     private var sessionInfo: SessionInformation? = null
 
     // Class to store when BLE message was sent and the completion handler for message
@@ -141,11 +141,13 @@ internal open class ProbeManager (
 
     init {
         // connection state flow monitor
+        /*
         addJob(owner.lifecycleScope.launch {
             owner.repeatOnLifecycle(Lifecycle.State.CREATED) {
                 connectionStateMonitor()
             }
         })
+        */
         // device status characteristic notification flow monitor
         addJob(owner.lifecycleScope.launch {
             owner.repeatOnLifecycle(Lifecycle.State.CREATED) {
@@ -164,7 +166,7 @@ internal open class ProbeManager (
                 uartTxMonitor()
             }
         })
-        // RSII polling job
+        // RSSI polling job
         addJob(owner.lifecycleScope.launch(Dispatchers.IO) {
             var exceptionCount = 0;
             while(isActive) {
@@ -326,6 +328,7 @@ internal open class ProbeManager (
         }
     }
 
+    /*
     private suspend fun connectionStateMonitor() {
         peripheral.state.onCompletion {
             Log.d(LOG_TAG, "Connection Stater Monitor Complete")
@@ -344,20 +347,22 @@ internal open class ProbeManager (
             }
 
             isConnected.set(connectionState == DeviceConnectionState.CONNECTED)
+     */
 
-            if(isConnected.get()) {
-                getProbeConfiguration()
-            }
-            else {
-                probeStatus = null
-                sessionInfo = null
-            }
-
-            if(DebugSettings.DEBUG_LOG_CONNECTION_STATE) {
-                Log.d(LOG_TAG, "${probe.serialNumber} is ${probe.connectionState}")
-            }
-            _probeStateFlow.emit(probe)
+    override suspend fun onConnectionStateChanged(newConnectionState: DeviceConnectionState) {
+        if(isConnected.get()) {
+            getProbeConfiguration()
         }
+        else {
+            probeStatus = null
+            sessionInfo = null
+            predictionStatus = null
+        }
+
+        if(DebugSettings.DEBUG_LOG_CONNECTION_STATE) {
+            Log.d(LOG_TAG, "${probe.serialNumber} is ${probe.connectionState}")
+        }
+        _probeStateFlow.emit(probe)
     }
 
     private fun getProbeConfiguration() {
@@ -380,6 +385,7 @@ internal open class ProbeManager (
         }
     }
 
+    /*
     private suspend fun readFirmwareVersion() {
         withContext(Dispatchers.IO) {
             try {
@@ -405,10 +411,14 @@ internal open class ProbeManager (
             }
         }
     }
+    */
 
     private fun requestSessionInformation() {
         sendUartRequest(owner, SessionInfoRequest())
     }
+
+    private val instantReadMonitor = IdleMonitor()
+    private val predictionStatusMonitor = IdleMonitor()
 
     private suspend fun deviceStatusCharacteristicMonitor() {
         peripheral.observe(DEVICE_STATUS_CHARACTERISTIC)

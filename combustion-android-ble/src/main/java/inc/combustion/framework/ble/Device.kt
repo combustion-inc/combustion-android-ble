@@ -30,14 +30,17 @@ package inc.combustion.framework.ble
 import android.bluetooth.BluetoothAdapter
 import android.os.SystemClock
 import android.util.Log
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
-import com.juul.kable.Peripheral
-import com.juul.kable.peripheral
+import androidx.lifecycle.repeatOnLifecycle
+import com.juul.kable.*
 import inc.combustion.framework.LOG_TAG
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
+import inc.combustion.framework.service.DeviceConnectionState
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.onCompletion
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Base class for Combustion Devices.
@@ -48,17 +51,58 @@ import kotlinx.coroutines.withTimeoutOrNull
  *
  * @param adapter Android BluetoothAdapter.
  */
-internal open class Device (
+internal abstract class Device (
     private val mac: String,
     private val owner: LifecycleOwner,
     adapter: BluetoothAdapter
-){
+) {
+    /**
+     * Called whenever the peripheral's state flow has changed
+     * (see https://github.com/JuulLabs/kable#state).
+     *
+     * @c connectionState and @p isConnected are guaranteed to be valid when this is called, and
+     * @c connectionState will have the same value as @p newConnectionState.
+     *
+     * @param newConnectionState The connection state just entered by the peripheral.
+     */
+    protected abstract suspend fun onConnectionStateChanged(newConnectionState: DeviceConnectionState)
+
     companion object {
         const val DISCONNECT_TIMEOUT_MS = 500L
+
+        private const val DEV_INFO_SERVICE_UUID_STRING = "0000180A-0000-1000-8000-00805F9B34FB"
+        private val SERIAL_NUMBER_CHARACTERISTIC = characteristicOf(
+            service = DEV_INFO_SERVICE_UUID_STRING,
+            characteristic = "00002A25-0000-1000-8000-00805F9B34FB"
+        )
+        private val FW_VERSION_CHARACTERISTIC = characteristicOf(
+            service = DEV_INFO_SERVICE_UUID_STRING,
+            characteristic = "00002A26-0000-1000-8000-00805F9B34FB"
+        )
+        private val HW_REVISION_CHARACTERISTIC = characteristicOf(
+            service = DEV_INFO_SERVICE_UUID_STRING,
+            characteristic = "00002A27-0000-1000-8000-00805F9B34FB"
+        )
     }
 
+    init {
+        // connection state flow monitor
+        addJob(owner.lifecycleScope.launch {
+            owner.repeatOnLifecycle(Lifecycle.State.CREATED) {
+                connectionStateMonitor()
+            }
+        })
+    }
+
+    internal var serialNumber: String? = null
+    internal var fwVersion: String? = null
+    internal var hwRevision: String? = null
+
+    protected val isConnected = AtomicBoolean(false)
+    protected var connectionState = DeviceConnectionState.OUT_OF_RANGE
+
     class IdleMonitor() {
-        var lastUpdateTime : Long = 0
+        var lastUpdateTime: Long = 0
 
         fun activity() {
             lastUpdateTime = SystemClock.elapsedRealtime()
@@ -69,24 +113,48 @@ internal open class Device (
         }
     }
 
+    private suspend fun connectionStateMonitor() {
+        peripheral.state.onCompletion {
+            Log.d(LOG_TAG, "Connection State Monitor Complete")
+        }
+        .catch {
+            Log.i(LOG_TAG, "Connection State Monitor Catch: $it")
+        }
+        .collect { state ->
+            monitor.activity()
+
+            connectionState = when (state) {
+                is State.Connecting -> DeviceConnectionState.CONNECTING
+                State.Connected -> DeviceConnectionState.CONNECTED
+                State.Disconnecting -> DeviceConnectionState.DISCONNECTING
+                is State.Disconnected -> DeviceConnectionState.DISCONNECTED
+            }
+
+            isConnected.set(connectionState == DeviceConnectionState.CONNECTED)
+
+            // Tell derived devices that the connection's been updated.
+            onConnectionStateChanged(connectionState)
+        }
+    }
+
     private val jobList = mutableListOf<Job>()
 
     protected val monitor = IdleMonitor()
-    protected val instantReadMonitor = IdleMonitor()
-    protected val predictionStatusMonitor = IdleMonitor()
 
     protected var peripheral: Peripheral =
         owner.lifecycleScope.peripheral(adapter.getRemoteDevice(mac)) {
             logging {
                 // The following enables logging in Kable
+
                 // engine = SystemLogEngine
                 // level = Logging.Level.Events
                 // format = Logging.Format.Multiline
                 // data = Hex
+
             }
         }
 
-    open suspend fun checkIdle() { }
+    open suspend fun checkIdle() {}
 
     open fun connect() {
         owner.lifecycleScope.launch {
@@ -119,5 +187,39 @@ internal open class Device (
 
     private fun cancelJobs() {
         jobList.forEach { it.cancel() }
+    }
+
+    private suspend fun readCharacteristic(
+        characteristic: Characteristic,
+        description: String? = null): ByteArray?
+    {
+        var bytes: ByteArray? = null
+
+        withContext(Dispatchers.IO) {
+            try {
+                bytes = peripheral.read(SERIAL_NUMBER_CHARACTERISTIC)
+            } catch (e: Exception) {
+                Log.w(
+                    LOG_TAG,
+                    "Exception while reading ${description ?: characteristic}: \n${e.stackTrace}"
+                )
+            }
+        }
+        return bytes
+    }
+
+    protected suspend fun readSerialNumber() {
+        val bytes = readCharacteristic(SERIAL_NUMBER_CHARACTERISTIC, "remote serial number")
+        serialNumber = bytes?.toString(Charsets.UTF_8)
+    }
+
+    protected suspend fun readFirmwareVersion() {
+        val bytes = readCharacteristic(FW_VERSION_CHARACTERISTIC, "remote FW version")
+        fwVersion = bytes?.toString(Charsets.UTF_8)
+    }
+
+    protected suspend fun readHardwareRevision() {
+        val bytes = readCharacteristic(HW_REVISION_CHARACTERISTIC, "remote HW version")
+        hwRevision = bytes?.toString(Charsets.UTF_8)
     }
 }
