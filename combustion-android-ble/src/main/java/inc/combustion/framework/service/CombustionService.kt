@@ -33,7 +33,6 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.content.*
 import android.os.Binder
-import android.os.CountDownTimer
 import android.os.IBinder
 import android.util.Log
 import androidx.lifecycle.Lifecycle
@@ -56,9 +55,10 @@ import kotlin.random.asKotlinRandom
  */
 class CombustionService : LifecycleService() {
 
+    private var settings = DeviceManager.Settings()
     private var bluetoothIsOn = false
     private val binder = CombustionServiceBinder()
-    private val _probes = hashMapOf<String, ProbeManager>()
+    private val _probes = hashMapOf<String, LegacyProbeManager>()
 
     private val _bluetoothReceiver: BroadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent) {
@@ -138,7 +138,7 @@ class CombustionService : LifecycleService() {
                         _probes.getOrPut(key = it.serialNumber) {
                             // create new probe instance
                             var newProbe =
-                                ProbeManager(
+                                LegacyProbeManager(
                                     it.mac,
                                     this@CombustionService,
                                     it,
@@ -241,16 +241,6 @@ class CombustionService : LifecycleService() {
             return _probes.keys.toList()
         }
 
-    internal val bluetoothIsEnabled: Boolean
-        get() {
-            val bluetooth = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-            return if (bluetooth.adapter == null) {
-                false
-            } else {
-                bluetooth.adapter.isEnabled
-            }
-        }
-
     internal fun startScanningForProbes(): Boolean {
         if(bluetoothIsOn) {
             LegacyDeviceScanner.startProbeScanning(this)
@@ -305,8 +295,8 @@ class CombustionService : LifecycleService() {
     }
 
     internal fun addSimulatedProbe() {
-        // Create SimulatedProbeManager
-        val simulatedProbeManager = SimulatedProbeManager.create(this@CombustionService,
+        // Create SimulatedLegacyProbeManager
+        val simulatedProbeManager = SimulatedLegacyProbeManager.create(this@CombustionService,
             (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter)
 
         // Add to probe list

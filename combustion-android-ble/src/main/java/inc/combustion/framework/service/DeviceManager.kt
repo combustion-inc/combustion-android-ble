@@ -47,9 +47,17 @@ import java.util.concurrent.atomic.AtomicInteger
 /**
  * Singleton instance for managing communications with Combustion Inc. devices.
  */
-class DeviceManager {
+class DeviceManager(
+    val settings: Settings
+) {
     private val onBoundInitList = mutableListOf<() -> Unit>()
     private lateinit var service: CombustionService
+
+    data class Settings(
+        val autoReconnect: Boolean = false,
+        val autoLogTransfer: Boolean = false,
+        val meatNetEnabled: Boolean = false
+    )
 
     companion object {
         private lateinit var INSTANCE: DeviceManager
@@ -89,13 +97,13 @@ class DeviceManager {
         /**
          * Initializes the singleton
          * @param application Application context.
-         * @param onBound Lambda to be called when the service is connected to an Activity.
+         * @param onBound Optional lambda to be called when the service is connected to an Activity.
          */
-        fun initialize(application: Application, onBound: (deviceManager: DeviceManager) -> Unit) {
+        fun initialize(application: Application, settings: Settings = Settings(), onBound: (deviceManager: DeviceManager) -> Unit = {_ -> }) {
             if(!initialized.getAndSet(true)) {
                 app = application
                 onServiceBound = onBound
-                INSTANCE = DeviceManager()
+                INSTANCE = DeviceManager(settings)
             }
         }
 
@@ -217,7 +225,7 @@ class DeviceManager {
      * @see DeviceDiscoveredEvent
      * @see DeviceDiscoveredEvent.ScanningOn
      */
-    fun startScanningForProbes() = service.startScanningForProbes()
+    fun startScanningForProbes() = service.startScanningForProbes(settings)
 
     /**
      * Stops scanning for temperature probes.  Will generate a DeviceDiscoveredEvent

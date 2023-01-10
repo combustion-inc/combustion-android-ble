@@ -28,7 +28,6 @@
 package inc.combustion.framework.ble
 
 import android.bluetooth.BluetoothAdapter
-import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -126,7 +125,7 @@ internal open class BleDevice (
         jobManager.addJob(owner.lifecycleScope.launch(Dispatchers.IO) {
             var exceptionCount = 0;
             while(isActive) {
-                if(isConnected.get() && mac != SimulatedProbeManager.SIMULATED_MAC) {
+                if(isConnected.get() && mac != SimulatedLegacyProbeManager.SIMULATED_MAC) {
                     try {
                         remoteRssi.set(peripheral.rssi())
                         exceptionCount = 0;

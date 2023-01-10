@@ -76,18 +76,18 @@ internal class LegacyDeviceScanner private constructor() {
                     // in the CREATED state or above, and cancels the block when the LifecycleOwner
                     // is destroyed
                    owner.repeatOnLifecycle(Lifecycle.State.CREATED) {
-                       Log.d(LOG_TAG, "ProbeManager Scanning Started ...")
+                       Log.d(LOG_TAG, "LegacyProbeManager Scanning Started ...")
                        // filter and collect on incoming BLE advertisements
                        probeAllMatchesScanner
                            .advertisements
                            .catch { cause ->
                                stopProbeScanning()
                                isProbeScanning.set(false)
-                               Log.e(LOG_TAG, "ProbeManager Scan Error: ${cause.localizedMessage}")
+                               Log.e(LOG_TAG, "LegacyProbeManager Scan Error: ${cause.localizedMessage}")
                                Log.e(LOG_TAG, Log.getStackTraceString(cause))
                            }
                            .onCompletion {
-                               Log.d(LOG_TAG, "ProbeManager scanning stopped ...")
+                               Log.d(LOG_TAG, "LegacyProbeManager scanning stopped ...")
                                isProbeScanning.set(false)
                            }
                            .collect { advertisement ->

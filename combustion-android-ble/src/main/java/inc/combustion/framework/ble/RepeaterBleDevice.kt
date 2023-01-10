@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Example
- * File: ProbeManager.kt
+ * File: RepeaterBleDevice.kt
  * Author: https://github.com/miwright2
  *
  * MIT License
@@ -26,18 +26,7 @@
  * SOFTWARE.
  */
 
-/**
- * Design Ideas
- * - IProbeCommandApi
- *      - e.g. SetPrediction, SetColor, etc.
- *          - LegacyProbeBleDevice : IProbeCommandApi
- *          - RepeatedProbeBleDevice : IProbeCommandApi
- *          - SimulatedProbeBleDevice : IProbeCommandApi
- *          ^^ Want these 3 c
- *
- */
-
 package inc.combustion.framework.ble
 
-class ProbeManager {
+class RepeaterBleDevice {
 }

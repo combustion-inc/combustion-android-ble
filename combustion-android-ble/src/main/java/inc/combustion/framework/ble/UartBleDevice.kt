@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: ProbeBleDevice.kt
+ * File: LegacyProbeBleDevice.kt
  * Author: https://github.com/miwright2
  *
  * MIT License
