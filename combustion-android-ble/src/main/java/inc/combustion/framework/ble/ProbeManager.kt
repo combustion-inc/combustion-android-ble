@@ -55,9 +55,9 @@ import java.util.concurrent.atomic.AtomicInteger
 internal open class ProbeManager (
     private val mac: String,
     private val owner: LifecycleOwner,
-    private var advertisingData: ProbeAdvertisingData,
+    private var advertisingData: LegacyProbeAdvertisingData,
     adapter: BluetoothAdapter
-): Device(mac, owner, adapter) {
+): BleDevice(mac, owner, adapter) {
 
     companion object {
         private const val PROBE_IDLE_TIMEOUT_MS = 15000L
@@ -136,7 +136,7 @@ internal open class ProbeManager (
         MutableSharedFlow<LogResponse>(0, 50, BufferOverflow.SUSPEND)
     val logResponseFlow = _logResponseFlow.asSharedFlow()
 
-    private var _probe: Probe = Probe(mac = mac)
+    private var _probe: Probe = Probe(baseDevice = Device(mac = mac))
     val probe: Probe get() = update()
 
     init {
@@ -279,7 +279,7 @@ internal open class ProbeManager (
         }
     }
 
-    suspend fun onNewAdvertisement(newAdvertisingData: ProbeAdvertisingData) {
+    suspend fun onNewAdvertisement(newAdvertisingData: LegacyProbeAdvertisingData) {
         // the probe continues to advertise even while a BLE connection is
         // established.  determine if the device is currently advertising as
         // connectable or not.
@@ -501,16 +501,18 @@ internal open class ProbeManager (
 
     private fun update(): Probe {
         _probe = _probe.copy(
-                serialNumber = advertisingData.serialNumber,
-                mac = advertisingData.mac,
+                baseDevice = Device(
+                    serialNumber = advertisingData.serialNumber,
+                    mac = advertisingData.mac,
+                    rssi = if(isConnected.get()) remoteRssi.get() else advertisingData.rssi,
+                    connectionState = connectionState,
+                ),
                 sessionInfo = sessionInfo,
                 minSequenceNumber = probeStatus?.minSequenceNumber ?: _probe.minSequenceNumber,
                 maxSequenceNumber = probeStatus?.maxSequenceNumber ?: _probe.maxSequenceNumber,
-                rssi = if(isConnected.get()) remoteRssi.get() else advertisingData.rssi,
                 id = probeStatus?.id ?: advertisingData.id,
                 color = probeStatus?.color ?: advertisingData.color,
                 batteryStatus = probeStatus?.batteryStatus ?: advertisingData.batteryStatus,
-                connectionState = connectionState,
                 uploadState = uploadState
         )
 

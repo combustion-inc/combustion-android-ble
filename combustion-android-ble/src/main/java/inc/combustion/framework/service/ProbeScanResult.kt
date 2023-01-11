@@ -28,7 +28,7 @@
 package inc.combustion.framework.service
 
 import com.juul.kable.Advertisement
-import inc.combustion.framework.ble.ProbeAdvertisingData
+import inc.combustion.framework.ble.LegacyProbeAdvertisingData
 
 /**
  * Data class for returning BLE scan results.
@@ -46,10 +46,10 @@ data class ProbeScanResult(
 ){
     companion object {
         fun fromAdvertisement(advertisement: Advertisement) : ProbeScanResult? {
-            val data = ProbeAdvertisingData.fromAdvertisement(advertisement)
+            val data = LegacyProbeAdvertisingData.fromAdvertisement(advertisement)
 
             data?.let {
-                if(it.type != ProbeAdvertisingData.CombustionProductType.PROBE)
+                if(it.type != LegacyProbeAdvertisingData.CombustionProductType.PROBE)
                     return null
 
                 val serialNumber = it.serialNumber

@@ -48,7 +48,7 @@ import kotlin.random.Random
 internal class SimulatedProbeManager (
     mac: String,
     private val owner: LifecycleOwner,
-    private val advertisingData: ProbeAdvertisingData,
+    private val advertisingData: LegacyProbeAdvertisingData,
     adapter: BluetoothAdapter
 ): ProbeManager(mac, owner, advertisingData, adapter) {
 
@@ -67,12 +67,12 @@ internal class SimulatedProbeManager (
                 Random.nextBytes(1).first(),
                 Random.nextBytes(1).first())
 
-            val data = ProbeAdvertisingData(
+            val data = LegacyProbeAdvertisingData(
                 "CP",
                 fakeMacAddress,
                 randomRSSI(),
                 fakeSerialNumber,
-                ProbeAdvertisingData.CombustionProductType.PROBE,
+                LegacyProbeAdvertisingData.CombustionProductType.PROBE,
                 true,
                 ProbeTemperatures.withRandomData(),
                 ProbeID.ID1,
@@ -121,11 +121,11 @@ internal class SimulatedProbeManager (
     }
 
     private suspend fun simulateAdvertising() {
-        val data = ProbeAdvertisingData("CP",
+        val data = LegacyProbeAdvertisingData("CP",
             advertisingData.mac,
             randomRSSI(),
             advertisingData.serialNumber,
-            ProbeAdvertisingData.CombustionProductType.PROBE,
+            LegacyProbeAdvertisingData.CombustionProductType.PROBE,
             true,
             ProbeTemperatures.withRandomData(),
             ProbeID.ID1,

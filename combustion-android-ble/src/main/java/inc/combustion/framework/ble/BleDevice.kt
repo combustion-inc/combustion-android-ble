@@ -51,7 +51,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * @param adapter Android BluetoothAdapter.
  */
-internal abstract class Device (
+internal abstract class BleDevice (
     private val mac: String,
     private val owner: LifecycleOwner,
     adapter: BluetoothAdapter

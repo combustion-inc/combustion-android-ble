@@ -87,7 +87,7 @@ class CombustionService : LifecycleService() {
                         emitBluetoothOffEvent()
                     }
                     BluetoothAdapter.STATE_TURNING_OFF -> {
-                        DeviceScanner.stopProbeScanning()
+                        LegacyDeviceScanner.stopProbeScanning()
                     }
                     BluetoothAdapter.STATE_ON -> {
                         bluetoothIsOn = true
@@ -144,8 +144,8 @@ class CombustionService : LifecycleService() {
             // in the CREATED state or above, and cancels the block when the
             // service is destroyed
             repeatOnLifecycle(Lifecycle.State.CREATED) {
-                DeviceScanner.probeAdvertisements.collect {
-                    if(it.type == ProbeAdvertisingData.CombustionProductType.PROBE) {
+                LegacyDeviceScanner.probeAdvertisements.collect {
+                    if(it.type == LegacyProbeAdvertisingData.CombustionProductType.PROBE) {
                         _probes.getOrPut(key = it.serialNumber) {
                             // create new probe instance
                             var newProbe =
@@ -254,7 +254,7 @@ class CombustionService : LifecycleService() {
     internal val discoveredProbesFlow = _discoveredProbesFlow.asSharedFlow()
 
     internal val isScanningForProbes
-        get() = DeviceScanner.isScanningForProbes
+        get() = LegacyDeviceScanner.isScanningForProbes
 
     internal val discoveredProbes: List<String>
         get() {
@@ -263,7 +263,7 @@ class CombustionService : LifecycleService() {
 
     internal fun startScanningForProbes(): Boolean {
         if(bluetoothIsOn) {
-            DeviceScanner.startProbeScanning(this)
+            LegacyDeviceScanner.startProbeScanning(this)
         }
         if(isScanningForProbes) {
             emitScanningOnEvent()
@@ -273,7 +273,7 @@ class CombustionService : LifecycleService() {
 
     internal fun stopScanningForProbes(): Boolean {
         if(bluetoothIsOn) {
-            DeviceScanner.stopProbeScanning()
+            LegacyDeviceScanner.stopProbeScanning()
             emitScanningOnEvent()
         }
         if(!isScanningForProbes) {

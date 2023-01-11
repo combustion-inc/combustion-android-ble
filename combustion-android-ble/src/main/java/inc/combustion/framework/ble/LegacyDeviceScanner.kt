@@ -41,12 +41,12 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Singleton class responsible for BLE scanning of devices and initial processing
  * of advertising packets.
  */
-internal class DeviceScanner private constructor() {
+internal class LegacyDeviceScanner private constructor() {
 
     companion object {
         private var probeAllMatchesScanJob: Job? = null
         private val isProbeScanning = AtomicBoolean(false)
-        private val _probeAdvertisements = MutableSharedFlow<ProbeAdvertisingData>()
+        private val _probeAdvertisements = MutableSharedFlow<LegacyProbeAdvertisingData>()
 
         val probeAdvertisements = _probeAdvertisements.asSharedFlow()
 
@@ -84,7 +84,7 @@ internal class DeviceScanner private constructor() {
                                isProbeScanning.set(false)
                            }
                            .collect { advertisement ->
-                               ProbeAdvertisingData.fromAdvertisement(advertisement)?.let {
+                               LegacyProbeAdvertisingData.fromAdvertisement(advertisement)?.let {
                                    _probeAdvertisements.emit(it)
                                }
                            }
