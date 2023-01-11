@@ -258,7 +258,7 @@ internal class LogManager {
         }
 
         // send the request to the device to start the upload
-        probe.sendLogRequest(owner, range.minSeq, range.maxSeq)
+        probe.sendLogRequest(range.minSeq, range.maxSeq)
 
         // processing the resulting LogRequest flow happens in the coroutine above.
     }
@@ -360,7 +360,7 @@ internal class LogManager {
         }
 
         // send the request to the device to start the upload
-        probeManager.sendLogRequest(owner, range.minSeq, range.maxSeq)
+        probeManager.sendLogRequest(range.minSeq, range.maxSeq)
 
         // processing the resulting LogRequest flow happens in the coroutine above.
     }

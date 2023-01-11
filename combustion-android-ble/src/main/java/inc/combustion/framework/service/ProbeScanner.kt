@@ -28,6 +28,7 @@
 package inc.combustion.framework.service
 
 import android.bluetooth.le.ScanSettings
+import android.os.ParcelUuid
 import android.util.Log
 import androidx.lifecycle.*
 import com.juul.kable.Filter
@@ -47,6 +48,10 @@ import java.util.concurrent.atomic.AtomicBoolean
 class ProbeScanner private constructor() {
 
     companion object {
+        val NEEDLE_SERVICE_UUID: ParcelUuid = ParcelUuid.fromString(
+            "00000100-CAAB-3792-3D44-97AE51C1407A"
+        )
+
         private var job: Job? = null
         private val scanning = AtomicBoolean(false)
         private val _results = MutableSharedFlow<ProbeScanResult>()
@@ -54,7 +59,7 @@ class ProbeScanner private constructor() {
         val scanResults = _results.asSharedFlow()
 
         private val probeAllMatchesScanner = Scanner {
-            filters = listOf(Filter.Service(ProbeManager.NEEDLE_SERVICE_UUID.uuid))
+            filters = listOf(Filter.Service(NEEDLE_SERVICE_UUID.uuid))
             scanSettings = ScanSettings.Builder()
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
                 .setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)

@@ -117,5 +117,14 @@ data class Probe(
 
             return null
         }
+
+    companion object {
+        fun create(serialNumber: String = "", mac: String = "") : Probe {
+            return Probe(baseDevice = Device(
+                serialNumber = serialNumber,
+                mac = mac
+            ))
+        }
+    }
 }
 
