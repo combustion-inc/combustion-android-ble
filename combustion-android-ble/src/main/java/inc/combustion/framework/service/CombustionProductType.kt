@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: ProbeAdvertisingData.kt
+ * File: CombustionProductType.kt
  * Author:
  *
  * MIT License
@@ -26,26 +26,22 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble
+package inc.combustion.framework.service
 
-import inc.combustion.framework.service.CombustionProductType
+enum class CombustionProductType(val type: UByte) {
+    UNKNOWN(0x00u),
+    PROBE(0x01u),
+    DISPLAY(0x02u),
+    CHARGER(0x03u);
 
-/**
- * Advertising data specific to a Combustion probe.
- *
- * @note This data may be sourced from either a probe directly or rebroadcast from a MeatNet node.
- *
- * @param isDirectConnection If true, this advertising data was obtained directly from a probe; if
- *                           false, the data was rebroadcast over MeatNet.
- */
-internal class ProbeAdvertisingData(
-    mac: String,
-    name: String,
-    rssi: Int,
-    productType: CombustionProductType,
-    isConnectable: Boolean,
-
-    val isDirectConnection: Boolean,
-    // TODO: Additional probe advertising data (temperatures, etc.)
-): AdvertisingData(mac, name, rssi, productType, isConnectable) {
+    companion object {
+        fun fromUByte(byte: UByte) : CombustionProductType {
+            return when(byte.toUInt()) {
+                0x01u -> PROBE
+                0x02u -> DISPLAY
+                0x03u -> CHARGER
+                else -> UNKNOWN
+            }
+        }
+    }
 }

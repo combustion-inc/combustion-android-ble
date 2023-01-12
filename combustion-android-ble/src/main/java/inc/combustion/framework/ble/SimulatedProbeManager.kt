@@ -47,8 +47,8 @@ import kotlin.random.Random
  */
 internal class SimulatedProbeManager (
     mac: String,
-    private val owner: LifecycleOwner,
-    private val advertisingData: ProbeAdvertisingData,
+    owner: LifecycleOwner,
+    advertisingData: LegacyProbeAdvertisingData,
     adapter: BluetoothAdapter
 ): ProbeManager(mac, owner, advertisingData, adapter) {
 
@@ -67,12 +67,12 @@ internal class SimulatedProbeManager (
                 Random.nextBytes(1).first(),
                 Random.nextBytes(1).first())
 
-            val data = ProbeAdvertisingData(
+            val data = LegacyProbeAdvertisingData(
                 "CP",
                 fakeMacAddress,
                 randomRSSI(),
                 fakeSerialNumber,
-                ProbeAdvertisingData.CombustionProductType.PROBE,
+                LegacyProbeAdvertisingData.CombustionProductType.PROBE,
                 true,
                 ProbeTemperatures.withRandomData(),
                 ProbeID.ID1,
@@ -107,25 +107,25 @@ internal class SimulatedProbeManager (
     }
 
     override fun connect() {
-        isConnected.set(true)
-        fwVersion = "v1.2.3"
-        hwRevision = "v2.3.4"
+        probeBleDevice.isConnected.set(true)
+        probeBleDevice.firmwareVersion = "v1.2.3"
+        probeBleDevice.hardwareRevision = "v2.3.4"
     }
 
     override fun disconnect() {
-        isConnected.set(false)
+        probeBleDevice.isConnected.set(false)
     }
 
-    override fun sendLogRequest(owner: LifecycleOwner, minSequence: UInt, maxSequence: UInt) {
+    override fun sendLogRequest(minSequence: UInt, maxSequence: UInt) {
         // Do nothing
     }
 
     private suspend fun simulateAdvertising() {
-        val data = ProbeAdvertisingData("CP",
-            advertisingData.mac,
+        val data = LegacyProbeAdvertisingData("SIM",
+            probeBleDevice.advertisingData.mac,
             randomRSSI(),
-            advertisingData.serialNumber,
-            ProbeAdvertisingData.CombustionProductType.PROBE,
+            probeBleDevice.advertisingData.serialNumber,
+            LegacyProbeAdvertisingData.CombustionProductType.PROBE,
             true,
             ProbeTemperatures.withRandomData(),
             ProbeID.ID1,
@@ -139,13 +139,12 @@ internal class SimulatedProbeManager (
     }
 
     private suspend fun simulateStatusNotifications() {
-        if(!isConnected.get()) return
+        if(!probeBleDevice.isConnected.get()) return
 
-        remoteRssi.set(randomRSSI())
+        probeBleDevice.remoteRssi.set(randomRSSI())
 
         maxSequence += 1u
-
-        _probeStatusFlow.emit(
+        simulatedProbeStatus(
             ProbeStatus(
                 0u,
                 maxSequence,

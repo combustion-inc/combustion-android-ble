@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: ProbeAdvertisingData.kt
+ * File: Device.kt
  * Author:
  *
  * MIT License
@@ -26,26 +26,29 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble
-
-import inc.combustion.framework.service.CombustionProductType
+package inc.combustion.framework.service
 
 /**
- * Advertising data specific to a Combustion probe.
+ * Representation of a Combustion device.
  *
- * @note This data may be sourced from either a probe directly or rebroadcast from a MeatNet node.
- *
- * @param isDirectConnection If true, this advertising data was obtained directly from a probe; if
- *                           false, the data was rebroadcast over MeatNet.
+ * @param serialNumber The device serial number.
+ * @param mac The device's MAC address.
+ * @param fwVersion The device's firmware version.
+ * @param hwRevision The device's hardware revision.
+ * @param rssi The BLE RSSI value.
+ * @param isDirectConnection Whether this device representation is obtained through a direct
+ *                           connection to the device or if it's rebroadcast through a MeatNet node.
+ * @param productType The device product type.
+ * @param connectionState The device's current BLE connection state.
  */
-internal class ProbeAdvertisingData(
-    mac: String,
-    name: String,
-    rssi: Int,
-    productType: CombustionProductType,
-    isConnectable: Boolean,
-
-    val isDirectConnection: Boolean,
-    // TODO: Additional probe advertising data (temperatures, etc.)
-): AdvertisingData(mac, name, rssi, productType, isConnectable) {
+data class Device(
+    val serialNumber: String = "",
+    val mac: String = "",
+    val fwVersion: String? = null,
+    val hwRevision: String? = null,
+    val rssi: Int = 0,
+    val isDirectConnection: Boolean? = null,
+    val productType: CombustionProductType? = null,
+    val connectionState: DeviceConnectionState = DeviceConnectionState.DISCONNECTED,
+) {
 }

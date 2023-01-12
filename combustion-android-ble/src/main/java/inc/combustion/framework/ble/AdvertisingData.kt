@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: ProbeAdvertisingData.kt
+ * File: AdvertisingData.kt
  * Author:
  *
  * MIT License
@@ -28,24 +28,33 @@
 
 package inc.combustion.framework.ble
 
+import com.juul.kable.Advertisement
 import inc.combustion.framework.service.CombustionProductType
 
 /**
- * Advertising data specific to a Combustion probe.
+ * Representation of Combustion device-specific advertising data.
  *
- * @note This data may be sourced from either a probe directly or rebroadcast from a MeatNet node.
- *
- * @param isDirectConnection If true, this advertising data was obtained directly from a probe; if
- *                           false, the data was rebroadcast over MeatNet.
+ * @param mac MAC address of the device.
+ * @param name Bluetooth name of the device.
+ * @param rssi RSSI of the device.
+ * @param productType Combustion product type.
+ * @param isConnectable Whether the device can be connected to.
  */
-internal class ProbeAdvertisingData(
-    mac: String,
-    name: String,
-    rssi: Int,
-    productType: CombustionProductType,
-    isConnectable: Boolean,
-
-    val isDirectConnection: Boolean,
-    // TODO: Additional probe advertising data (temperatures, etc.)
-): AdvertisingData(mac, name, rssi, productType, isConnectable) {
+internal open class AdvertisingData(
+    val mac: String,
+    val name: String,
+    val rssi: Int,
+    val productType: CombustionProductType,
+    val isConnectable: Boolean,
+) {
+    companion object {
+        fun fromAdvertisement(advertisement: Advertisement): AdvertisingData? {
+            return AdvertisingData(
+                advertisement.address,
+                advertisement.name ?: "",
+                advertisement.rssi,
+                CombustionProductType.DISPLAY,
+                false)
+        }
+    }
 }

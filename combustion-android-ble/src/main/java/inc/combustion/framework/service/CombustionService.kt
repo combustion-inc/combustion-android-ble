@@ -60,18 +60,6 @@ class CombustionService : LifecycleService() {
     private val binder = CombustionServiceBinder()
     private val _probes = hashMapOf<String, ProbeManager>()
 
-    private val periodicTimer = object : CountDownTimer(Long.MAX_VALUE, 1000) {
-        override fun onTick(millisUntilFinished: Long) {
-            lifecycleScope.launch {
-                _probes.forEach { (_, value) ->
-                    value.checkIdle()
-                }
-            }
-        }
-
-        override fun onFinish() {/* do nothing */ }
-    }
-
     private val _bluetoothReceiver: BroadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent) {
             val action = intent.action
@@ -87,7 +75,7 @@ class CombustionService : LifecycleService() {
                         emitBluetoothOffEvent()
                     }
                     BluetoothAdapter.STATE_TURNING_OFF -> {
-                        DeviceScanner.stopProbeScanning()
+                        LegacyDeviceScanner.stopProbeScanning()
                     }
                     BluetoothAdapter.STATE_ON -> {
                         bluetoothIsOn = true
@@ -144,8 +132,9 @@ class CombustionService : LifecycleService() {
             // in the CREATED state or above, and cancels the block when the
             // service is destroyed
             repeatOnLifecycle(Lifecycle.State.CREATED) {
-                DeviceScanner.probeAdvertisements.collect {
-                    if(it.type == ProbeAdvertisingData.CombustionProductType.PROBE) {
+                LegacyDeviceScanner.probeAdvertisements.collect {
+                    if(it.type == LegacyProbeAdvertisingData.CombustionProductType.PROBE) {
+
                         _probes.getOrPut(key = it.serialNumber) {
                             // create new probe instance
                             var newProbe =
@@ -188,9 +177,6 @@ class CombustionService : LifecycleService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
-
-        // start periodic timer for RSSI polling
-        periodicTimer.start()
 
         // setup receiver to see when platform Bluetooth state changes
         val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
@@ -239,7 +225,6 @@ class CombustionService : LifecycleService() {
         // always try to unregister, even if the previous register didn't complete.
         try { unregisterReceiver(_bluetoothReceiver) } catch (e: Exception) { }
 
-        periodicTimer.cancel()
         clearDevices()
 
         serviceIsStarted.set(false)
@@ -254,7 +239,7 @@ class CombustionService : LifecycleService() {
     internal val discoveredProbesFlow = _discoveredProbesFlow.asSharedFlow()
 
     internal val isScanningForProbes
-        get() = DeviceScanner.isScanningForProbes
+        get() = LegacyDeviceScanner.isScanningForProbes
 
     internal val discoveredProbes: List<String>
         get() {
@@ -263,7 +248,7 @@ class CombustionService : LifecycleService() {
 
     internal fun startScanningForProbes(): Boolean {
         if(bluetoothIsOn) {
-            DeviceScanner.startProbeScanning(this)
+            LegacyDeviceScanner.startProbeScanning(this)
         }
         if(isScanningForProbes) {
             emitScanningOnEvent()
@@ -273,7 +258,7 @@ class CombustionService : LifecycleService() {
 
     internal fun stopScanningForProbes(): Boolean {
         if(bluetoothIsOn) {
-            DeviceScanner.stopProbeScanning()
+            LegacyDeviceScanner.stopProbeScanning()
             emitScanningOnEvent()
         }
         if(!isScanningForProbes) {
@@ -334,25 +319,25 @@ class CombustionService : LifecycleService() {
     }
 
     internal fun setProbeColor(serialNumber: String, color: ProbeColor, completionHandler: (Boolean) -> Unit) {
-        _probes[serialNumber]?.sendSetProbeColor(this, color, completionHandler) ?: run {
+        _probes[serialNumber]?.sendSetProbeColor(color, completionHandler) ?: run {
             completionHandler(false)
         }
     }
 
     internal fun setProbeID(serialNumber: String, id: ProbeID, completionHandler: (Boolean) -> Unit) {
-        _probes[serialNumber]?.sendSetProbeID(this, id, completionHandler) ?: run {
+        _probes[serialNumber]?.sendSetProbeID(id, completionHandler) ?: run {
             completionHandler(false)
         }
     }
 
     internal fun setRemovalPrediction(serialNumber: String, removalTemperatureC: Double, completionHandler: (Boolean) -> Unit) {
-        _probes[serialNumber]?.sendSetPrediction(this, removalTemperatureC, ProbePredictionMode.TIME_TO_REMOVAL, completionHandler) ?: run {
+        _probes[serialNumber]?.sendSetPrediction(removalTemperatureC, ProbePredictionMode.TIME_TO_REMOVAL, completionHandler) ?: run {
             completionHandler(false)
         }
     }
 
     internal fun cancelPrediction(serialNumber: String, completionHandler: (Boolean) -> Unit) {
-        _probes[serialNumber]?.sendSetPrediction(this, DeviceManager.MINIMUM_PREDICTION_SETPOINT_CELSIUS, ProbePredictionMode.NONE, completionHandler) ?: run {
+        _probes[serialNumber]?.sendSetPrediction(DeviceManager.MINIMUM_PREDICTION_SETPOINT_CELSIUS, ProbePredictionMode.NONE, completionHandler) ?: run {
             completionHandler(false)
         }
     }

@@ -1,7 +1,7 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: ProbeAdvertisingData.kt
- * Author:
+ * File: DeviceInformationBleDevice.kt
+ * Author: https://github.com/miwright2
  *
  * MIT License
  *
@@ -25,27 +25,38 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-
 package inc.combustion.framework.ble
 
-import inc.combustion.framework.service.CombustionProductType
+import android.bluetooth.BluetoothAdapter
+import android.util.Log
+import androidx.lifecycle.LifecycleOwner
 
-/**
- * Advertising data specific to a Combustion probe.
- *
- * @note This data may be sourced from either a probe directly or rebroadcast from a MeatNet node.
- *
- * @param isDirectConnection If true, this advertising data was obtained directly from a probe; if
- *                           false, the data was rebroadcast over MeatNet.
- */
-internal class ProbeAdvertisingData(
+internal open class DeviceInformationBleDevice(
     mac: String,
-    name: String,
-    rssi: Int,
-    productType: CombustionProductType,
-    isConnectable: Boolean,
+    owner: LifecycleOwner,
+    advertisement: LegacyProbeAdvertisingData,
+    adapter: BluetoothAdapter
+) : BleDevice(mac, owner, advertisement, adapter) {
 
-    val isDirectConnection: Boolean,
-    // TODO: Additional probe advertising data (temperatures, etc.)
-): AdvertisingData(mac, name, rssi, productType, isConnectable) {
+    var serialNumber: String? = null
+    var firmwareVersion: String? = null
+    var hardwareRevision: String? = null
+
+    suspend fun readSerialNumber() {
+        if(isConnected.get()) {
+            serialNumber = readSerialNumberCharacteristic()
+        }
+    }
+
+    suspend fun readFirmwareVersion() {
+        if(isConnected.get()) {
+            firmwareVersion = readFirmwareVersionCharacteristic()
+        }
+    }
+
+    suspend fun readHardwareRevision() {
+        if(isConnected.get()) {
+            hardwareRevision = readHardwareRevisionCharacteristic()
+        }
+    }
 }

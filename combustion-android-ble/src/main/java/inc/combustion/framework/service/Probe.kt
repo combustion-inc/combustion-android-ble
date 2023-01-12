@@ -63,20 +63,15 @@ package inc.combustion.framework.service
  * @see ProbeMode
  */
 data class Probe(
-    val serialNumber: String = "",
-    val mac: String = "",
-    val fwVersion: String? = null,
-    val hwRevision: String? = null,
+    val baseDevice: Device,
     val sessionInfo: SessionInformation? = null,
     val temperaturesCelsius: ProbeTemperatures? = null,
     val instantReadCelsius: Double? = null,
     val coreTemperatureCelsius: Double? = null,
     val surfaceTemperatureCelsius: Double? = null,
     val ambientTemperatureCelsius: Double? = null,
-    val rssi: Int = 0,
     val minSequenceNumber: UInt = 0u,
     val maxSequenceNumber: UInt = 0u,
-    val connectionState: DeviceConnectionState = DeviceConnectionState.DISCONNECTED,
     val uploadState: ProbeUploadState = ProbeUploadState.Unavailable,
     val id: ProbeID = ProbeID.ID1,
     val color: ProbeColor = ProbeColor.COLOR1,
@@ -91,6 +86,13 @@ data class Probe(
     val rawPredictionSeconds: UInt? = null,
     val estimatedCoreCelsius: Double? = null,
 ) {
+    val serialNumber = baseDevice.serialNumber
+    val mac = baseDevice.mac
+    val fwVersion = baseDevice.fwVersion
+    val hwRevision = baseDevice.hwRevision
+    val rssi = baseDevice.rssi
+    val connectionState = baseDevice.connectionState
+
     val predictionStale: Boolean get() { return predictionMode == null }
     val temperaturesStale: Boolean get() { return temperaturesCelsius == null }
     val instantReadStale: Boolean get() { return instantReadCelsius == null }
@@ -115,5 +117,14 @@ data class Probe(
 
             return null
         }
+
+    companion object {
+        fun create(serialNumber: String = "", mac: String = "") : Probe {
+            return Probe(baseDevice = Device(
+                serialNumber = serialNumber,
+                mac = mac
+            ))
+        }
+    }
 }
 
