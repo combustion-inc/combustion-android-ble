@@ -28,6 +28,7 @@
 package inc.combustion.framework.ble
 
 import android.bluetooth.le.ScanSettings
+import android.os.ParcelUuid
 import android.util.Log
 import androidx.lifecycle.*
 import com.juul.kable.Filter
@@ -41,17 +42,23 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Singleton class responsible for BLE scanning of devices and initial processing
  * of advertising packets.
  */
-internal class DeviceScanner private constructor() {
+internal class LegacyDeviceScanner private constructor() {
 
     companion object {
+
+        // NOTE: This duplicates what is in ProbeScanner, but this class should get deleted soon.
+        val NEEDLE_SERVICE_UUID: ParcelUuid = ParcelUuid.fromString(
+            "00000100-CAAB-3792-3D44-97AE51C1407A"
+        )
+
         private var probeAllMatchesScanJob: Job? = null
         private val isProbeScanning = AtomicBoolean(false)
-        private val _probeAdvertisements = MutableSharedFlow<ProbeAdvertisingData>()
+        private val _probeAdvertisements = MutableSharedFlow<LegacyProbeAdvertisingData>()
 
         val probeAdvertisements = _probeAdvertisements.asSharedFlow()
 
         private val probeAllMatchesScanner = Scanner {
-            filters = listOf(Filter.Service(ProbeManager.NEEDLE_SERVICE_UUID.uuid))
+            filters = listOf(Filter.Service(NEEDLE_SERVICE_UUID.uuid))
             scanSettings = ScanSettings.Builder()
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
                 .setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
@@ -84,7 +91,7 @@ internal class DeviceScanner private constructor() {
                                isProbeScanning.set(false)
                            }
                            .collect { advertisement ->
-                               ProbeAdvertisingData.fromAdvertisement(advertisement)?.let {
+                               LegacyProbeAdvertisingData.fromAdvertisement(advertisement)?.let {
                                    _probeAdvertisements.emit(it)
                                }
                            }

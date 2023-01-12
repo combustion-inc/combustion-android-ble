@@ -1,11 +1,11 @@
 /*
- * Project: Combustion Inc. Android Framework
- * File: ProbeAdvertisingData.kt
- * Author:
+ * Project: Combustion Inc
+ * File: IdleMonitor.kt
+ * Author: https://github.com/miwright2
  *
  * MIT License
  *
- * Copyright (c) 2023. Combustion Inc.
+ * Copyright (c) 2022. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -28,24 +28,17 @@
 
 package inc.combustion.framework.ble
 
-import inc.combustion.framework.service.CombustionProductType
+import android.os.SystemClock
 
-/**
- * Advertising data specific to a Combustion probe.
- *
- * @note This data may be sourced from either a probe directly or rebroadcast from a MeatNet node.
- *
- * @param isDirectConnection If true, this advertising data was obtained directly from a probe; if
- *                           false, the data was rebroadcast over MeatNet.
- */
-internal class ProbeAdvertisingData(
-    mac: String,
-    name: String,
-    rssi: Int,
-    productType: CombustionProductType,
-    isConnectable: Boolean,
+class IdleMonitor {
+    var lastUpdateTime: Long = 0
 
-    val isDirectConnection: Boolean,
-    // TODO: Additional probe advertising data (temperatures, etc.)
-): AdvertisingData(mac, name, rssi, productType, isConnectable) {
+    fun activity() {
+        lastUpdateTime = SystemClock.elapsedRealtime()
+    }
+
+    fun isIdle(timeout: Long): Boolean {
+        return (SystemClock.elapsedRealtime() - lastUpdateTime) >= timeout
+    }
 }
+
