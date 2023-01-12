@@ -59,7 +59,6 @@ internal open class NodeResponse(
             val syncBytes = data.slice(0..1)
             val syncString = String(syncBytes.toUByteArray().toByteArray())
             if(syncString != "cafe") {
-                print("NodeResponse::fromData(): Missing sync bytes in response")
                 return null
             }
 
@@ -73,10 +72,7 @@ internal open class NodeResponse(
             }
 
             val messageType = NodeMessageType.fromUByte((typeRaw and RESPONSE_TYPE_FLAG.inv()))
-            if(messageType == null) {
-                print("NodeResponse::fromData(): Unknown message type in response")
-                return null
-            }
+                ?: return null
 
             // Request ID
             val requestId = data.getLittleEndianUInt32At(5)
@@ -101,18 +97,15 @@ internal open class NodeResponse(
             val calculatedCRC = crcData.getCRC16CCITT()
 
             if(crc != calculatedCRC) {
-                print("NodeResponse::fromData(): Invalid CRC")
                 return null
             }
 
-            val responseLength = payloadLength.toInt() + NodeResponse.HEADER_SIZE.toInt()
+            val responseLength = payloadLength.toInt() + HEADER_SIZE.toInt()
 
             // Invalid number of bytes
             if(data.size < responseLength) {
                 return null
             }
-
-            // print("Success: \(success), payloadLength: \(payloadLength)")
 
             when(messageType) {
 //                NodeMessageType.LOG -> {
@@ -160,7 +153,6 @@ internal open class NodeResponse(
 //                }
 
                 else -> {
-                    print("Unknown node response type: ${messageType}")
                     return null
                 }
             }
