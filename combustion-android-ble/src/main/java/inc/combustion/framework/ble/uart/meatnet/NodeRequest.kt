@@ -1,0 +1,215 @@
+/*
+ * Project: Combustion Inc. Android Framework
+ * File: ProbeStatus.kt
+ * Author: https://github.com/miwright2
+ *
+ * MIT License
+ *
+ * Copyright (c) 2022. Combustion Inc.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+package inc.combustion.framework.ble.uart.meatnet
+
+import inc.combustion.framework.ble.*
+import inc.combustion.framework.ble.getCRC16CCITT
+import inc.combustion.framework.ble.getLittleEndianUInt32At
+import inc.combustion.framework.ble.putLittleEndianUInt32At
+import inc.combustion.framework.ble.putLittleEndianUShortAt
+
+
+/**
+ * Baseclass for UART request messages
+ */
+internal open class NodeRequest() : NodeUARTMessage() {
+    companion object {
+        const val HEADER_SIZE: UByte = 10u
+
+        /**
+         * Factory method for parsing a request from data.
+         *
+         * @param data Raw data to parse
+         * @return Instant of request if found or null if one could not be parsed from the data
+         */
+        fun requestFromData(data : UByteArray) : NodeRequest? {
+            // Sync bytes
+            val syncBytes = data.slice(0..1)
+            val syncString = String(syncBytes.toUByteArray().toByteArray())
+            if(syncString != "cafe") {
+                return null
+            }
+
+            // Message type
+            val typeByte = data[4]
+
+            val messageType = NodeMessageType.fromUByte(typeByte) ?: return null
+
+            // Request ID
+            val requestId = data.getLittleEndianUInt32At(5)
+
+            // Payload Length
+            val payloadLength = data[9]
+
+            // CRC
+            val crc = data.getLittleEndianUShortAt(2)
+
+            val crcDataLength = 6 + payloadLength.toInt()
+
+            var crcData = data.drop(4).toUByteArray()
+            crcData = crcData.dropLast(crcData.size - crcDataLength).toUByteArray()
+
+            val calculatedCRC = crcData.getCRC16CCITT()
+
+            if(crc != calculatedCRC) {
+                return null
+            }
+
+            val requestLength = payloadLength.toInt() + HEADER_SIZE.toInt()
+
+            // Invalid number of bytes
+            if(data.size < requestLength) {
+                return null
+            }
+
+            when(messageType) {
+//                NodeMessageType.LOG -> {
+//                    return NodeLogResponse.fromRaw(
+//                        data,
+//                        success,
+//                        payloadLength.toInt()
+//                    )
+//                }
+
+
+//              NodeMessageType.SET_ID -> {
+//                  return NodeSetIDResponse(success, payloadLength)
+//              }
+//              NodeMessageType.SET_COLOR -> {
+//                  return NodeSetColorResponse(
+//                      success,
+//                      payloadLength
+//                  )
+//              }
+//              NodeMessageType.SESSION_INFO -> {
+//                  return NodeSessionInfoResponse.fromRaw(
+//                      data,
+//                      success,
+//                      payloadLength)
+//              }
+
+                NodeMessageType.PROBE_STATUS -> {
+                    return NodeProbeStatusRequest.fromRaw(
+                        data,
+                        requestId,
+                        payloadLength
+                    )
+                }
+
+//              NodeMessageType.READ_OVER_TEMPERATURE -> {
+//                  return NodeReadOverTemperatureResponse(
+//                      data,
+//                      success,
+//                      payloadLength
+//                  )
+//              }
+
+                else -> {
+                    return null
+                }
+            }
+        }
+
+    }
+
+    // Contents of message
+    var data = UByteArray(0)
+
+    val sData get() = data.toByteArray()
+
+    // Random ID for this request, for tracking request-response pairs
+    var requestId: UInt = 0u
+
+    // Length of payload
+    var payloadLength: UByte = 0u
+
+    /**
+     * Constructor for generating a new outgoing Request object.
+     *
+     * @param outgoingPayload data containing outgoing payload
+     * @param type type of request message
+     */
+    constructor(
+        outgoingPayload: UByteArray,
+        type: NodeMessageType
+    ) : this() {
+        // Sync Bytes { 0xCA, 0xFE }
+        this.data += 0xCAu
+        this.data += 0xFEu
+
+        // Calculate CRC over Message Type, request ID, payload length, payload
+        var crcData = UByteArray(0)
+
+        // Message type
+        crcData += type.value
+
+        // Request ID
+        this.requestId = (0u..UInt.MAX_VALUE).random()
+        crcData += UByteArray(4)
+        crcData.putLittleEndianUInt32At(1, this.requestId)
+
+        // Payload length
+        crcData += outgoingPayload.size.toUByte()
+
+        // Payload
+        crcData += outgoingPayload
+
+        // Calculate CRC and add to main data array
+        this.data += UByteArray(2)
+        this.data.putLittleEndianUShortAt(2, crcData.getCRC16CCITT())
+
+        // Message Type, payload length, payload
+        this.data += crcData
+
+        this.payloadLength = outgoingPayload.size.toUByte()
+    }
+
+
+    /**
+     * Constructor for an incoming Request object (from MeatNet).
+     *
+     * @param requestId Request ID of this message from the Network
+     * @param payloadLength Length of this message's payload
+     */
+    constructor(
+        requestId: UInt,
+        payloadLength: UByte
+    ) : this() {
+        this.requestId = requestId
+        this.payloadLength = payloadLength
+    }
+
+
+    /**
+     * Calculates the CRC16 over the message type, payload length, and payload and inserts the
+     * result in the correct location in the packet.
+     */
+    fun setCRC() {
+        data.putLittleEndianUShortAt(2, data.drop(4).toUByteArray().getCRC16CCITT())
+    }
+}
