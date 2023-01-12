@@ -59,9 +59,8 @@ internal open class BleDevice (
     adapter: BluetoothAdapter
 ) {
     companion object {
-        private const val PROBE_REMOTE_RSSI_POLL_RATE_MS = 2000L
-        private const val PROBE_IDLE_TIMEOUT_POLL_RATE_MS = 1000L
-        private const val PROBE_IDLE_TIMEOUT_MS = 15000L
+        private const val REMOTE_RSSI_POLL_RATE_MS = 2000L
+        private const val IDLE_TIMEOUT_POLL_RATE_MS = 1000L
         const val DISCONNECT_TIMEOUT_MS = 500L
 
         private const val DEV_INFO_SERVICE_UUID_STRING = "0000180A-0000-1000-8000-00805F9B34FB"
@@ -92,8 +91,12 @@ internal open class BleDevice (
             }
         }
 
-    protected val connectionMonitor = IdleMonitor()
+    // TODO: This variable should ideally be scoped as private.
+    //  This should be possible when this class is able handle and process advertising
+    //  packets directly from the device scanner.
     val remoteRssi = AtomicInteger(0)
+
+    protected val connectionMonitor = IdleMonitor()
     val rssi get() = remoteRssi.get()
     var connectionState = DeviceConnectionState.OUT_OF_RANGE
     val isConnected = AtomicBoolean(false)
@@ -101,7 +104,7 @@ internal open class BleDevice (
     fun observeOutOfRange(timeout: Long, callback: (suspend () -> Unit)? = null) {
         jobManager.addJob(owner.lifecycleScope.launch(Dispatchers.IO) {
             while(isActive) {
-                delay(PROBE_IDLE_TIMEOUT_POLL_RATE_MS)
+                delay(IDLE_TIMEOUT_POLL_RATE_MS)
                 val isIdle = connectionMonitor.isIdle(timeout)
 
                 if(isIdle) {
@@ -143,7 +146,7 @@ internal open class BleDevice (
                         }
                     }
                 }
-                delay(PROBE_REMOTE_RSSI_POLL_RATE_MS)
+                delay(REMOTE_RSSI_POLL_RATE_MS)
             }
         })
     }
