@@ -162,6 +162,13 @@ class DeviceManager {
     }
 
     /**
+     * Return true if the default Bluetooth adapter is enabled, false otherwise.
+     */
+    val bluetoothIsEnabled
+        get() = service.bluetoothIsEnabled
+
+
+    /**
      * Kotlin flow for collecting device discovery events that occur when the service
      * is scanning for devices.  This is a hot flow.
      *

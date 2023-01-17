@@ -183,12 +183,7 @@ class CombustionService : LifecycleService() {
         registerReceiver(_bluetoothReceiver, filter)
 
         // determine what the current state of Bluetooth is
-        val bluetooth = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        bluetoothIsOn = if (bluetooth.adapter == null) {
-            false
-        } else {
-            bluetooth.adapter.isEnabled
-        }
+        bluetoothIsOn = bluetoothIsEnabled
 
         // notify consumers on flow what the current Bluetooth state is
         if(bluetoothIsOn) {
@@ -244,6 +239,16 @@ class CombustionService : LifecycleService() {
     internal val discoveredProbes: List<String>
         get() {
             return _probes.keys.toList()
+        }
+
+    internal val bluetoothIsEnabled: Boolean
+        get() {
+            val bluetooth = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+            return if (bluetooth.adapter == null) {
+                false
+            } else {
+                bluetooth.adapter.isEnabled
+            }
         }
 
     internal fun startScanningForProbes(): Boolean {
