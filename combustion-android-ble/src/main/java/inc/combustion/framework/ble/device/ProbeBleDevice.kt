@@ -1,7 +1,7 @@
 /*
  * Project: Combustion Inc. Android Example
  * File: ProbeBleDevice.kt
- * Author: https://github.com/miwright2
+ * Author:
  *
  * MIT License
  *
@@ -26,7 +26,7 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble
+package inc.combustion.framework.ble.device
 
 import android.bluetooth.BluetoothAdapter
 import android.util.Log
@@ -34,6 +34,10 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import com.juul.kable.characteristicOf
 import inc.combustion.framework.LOG_TAG
+import inc.combustion.framework.ble.IProbeBleDeviceBase
+import inc.combustion.framework.ble.LegacyProbeAdvertisingData
+import inc.combustion.framework.ble.ProbeBleDeviceBase
+import inc.combustion.framework.ble.ProbeStatus
 import inc.combustion.framework.ble.uart.LogRequest
 import inc.combustion.framework.ble.uart.LogResponse
 import inc.combustion.framework.ble.uart.Request

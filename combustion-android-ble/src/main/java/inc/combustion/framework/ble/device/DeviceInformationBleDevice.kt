@@ -1,7 +1,7 @@
 /*
  * Project: Combustion Inc. Android Example
- * File: RepeaterBleDevice.kt
- * Author: https://github.com/miwright2
+ * File: DeviceInformationBleDevice.kt
+ * Author:
  *
  * MIT License
  *
@@ -25,8 +25,38 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+package inc.combustion.framework.ble.device
 
-package inc.combustion.framework.ble
+import android.bluetooth.BluetoothAdapter
+import androidx.lifecycle.LifecycleOwner
+import inc.combustion.framework.ble.LegacyProbeAdvertisingData
 
-class RepeaterBleDevice {
+internal open class DeviceInformationBleDevice(
+    mac: String,
+    owner: LifecycleOwner,
+    advertisement: LegacyProbeAdvertisingData,
+    adapter: BluetoothAdapter
+) : BleDevice(mac, owner, advertisement, adapter) {
+
+    var serialNumber: String? = null
+    var firmwareVersion: String? = null
+    var hardwareRevision: String? = null
+
+    suspend fun readSerialNumber() {
+        if(isConnected.get()) {
+            serialNumber = readSerialNumberCharacteristic()
+        }
+    }
+
+    suspend fun readFirmwareVersion() {
+        if(isConnected.get()) {
+            firmwareVersion = readFirmwareVersionCharacteristic()
+        }
+    }
+
+    suspend fun readHardwareRevision() {
+        if(isConnected.get()) {
+            hardwareRevision = readHardwareRevisionCharacteristic()
+        }
+    }
 }

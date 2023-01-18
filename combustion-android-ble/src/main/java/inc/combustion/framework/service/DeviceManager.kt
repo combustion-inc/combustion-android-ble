@@ -35,6 +35,7 @@ import android.os.IBinder
 import android.util.Log
 import inc.combustion.framework.Combustion
 import inc.combustion.framework.LOG_TAG
+import inc.combustion.framework.ble.NetworkManager
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
 import java.lang.StringBuilder
@@ -119,7 +120,7 @@ class DeviceManager(
                 if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
                     Log.d(LOG_TAG, "Start Service")
 
-                return CombustionService.start(app.applicationContext, notification)
+                return CombustionService.start(app.applicationContext, notification, INSTANCE.settings)
             }
             return 0;
         }
@@ -172,8 +173,10 @@ class DeviceManager(
     /**
      * Return true if the default Bluetooth adapter is enabled, false otherwise.
      */
-    val bluetoothIsEnabled
-        get() = service.bluetoothIsEnabled
+    val bluetoothIsEnabled: Boolean
+        get() {
+            return service.networkManager?.bluetoothIsEnabled ?: false
+        }
 
 
     /**
@@ -183,20 +186,26 @@ class DeviceManager(
      * @see DeviceDiscoveredEvent
      */
     val discoveredProbesFlow : SharedFlow<DeviceDiscoveredEvent>
-        get() = service.discoveredProbesFlow
+        get() {
+            return NetworkManager.DISCOVERED_PROBES_FLOW
+        }
 
     /**
-     * True if scanning for devices.  False otherwise.
+     * True if scanning for thermometers.  False otherwise.
      */
-    val isScanningForDevices: Boolean
-        get() = service.isScanningForProbes
+    val scanningForProbes: Boolean
+        get() {
+            return service.networkManager?.scanningForProbes ?: false
+        }
 
     /**
      * Returns a list of device serial numbers, consisting of all devices that have been
      * discovered.
      */
     val discoveredProbes: List<String>
-        get() = service.discoveredProbes
+        get() {
+            return service.networkManager?.discoveredProbes ?: listOf("")
+        }
 
     /**
      * Registers a lambda to be called by the DeviceManager upon binding with the
@@ -225,7 +234,9 @@ class DeviceManager(
      * @see DeviceDiscoveredEvent
      * @see DeviceDiscoveredEvent.ScanningOn
      */
-    fun startScanningForProbes() = service.startScanningForProbes(settings)
+    fun startScanningForProbes(): Boolean {
+        return service.networkManager?.startScanForProbes() ?: false
+    }
 
     /**
      * Stops scanning for temperature probes.  Will generate a DeviceDiscoveredEvent
@@ -237,7 +248,9 @@ class DeviceManager(
      * @see DeviceDiscoveredEvent
      * @see DeviceDiscoveredEvent.ScanningOff
      */
-    fun stopScanningForProbes() = service.stopScanningForProbes()
+    fun stopScanningForProbes(): Boolean {
+        return service.networkManager?.stopScanForProbes() ?: false
+    }
 
     /**
      * Retrieves the Kotlin flow for collecting Probe state updates for the specified
@@ -248,7 +261,9 @@ class DeviceManager(
      *
      * @see Probe
      */
-    fun probeFlow(serialNumber: String) = service.probeFlow(serialNumber)
+    fun probeFlow(serialNumber: String): SharedFlow<Probe>? {
+        return service.networkManager?.probeFlow(serialNumber)
+    }
 
     /**
      * Retrieves the current probe state for the specified probe serial number.
@@ -258,7 +273,9 @@ class DeviceManager(
      *
      * @see Probe
      */
-    fun probe(serialNumber: String): Probe? = service.probeState(serialNumber)
+    fun probe(serialNumber: String): Probe? {
+        return service.networkManager?.probeState(serialNumber)
+    }
 
     /**
      * Initiates a BLE connection to the probe with the specified serial number.  Upon
@@ -274,7 +291,9 @@ class DeviceManager(
      * @see DeviceConnectionState.CONNECTING
      * @see probeFlow
      */
-    fun connect(serialNumber : String) = service.connect(serialNumber)
+    fun connect(serialNumber : String) {
+        service.networkManager?.connect(serialNumber)
+    }
 
     /**
      * Initiates a BLE disconnection from the probe with the specified serial number.  Upon
@@ -290,7 +309,9 @@ class DeviceManager(
      * @see DeviceConnectionState.DISCONNECTING
      * @see probeFlow
      */
-    fun disconnect(serialNumber: String) = service.disconnect(serialNumber)
+    fun disconnect(serialNumber: String) {
+        service.networkManager?.disconnect(serialNumber)
+    }
 
     /**
      * Initiates a record transfer from the device to the service for the specified serial
@@ -395,8 +416,11 @@ class DeviceManager(
      * @param completionHandler completion handler to be called operation is complete
      *
      */
-    fun setProbeColor(serialNumber: String, color: ProbeColor, completionHandler: (Boolean) -> Unit) =
-        service.setProbeColor(serialNumber, color, completionHandler)
+    fun setProbeColor(serialNumber: String, color: ProbeColor, completionHandler: (Boolean) -> Unit) {
+        service.networkManager?.setProbeColor(serialNumber, color, completionHandler) ?: run{
+            completionHandler(false)
+        }
+    }
 
     /**
      * Sends a request to the device to the set the probe ID. The completion handler will
@@ -407,8 +431,11 @@ class DeviceManager(
      * @param completionHandler completion handler to be called operation is complete
      *
      */
-    fun setProbeID(serialNumber: String, id: ProbeID, completionHandler: (Boolean) -> Unit) =
-        service.setProbeID(serialNumber, id, completionHandler)
+    fun setProbeID(serialNumber: String, id: ProbeID, completionHandler: (Boolean) -> Unit) {
+        service.networkManager?.setProbeID(serialNumber, id, completionHandler) ?: run {
+            completionHandler(false)
+        }
+    }
 
     /**
      * Sends a request to the device to set/change the set point temperature for the time to
@@ -425,7 +452,9 @@ class DeviceManager(
             completionHandler(false)
             return
         }
-        service.setRemovalPrediction(serialNumber, removalTemperatureC, completionHandler)
+        service.networkManager?.setRemovalPrediction(serialNumber, removalTemperatureC, completionHandler) ?: run{
+            completionHandler(false)
+        }
     }
 
     /**
@@ -434,8 +463,11 @@ class DeviceManager(
      * @param serialNumber the serial number of the probe.
      * @param completionHandler completion handler to be called operation is complete
      */
-    fun cancelPrediction(serialNumber: String, completionHandler: (Boolean) -> Unit) =
-        service.cancelPrediction(serialNumber, completionHandler)
+    fun cancelPrediction(serialNumber: String, completionHandler: (Boolean) -> Unit) {
+        service.networkManager?.cancelPrediction(serialNumber, completionHandler) ?: run {
+            completionHandler(false)
+        }
+    }
 
     private fun probeDataToCsv(probe: Probe?, probeData: List<LoggedProbeDataPoint>?, appNameAndVersion: String): Pair<String, String> {
         val csvVersion = 3

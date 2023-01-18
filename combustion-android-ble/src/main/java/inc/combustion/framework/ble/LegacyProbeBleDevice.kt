@@ -33,6 +33,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import com.juul.kable.characteristicOf
 import inc.combustion.framework.LOG_TAG
+import inc.combustion.framework.ble.device.UartBleDevice
 import inc.combustion.framework.ble.uart.*
 import inc.combustion.framework.ble.uart.Request
 import inc.combustion.framework.ble.uart.Response

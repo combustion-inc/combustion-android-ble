@@ -26,7 +26,7 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble
+package inc.combustion.framework.ble.device
 
 class RepeatedProbeBleDevice {
 }

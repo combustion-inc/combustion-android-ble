@@ -1,7 +1,7 @@
 /*
  * Project: Combustion Inc. Android Example
  * File: SimulatedProbeBleDevice.java
- * Author: https://github.com/miwright2
+ * Author:
  *
  * MIT License
  *
@@ -26,7 +26,7 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble;
+package inc.combustion.framework.ble.device;
 
 public class SimulatedProbeBleDevice {
 }

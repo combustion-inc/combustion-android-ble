@@ -29,22 +29,16 @@ package inc.combustion.framework.service
 
 import android.app.Notification
 import android.app.NotificationManager
-import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.content.*
 import android.os.Binder
 import android.os.IBinder
 import android.util.Log
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleService
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.*
 import inc.combustion.framework.log.LogManager
-import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
 import java.util.*
 import java.util.concurrent.ThreadLocalRandom
 import java.util.concurrent.atomic.AtomicBoolean
@@ -55,49 +49,18 @@ import kotlin.random.asKotlinRandom
  */
 class CombustionService : LifecycleService() {
 
-    private var settings = DeviceManager.Settings()
-    private var bluetoothIsOn = false
     private val binder = CombustionServiceBinder()
-    private val _probes = hashMapOf<String, LegacyProbeManager>()
 
-    private val _bluetoothReceiver: BroadcastReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent) {
-            val action = intent.action
-            if (action == BluetoothAdapter.ACTION_STATE_CHANGED) {
-                val state = intent.getIntExtra(
-                    BluetoothAdapter.EXTRA_STATE,
-                    BluetoothAdapter.ERROR
-                )
-                when (state) {
-                    BluetoothAdapter.STATE_OFF -> {
-                        bluetoothIsOn = false
-                        emitScanningOffEvent()
-                        emitBluetoothOffEvent()
-                    }
-                    BluetoothAdapter.STATE_TURNING_OFF -> {
-                        LegacyDeviceScanner.stopProbeScanning()
-                    }
-                    BluetoothAdapter.STATE_ON -> {
-                        bluetoothIsOn = true
-                        emitBluetoothOnEvent()
-                    }
-                    BluetoothAdapter.STATE_TURNING_ON -> { }
-                }
-            }
-        }
-    }
+    internal var networkManager: NetworkManager? = null
 
     internal companion object {
-        private const val FLOW_CONFIG_REPLAY = 5
-        private const val FLOW_CONFIG_BUFFER = FLOW_CONFIG_REPLAY * 2
-
         private val serviceIsStarted = AtomicBoolean(false)
-
         var serviceNotification : Notification? = null
         var notificationId = 0
 
-        fun start(context: Context, notification: Notification?): Int {
+        fun start(context: Context, notification: Notification?, settings: DeviceManager.Settings = DeviceManager.Settings()): Int {
             if(!serviceIsStarted.get()) {
+                NetworkManager.SETTINGS = settings
                 serviceNotification = notification
                 notificationId = ThreadLocalRandom.current().asKotlinRandom().nextInt()
                 Intent(context, CombustionService::class.java).also { intent ->
@@ -127,6 +90,7 @@ class CombustionService : LifecycleService() {
     }
 
     init {
+        /*
         lifecycleScope.launch {
             // launches the block in a new coroutine every time the service is
             // in the CREATED state or above, and cancels the block when the
@@ -158,6 +122,7 @@ class CombustionService : LifecycleService() {
                 }
             }
         }
+         */
     }
 
     private fun startForeground() {
@@ -178,20 +143,14 @@ class CombustionService : LifecycleService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
 
+        val bluetooth = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        networkManager = NetworkManager(this, bluetooth.adapter)
+
         // setup receiver to see when platform Bluetooth state changes
-        val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
-        registerReceiver(_bluetoothReceiver, filter)
-
-        // determine what the current state of Bluetooth is
-        bluetoothIsOn = bluetoothIsEnabled
-
-        // notify consumers on flow what the current Bluetooth state is
-        if(bluetoothIsOn) {
-            emitBluetoothOnEvent()
-        }
-        else {
-            emitBluetoothOffEvent()
-        }
+        registerReceiver(
+            NetworkManager.BLUETOOTH_ADAPTER_STATE_RECEIVER,
+            NetworkManager.BLUETOOTH_ADAPTER_STATE_INTENT_FILTER
+        )
 
         startForeground()
 
@@ -218,59 +177,20 @@ class CombustionService : LifecycleService() {
         serviceNotification = null
 
         // always try to unregister, even if the previous register didn't complete.
-        try { unregisterReceiver(_bluetoothReceiver) } catch (e: Exception) { }
+        try {
+            unregisterReceiver(NetworkManager.BLUETOOTH_ADAPTER_STATE_RECEIVER)
+        } catch (_: Exception) {
+
+        }
 
         clearDevices()
+        networkManager?.finish()
 
         serviceIsStarted.set(false)
 
         Log.d(LOG_TAG, "Combustion Android Service Destroyed...")
         super.onDestroy()
     }
-
-    private val _discoveredProbesFlow = MutableSharedFlow<DeviceDiscoveredEvent>(
-        FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.SUSPEND
-    )
-    internal val discoveredProbesFlow = _discoveredProbesFlow.asSharedFlow()
-
-    internal val isScanningForProbes
-        get() = LegacyDeviceScanner.isScanningForProbes
-
-    internal val discoveredProbes: List<String>
-        get() {
-            return _probes.keys.toList()
-        }
-
-    internal fun startScanningForProbes(): Boolean {
-        if(bluetoothIsOn) {
-            LegacyDeviceScanner.startProbeScanning(this)
-        }
-        if(isScanningForProbes) {
-            emitScanningOnEvent()
-        }
-        return isScanningForProbes
-    }
-
-    internal fun stopScanningForProbes(): Boolean {
-        if(bluetoothIsOn) {
-            LegacyDeviceScanner.stopProbeScanning()
-            emitScanningOnEvent()
-        }
-        if(!isScanningForProbes) {
-            emitScanningOffEvent()
-        }
-
-        return isScanningForProbes
-    }
-
-    internal fun probeFlow(serialNumber: String): SharedFlow<Probe>? =
-        _probes[serialNumber]?.probeStateFlow
-
-    internal fun probeState(serialNumber: String): Probe? = _probes[serialNumber]?.probe
-
-    internal fun connect(serialNumber: String) = _probes[serialNumber]?.connect()
-
-    internal fun disconnect(serialNumber: String) = _probes[serialNumber]?.disconnect()
 
     internal fun requestLogsFromDevice(serialNumber: String) =
         LogManager.instance.requestLogsFromDevice(this, serialNumber)
@@ -289,12 +209,11 @@ class CombustionService : LifecycleService() {
 
     internal fun clearDevices() {
         LogManager.instance.clear()
-        _probes.forEach { (_, probe) -> probe.finish() }
-        _probes.clear()
-        emitDevicesClearedEvent()
+        networkManager?.clearDevices()
     }
 
     internal fun addSimulatedProbe() {
+        /*
         // Create SimulatedLegacyProbeManager
         val simulatedProbeManager = SimulatedLegacyProbeManager.create(this@CombustionService,
             (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter)
@@ -311,49 +230,8 @@ class CombustionService : LifecycleService() {
                 DeviceDiscoveredEvent.DeviceDiscovered(simulatedProbeManager.probe.serialNumber)
             )
         }
+         */
+        networkManager?.addSimulatedProbe()
+        TODO()
     }
-
-    internal fun setProbeColor(serialNumber: String, color: ProbeColor, completionHandler: (Boolean) -> Unit) {
-        _probes[serialNumber]?.sendSetProbeColor(color, completionHandler) ?: run {
-            completionHandler(false)
-        }
-    }
-
-    internal fun setProbeID(serialNumber: String, id: ProbeID, completionHandler: (Boolean) -> Unit) {
-        _probes[serialNumber]?.sendSetProbeID(id, completionHandler) ?: run {
-            completionHandler(false)
-        }
-    }
-
-    internal fun setRemovalPrediction(serialNumber: String, removalTemperatureC: Double, completionHandler: (Boolean) -> Unit) {
-        _probes[serialNumber]?.sendSetPrediction(removalTemperatureC, ProbePredictionMode.TIME_TO_REMOVAL, completionHandler) ?: run {
-            completionHandler(false)
-        }
-    }
-
-    internal fun cancelPrediction(serialNumber: String, completionHandler: (Boolean) -> Unit) {
-        _probes[serialNumber]?.sendSetPrediction(DeviceManager.MINIMUM_PREDICTION_SETPOINT_CELSIUS, ProbePredictionMode.NONE, completionHandler) ?: run {
-            completionHandler(false)
-        }
-    }
-
-    private fun emitBluetoothOnEvent() = _discoveredProbesFlow.tryEmit(
-        DeviceDiscoveredEvent.BluetoothOn
-    )
-
-    private fun emitBluetoothOffEvent() = _discoveredProbesFlow.tryEmit(
-        DeviceDiscoveredEvent.BluetoothOff
-    )
-
-    private fun emitScanningOnEvent()  = _discoveredProbesFlow.tryEmit(
-        DeviceDiscoveredEvent.ScanningOn
-    )
-
-    private fun emitScanningOffEvent() = _discoveredProbesFlow.tryEmit(
-        DeviceDiscoveredEvent.ScanningOff
-    )
-
-    private fun emitDevicesClearedEvent() = _discoveredProbesFlow.tryEmit(
-        DeviceDiscoveredEvent.DevicesCleared
-    )
 }

@@ -1,11 +1,11 @@
 /*
- * Project: Combustion Inc. Android Framework
- * File: Device.kt
- * Author: https://github.com/miwright2
+ * Project: Combustion Inc. Android Example
+ * File: BleDevice.kt
+ * Author:
  *
  * MIT License
  *
- * Copyright (c) 2022. Combustion Inc.
+ * Copyright (c) 2023. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,7 +25,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package inc.combustion.framework.ble
+package inc.combustion.framework.ble.device
 
 import android.bluetooth.BluetoothAdapter
 import android.util.Log
@@ -35,6 +35,9 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.juul.kable.*
 import inc.combustion.framework.LOG_TAG
+import inc.combustion.framework.ble.*
+import inc.combustion.framework.ble.LegacyProbeAdvertisingData
+import inc.combustion.framework.ble.SimulatedLegacyProbeManager
 import inc.combustion.framework.service.DeviceConnectionState
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.catch
