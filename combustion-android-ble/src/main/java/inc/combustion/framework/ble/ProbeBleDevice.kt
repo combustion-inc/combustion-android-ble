@@ -34,7 +34,6 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import com.juul.kable.characteristicOf
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.uart.*
 import inc.combustion.framework.ble.uart.LogRequest
 import inc.combustion.framework.ble.uart.LogResponse
 import inc.combustion.framework.ble.uart.Request
@@ -53,12 +52,15 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.launch
 
+
+
 internal class ProbeBleDevice (
     mac: String,
     owner: LifecycleOwner,
     advertisement: LegacyProbeAdvertisingData,
-    adapter: BluetoothAdapter
-) : UartBleDevice(mac, owner, advertisement, adapter) {
+    adapter: BluetoothAdapter,
+    probeBleDeviceBase: IProbeBleDeviceBase = ProbeBleDeviceBase()
+) : UartBleDevice(mac, owner, advertisement, adapter), IProbeBleDeviceBase by probeBleDeviceBase {
 
     companion object {
         const val MESSAGE_RESPONSE_TIMEOUT_MS = 5000L

@@ -77,6 +77,12 @@ internal open class BleDevice (
         )
     }
 
+    /**
+     * Abstraction of a unique identifier.
+     */
+    val id: DeviceID
+        get() = mac
+
     val jobManager = JobManager()
     protected var peripheral: Peripheral =
         owner.lifecycleScope.peripheral(adapter.getRemoteDevice(mac)) {

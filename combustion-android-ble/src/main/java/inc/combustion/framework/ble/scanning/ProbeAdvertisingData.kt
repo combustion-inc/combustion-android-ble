@@ -1,5 +1,5 @@
 /*
- * Project: Combustion Inc. Android Framework
+ * Project: Combustion Inc. Android Example
  * File: ProbeAdvertisingData.kt
  * Author:
  *
@@ -26,17 +26,29 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble
+package inc.combustion.framework.ble.scanning
 
-import inc.combustion.framework.service.CombustionProductType
+import inc.combustion.framework.service.*
 
 /**
- * Advertising data specific to a Combustion probe.
+ * TODO - document me
  *
- * @note This data may be sourced from either a probe directly or rebroadcast from a MeatNet node.
+ * @property probeSerialNumber
+ * @property probeTemperatures
+ * @property probeID
+ * @property color
+ * @property mode
+ * @property batteryStatus
+ * @property virtualSensors
+ * @property hopCount
+ * @constructor
+ * TODO
  *
- * @param isDirectConnection If true, this advertising data was obtained directly from a probe; if
- *                           false, the data was rebroadcast over MeatNet.
+ * @param mac
+ * @param name
+ * @param rssi
+ * @param productType
+ * @param isConnectable
  */
 internal class ProbeAdvertisingData(
     mac: String,
@@ -44,8 +56,12 @@ internal class ProbeAdvertisingData(
     rssi: Int,
     productType: CombustionProductType,
     isConnectable: Boolean,
-
-    val isDirectConnection: Boolean,
-    // TODO: Additional probe advertising data (temperatures, etc.)
-): AdvertisingData(mac, name, rssi, productType, isConnectable) {
-}
+    val probeSerialNumber: String,
+    val probeTemperatures: ProbeTemperatures,
+    val probeID: ProbeID,
+    val color: ProbeColor,
+    val mode: ProbeMode,
+    val batteryStatus: ProbeBatteryStatus,
+    val virtualSensors: ProbeVirtualSensors,
+    val hopCount: UInt = 0u
+): BaseAdvertisingData(mac, name, rssi, productType, isConnectable)

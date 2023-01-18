@@ -1,6 +1,6 @@
 /*
- * Project: Combustion Inc. Android Framework
- * File: Device.kt
+ * Project: Combustion Inc. Android Example
+ * File: DeviceID.kt
  * Author:
  *
  * MIT License
@@ -26,28 +26,10 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.service
+package inc.combustion.framework.ble
 
 /**
- * Representation of a Combustion device.
- *
- * @param serialNumber The device serial number.
- * @param mac The device's MAC address.
- * @param fwVersion The device's firmware version.
- * @param hwRevision The device's hardware revision.
- * @param rssi The BLE RSSI value.
- * @param isDirectConnection Whether this device representation is obtained through a direct
- *                           connection to the device or if it's rebroadcast through a MeatNet node.
- * @param productType The device product type.
- * @param connectionState The device's current BLE connection state.
+ * Define a type to be used as a key into maps.
  */
-data class Device(
-    val serialNumber: String = "",
-    val mac: String = "",
-    val fwVersion: String? = null,
-    val hwRevision: String? = null,
-    val rssi: Int = 0,
-    val isDirectConnection: Boolean? = null,
-    val productType: CombustionProductType? = null,
-    val connectionState: DeviceConnectionState = DeviceConnectionState.DISCONNECTED,
-)
+typealias DeviceID = String
+

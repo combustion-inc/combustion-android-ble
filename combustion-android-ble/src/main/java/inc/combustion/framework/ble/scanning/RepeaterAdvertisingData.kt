@@ -1,6 +1,6 @@
 /*
- * Project: Combustion Inc. Android Framework
- * File: AdvertisingData.kt
+ * Project: Combustion Inc. Android Example
+ * File: RepeaterAdvertisingData.kt
  * Author:
  *
  * MIT License
@@ -26,35 +26,42 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble
+package inc.combustion.framework.ble.scanning
 
-import com.juul.kable.Advertisement
-import inc.combustion.framework.service.CombustionProductType
+import inc.combustion.framework.service.*
 
 /**
- * Representation of Combustion device-specific advertising data.
+ * TODO - document me
  *
- * @param mac MAC address of the device.
- * @param name Bluetooth name of the device.
- * @param rssi RSSI of the device.
- * @param productType Combustion product type.
- * @param isConnectable Whether the device can be connected to.
+ * @property probeSerialNumber
+ * @property probeTemperatures
+ * @property probeID
+ * @property color
+ * @property mode
+ * @property batteryStatus
+ * @property virtualSensors
+ * @property hopCount
+ * @constructor
+ * TODO
+ *
+ * @param mac
+ * @param name
+ * @param rssi
+ * @param productType
+ * @param isConnectable
  */
-internal open class AdvertisingData(
-    val mac: String,
-    val name: String,
-    val rssi: Int,
-    val productType: CombustionProductType,
-    val isConnectable: Boolean,
-) {
-    companion object {
-        fun fromAdvertisement(advertisement: Advertisement): AdvertisingData? {
-            return AdvertisingData(
-                advertisement.address,
-                advertisement.name ?: "",
-                advertisement.rssi,
-                CombustionProductType.DISPLAY,
-                false)
-        }
-    }
-}
+class RepeaterAdvertisingData(
+    mac: String,
+    name: String,
+    rssi: Int,
+    productType: CombustionProductType,
+    isConnectable: Boolean,
+    val probeSerialNumber: String,
+    val probeTemperatures: ProbeTemperatures,
+    val probeID: ProbeID,
+    val color: ProbeColor,
+    val mode: ProbeMode,
+    val batteryStatus: ProbeBatteryStatus,
+    val virtualSensors: ProbeVirtualSensors,
+    val hopCount: UInt
+): BaseAdvertisingData(mac, name, rssi, productType, isConnectable)

@@ -1,5 +1,5 @@
 /*
- * Project: Combustion Inc. Android Framework
+ * Project: Combustion Inc. Android Example
  * File: DeviceScanner.kt
  * Author:
  *
@@ -26,7 +26,7 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.service
+package inc.combustion.framework.ble.scanning
 
 import android.bluetooth.le.ScanSettings
 import android.os.ParcelUuid
@@ -38,7 +38,6 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.juul.kable.Filter
 import com.juul.kable.Scanner
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.AdvertisingData
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -52,7 +51,7 @@ internal class DeviceScanner private constructor() {
     companion object {
         private var allMatchesScanJob: Job? = null
         private val _isScanning = AtomicBoolean(false)
-        private val _advertisements = MutableSharedFlow<AdvertisingData>()
+        private val _advertisements = MutableSharedFlow<BaseAdvertisingData>()
 
         // TODO: This is the wrong UUID.
         private const val NORDIC_DFU_SERVICE_UUID_STRING = "0000180A-0000-1000-8000-0080BEEFBEEF"
@@ -96,10 +95,10 @@ internal class DeviceScanner private constructor() {
                                 _isScanning.set(false)
                             }
                             .collect { advertisement ->
-                                // This would maybe be an abstract function that lets subclasses
-                                // parse advertisement data and emit into flow as they see fit
-                                AdvertisingData.fromAdvertisement(advertisement)?.let {
-                                    _advertisements.emit(it)
+                                when (val advertisingData = BaseAdvertisingData.create(advertisement)) {
+                                    is ProbeAdvertisingData -> _advertisements.emit(advertisingData)
+                                    is RepeaterAdvertisingData -> _advertisements.emit(advertisingData)
+                                    // else, if just BaseAdvertisingData, then no need to produce to flow.
                                 }
                             }
                     }
