@@ -34,7 +34,6 @@ import androidx.lifecycle.*
 import com.juul.kable.Filter
 import com.juul.kable.Scanner
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.ProbeManager
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import java.util.concurrent.atomic.AtomicBoolean

@@ -1,11 +1,11 @@
 /*
- * Project: Combustion Inc. Android Framework
+ * Project: Combustion Inc. Android Example
  * File: ProbeBleDevice.kt
- * Author: https://github.com/miwright2
+ * Author:
  *
  * MIT License
  *
- * Copyright (c) 2022. Combustion Inc.
+ * Copyright (c) 2023. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,7 +25,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package inc.combustion.framework.ble
+
+package inc.combustion.framework.ble.device
 
 import android.bluetooth.BluetoothAdapter
 import android.util.Log
@@ -33,11 +34,21 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import com.juul.kable.characteristicOf
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.uart.*
+import inc.combustion.framework.ble.IProbeBleDeviceBase
+import inc.combustion.framework.ble.LegacyProbeAdvertisingData
+import inc.combustion.framework.ble.ProbeBleDeviceBase
+import inc.combustion.framework.ble.ProbeStatus
+import inc.combustion.framework.ble.uart.LogRequest
+import inc.combustion.framework.ble.uart.LogResponse
 import inc.combustion.framework.ble.uart.Request
 import inc.combustion.framework.ble.uart.Response
+import inc.combustion.framework.ble.uart.SessionInfoRequest
 import inc.combustion.framework.ble.uart.SessionInfoResponse
+import inc.combustion.framework.ble.uart.SetColorRequest
+import inc.combustion.framework.ble.uart.SetColorResponse
+import inc.combustion.framework.ble.uart.SetIDRequest
 import inc.combustion.framework.ble.uart.SetIDResponse
+import inc.combustion.framework.ble.uart.SetPredictionRequest
 import inc.combustion.framework.ble.uart.SetPredictionResponse
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.Dispatchers
@@ -45,12 +56,15 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.launch
 
-internal class ProbeBleDevice(
+
+
+internal class ProbeBleDevice (
     mac: String,
     owner: LifecycleOwner,
     advertisement: LegacyProbeAdvertisingData,
-    adapter: BluetoothAdapter
-) : UartBleDevice(mac, owner, advertisement, adapter) {
+    adapter: BluetoothAdapter,
+    probeBleDeviceBase: IProbeBleDeviceBase = ProbeBleDeviceBase()
+) : UartBleDevice(mac, owner, advertisement, adapter), IProbeBleDeviceBase by probeBleDeviceBase {
 
     companion object {
         const val MESSAGE_RESPONSE_TIMEOUT_MS = 5000L

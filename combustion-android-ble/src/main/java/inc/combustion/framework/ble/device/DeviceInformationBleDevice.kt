@@ -1,7 +1,7 @@
 /*
- * Project: Combustion Inc. Android Framework
+ * Project: Combustion Inc. Android Example
  * File: DeviceInformationBleDevice.kt
- * Author: https://github.com/miwright2
+ * Author:
  *
  * MIT License
  *
@@ -25,11 +25,11 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package inc.combustion.framework.ble
+package inc.combustion.framework.ble.device
 
 import android.bluetooth.BluetoothAdapter
-import android.util.Log
 import androidx.lifecycle.LifecycleOwner
+import inc.combustion.framework.ble.LegacyProbeAdvertisingData
 
 internal open class DeviceInformationBleDevice(
     mac: String,

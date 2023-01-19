@@ -1,11 +1,11 @@
 /*
- * Project: Combustion Inc. Android Framework
- * File: Device.kt
- * Author: https://github.com/miwright2
+ * Project: Combustion Inc. Android Example
+ * File: BleDevice.kt
+ * Author:
  *
  * MIT License
  *
- * Copyright (c) 2022. Combustion Inc.
+ * Copyright (c) 2023. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,10 +25,9 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package inc.combustion.framework.ble
+package inc.combustion.framework.ble.device
 
 import android.bluetooth.BluetoothAdapter
-import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -36,6 +35,9 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.juul.kable.*
 import inc.combustion.framework.LOG_TAG
+import inc.combustion.framework.ble.*
+import inc.combustion.framework.ble.LegacyProbeAdvertisingData
+import inc.combustion.framework.ble.SimulatedLegacyProbeManager
 import inc.combustion.framework.service.DeviceConnectionState
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.catch
@@ -77,6 +79,12 @@ internal open class BleDevice (
             characteristic = "00002A27-0000-1000-8000-00805F9B34FB"
         )
     }
+
+    /**
+     * Abstraction of a unique identifier.
+     */
+    val id: DeviceID
+        get() = mac
 
     val jobManager = JobManager()
     protected var peripheral: Peripheral =
@@ -126,7 +134,7 @@ internal open class BleDevice (
         jobManager.addJob(owner.lifecycleScope.launch(Dispatchers.IO) {
             var exceptionCount = 0;
             while(isActive) {
-                if(isConnected.get() && mac != SimulatedProbeManager.SIMULATED_MAC) {
+                if(isConnected.get() && mac != SimulatedLegacyProbeManager.SIMULATED_MAC) {
                     try {
                         remoteRssi.set(peripheral.rssi())
                         exceptionCount = 0;

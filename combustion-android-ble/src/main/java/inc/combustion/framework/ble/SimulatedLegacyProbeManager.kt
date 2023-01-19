@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: SimulatedProbeManager.kt
+ * File: SimulatedLegacyProbeManager.kt
  * Author: https://github.com/jjohnstz
  *
  * MIT License
@@ -45,19 +45,19 @@ import kotlin.random.Random
  * @param owner Lifecycle owner for managing coroutine scope.
  * @param adapter Bluetooth adapter.
  */
-internal class SimulatedProbeManager (
+internal class SimulatedLegacyProbeManager (
     mac: String,
     owner: LifecycleOwner,
     advertisingData: LegacyProbeAdvertisingData,
     adapter: BluetoothAdapter
-): ProbeManager(mac, owner, advertisingData, adapter) {
+): LegacyProbeManager(mac, owner, advertisingData, adapter) {
 
     private var maxSequence = 0u
 
     companion object {
         const val SIMULATED_MAC = "00:00:00:00:00:00"
 
-        fun create(owner: LifecycleOwner, adapter: BluetoothAdapter) : SimulatedProbeManager {
+        fun create(owner: LifecycleOwner, adapter: BluetoothAdapter) : SimulatedLegacyProbeManager {
             val fakeSerialNumber = "%08X".format(Random.nextInt())
             val fakeMacAddress = "%02X:%02X:%02X:%02X:%02X:%02X".format(
                 Random.nextBytes(1).first(),
@@ -82,7 +82,7 @@ internal class SimulatedProbeManager (
                 ProbeVirtualSensors.DEFAULT,
             )
 
-            return SimulatedProbeManager(SIMULATED_MAC, owner, data, adapter)
+            return SimulatedLegacyProbeManager(SIMULATED_MAC, owner, data, adapter)
         }
 
         fun randomRSSI() : Int {
@@ -107,13 +107,13 @@ internal class SimulatedProbeManager (
     }
 
     override fun connect() {
-        probeBleDevice.isConnected.set(true)
-        probeBleDevice.firmwareVersion = "v1.2.3"
-        probeBleDevice.hardwareRevision = "v2.3.4"
+        legacyProbeBleDevice.isConnected.set(true)
+        legacyProbeBleDevice.firmwareVersion = "v1.2.3"
+        legacyProbeBleDevice.hardwareRevision = "v2.3.4"
     }
 
     override fun disconnect() {
-        probeBleDevice.isConnected.set(false)
+        legacyProbeBleDevice.isConnected.set(false)
     }
 
     override fun sendLogRequest(minSequence: UInt, maxSequence: UInt) {
@@ -122,9 +122,9 @@ internal class SimulatedProbeManager (
 
     private suspend fun simulateAdvertising() {
         val data = LegacyProbeAdvertisingData("SIM",
-            probeBleDevice.advertisingData.mac,
+            legacyProbeBleDevice.advertisingData.mac,
             randomRSSI(),
-            probeBleDevice.advertisingData.serialNumber,
+            legacyProbeBleDevice.advertisingData.serialNumber,
             LegacyProbeAdvertisingData.CombustionProductType.PROBE,
             true,
             ProbeTemperatures.withRandomData(),
@@ -139,9 +139,9 @@ internal class SimulatedProbeManager (
     }
 
     private suspend fun simulateStatusNotifications() {
-        if(!probeBleDevice.isConnected.get()) return
+        if(!legacyProbeBleDevice.isConnected.get()) return
 
-        probeBleDevice.remoteRssi.set(randomRSSI())
+        legacyProbeBleDevice.remoteRssi.set(randomRSSI())
 
         maxSequence += 1u
         simulatedProbeStatus(

@@ -1,6 +1,6 @@
 /*
- * Project: Combustion Inc. Android Framework
- * File: ProbeAdvertisingData.kt
+ * Project: Combustion Inc. Android Example
+ * File: RepeaterBleDevice.kt
  * Author:
  *
  * MIT License
@@ -26,26 +26,7 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble
+package inc.combustion.framework.ble.device
 
-import inc.combustion.framework.service.CombustionProductType
-
-/**
- * Advertising data specific to a Combustion probe.
- *
- * @note This data may be sourced from either a probe directly or rebroadcast from a MeatNet node.
- *
- * @param isDirectConnection If true, this advertising data was obtained directly from a probe; if
- *                           false, the data was rebroadcast over MeatNet.
- */
-internal class ProbeAdvertisingData(
-    mac: String,
-    name: String,
-    rssi: Int,
-    productType: CombustionProductType,
-    isConnectable: Boolean,
-
-    val isDirectConnection: Boolean,
-    // TODO: Additional probe advertising data (temperatures, etc.)
-): AdvertisingData(mac, name, rssi, productType, isConnectable) {
+class RepeaterBleDevice {
 }

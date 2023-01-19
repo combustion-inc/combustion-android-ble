@@ -1,11 +1,11 @@
 /*
- * Project: Combustion Inc. Android Framework
- * File: ProbeColor.kt
- * Author: https://github.com/miwright2
+ * Project: Combustion Inc. Android Example
+ * File: RepeaterAdvertisingData.kt
+ * Author:
  *
  * MIT License
  *
- * Copyright (c) 2022. Combustion Inc.
+ * Copyright (c) 2023. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,41 +25,43 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package inc.combustion.framework.service
 
-import inc.combustion.framework.ble.shl
-import inc.combustion.framework.ble.shr
+package inc.combustion.framework.ble.scanning
 
-enum class HopCount(val type: UByte) {
-    HOP1(0x00u),
-    HOP2(0x01u),
-    HOP3(0x02u),
-    HOP4(0x03u);
+import inc.combustion.framework.service.*
 
-    companion object {
-        private const val HOP_COUNT_MASK = 0x03
-        private const val HOP_COUNT_SHIFT = 6
-
-        fun fromUByte(byte: UByte) : HopCount {
-            val rawHopCount = ((byte.toUShort() and (HOP_COUNT_MASK.toUShort() shl HOP_COUNT_SHIFT)) shr HOP_COUNT_SHIFT).toUInt()
-            return fromRaw(rawHopCount)
-        }
-
-        fun fromRaw(raw: UInt) : HopCount {
-            return when(raw) {
-                0x00u -> HOP1
-                0x01u -> HOP2
-                0x02u -> HOP3
-                0x03u -> HOP4
-                else ->  HOP1
-            }
-        }
-
-        fun stringValues() : List<String> {
-            return values().toList().map { it.toString() }
-        }
-    }
-
+/**
+ * TODO - document me
+ *
+ * @property probeSerialNumber
+ * @property probeTemperatures
+ * @property probeID
+ * @property color
+ * @property mode
+ * @property batteryStatus
+ * @property virtualSensors
+ * @property hopCount
+ * @constructor
+ * TODO
+ *
+ * @param mac
+ * @param name
+ * @param rssi
+ * @param productType
+ * @param isConnectable
+ */
+class RepeaterAdvertisingData(
+    mac: String,
+    name: String,
+    rssi: Int,
+    productType: CombustionProductType,
+    isConnectable: Boolean,
+    val probeSerialNumber: String,
+    val probeTemperatures: ProbeTemperatures,
+    val probeID: ProbeID,
+    val color: ProbeColor,
+    val mode: ProbeMode,
+    val batteryStatus: ProbeBatteryStatus,
+    val virtualSensors: ProbeVirtualSensors,
     val hopCount: UInt
-        get() = type + 1u
-}
+): BaseAdvertisingData(mac, name, rssi, productType, isConnectable)
