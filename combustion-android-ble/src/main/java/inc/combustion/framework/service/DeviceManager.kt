@@ -88,7 +88,7 @@ class DeviceManager(
         }
 
         const val MINIMUM_PREDICTION_SETPOINT_CELSIUS = 0.0
-        const val MAXIMUM_PREDICTION_SETPOINT_CELSIUS = 102.0
+        const val MAXIMUM_PREDICTION_SETPOINT_CELSIUS = 100.0
 
         /**
          * Instance property for the singleton
