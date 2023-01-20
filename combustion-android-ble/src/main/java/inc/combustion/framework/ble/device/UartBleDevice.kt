@@ -54,12 +54,17 @@ internal interface IProbeUartBleDevice {
     fun sendLogRequest(minSequence: UInt, maxSequence: UInt)
 }
 
+internal interface IUartBleDevice {
+    suspend fun writeUartCharacteristic(data: ByteArray)
+    suspend fun observeUartCharacteristic(callback: (suspend (data: UByteArray) -> Unit)? = null)
+}
+
 internal open class UartBleDevice(
     mac: String,
     owner: LifecycleOwner,
     advertisement: BaseAdvertisingData,
     adapter: BluetoothAdapter
-) : DeviceInformationBleDevice(mac, owner, advertisement, adapter) {
+) : DeviceInformationBleDevice(mac, owner, advertisement, adapter), IUartBleDevice {
 
     class MessageCompletionHandler {
         private val waiting = AtomicBoolean(false)
@@ -105,7 +110,7 @@ internal open class UartBleDevice(
         )
     }
 
-    protected suspend fun writeUartCharacteristic(data: ByteArray) {
+    override suspend fun writeUartCharacteristic(data: ByteArray) {
         if(isConnected.get()) {
             owner.lifecycleScope.launch(Dispatchers.IO) {
                 try {
@@ -117,7 +122,7 @@ internal open class UartBleDevice(
         }
     }
 
-    protected suspend fun observeUartCharacteristic(callback: (suspend (data: UByteArray) -> Unit)? = null) {
+    override suspend fun observeUartCharacteristic(callback: (suspend (data: UByteArray) -> Unit)?) {
         peripheral.observe(UART_TX_CHARACTERISTIC)
             .onCompletion {
                 if (DebugSettings.DEBUG_LOG_BLE_UART_IO) {

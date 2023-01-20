@@ -89,42 +89,6 @@ class CombustionService : LifecycleService() {
         fun getService(): CombustionService = this@CombustionService
     }
 
-    init {
-        /*
-        lifecycleScope.launch {
-            // launches the block in a new coroutine every time the service is
-            // in the CREATED state or above, and cancels the block when the
-            // service is destroyed
-            repeatOnLifecycle(Lifecycle.State.CREATED) {
-                LegacyDeviceScanner.probeAdvertisements.collect {
-                    if(it.type == LegacyProbeAdvertisingData.CombustionProductType.PROBE) {
-
-                        _probes.getOrPut(key = it.serialNumber) {
-                            // create new probe instance
-                            var newProbe =
-                                LegacyProbeManager(
-                                    it.mac,
-                                    this@CombustionService,
-                                    it,
-                                    (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter)
-
-                            // add it to the LogManager
-                            LogManager.instance.manage(this@CombustionService, newProbe)
-
-                            // new probe discovered, so emit into the discovered probes flow
-                            _discoveredProbesFlow.emit(
-                                ProbeDiscoveredEvent.ProbeDiscovered(it.serialNumber)
-                            )
-
-                            newProbe
-                        }.onNewAdvertisement(it)
-                    }
-                }
-            }
-        }
-         */
-    }
-
     private fun startForeground() {
         serviceNotification?.let {
             startForeground(notificationId, serviceNotification)
@@ -233,5 +197,13 @@ class CombustionService : LifecycleService() {
          */
         networkManager?.addSimulatedProbe()
         TODO()
+    }
+
+    internal fun startDfuMode() {
+        networkManager?.startDfuMode()
+    }
+
+    internal fun stopDfuMode() {
+        networkManager?.stopDfuMode()
     }
 }

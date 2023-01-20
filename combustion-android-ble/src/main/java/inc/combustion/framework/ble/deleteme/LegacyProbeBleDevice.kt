@@ -1,11 +1,11 @@
 /*
- * Project: Combustion Inc. Android Framework
+ * Project: Combustion Inc. Android Example
  * File: LegacyProbeBleDevice.kt
- * Author: https://github.com/miwright2
+ * Author:
  *
  * MIT License
  *
- * Copyright (c) 2022. Combustion Inc.
+ * Copyright (c) 2023. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal

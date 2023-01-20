@@ -35,6 +35,9 @@ import android.content.Intent
 import android.content.IntentFilter
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import inc.combustion.framework.ble.device.*
+import inc.combustion.framework.ble.device.ProbeBleDevice
+import inc.combustion.framework.ble.scanning.BaseAdvertisingData
 import inc.combustion.framework.ble.scanning.DeviceScanner
 import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
 import inc.combustion.framework.ble.scanning.RepeaterAdvertisingData
@@ -47,10 +50,22 @@ import kotlinx.coroutines.launch
 
 internal class NetworkManager(
     private val owner: LifecycleOwner,
-    private val adapter: BluetoothAdapter?
+    private val adapter: BluetoothAdapter,
 ) {
+    sealed class DeviceHolder {
+        data class ProbeHolder(val probe: ProbeBleDevice) : DeviceHolder()
+        data class RepeaterHolder(val repeater: UartBleDevice) : DeviceHolder()
+    }
+
+    sealed class LinkHolder {
+        data class ProbeHolder(val probe: ProbeBleDevice) : LinkHolder()
+        data class RepeatedProbeHolder(val repeatedProbe: RepeatedProbeBleDevice) : LinkHolder()
+    }
+
     private val jobManager = JobManager()
-    private val _probeManagers = hashMapOf<String, ProbeManager>()
+    private val devices = hashMapOf<DeviceID, DeviceHolder>()
+    private val meatNetLinks = hashMapOf<LinkID, LinkHolder>()
+    private val probeManagers = hashMapOf<String, ProbeManager>()
 
     companion object {
         private const val FLOW_CONFIG_REPLAY = 5
@@ -106,7 +121,7 @@ internal class NetworkManager(
 
     internal val discoveredProbes: List<String>
         get() {
-            return TODO() // _probes.keys.toList()
+            return  probeManagers.keys.toList()
         }
 
     init {
@@ -148,111 +163,91 @@ internal class NetworkManager(
         return scanningForProbes
     }
 
-    fun startDfuMode(): Boolean {
+    fun startDfuMode() {
         if(!dfuModeEnabled) {
             // disconnect any active connection
             dfuModeEnabled = true
+
+            // disconnect everything at this level
+            devices.forEach { (_, device) ->
+                when(device) {
+                    is DeviceHolder.ProbeHolder -> device.probe.disconnect()
+                    is DeviceHolder.RepeaterHolder -> device.repeater.disconnect()
+                }
+            }
+
             mutableNetworkEventFlow.tryEmit(NetworkEvent.DfuModeOn)
         }
-        TODO()
     }
 
-    fun stopDfuMode(): Boolean {
+    fun stopDfuMode() {
         if(dfuModeEnabled) {
-            // try to reconnect to everything in our collections
             dfuModeEnabled = false
+
+            // Have ProbeManager reconnect to the network nodes based on the current MeatNet
+            // connection management scheme.
+            probeManagers.forEach { (_, probe) ->
+                probe.postDfuReconnect()
+            }
             mutableNetworkEventFlow.tryEmit(NetworkEvent.DfuModeOff)
         }
-        TODO()
     }
 
     fun addSimulatedProbe() {
-        TODO()
-        /*
-        // Create SimulatedLegacyProbeManager
-        val simulatedProbeManager = SimulatedLegacyProbeManager.create(this@CombustionService,
-            (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter)
-
-        // Add to probe list
-        _probes[simulatedProbeManager.probe.serialNumber] = simulatedProbeManager
-
-        // emit into the discovered probes flow
-        lifecycleScope.launch {
-            mutableDiscoveredProbesFlow.emit(
-                ProbeDiscoveredEvent.ProbeDiscovered(simulatedProbeManager.probe.serialNumber)
-            )
-        }
-         */
+        TODO("Need to implement simulated probes")
     }
 
     internal fun probeFlow(serialNumber: String): SharedFlow<Probe>? {
-        //_probes[serialNumber]?.probeStateFlow
-        //TODO()
-        return null
+        return probeManagers[serialNumber]?.probeFlow
     }
 
     internal fun probeState(serialNumber: String): Probe? {
-        //_probes[serialNumber]?.probe
-        TODO()
+        return probeManagers[serialNumber]?.probe
     }
 
     internal fun connect(serialNumber: String) {
-        // _probes[serialNumber]?.connect()
-        TODO()
+        probeManagers[serialNumber]?.connect()
     }
 
     internal fun disconnect(serialNumber: String) {
-        // _probes[serialNumber]?.disconnect()
-        TODO()
+        probeManagers[serialNumber]?.disconnect()
     }
 
     internal fun setProbeColor(serialNumber: String, color: ProbeColor, completionHandler: (Boolean) -> Unit) {
-        /*
-        _probes[serialNumber]?.sendSetProbeColor(color, completionHandler) ?: run {
+        probeManagers[serialNumber]?.setProbeColor(color, completionHandler) ?: run {
             completionHandler(false)
         }
-         */
-        TODO()
     }
 
     internal fun setProbeID(serialNumber: String, id: ProbeID, completionHandler: (Boolean) -> Unit) {
-        /*
-        _probes[serialNumber]?.sendSetProbeID(id, completionHandler) ?: run {
+        probeManagers[serialNumber]?.setProbeID(id, completionHandler) ?: run {
             completionHandler(false)
         }
-         */
-        TODO()
     }
 
     internal fun setRemovalPrediction(serialNumber: String, removalTemperatureC: Double, completionHandler: (Boolean) -> Unit) {
-        /*
-        _probes[serialNumber]?.sendSetPrediction(removalTemperatureC, ProbePredictionMode.TIME_TO_REMOVAL, completionHandler) ?: run {
+        probeManagers[serialNumber]?.setPrediction(removalTemperatureC, ProbePredictionMode.TIME_TO_REMOVAL, completionHandler) ?: run {
             completionHandler(false)
         }
-         */
-        TODO()
     }
 
     internal fun cancelPrediction(serialNumber: String, completionHandler: (Boolean) -> Unit) {
-        /*
-        _probes[serialNumber]?.sendSetPrediction(DeviceManager.MINIMUM_PREDICTION_SETPOINT_CELSIUS, ProbePredictionMode.NONE, completionHandler) ?: run {
+        probeManagers[serialNumber]?.setPrediction(DeviceManager.MINIMUM_PREDICTION_SETPOINT_CELSIUS, ProbePredictionMode.NONE, completionHandler) ?: run {
             completionHandler(false)
         }
-         */
-        TODO()
     }
 
     fun clearDevices() {
-        /*
-        _probes.forEach { (_, probe) -> probe.finish() }
-        _probes.clear()
-         */
+        probeManagers.forEach { (_, probe) -> probe.finish() }
+        probeManagers.clear()
+        devices.clear()
+        meatNetLinks.clear()
         mutableDiscoveredProbesFlow.tryEmit(ProbeDiscoveredEvent.DevicesCleared)
-        TODO()
     }
 
     fun finish() {
         stopScan()
+        clearDevices()
         jobManager.cancelJobs()
     }
 
@@ -264,57 +259,88 @@ internal class NetworkManager(
         DeviceScanner.stop()
     }
 
+    private fun manageMeatNetDevice(advertisement: BaseAdvertisingData): Boolean {
+        var discoveredProbe = false
+        val (serialNumber, deviceId, linkId) = when(advertisement) {
+            is ProbeAdvertisingData -> {
+                Triple(advertisement.probeSerialNumber, advertisement.id, ProbeBleDeviceBase.makeLinkId(advertisement))
+            }
+            is RepeaterAdvertisingData -> {
+                Triple(advertisement.probeSerialNumber, advertisement.id, ProbeBleDeviceBase.makeLinkId(advertisement))
+            }
+            else -> NOT_IMPLEMENTED("Unknown type of advertising data")
+        }
+
+        // if we have not seen this device by its uid, then track in the device map.
+        if(!devices.containsKey(deviceId)) {
+            val deviceHolder = when(advertisement) {
+                is ProbeAdvertisingData -> {
+                    DeviceHolder.ProbeHolder(
+                        ProbeBleDevice(advertisement.mac, owner, advertisement, adapter)
+                    )
+                }
+                is RepeaterAdvertisingData -> {
+                    DeviceHolder.RepeaterHolder(
+                        UartBleDevice(advertisement.mac, owner, advertisement, adapter)
+                    )
+                }
+                else -> NOT_IMPLEMENTED("Unknown type of advertising data")
+            }
+
+            devices[deviceId] = deviceHolder
+        }
+
+        // if we haven't seen this serial number, then create a manager for it
+        if(!probeManagers.containsKey(serialNumber)) {
+            probeManagers[serialNumber] = ProbeManager(serialNumber, SETTINGS)
+            discoveredProbe = true
+        }
+
+        // if we haven't seen this link before, then create it and add it to the right probe manager
+        if(!meatNetLinks.containsKey(linkId)) {
+            // get reference to the source device for this link
+            val device = devices[deviceId]
+            val probeManger = probeManagers[serialNumber]
+            when(device) {
+                is DeviceHolder.ProbeHolder -> {
+                    meatNetLinks[linkId] = LinkHolder.ProbeHolder(device.probe)
+                    probeManger?.addProbe(device.probe)
+                }
+                is DeviceHolder.RepeaterHolder -> {
+                    val repeaterAdvertisement = advertisement as RepeaterAdvertisingData
+                    val repeatedProbe = RepeatedProbeBleDevice(repeaterAdvertisement, device.repeater)
+                    meatNetLinks[linkId] = LinkHolder.RepeatedProbeHolder(repeatedProbe)
+                    probeManger?.addRepeatedProbe(repeatedProbe)
+                }
+                else -> NOT_IMPLEMENTED("Unknown type of device holder")
+            }
+        }
+
+        return discoveredProbe
+    }
+
     private suspend fun collectAdvertisingData() {
         DeviceScanner.advertisements.collect {
             if(scanningForProbes) {
                 when(it) {
                     is ProbeAdvertisingData -> {
-                        mutableDiscoveredProbesFlow.emit(
-                            ProbeDiscoveredEvent.ProbeDiscovered(it.probeSerialNumber)
-                        )
-                    }
-                    is RepeaterAdvertisingData -> {
-                        if(it.probeSerialNumber != "0") {
+                        if(manageMeatNetDevice(it)) {
                             mutableDiscoveredProbesFlow.emit(
                                 ProbeDiscoveredEvent.ProbeDiscovered(it.probeSerialNumber)
                             )
                         }
                     }
-                }
-            }
-            /*
-            if(scanningForProbes) {
-                when(it) {
-                    is ProbeAdvertisingData -> {
-                        // see if we are currently tracking it.serial number
-                        // if not, then create a new probe manager for it.serial
-                        // create a ProbeBleDevice for it.serial
-                        // add it to the new Probe manager
-
-                        // if we created a new ProbeBleDeive
-                        /*
-                            _discoveredProbesFlow.emit(
-                                ProbeDiscoveredEvent.ProbeDiscovered(it.serialNumber)
-                            )
-
-                         */
-                    }
                     is RepeaterAdvertisingData -> {
-                        // see if we are currently tracking it.serial number
-                        // if not, then create a new probe manager for it.serial
-                        // create a RepeatedProbeBleDevice for it.serial
-                        // add it to the new Probe manager
-
-                        // if we created a new ProbeBleDeive
-                        /*
-                        _discoveredProbesFlow.emit(
-                            ProbeDiscoveredEvent.ProbeDiscovered(it.serialNumber)
-                        )
-                         */
+                        if(it.probeSerialNumber != "0") {
+                            if(manageMeatNetDevice(it)) {
+                                mutableDiscoveredProbesFlow.emit(
+                                    ProbeDiscoveredEvent.ProbeDiscovered(it.probeSerialNumber)
+                                )
+                            }
+                        }
                     }
                 }
             }
-             */
         }
     }
 }

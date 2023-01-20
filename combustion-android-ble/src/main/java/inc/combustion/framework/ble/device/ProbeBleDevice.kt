@@ -36,6 +36,7 @@ import com.juul.kable.characteristicOf
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.ProbeStatus
 import inc.combustion.framework.ble.scanning.BaseAdvertisingData
+import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -46,9 +47,9 @@ import kotlinx.coroutines.launch
 internal class ProbeBleDevice (
     mac: String,
     owner: LifecycleOwner,
-    advertisement: BaseAdvertisingData,
+    baseAdvertisement: BaseAdvertisingData,
     adapter: BluetoothAdapter,
-    private val probeUartBleDevice: ProbeUartBleDevice = ProbeUartBleDevice(mac, owner, advertisement, adapter),
+    private val probeUartBleDevice: ProbeUartBleDevice = ProbeUartBleDevice(mac, owner, baseAdvertisement, adapter),
 ) : IProbeBleDeviceBase,
     IProbeUartBleDevice by probeUartBleDevice,
     IProbeLogResponseBleDevice by probeUartBleDevice {
@@ -57,6 +58,16 @@ internal class ProbeBleDevice (
         replay = 0, extraBufferCapacity = 10, BufferOverflow.DROP_OLDEST)
 
     override val probeStatusFlow = _probeStatusFlow.asSharedFlow()
+
+    private var advertisement = baseAdvertisement as ProbeAdvertisingData
+        private set
+
+    val linkId: LinkID
+        get() {
+            return ProbeBleDeviceBase.makeLinkId(advertisement)
+        }
+
+    val id = probeUartBleDevice.id
 
     companion object {
         val DEVICE_STATUS_CHARACTERISTIC = characteristicOf(
@@ -68,6 +79,9 @@ internal class ProbeBleDevice (
     init {
         observeProbeStatusCharacteristic()
     }
+
+    fun connect() = probeUartBleDevice.connect()
+    fun disconnect() = probeUartBleDevice.disconnect()
 
     private fun observeProbeStatusCharacteristic() {
         probeUartBleDevice.jobManager.addJob(probeUartBleDevice.owner.lifecycleScope.launch {

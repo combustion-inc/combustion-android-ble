@@ -486,6 +486,16 @@ class DeviceManager(
         }
     }
 
+    /**
+     * TODO - Document Me
+     */
+    fun startDfuMode() = service.startDfuMode()
+
+    /**
+     * TODO - Document Me
+     */
+    fun stopDfuMode() = service.stopDfuMode()
+
     private fun probeDataToCsv(probe: Probe?, probeData: List<LoggedProbeDataPoint>?, appNameAndVersion: String): Pair<String, String> {
         val csvVersion = 3
         val sb = StringBuilder()

@@ -28,16 +28,31 @@
 package inc.combustion.framework.ble.device
 
 import inc.combustion.framework.ble.ProbeStatus
+import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
+import inc.combustion.framework.ble.scanning.RepeaterAdvertisingData
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+
+typealias LinkID = String
 
 internal interface IProbeBleDeviceBase {
     val probeStatusFlow: SharedFlow<ProbeStatus>
 }
 
 internal open class ProbeBleDeviceBase() : IProbeBleDeviceBase {
+
+    companion object {
+        fun makeLinkId(repeaterAdvertisement: RepeaterAdvertisingData): LinkID {
+            return "${repeaterAdvertisement.id}_${repeaterAdvertisement.probeSerialNumber}"
+        }
+
+        fun makeLinkId(probeAdvertisement: ProbeAdvertisingData): LinkID {
+            return "${probeAdvertisement.id}_${probeAdvertisement.probeSerialNumber}"
+        }
+    }
+
     val mutableProbeStatusFlow = MutableSharedFlow<ProbeStatus>(
         replay = 0, extraBufferCapacity = 10, BufferOverflow.DROP_OLDEST)
     override val probeStatusFlow = mutableProbeStatusFlow.asSharedFlow()

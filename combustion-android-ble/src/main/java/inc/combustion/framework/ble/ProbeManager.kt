@@ -28,11 +28,12 @@
 
 package inc.combustion.framework.ble
 
+import android.util.Log
+import inc.combustion.framework.LOG_TAG
+import inc.combustion.framework.ble.device.ProbeBleDevice
+import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
 import inc.combustion.framework.ble.uart.LogResponse
-import inc.combustion.framework.service.DeviceManager
-import inc.combustion.framework.service.Probe
-import inc.combustion.framework.service.ProbeUploadState
-import inc.combustion.framework.service.SessionInformation
+import inc.combustion.framework.service.*
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -50,7 +51,6 @@ internal class ProbeManager(
     // the flow that produce a state and data updates for this probe from meatnet
     private val _probeFlow = MutableSharedFlow<Probe>(
         replay = 0, extraBufferCapacity = 10, BufferOverflow.DROP_OLDEST)
-
 
     // the flow that is consumed to get state and date updates
     val probeFlow = _probeFlow.asSharedFlow()
@@ -87,6 +87,11 @@ internal class ProbeManager(
             }
         }
 
+    val probe: Probe
+        get() {
+            return _probe
+        }
+
     // current session information for the probe
     var sessionInfo: SessionInformation? = null
         private set
@@ -105,9 +110,49 @@ internal class ProbeManager(
 
     fun addJob(job: Job) = jobManager.addJob(job)
 
-    fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt) {
-        // for now we should route to the direct connected probe
+    fun addProbe(probe: ProbeBleDevice) {
+        Log.i(LOG_TAG, "PM($serialNumber) is managing link ${probe.linkId}")
+    }
+
+    fun addRepeatedProbe(probe: RepeatedProbeBleDevice) {
+        Log.i(LOG_TAG, "PM($serialNumber) is managing link ${probe.linkId}")
+    }
+
+    fun connect() {
         TODO()
+    }
+
+    fun disconnect() {
+        TODO()
+    }
+
+    fun postDfuReconnect() {
+        TODO()
+    }
+
+    fun setProbeColor(color: ProbeColor, completionHandler: (Boolean) -> Unit) {
+        TODO()
+    }
+
+    fun setProbeID(id: ProbeID, completionHandler: (Boolean) -> Unit) {
+        TODO()
+    }
+
+    fun setPrediction(removalTemperatureC: Double, mode: ProbePredictionMode, completionHandler: (Boolean) -> Unit) {
+        TODO()
+    }
+
+    fun cancelPrediction(completionHandler: (Boolean) -> Unit) {
+        TODO()
+    }
+
+    fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt) {
+        // for now we should route to the direct connected probe, right?
+        TODO()
+    }
+
+    fun finish() {
+       TODO()
     }
 
     // TODO: Need to Read Session Information Upon Connection To Probe

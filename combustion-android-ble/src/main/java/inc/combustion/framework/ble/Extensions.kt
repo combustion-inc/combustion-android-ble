@@ -27,6 +27,8 @@
  */
 package inc.combustion.framework.ble
 
+internal inline fun NOT_IMPLEMENTED(reason: String = ""): Nothing = TODO(reason)
+
 /**
  * Calculates the 16 bit * Cyclic Redundancy Check (CRC-CCIIT 0xFFFF) with an initial value of
  * 0xFFFF and the polynomial 0x1021.
