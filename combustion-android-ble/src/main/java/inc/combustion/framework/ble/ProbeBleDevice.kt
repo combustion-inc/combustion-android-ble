@@ -124,7 +124,6 @@ internal class ProbeBleDevice(
     fun disconnected() {
         sessionInfo = null
         probeStatus = null
-        predictionStatus = null
     }
 
     fun simulateProbeStatus(status: ProbeStatus) {
