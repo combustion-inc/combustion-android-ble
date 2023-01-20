@@ -1,7 +1,7 @@
 /*
- * Project: Combustion Inc. Android Example
+ * Project: Combustion Inc. Android Framework
  * File: DeviceID.kt
- * Author:
+ * Author: https://github.com/miwright2
  *
  * MIT License
  *
@@ -26,7 +26,7 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble
+package inc.combustion.framework.ble.device
 
 /**
  * Define a type to be used as a key into maps.

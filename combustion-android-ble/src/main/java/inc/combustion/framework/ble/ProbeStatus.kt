@@ -27,7 +27,6 @@
  */
 package inc.combustion.framework.ble
 
-import android.util.Log
 import inc.combustion.framework.service.*
 
 /**

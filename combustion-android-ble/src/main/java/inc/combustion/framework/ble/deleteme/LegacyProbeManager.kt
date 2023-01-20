@@ -25,7 +25,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package inc.combustion.framework.ble
+package inc.combustion.framework.ble.deleteme
 
 import android.bluetooth.BluetoothAdapter
 import android.util.Log
@@ -49,6 +49,7 @@ import kotlinx.coroutines.flow.*
  * @param owner Lifecycle owner for managing coroutine scope.
  * @param adapter Bluetooth adapter.
  */
+/*
 internal open class LegacyProbeManager (
     private val mac: String,
     private val owner: LifecycleOwner,
@@ -306,3 +307,4 @@ internal open class LegacyProbeManager (
         return _probe
     }
 }
+ */

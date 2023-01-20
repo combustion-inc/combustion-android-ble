@@ -1,5 +1,5 @@
 /*
- * Project: Combustion Inc. Android Example
+ * Project: Combustion Inc. Android Framework
  * File: ProbeManager.kt
  * Author: https://github.com/miwright2
  *
@@ -26,18 +26,93 @@
  * SOFTWARE.
  */
 
-/**
- * Design Ideas
- * - IProbeCommandApi
- *      - e.g. SetPrediction, SetColor, etc.
- *          - LegacyProbeBleDevice : IProbeCommandApi
- *          - RepeatedProbeBleDevice : IProbeCommandApi
- *          - SimulatedProbeBleDevice : IProbeCommandApi
- *          ^^ Want these 3 c
- *
- */
-
 package inc.combustion.framework.ble
 
-class ProbeManager {
+import inc.combustion.framework.ble.uart.LogResponse
+import inc.combustion.framework.service.DeviceManager
+import inc.combustion.framework.service.Probe
+import inc.combustion.framework.service.ProbeUploadState
+import inc.combustion.framework.service.SessionInformation
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+
+internal class ProbeManager(
+    serialNumber: String,
+    private val settings: DeviceManager.Settings
+) {
+    private val jobManager = JobManager()
+
+    // holds the current state and data for this probe
+    private var _probe: Probe = Probe.create(serialNumber = serialNumber)
+
+    // the flow that produce a state and data updates for this probe from meatnet
+    private val _probeFlow = MutableSharedFlow<Probe>(
+        replay = 0, extraBufferCapacity = 10, BufferOverflow.DROP_OLDEST)
+
+
+    // the flow that is consumed to get state and date updates
+    val probeFlow = _probeFlow.asSharedFlow()
+
+    // the flow that produces ProbeStatus updates from MeatNet
+    private val _probeStatusFlow = MutableSharedFlow<ProbeStatus>(
+        replay = 0, extraBufferCapacity = 10, BufferOverflow.DROP_OLDEST)
+
+    // the flow that is consumed to get ProbeStatus updates from MeatNet
+    val probeStatusFlow = _probeStatusFlow.asSharedFlow()
+
+    // the flow that produces LogResponses from MeatNet
+    private val _logResponseFlow = MutableSharedFlow<LogResponse>(
+        replay = 0, extraBufferCapacity = 50, BufferOverflow.SUSPEND)
+
+    // the flow that is consumed to get LogResponses from MeatNet
+    val logResponseFlow = _logResponseFlow.asSharedFlow()
+
+    // serial number of the probe that is being managed by this manager
+    val serialNumber: String
+        get() {
+            return _probe.serialNumber
+        }
+
+    // current upload state for this probe, determined by LogManager
+    var uploadState: ProbeUploadState
+        get() {
+            return _probe.uploadState
+        }
+        set(value) {
+            if(value != _probe.uploadState) {
+                _probe = _probe.copy(uploadState = value)
+               emit()
+            }
+        }
+
+    // current session information for the probe
+    var sessionInfo: SessionInformation? = null
+        private set
+
+    // current minimum sequence number for the probe
+    val minSequenceNumber: UInt
+        get() {
+            return _probe.minSequenceNumber
+        }
+
+    // current maximum sequence number for the probe
+    val maxSequenceNumber: UInt
+        get() {
+            return _probe.maxSequenceNumber
+        }
+
+    fun addJob(job: Job) = jobManager.addJob(job)
+
+    fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt) {
+        // for now we should route to the direct connected probe
+        TODO()
+    }
+
+    // TODO: Need to Read Session Information Upon Connection To Probe
+
+    private fun emit() {
+        _probeFlow.tryEmit(_probe)
+    }
 }

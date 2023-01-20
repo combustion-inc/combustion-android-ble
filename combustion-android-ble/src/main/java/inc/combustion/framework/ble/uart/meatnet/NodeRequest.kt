@@ -1,7 +1,7 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: ProbeStatus.kt
- * Author: https://github.com/miwright2
+ * File: NodeRequest.kt
+ * Author: https://github.com/jmaha
  *
  * MIT License
  *
@@ -32,7 +32,6 @@ import inc.combustion.framework.ble.getCRC16CCITT
 import inc.combustion.framework.ble.getLittleEndianUInt32At
 import inc.combustion.framework.ble.putLittleEndianUInt32At
 import inc.combustion.framework.ble.putLittleEndianUShortAt
-
 
 /**
  * Baseclass for UART request messages

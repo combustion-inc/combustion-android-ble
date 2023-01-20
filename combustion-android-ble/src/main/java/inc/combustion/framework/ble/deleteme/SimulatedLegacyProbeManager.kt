@@ -25,7 +25,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package inc.combustion.framework.ble
+package inc.combustion.framework.ble.deleteme
 
 import android.bluetooth.BluetoothAdapter
 import androidx.lifecycle.LifecycleOwner
@@ -45,6 +45,7 @@ import kotlin.random.Random
  * @param owner Lifecycle owner for managing coroutine scope.
  * @param adapter Bluetooth adapter.
  */
+/*
 internal class SimulatedLegacyProbeManager (
     mac: String,
     owner: LifecycleOwner,
@@ -159,3 +160,4 @@ internal class SimulatedLegacyProbeManager (
         )
     }
 }
+ */

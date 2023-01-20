@@ -1,7 +1,7 @@
 /*
- * Project: Combustion Inc. Android Example
+ * Project: Combustion Inc. Android Framework
  * File: BleDevice.kt
- * Author:
+ * Author: https://github.com/miwright2
  *
  * MIT License
  *
@@ -36,11 +36,14 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.juul.kable.*
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.*
-import inc.combustion.framework.ble.LegacyProbeAdvertisingData
-import inc.combustion.framework.ble.SimulatedLegacyProbeManager
+import inc.combustion.framework.ble.scanning.BaseAdvertisingData
+import inc.combustion.framework.ble.scanning.DeviceScanner
+import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
+import inc.combustion.framework.ble.scanning.RepeaterAdvertisingData
 import inc.combustion.framework.service.DeviceConnectionState
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.onCompletion
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -56,8 +59,8 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 internal open class BleDevice (
     private val mac: String,
-    protected val owner: LifecycleOwner,
-    var advertisingData: LegacyProbeAdvertisingData,
+    val owner: LifecycleOwner,
+    var advertisingData: BaseAdvertisingData,
     adapter: BluetoothAdapter
 ) {
     companion object {
@@ -87,7 +90,7 @@ internal open class BleDevice (
         get() = mac
 
     val jobManager = JobManager()
-    protected var peripheral: Peripheral =
+    var peripheral: Peripheral =
         owner.lifecycleScope.peripheral(adapter.getRemoteDevice(mac)) {
             logging {
                 /* The following enables logging in Kable
@@ -99,15 +102,18 @@ internal open class BleDevice (
             }
         }
 
-    // TODO: This variable should ideally be scoped as private.
-    //  This should be possible when this class is able handle and process advertising
-    //  packets directly from the device scanner.
-    val remoteRssi = AtomicInteger(0)
+    private val remoteRssi = AtomicInteger(0)
+    private val connectionMonitor = IdleMonitor()
 
-    protected val connectionMonitor = IdleMonitor()
     val rssi get() = remoteRssi.get()
     var connectionState = DeviceConnectionState.OUT_OF_RANGE
     val isConnected = AtomicBoolean(false)
+
+    init {
+        jobManager.addJob(owner.lifecycleScope.launch {
+            collectAdvertisements()
+        })
+    }
 
     fun observeOutOfRange(timeout: Long, callback: (suspend () -> Unit)? = null) {
         jobManager.addJob(owner.lifecycleScope.launch(Dispatchers.IO) {
@@ -134,7 +140,7 @@ internal open class BleDevice (
         jobManager.addJob(owner.lifecycleScope.launch(Dispatchers.IO) {
             var exceptionCount = 0;
             while(isActive) {
-                if(isConnected.get() && mac != SimulatedLegacyProbeManager.SIMULATED_MAC) {
+                if(isConnected.get() && mac != SimulatedProbeBleDevice.SIMULATED_MAC) {
                     try {
                         remoteRssi.set(peripheral.rssi())
                         exceptionCount = 0;
@@ -157,31 +163,6 @@ internal open class BleDevice (
                 delay(REMOTE_RSSI_POLL_RATE_MS)
             }
         })
-    }
-
-    fun handleAdvertisement(newAdvertisingData: LegacyProbeAdvertisingData) {
-        advertisingData = newAdvertisingData
-        connectionMonitor.activity()
-
-        // the probe continues to advertise even while a BLE connection is
-        // established.  determine if the device is currently advertising as
-        // connectable or not.
-        val advertisingState = when(newAdvertisingData.isConnectable) {
-            true -> DeviceConnectionState.ADVERTISING_CONNECTABLE
-            else -> DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE
-        }
-
-        // if the device is advertising as connectable, advertising as non-connectable,
-        // currently disconnected, or currently out of range then it's new state is the
-        // advertising state determined above. otherwise, (connected, connected or
-        // disconnecting) the state is unchanged by the advertising packet.
-        connectionState = when(connectionState) {
-            DeviceConnectionState.ADVERTISING_CONNECTABLE -> advertisingState
-            DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE -> advertisingState
-            DeviceConnectionState.OUT_OF_RANGE -> advertisingState
-            DeviceConnectionState.DISCONNECTED -> advertisingState
-            else -> connectionState
-        }
     }
 
     open fun connect() {
@@ -260,5 +241,48 @@ internal open class BleDevice (
             }
         }
         return bytes
+    }
+
+    private suspend fun collectAdvertisements() {
+        DeviceScanner.advertisements.filter {
+            // if advertising packet has same mac address and same probe serial number
+            when(it) {
+                is ProbeAdvertisingData -> {
+                    advertisingData is ProbeAdvertisingData &&
+                            advertisingData.mac == it.mac &&
+                            it.probeSerialNumber == (advertisingData as ProbeAdvertisingData).probeSerialNumber
+                }
+                is RepeaterAdvertisingData -> {
+                    advertisingData is RepeaterAdvertisingData &&
+                            advertisingData.mac == it.mac &&
+                            it.probeSerialNumber == (advertisingData as RepeaterAdvertisingData).probeSerialNumber
+                }
+                else -> false
+            }
+        }.collect {
+            remoteRssi.set(it.rssi)
+            advertisingData = it
+            connectionMonitor.activity()
+
+            // the probe continues to advertise even while a BLE connection is
+            // established.  determine if the device is currently advertising as
+            // connectable or not.
+            val advertisingState = when(advertisingData.isConnectable) {
+                true -> DeviceConnectionState.ADVERTISING_CONNECTABLE
+                else -> DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE
+            }
+
+            // if the device is advertising as connectable, advertising as non-connectable,
+            // currently disconnected, or currently out of range then it's new state is the
+            // advertising state determined above. otherwise, (connected, connected or
+            // disconnecting) the state is unchanged by the advertising packet.
+            connectionState = when(connectionState) {
+                DeviceConnectionState.ADVERTISING_CONNECTABLE -> advertisingState
+                DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE -> advertisingState
+                DeviceConnectionState.OUT_OF_RANGE -> advertisingState
+                DeviceConnectionState.DISCONNECTED -> advertisingState
+                else -> connectionState
+            }
+        }
     }
 }

@@ -1,7 +1,7 @@
 /*
  * Project: Combustion Inc. Android Framework
  * File: Device.kt
- * Author:
+ * Author: https://github.com/nick-sasquatch
  *
  * MIT License
  *

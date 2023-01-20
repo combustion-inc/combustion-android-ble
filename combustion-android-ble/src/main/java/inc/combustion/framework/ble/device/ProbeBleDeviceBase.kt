@@ -1,7 +1,7 @@
 /*
- * Project: Combustion Inc. Android Example
+ * Project: Combustion Inc. Android Framework
  * File: ProbeBleDeviceBase.kt
- * Author:
+ * Author: http://github.com/miwright2
  *
  * MIT License
  *
@@ -25,50 +25,20 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+package inc.combustion.framework.ble.device
 
-package inc.combustion.framework.ble
-
-import inc.combustion.framework.ble.uart.LogResponse
-import inc.combustion.framework.service.Probe
+import inc.combustion.framework.ble.ProbeStatus
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 
 internal interface IProbeBleDeviceBase {
-    suspend fun emit(probe: Probe)
-    suspend fun emit(probeStatus: ProbeStatus)
-    suspend fun emit(logResponse: LogResponse)
-
-    val probeFlow: SharedFlow<Probe>
     val probeStatusFlow: SharedFlow<ProbeStatus>
-    val logResponseFlow: SharedFlow<LogResponse>
-
-    val probe: Probe
 }
 
-internal class ProbeBleDeviceBase() : IProbeBleDeviceBase {
-    private val _probeFlow = MutableSharedFlow<Probe>(
+internal open class ProbeBleDeviceBase() : IProbeBleDeviceBase {
+    val mutableProbeStatusFlow = MutableSharedFlow<ProbeStatus>(
         replay = 0, extraBufferCapacity = 10, BufferOverflow.DROP_OLDEST)
-
-    private val _probeStatusFlow = MutableSharedFlow<ProbeStatus>(
-        replay = 0, extraBufferCapacity = 10, BufferOverflow.DROP_OLDEST)
-
-    private val _logResponseFlow = MutableSharedFlow<LogResponse>(
-        replay = 0, extraBufferCapacity = 50, BufferOverflow.SUSPEND)
-
-    private var _probe: Probe = Probe.create(mac = "")
-
-    override suspend fun emit(probe: Probe) = _probeFlow.emit(probe)
-    override suspend fun emit(probeStatus: ProbeStatus) = _probeStatusFlow.emit(probeStatus)
-    override suspend fun emit(logResponse: LogResponse) = _logResponseFlow.emit(logResponse)
-
-    override val probeFlow = _probeFlow.asSharedFlow()
-    override val probeStatusFlow = _probeStatusFlow.asSharedFlow()
-    override val logResponseFlow = _logResponseFlow.asSharedFlow()
-    override val probe: Probe get() = update()
-
-    private fun update(): Probe {
-        TODO()
-    }
+    override val probeStatusFlow = mutableProbeStatusFlow.asSharedFlow()
 }

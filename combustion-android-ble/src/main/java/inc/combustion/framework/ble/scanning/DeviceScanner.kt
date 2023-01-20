@@ -1,5 +1,5 @@
 /*
- * Project: Combustion Inc. Android Example
+ * Project: Combustion Inc. Android Framework
  * File: DeviceScanner.kt
  * Author: https://github.com/miwright2
  *

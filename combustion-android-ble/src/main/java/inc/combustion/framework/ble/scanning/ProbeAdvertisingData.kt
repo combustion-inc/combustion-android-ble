@@ -1,7 +1,7 @@
 /*
- * Project: Combustion Inc. Android Example
+ * Project: Combustion Inc. Android Framework
  * File: ProbeAdvertisingData.kt
- * Author:
+ * Author: https://github.com/miwright2
  *
  * MIT License
  *
@@ -30,26 +30,6 @@ package inc.combustion.framework.ble.scanning
 
 import inc.combustion.framework.service.*
 
-/**
- * TODO - document me
- *
- * @property probeSerialNumber
- * @property probeTemperatures
- * @property probeID
- * @property color
- * @property mode
- * @property batteryStatus
- * @property virtualSensors
- * @property hopCount
- * @constructor
- * TODO
- *
- * @param mac
- * @param name
- * @param rssi
- * @param productType
- * @param isConnectable
- */
 internal class ProbeAdvertisingData(
     mac: String,
     name: String,

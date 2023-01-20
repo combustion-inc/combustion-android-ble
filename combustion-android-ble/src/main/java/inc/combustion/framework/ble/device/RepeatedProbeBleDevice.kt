@@ -1,5 +1,5 @@
 /*
- * Project: Combustion Inc. Android Example
+ * Project: Combustion Inc. Android Framework
  * File: RepeatedProbeBleDevice.kt
  * Author: https://github.com/miwright2
  *
@@ -28,5 +28,16 @@
 
 package inc.combustion.framework.ble.device
 
-class RepeatedProbeBleDevice {
-}
+import android.bluetooth.BluetoothAdapter
+import androidx.lifecycle.LifecycleOwner
+import inc.combustion.framework.ble.scanning.BaseAdvertisingData
+
+internal class RepeatedProbeBleDevice (
+    mac: String,
+    owner: LifecycleOwner,
+    advertisement: BaseAdvertisingData,
+    adapter: BluetoothAdapter,
+    private val repeaterUartBleDevice: RepeaterUartBleDevice = RepeaterUartBleDevice(mac, owner, advertisement, adapter)
+) : IProbeBleDeviceBase by repeaterUartBleDevice,
+    IProbeUartBleDevice by repeaterUartBleDevice,
+    IProbeLogResponseBleDevice by repeaterUartBleDevice

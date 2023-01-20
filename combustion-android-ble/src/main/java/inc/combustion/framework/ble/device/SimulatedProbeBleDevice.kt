@@ -1,7 +1,7 @@
 /*
- * Project: Combustion Inc. Android Example
- * File: SimulatedProbeBleDevice.java
- * Author:
+ * Project: Combustion Inc. Android Framework
+ * File: SimulatedProbeBleDevice.kt
+ * Author: http://github.com/miwright2
  *
  * MIT License
  *
@@ -26,7 +26,10 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble.device;
+package inc.combustion.framework.ble.device
 
-public class SimulatedProbeBleDevice {
+class SimulatedProbeBleDevice {
+    companion object {
+        const val SIMULATED_MAC = "00:00:00:00:00:00"
+    }
 }

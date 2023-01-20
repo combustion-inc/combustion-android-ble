@@ -25,7 +25,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package inc.combustion.framework.ble
+package inc.combustion.framework.ble.deleteme
 
 import android.bluetooth.le.ScanSettings
 import android.os.ParcelUuid
@@ -42,6 +42,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Singleton class responsible for BLE scanning of devices and initial processing
  * of advertising packets.
  */
+/*
 internal class LegacyDeviceScanner private constructor() {
 
     companion object {
@@ -106,3 +107,4 @@ internal class LegacyDeviceScanner private constructor() {
         }
     }
 }
+ */

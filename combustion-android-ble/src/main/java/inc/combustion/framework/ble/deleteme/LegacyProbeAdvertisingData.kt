@@ -25,7 +25,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package inc.combustion.framework.ble
+package inc.combustion.framework.ble.deleteme
 
 import android.os.Build
 import android.bluetooth.le.ScanResult
@@ -45,6 +45,7 @@ import kotlin.reflect.jvm.isAccessible
  * @property isConnectable True if the device is currently connectable
  * @property probeTemperatures Probe's current temperature values.
  */
+/*
 internal data class LegacyProbeAdvertisingData (
     val name: String,
     val mac: String,
@@ -177,3 +178,5 @@ private inline fun <reified T : Any, R> T.getPrivateProperty(name: String): R? =
         .firstOrNull { it.name == name }
         ?.apply { isAccessible = true }
         ?.get(this) as? R
+
+ */

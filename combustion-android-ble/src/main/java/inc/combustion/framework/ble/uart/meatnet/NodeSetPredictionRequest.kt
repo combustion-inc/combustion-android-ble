@@ -1,7 +1,7 @@
 /*
  * Project: Combustion Inc. Android Example
- * File: SetPredictionRequest.kt
- * Author: https://github.com/miwright2
+ * File: NodeSetPredictionRequest.kt
+ * Author: https://github.com/jmaha
  *
  * MIT License
  *

@@ -1,7 +1,7 @@
 /*
- * Project: Combustion Inc. Android Example
+ * Project: Combustion Inc. Android Framework
  * File: NetworkManager.kt
- * Author:
+ * Author: https://github.com/miwright2
  *
  * MIT License
  *
@@ -33,7 +33,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.util.Log
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.ble.scanning.DeviceScanner
@@ -45,13 +44,13 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
-import java.util.*
 
 internal class NetworkManager(
     private val owner: LifecycleOwner,
     private val adapter: BluetoothAdapter?
 ) {
     private val jobManager = JobManager()
+    private val _probeManagers = hashMapOf<String, ProbeManager>()
 
     companion object {
         private const val FLOW_CONFIG_REPLAY = 5
@@ -78,16 +77,14 @@ internal class NetworkManager(
                     )
                     when (state) {
                         BluetoothAdapter.STATE_OFF -> {
+                            DeviceScanner.stop()
                             mutableNetworkEventFlow.tryEmit(NetworkEvent.ScanningOff)
                             mutableNetworkEventFlow.tryEmit(NetworkEvent.BluetoothOff)
-                        }
-                        BluetoothAdapter.STATE_TURNING_OFF -> {
-                            LegacyDeviceScanner.stopProbeScanning()
                         }
                         BluetoothAdapter.STATE_ON -> {
                             mutableNetworkEventFlow.tryEmit(NetworkEvent.BluetoothOn)
                         }
-                        BluetoothAdapter.STATE_TURNING_ON -> {}
+                        else -> { }
                     }
                 }
             }
