@@ -48,8 +48,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 internal class DeviceScanner private constructor() {
     companion object {
-        // TODO: This is the wrong UUID.
-        private const val NORDIC_DFU_SERVICE_UUID_STRING = "0000180A-0000-1000-8000-0080BEEFBEEF"
+        private const val NORDIC_DFU_SERVICE_UUID_STRING = "0000FE59-0000-1000-8000-00805F9B34FB"
         private val NORDIC_DFU_SERVICE_UUID: ParcelUuid = ParcelUuid.fromString(
             NORDIC_DFU_SERVICE_UUID_STRING
         )

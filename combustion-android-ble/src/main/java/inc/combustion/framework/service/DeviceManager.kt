@@ -178,24 +178,41 @@ class DeviceManager(
             return service.networkManager?.bluetoothIsEnabled ?: false
         }
 
-
-    /**
-     * Kotlin flow for collecting device discovery events that occur when the service
-     * is scanning for devices.  This is a hot flow.
-     *
-     * @see DeviceDiscoveredEvent
-     */
-    val discoveredProbesFlow : SharedFlow<DeviceDiscoveredEvent>
-        get() {
-            return NetworkManager.DISCOVERED_PROBES_FLOW
-        }
-
     /**
      * True if scanning for thermometers.  False otherwise.
      */
     val scanningForProbes: Boolean
         get() {
             return service.networkManager?.scanningForProbes ?: false
+        }
+
+    /**
+     * True if in DFU mode. False otherwise.
+     */
+    val dfuModeIsEnabled: Boolean
+        get() {
+            return service.networkManager?.dfuModeEnabled ?: false
+        }
+
+    /**
+     * Kotlin flow for collecting ProbeDiscoveredEvents that occur when the service
+     * is scanning for thermometers.  This is a hot flow.
+     *
+     * @see ProbeDiscoveredEvent
+     */
+    val discoveredProbesFlow : SharedFlow<ProbeDiscoveredEvent>
+        get() {
+            return NetworkManager.DISCOVERED_PROBES_FLOW
+        }
+
+    /**
+     * Kotlin flow for collecting NetworkEvents that are emitted upon system state changes.
+     *
+     * @see NetworkEvent
+     */
+    val networkFlow : SharedFlow<NetworkEvent>
+        get() {
+            return NetworkManager.NETWORK_EVENT_FLOW
         }
 
     /**
@@ -225,28 +242,28 @@ class DeviceManager(
     }
 
     /**
-     * Starts scanning for temperature probes.  Will generate a DeviceDiscoveredEvent
+     * Starts scanning for temperature probes.  Will generate a ProbeDiscoveredEvent
      * to the discoveredProbesFlow property.
      *
      * @return true if scanning has started, false otherwise.
      *
      * @see discoveredProbesFlow
-     * @see DeviceDiscoveredEvent
-     * @see DeviceDiscoveredEvent.ScanningOn
+     * @see ProbeDiscoveredEvent
+     * @see ProbeDiscoveredEvent.ScanningOn
      */
     fun startScanningForProbes(): Boolean {
         return service.networkManager?.startScanForProbes() ?: false
     }
 
     /**
-     * Stops scanning for temperature probes.  Will generate a DeviceDiscoveredEvent
+     * Stops scanning for temperature probes.  Will generate a ProbeDiscoveredEvent
      * to the discoveredProbFlow property.
      *
      * @return true if scanning has stopped, false otherwise.
      *
      * @see discoveredProbesFlow
-     * @see DeviceDiscoveredEvent
-     * @see DeviceDiscoveredEvent.ScanningOff
+     * @see ProbeDiscoveredEvent
+     * @see ProbeDiscoveredEvent.ScanningOff
      */
     fun stopScanningForProbes(): Boolean {
         return service.networkManager?.stopScanForProbes() ?: false
@@ -401,7 +418,7 @@ class DeviceManager(
      * discoveredProbesFlow.  The simulated probe has a state flow that can be collected
      * use the probeFlow method.
      *
-     * @see DeviceDiscoveredEvent
+     * @see ProbeDiscoveredEvent
      * @see discoveredProbesFlow
      * @see probeFlow
      */

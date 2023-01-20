@@ -33,6 +33,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.util.Log
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.ble.scanning.DeviceScanner
@@ -44,6 +45,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
+import java.util.*
 
 internal class NetworkManager(
     private val owner: LifecycleOwner,
@@ -55,11 +57,15 @@ internal class NetworkManager(
         private const val FLOW_CONFIG_REPLAY = 5
         private const val FLOW_CONFIG_BUFFER = FLOW_CONFIG_REPLAY * 2
 
-        private val mutableDiscoveredProbesFlow = MutableSharedFlow<DeviceDiscoveredEvent>(
+        private val mutableDiscoveredProbesFlow = MutableSharedFlow<ProbeDiscoveredEvent>(
             FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.SUSPEND
         )
-
         internal val DISCOVERED_PROBES_FLOW = mutableDiscoveredProbesFlow.asSharedFlow()
+
+        private val mutableNetworkEventFlow = MutableSharedFlow<NetworkEvent>(
+            FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.SUSPEND
+        )
+        internal val NETWORK_EVENT_FLOW = mutableNetworkEventFlow.asSharedFlow()
 
         internal val BLUETOOTH_ADAPTER_STATE_INTENT_FILTER = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
         internal val BLUETOOTH_ADAPTER_STATE_RECEIVER: BroadcastReceiver = object : BroadcastReceiver() {
@@ -72,14 +78,14 @@ internal class NetworkManager(
                     )
                     when (state) {
                         BluetoothAdapter.STATE_OFF -> {
-                            mutableDiscoveredProbesFlow.tryEmit(DeviceDiscoveredEvent.ScanningOff)
-                            mutableDiscoveredProbesFlow.tryEmit(DeviceDiscoveredEvent.BluetoothOff)
+                            mutableNetworkEventFlow.tryEmit(NetworkEvent.ScanningOff)
+                            mutableNetworkEventFlow.tryEmit(NetworkEvent.BluetoothOff)
                         }
                         BluetoothAdapter.STATE_TURNING_OFF -> {
                             LegacyDeviceScanner.stopProbeScanning()
                         }
                         BluetoothAdapter.STATE_ON -> {
-                            mutableDiscoveredProbesFlow.tryEmit(DeviceDiscoveredEvent.BluetoothOn)
+                            mutableNetworkEventFlow.tryEmit(NetworkEvent.BluetoothOn)
                         }
                         BluetoothAdapter.STATE_TURNING_ON -> {}
                     }
@@ -96,6 +102,10 @@ internal class NetworkManager(
         }
 
     internal var scanningForProbes: Boolean = false
+        private set
+
+    internal var dfuModeEnabled: Boolean = false
+        private set
 
     internal val discoveredProbes: List<String>
         get() {
@@ -104,16 +114,16 @@ internal class NetworkManager(
 
     init {
         jobManager.addJob(owner.lifecycleScope.launch {
-            // TODO: Need to start the device scanner
+            collectAdvertisingData()
         })
 
         if(bluetoothIsEnabled) {
             startScan()
-            mutableDiscoveredProbesFlow.tryEmit(DeviceDiscoveredEvent.BluetoothOn)
-            mutableDiscoveredProbesFlow.tryEmit(DeviceDiscoveredEvent.ScanningOn)
+            mutableNetworkEventFlow.tryEmit(NetworkEvent.BluetoothOn)
+            mutableNetworkEventFlow.tryEmit(NetworkEvent.ScanningOn)
         }
         else {
-            mutableDiscoveredProbesFlow.tryEmit(DeviceDiscoveredEvent.BluetoothOff)
+            mutableNetworkEventFlow.tryEmit(NetworkEvent.BluetoothOff)
         }
     }
 
@@ -123,7 +133,7 @@ internal class NetworkManager(
         }
 
         if(scanningForProbes) {
-            mutableDiscoveredProbesFlow.tryEmit(DeviceDiscoveredEvent.ScanningOn)
+            mutableNetworkEventFlow.tryEmit(NetworkEvent.ScanningOn)
         }
 
         return scanningForProbes
@@ -135,21 +145,27 @@ internal class NetworkManager(
         }
 
         if(!scanningForProbes) {
-            mutableDiscoveredProbesFlow.tryEmit(DeviceDiscoveredEvent.ScanningOff)
+            mutableNetworkEventFlow.tryEmit(NetworkEvent.ScanningOff)
         }
 
         return scanningForProbes
     }
 
     fun startDfuMode(): Boolean {
-        // disconnect any active connection
-        // set dfuScanning to true
+        if(!dfuModeEnabled) {
+            // disconnect any active connection
+            dfuModeEnabled = true
+            mutableNetworkEventFlow.tryEmit(NetworkEvent.DfuModeOn)
+        }
         TODO()
     }
 
     fun stopDfuMode(): Boolean {
-        // try to reconnect to everything in our collections
-        // set dfuScanning to false
+        if(dfuModeEnabled) {
+            // try to reconnect to everything in our collections
+            dfuModeEnabled = false
+            mutableNetworkEventFlow.tryEmit(NetworkEvent.DfuModeOff)
+        }
         TODO()
     }
 
@@ -166,7 +182,7 @@ internal class NetworkManager(
         // emit into the discovered probes flow
         lifecycleScope.launch {
             mutableDiscoveredProbesFlow.emit(
-                DeviceDiscoveredEvent.DeviceDiscovered(simulatedProbeManager.probe.serialNumber)
+                ProbeDiscoveredEvent.ProbeDiscovered(simulatedProbeManager.probe.serialNumber)
             )
         }
          */
@@ -174,7 +190,8 @@ internal class NetworkManager(
 
     internal fun probeFlow(serialNumber: String): SharedFlow<Probe>? {
         //_probes[serialNumber]?.probeStateFlow
-        TODO()
+        //TODO()
+        return null
     }
 
     internal fun probeState(serialNumber: String): Probe? {
@@ -233,7 +250,7 @@ internal class NetworkManager(
         _probes.forEach { (_, probe) -> probe.finish() }
         _probes.clear()
          */
-        mutableDiscoveredProbesFlow.tryEmit(DeviceDiscoveredEvent.DevicesCleared)
+        mutableDiscoveredProbesFlow.tryEmit(ProbeDiscoveredEvent.DevicesCleared)
         TODO()
     }
 
@@ -250,9 +267,24 @@ internal class NetworkManager(
         DeviceScanner.stop()
     }
 
-
     private suspend fun collectAdvertisingData() {
         DeviceScanner.advertisements.collect {
+            if(scanningForProbes) {
+                when(it) {
+                    is ProbeAdvertisingData -> {
+                        mutableDiscoveredProbesFlow.emit(
+                            ProbeDiscoveredEvent.ProbeDiscovered(it.probeSerialNumber)
+                        )
+                    }
+                    is RepeaterAdvertisingData -> {
+                        if(it.probeSerialNumber != "0") {
+                            mutableDiscoveredProbesFlow.emit(
+                                ProbeDiscoveredEvent.ProbeDiscovered(it.probeSerialNumber)
+                            )
+                        }
+                    }
+                }
+            }
             /*
             if(scanningForProbes) {
                 when(it) {
@@ -265,7 +297,7 @@ internal class NetworkManager(
                         // if we created a new ProbeBleDeive
                         /*
                             _discoveredProbesFlow.emit(
-                                DeviceDiscoveredEvent.DeviceDiscovered(it.serialNumber)
+                                ProbeDiscoveredEvent.ProbeDiscovered(it.serialNumber)
                             )
 
                          */
@@ -279,21 +311,13 @@ internal class NetworkManager(
                         // if we created a new ProbeBleDeive
                         /*
                         _discoveredProbesFlow.emit(
-                            DeviceDiscoveredEvent.DeviceDiscovered(it.serialNumber)
+                            ProbeDiscoveredEvent.ProbeDiscovered(it.serialNumber)
                         )
                          */
                     }
                 }
             }
-
-            if(dfuScanning) {
-                // construct a Device based on it
-                // emit it out.
-            }
-            
              */
-
-            TODO()
         }
     }
 }

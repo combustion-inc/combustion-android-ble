@@ -113,7 +113,7 @@ class CombustionService : LifecycleService() {
 
                             // new probe discovered, so emit into the discovered probes flow
                             _discoveredProbesFlow.emit(
-                                DeviceDiscoveredEvent.DeviceDiscovered(it.serialNumber)
+                                ProbeDiscoveredEvent.ProbeDiscovered(it.serialNumber)
                             )
 
                             newProbe
@@ -227,7 +227,7 @@ class CombustionService : LifecycleService() {
         // emit into the discovered probes flow
         lifecycleScope.launch {
             _discoveredProbesFlow.emit(
-                DeviceDiscoveredEvent.DeviceDiscovered(simulatedProbeManager.probe.serialNumber)
+                ProbeDiscoveredEvent.ProbeDiscovered(simulatedProbeManager.probe.serialNumber)
             )
         }
          */
