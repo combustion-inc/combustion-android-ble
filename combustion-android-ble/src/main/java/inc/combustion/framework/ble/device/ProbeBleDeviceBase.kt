@@ -55,5 +55,6 @@ internal open class ProbeBleDeviceBase() : IProbeBleDeviceBase {
 
     val mutableProbeStatusFlow = MutableSharedFlow<ProbeStatus>(
         replay = 0, extraBufferCapacity = 10, BufferOverflow.DROP_OLDEST)
+
     override val probeStatusFlow = mutableProbeStatusFlow.asSharedFlow()
 }

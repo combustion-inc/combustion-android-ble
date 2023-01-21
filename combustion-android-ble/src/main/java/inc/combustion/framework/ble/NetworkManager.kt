@@ -292,7 +292,7 @@ internal class NetworkManager(
 
         // if we haven't seen this serial number, then create a manager for it
         if(!probeManagers.containsKey(serialNumber)) {
-            probeManagers[serialNumber] = ProbeManager(serialNumber, SETTINGS)
+            probeManagers[serialNumber] = ProbeManager(serialNumber, owner, SETTINGS)
             discoveredProbe = true
         }
 

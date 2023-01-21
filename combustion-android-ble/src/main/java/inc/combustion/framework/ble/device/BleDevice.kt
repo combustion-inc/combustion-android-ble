@@ -183,25 +183,25 @@ internal open class BleDevice (
                 peripheral.state.onCompletion {
                     Log.d(LOG_TAG, "Connection State Monitor Complete")
                 }
-                    .catch {
-                        Log.i(LOG_TAG, "Connection State Monitor Catch: $it")
+                .catch {
+                    Log.i(LOG_TAG, "Connection State Monitor Catch: $it")
+                }
+                .collect { state ->
+                    connectionMonitor.activity()
+
+                    connectionState = when (state) {
+                        is State.Connecting -> DeviceConnectionState.CONNECTING
+                        State.Connected -> DeviceConnectionState.CONNECTED
+                        State.Disconnecting -> DeviceConnectionState.DISCONNECTING
+                        is State.Disconnected -> DeviceConnectionState.DISCONNECTED
                     }
-                    .collect { state ->
-                        connectionMonitor.activity()
 
-                        connectionState = when (state) {
-                            is State.Connecting -> DeviceConnectionState.CONNECTING
-                            State.Connected -> DeviceConnectionState.CONNECTED
-                            State.Disconnecting -> DeviceConnectionState.DISCONNECTING
-                            is State.Disconnected -> DeviceConnectionState.DISCONNECTED
-                        }
+                    isConnected.set(connectionState == DeviceConnectionState.CONNECTED)
 
-                        isConnected.set(connectionState == DeviceConnectionState.CONNECTED)
-
-                        callback?.let {
-                            it(connectionState)
-                        }
+                    callback?.let {
+                        it(connectionState)
                     }
+                }
             }
         })
     }

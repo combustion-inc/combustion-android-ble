@@ -29,6 +29,8 @@
 package inc.combustion.framework.ble
 
 import android.util.Log
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
@@ -36,14 +38,23 @@ import inc.combustion.framework.ble.uart.LogResponse
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
 
 internal class ProbeManager(
     serialNumber: String,
+    private val owner: LifecycleOwner,
     private val settings: DeviceManager.Settings
 ) {
+    // direct ble link to probe
+    private var probeBleDevice: ProbeBleDevice? = null
+    private val repeatedProbeBleDevices = mutableListOf<RepeatedProbeBleDevice>()
+
+    // manages long-running coroutine scopes for data handling
     private val jobManager = JobManager()
+
+    private var probeStatusCollectJob: Job? = null
 
     // holds the current state and data for this probe
     private var _probe: Probe = Probe.create(serialNumber = serialNumber)
@@ -111,11 +122,16 @@ internal class ProbeManager(
     fun addJob(job: Job) = jobManager.addJob(job)
 
     fun addProbe(probe: ProbeBleDevice) {
-        Log.i(LOG_TAG, "PM($serialNumber) is managing link ${probe.linkId}")
+        if(probeBleDevice != null) {
+            probeBleDevice = probe
+
+            Log.i(LOG_TAG, "PM($serialNumber) is managing link ${probe.linkId}")
+        }
     }
 
-    fun addRepeatedProbe(probe: RepeatedProbeBleDevice) {
-        Log.i(LOG_TAG, "PM($serialNumber) is managing link ${probe.linkId}")
+    fun addRepeatedProbe(repeatedProbe: RepeatedProbeBleDevice) {
+        repeatedProbeBleDevices.add(repeatedProbe)
+        Log.i(LOG_TAG, "PM($serialNumber) is managing link ${repeatedProbe.linkId}")
     }
 
     fun connect() {
@@ -156,6 +172,29 @@ internal class ProbeManager(
     }
 
     // TODO: Need to Read Session Information Upon Connection To Probe
+
+    private fun collectProbeStatus() {
+        /*
+        probeStatusCollectJob?.cancel()
+        probeStatusCollectJob = owner.lifecycleScope.launch {
+            val flowList = mutableListOf<Flow<ProbeStatus>>()
+
+            probeBleDevice?.let {
+                flowList.add(it.probeStatusFlow)
+            }
+
+            repeatedProbeBleDevices.forEach {
+                flowList.add(it.probeStatusFlow)
+            }
+
+            merge(*flowList.map{ it }.toTypedArray()).collect {
+            }
+            probeBleDevice?.probeStatusFlow?.collect {
+
+            }
+        }
+         */
+    }
 
     private fun emit() {
         _probeFlow.tryEmit(_probe)
