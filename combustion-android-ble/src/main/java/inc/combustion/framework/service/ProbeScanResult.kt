@@ -29,7 +29,7 @@ package inc.combustion.framework.service
 
 import com.juul.kable.Advertisement
 import inc.combustion.framework.ble.scanning.BaseAdvertisingData
-import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
+import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 
 /**
  * Data class for returning BLE scan results.
@@ -50,7 +50,7 @@ data class ProbeScanResult(
             val data = BaseAdvertisingData.create(advertisement)
 
             data?.let {
-                if(it !is ProbeAdvertisingData)
+                if(it !is CombustionAdvertisingData)
                     return null
 
                 val serialNumber = it.probeSerialNumber

@@ -67,7 +67,7 @@ internal class DeviceScanner private constructor() {
         val isScanning: Boolean
             get() = atomicIsScanning.get()
 
-        private val mutableAdvertisements = MutableSharedFlow<BaseAdvertisingData>()
+        private val mutableAdvertisements = MutableSharedFlow<CombustionAdvertisingData>()
         val advertisements = mutableAdvertisements.asSharedFlow()
 
         fun scan(owner: LifecycleOwner) {
@@ -93,8 +93,7 @@ internal class DeviceScanner private constructor() {
                             }
                             .collect { advertisement ->
                                 when (val advertisingData = BaseAdvertisingData.create(advertisement)) {
-                                    is ProbeAdvertisingData -> mutableAdvertisements.emit(advertisingData)
-                                    is RepeaterAdvertisingData -> mutableAdvertisements.emit(advertisingData)
+                                    is CombustionAdvertisingData -> mutableAdvertisements.emit(advertisingData)
                                     // else, if just BaseAdvertisingData, then no need to produce to flow.
                                 }
                             }

@@ -34,6 +34,7 @@ import androidx.lifecycle.lifecycleScope
 import com.juul.kable.characteristicOf
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.scanning.BaseAdvertisingData
+import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.uart.LogResponse
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.Dispatchers
@@ -42,29 +43,12 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 
-internal interface IProbeLogResponseBleDevice {
-    val logResponseFlow: SharedFlow<LogResponse>
-}
-
-internal interface IProbeUartBleDevice {
-    fun sendSessionInformationRequest(callback: ((Boolean, Any?) -> Unit)? = null)
-    fun sendSetProbeColor(color: ProbeColor, callback: ((Boolean, Any?) -> Unit)? = null)
-    fun sendSetProbeID(id: ProbeID, callback: ((Boolean, Any?) -> Unit)? = null)
-    fun sendSetPrediction(setPointTemperatureC: Double, mode: ProbePredictionMode, callback: ((Boolean, Any?) -> Unit)? = null)
-    fun sendLogRequest(minSequence: UInt, maxSequence: UInt)
-}
-
-internal interface IUartBleDevice {
-    suspend fun writeUartCharacteristic(data: ByteArray)
-    suspend fun observeUartCharacteristic(callback: (suspend (data: UByteArray) -> Unit)? = null)
-}
-
 internal open class UartBleDevice(
     mac: String,
     owner: LifecycleOwner,
-    advertisement: BaseAdvertisingData,
+    advertisement: CombustionAdvertisingData,
     adapter: BluetoothAdapter
-) : DeviceInformationBleDevice(mac, owner, advertisement, adapter), IUartBleDevice {
+) : DeviceInformationBleDevice(mac, owner, advertisement, adapter) {
 
     class MessageCompletionHandler {
         private val waiting = AtomicBoolean(false)
@@ -110,7 +94,7 @@ internal open class UartBleDevice(
         )
     }
 
-    override suspend fun writeUartCharacteristic(data: ByteArray) {
+    suspend fun writeUartCharacteristic(data: ByteArray) {
         if(isConnected.get()) {
             owner.lifecycleScope.launch(Dispatchers.IO) {
                 try {
@@ -122,7 +106,7 @@ internal open class UartBleDevice(
         }
     }
 
-    override suspend fun observeUartCharacteristic(callback: (suspend (data: UByteArray) -> Unit)?) {
+    suspend fun observeUartCharacteristic(callback: (suspend (data: UByteArray) -> Unit)?) {
         peripheral.observe(UART_TX_CHARACTERISTIC)
             .onCompletion {
                 if (DebugSettings.DEBUG_LOG_BLE_UART_IO) {

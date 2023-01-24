@@ -36,10 +36,9 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.juul.kable.*
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.*
-import inc.combustion.framework.ble.scanning.BaseAdvertisingData
+import inc.combustion.framework.ble.scanning.*
+import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.scanning.DeviceScanner
-import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
-import inc.combustion.framework.ble.scanning.RepeaterAdvertisingData
 import inc.combustion.framework.service.DeviceConnectionState
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.catch
@@ -60,7 +59,7 @@ import java.util.concurrent.atomic.AtomicInteger
 internal open class BleDevice (
     private val mac: String,
     val owner: LifecycleOwner,
-    var advertisingData: BaseAdvertisingData,
+    advertisement: CombustionAdvertisingData,
     adapter: BluetoothAdapter
 ) {
     companion object {
@@ -102,6 +101,7 @@ internal open class BleDevice (
             }
         }
 
+    private val advertisementForProbe = hashMapOf<String, CombustionAdvertisingData>()
     private val remoteRssi = AtomicInteger(0)
     private val connectionMonitor = IdleMonitor()
 
@@ -110,8 +110,72 @@ internal open class BleDevice (
     val isConnected = AtomicBoolean(false)
 
     init {
+        advertisementForProbe[advertisement.probeSerialNumber] = advertisement
+    }
+
+    open fun addRepeatedAdvertisement(serialNumber: String, advertisement: CombustionAdvertisingData) {
+        advertisementForProbe[serialNumber] = advertisement
+    }
+
+    open fun advertisementForProbe(serialNumber: String): CombustionAdvertisingData? {
+        if(advertisementForProbe.containsKey(serialNumber)) {
+            return advertisementForProbe[serialNumber]
+        }
+
+        return null
+    }
+
+    open fun connect() {
+        owner.lifecycleScope.launch {
+            Log.d(LOG_TAG, "Connecting to $mac")
+            try {
+                peripheral.connect()
+            } catch (e: Exception) {
+                Log.e(LOG_TAG, "Connect Error: ${e.localizedMessage}")
+                Log.e(LOG_TAG, Log.getStackTraceString(e))
+            }
+        }
+    }
+
+    open fun disconnect() {
+        owner.lifecycleScope.launch {
+            withTimeoutOrNull(DISCONNECT_TIMEOUT_MS) {
+                peripheral.disconnect()
+            }
+        }
+    }
+
+    fun finish() {
+        disconnect()
+        jobManager.cancelJobs()
+    }
+
+    fun observeConnectionState(callback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)? = null) {
         jobManager.addJob(owner.lifecycleScope.launch {
-            collectAdvertisements()
+            owner.repeatOnLifecycle(Lifecycle.State.CREATED) {
+                peripheral.state.onCompletion {
+                    Log.d(LOG_TAG, "Connection State Monitor Complete")
+                }
+                .catch {
+                    Log.i(LOG_TAG, "Connection State Monitor Catch: $it")
+                }
+                .collect { state ->
+                    connectionMonitor.activity()
+
+                    connectionState = when (state) {
+                        is State.Connecting -> DeviceConnectionState.CONNECTING
+                        State.Connected -> DeviceConnectionState.CONNECTED
+                        State.Disconnecting -> DeviceConnectionState.DISCONNECTING
+                        is State.Disconnected -> DeviceConnectionState.DISCONNECTED
+                    }
+
+                    isConnected.set(connectionState == DeviceConnectionState.CONNECTED)
+
+                    callback?.let {
+                        it(connectionState)
+                    }
+                }
+            }
         })
     }
 
@@ -165,58 +229,44 @@ internal open class BleDevice (
         })
     }
 
-    open fun connect() {
-        owner.lifecycleScope.launch {
-            Log.d(LOG_TAG, "Connecting to $mac")
-            try {
-                peripheral.connect()
-            } catch (e: Exception) {
-                Log.e(LOG_TAG, "Connect Error: ${e.localizedMessage}")
-                Log.e(LOG_TAG, Log.getStackTraceString(e))
-            }
-        }
-    }
+    fun observeAdvertisingPackets(serialNumber: String, callback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)? = null) {
+        jobManager.addJob(owner.lifecycleScope.launch(Dispatchers.IO) {
+            DeviceScanner.advertisements.filter {
 
-    fun observeConnectionState(callback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)? = null) {
-        jobManager.addJob(owner.lifecycleScope.launch {
-            owner.repeatOnLifecycle(Lifecycle.State.CREATED) {
-                peripheral.state.onCompletion {
-                    Log.d(LOG_TAG, "Connection State Monitor Complete")
+                // if advertising packet has same mac address and same probe serial number
+                mac == it.mac && it.probeSerialNumber == serialNumber
+
+            }.collect {
+                remoteRssi.set(it.rssi)
+                connectionMonitor.activity()
+
+                // the probe continues to advertise even while a BLE connection is
+                // established.  determine if the device is currently advertising as
+                // connectable or not.
+                val advertisingState = when(it.isConnectable) {
+                    true -> DeviceConnectionState.ADVERTISING_CONNECTABLE
+                    else -> DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE
                 }
-                .catch {
-                    Log.i(LOG_TAG, "Connection State Monitor Catch: $it")
+
+                // if the device is advertising as connectable, advertising as non-connectable,
+                // currently disconnected, or currently out of range then it's new state is the
+                // advertising state determined above. otherwise, (connected, connected or
+                // disconnecting) the state is unchanged by the advertising packet.
+                connectionState = when(connectionState) {
+                    DeviceConnectionState.ADVERTISING_CONNECTABLE -> advertisingState
+                    DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE -> advertisingState
+                    DeviceConnectionState.OUT_OF_RANGE -> advertisingState
+                    DeviceConnectionState.DISCONNECTED -> advertisingState
+                    else -> connectionState
                 }
-                .collect { state ->
-                    connectionMonitor.activity()
 
-                    connectionState = when (state) {
-                        is State.Connecting -> DeviceConnectionState.CONNECTING
-                        State.Connected -> DeviceConnectionState.CONNECTED
-                        State.Disconnecting -> DeviceConnectionState.DISCONNECTING
-                        is State.Disconnected -> DeviceConnectionState.DISCONNECTED
-                    }
+                advertisementForProbe[serialNumber] = it
 
-                    isConnected.set(connectionState == DeviceConnectionState.CONNECTED)
-
-                    callback?.let {
-                        it(connectionState)
-                    }
+                callback?.let { clientCallback ->
+                    clientCallback(it)
                 }
             }
         })
-    }
-
-    open fun disconnect() {
-        owner.lifecycleScope.launch {
-            withTimeoutOrNull(DISCONNECT_TIMEOUT_MS) {
-                peripheral.disconnect()
-            }
-        }
-    }
-
-    fun finish() {
-        disconnect()
-        jobManager.cancelJobs()
     }
 
     protected suspend fun readSerialNumberCharacteristic(): String? =
@@ -241,48 +291,5 @@ internal open class BleDevice (
             }
         }
         return bytes
-    }
-
-    private suspend fun collectAdvertisements() {
-        DeviceScanner.advertisements.filter {
-            // if advertising packet has same mac address and same probe serial number
-            when(it) {
-                is ProbeAdvertisingData -> {
-                    advertisingData is ProbeAdvertisingData &&
-                            advertisingData.mac == it.mac &&
-                            it.probeSerialNumber == (advertisingData as ProbeAdvertisingData).probeSerialNumber
-                }
-                is RepeaterAdvertisingData -> {
-                    advertisingData is RepeaterAdvertisingData &&
-                            advertisingData.mac == it.mac &&
-                            it.probeSerialNumber == (advertisingData as RepeaterAdvertisingData).probeSerialNumber
-                }
-                else -> false
-            }
-        }.collect {
-            remoteRssi.set(it.rssi)
-            advertisingData = it
-            connectionMonitor.activity()
-
-            // the probe continues to advertise even while a BLE connection is
-            // established.  determine if the device is currently advertising as
-            // connectable or not.
-            val advertisingState = when(advertisingData.isConnectable) {
-                true -> DeviceConnectionState.ADVERTISING_CONNECTABLE
-                else -> DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE
-            }
-
-            // if the device is advertising as connectable, advertising as non-connectable,
-            // currently disconnected, or currently out of range then it's new state is the
-            // advertising state determined above. otherwise, (connected, connected or
-            // disconnecting) the state is unchanged by the advertising packet.
-            connectionState = when(connectionState) {
-                DeviceConnectionState.ADVERTISING_CONNECTABLE -> advertisingState
-                DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE -> advertisingState
-                DeviceConnectionState.OUT_OF_RANGE -> advertisingState
-                DeviceConnectionState.DISCONNECTED -> advertisingState
-                else -> connectionState
-            }
-        }
     }
 }

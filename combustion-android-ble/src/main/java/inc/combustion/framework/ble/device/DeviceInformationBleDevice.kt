@@ -30,11 +30,12 @@ package inc.combustion.framework.ble.device
 import android.bluetooth.BluetoothAdapter
 import androidx.lifecycle.LifecycleOwner
 import inc.combustion.framework.ble.scanning.BaseAdvertisingData
+import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 
 internal open class DeviceInformationBleDevice(
     mac: String,
     owner: LifecycleOwner,
-    advertisement: BaseAdvertisingData,
+    advertisement: CombustionAdvertisingData,
     adapter: BluetoothAdapter
 ) : BleDevice(mac, owner, advertisement, adapter) {
 

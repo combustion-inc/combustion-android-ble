@@ -31,50 +31,50 @@ package inc.combustion.framework.ble.device
 import android.util.Log
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.scanning.RepeaterAdvertisingData
-import inc.combustion.framework.ble.uart.LogResponse
+import inc.combustion.framework.ble.scanning.BaseAdvertisingData
+import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.uart.Request
 import inc.combustion.framework.ble.uart.meatnet.NodeResponse
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 
 internal class RepeatedProbeBleDevice (
-    private var repeaterAdvertisingDataForProbe: RepeaterAdvertisingData,
-    private val repeaterUartDevice: UartBleDevice,
-    private val probeBleDeviceBase: ProbeBleDeviceBase = ProbeBleDeviceBase(),
-) : IUartBleDevice by repeaterUartDevice,
-    IProbeBleDeviceBase by probeBleDeviceBase,
-    IProbeLogResponseBleDevice,
-    IProbeUartBleDevice {
+    private val probeSerialNumber: String,
+    private val uart: UartBleDevice,
+) : ProbeBleDeviceBase() {
 
     companion object {
         const val MESSAGE_RESPONSE_TIMEOUT_MS = 5000L
     }
 
-    private val sessionInfoHandler = UartBleDevice.MessageCompletionHandler()
-    private val setColorHandler = UartBleDevice.MessageCompletionHandler()
-    private val setIdHandler = UartBleDevice.MessageCompletionHandler()
-    private val setPredictionHandler = UartBleDevice.MessageCompletionHandler()
-
-    private val _logResponseFlow = MutableSharedFlow<LogResponse>(
-        replay = 0, extraBufferCapacity = 50, BufferOverflow.SUSPEND)
-    override val logResponseFlow = _logResponseFlow.asSharedFlow()
-
-    val linkId: LinkID
+    override val advertisement: CombustionAdvertisingData?
         get() {
-            return ProbeBleDeviceBase.makeLinkId(repeaterAdvertisingDataForProbe)
+            return uart.advertisementForProbe(probeSerialNumber)
         }
 
-    val id: DeviceID
+    override val linkId: LinkID
         get() {
-            return repeaterUartDevice.id
+            return makeLinkId(advertisement)
         }
 
-    // TODO -- need to collect advertising packets
+    override val id: DeviceID
+        get() {
+            return uart.id
+        }
+
+    override val rssi = uart.rssi
+    override val connectionState = uart.connectionState
+    override val isConnected = uart.isConnected.get()
+
+    override val hopCount: UInt
+        get() {
+            return advertisement?.hopCount ?: UInt.MAX_VALUE
+        }
+
+    val probeRssi: Int get() { TODO() }
+    val probeConnectionState: DeviceConnectionState get() { TODO() }
+    val probeIsConnected: Boolean get() { TODO() }
 
     init {
         observeUartResponses { response ->
@@ -103,8 +103,8 @@ internal class RepeatedProbeBleDevice (
         }
     }
 
-    fun connect() = repeaterUartDevice.connect()
-    fun disconnect() = repeaterUartDevice.disconnect()
+    override fun connect() = uart.connect()
+    override fun disconnect() = uart.disconnect()
 
     override fun sendSessionInformationRequest(callback: ((Boolean, Any?) -> Unit)?)  {
         // see ProbeUartBleDevice
@@ -131,9 +131,26 @@ internal class RepeatedProbeBleDevice (
         TODO()
     }
 
+    override suspend fun readSerialNumber() {
+        TODO()
+    }
+
+    override suspend fun readFirmwareVersion() {
+        TODO()
+    }
+
+    override suspend fun readHardwareRevision() {
+        TODO()
+    }
+
+    override fun observeAdvertisingPackets(serialNumber: String, callback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)?) = uart.observeAdvertisingPackets(serialNumber, callback)
+    override fun observeRemoteRssi(callback: (suspend (rssi: Int) -> Unit)?) = uart.observeRemoteRssi(callback)
+    override fun observeOutOfRange(timeout: Long, callback: (suspend () -> Unit)?) = uart.observeOutOfRange(timeout, callback)
+    override fun observeConnectionState(callback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)?) = uart.observeConnectionState(callback)
+
     private fun observeUartResponses(callback: (suspend (response: NodeResponse) -> Unit)? = null) {
-        repeaterUartDevice.jobManager.addJob(repeaterUartDevice.owner.lifecycleScope.launch {
-            observeUartCharacteristic { data ->
+        uart.jobManager.addJob(uart.owner.lifecycleScope.launch {
+            uart.observeUartCharacteristic { data ->
                 callback?.let {
 
                     NodeResponse.responseFromData(data.toUByteArray())
@@ -143,7 +160,7 @@ internal class RepeatedProbeBleDevice (
     }
 
     private fun sendUartRequest(request: Request) {
-        repeaterUartDevice.owner.lifecycleScope.launch(Dispatchers.IO) {
+        uart.owner.lifecycleScope.launch(Dispatchers.IO) {
             if (DebugSettings.DEBUG_LOG_BLE_UART_IO) {
                 val packet = request.data.joinToString("") {
                     it.toString(16).padStart(2, '0').uppercase()
@@ -151,7 +168,7 @@ internal class RepeatedProbeBleDevice (
                 Log.d(LOG_TAG, "UART-TX: $packet")
             }
 
-            writeUartCharacteristic(request.sData)
+            uart.writeUartCharacteristic(request.sData)
         }
     }
 }

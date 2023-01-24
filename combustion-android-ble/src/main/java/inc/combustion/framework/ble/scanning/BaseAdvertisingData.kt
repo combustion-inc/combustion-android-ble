@@ -133,11 +133,11 @@ open class BaseAdvertisingData(
                     base
                 }
                 CombustionProductType.PROBE -> {
-                    ProbeAdvertisingData(
+                    CombustionAdvertisingData(
                         mac = address,
                         name = name,
                         rssi = rssi,
-                        productType = CombustionProductType.UNKNOWN,
+                        productType = type,
                         isConnectable = isConnectable,
                         probeSerialNumber = serialNumber,
                         probeTemperatures = probeTemperatures,
@@ -150,11 +150,11 @@ open class BaseAdvertisingData(
                     )
                 }
                 else -> {
-                    RepeaterAdvertisingData(
+                    CombustionAdvertisingData(
                         mac = address,
                         name = name,
                         rssi = rssi,
-                        productType = CombustionProductType.UNKNOWN,
+                        productType = type,
                         isConnectable = isConnectable,
                         probeSerialNumber = serialNumber,
                         probeTemperatures = probeTemperatures,

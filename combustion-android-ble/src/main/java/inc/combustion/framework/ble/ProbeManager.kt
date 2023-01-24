@@ -30,23 +30,27 @@ package inc.combustion.framework.ble
 
 import android.util.Log
 import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.device.ProbeBleDevice
+import inc.combustion.framework.ble.device.ProbeBleDeviceBase
 import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
+import inc.combustion.framework.ble.scanning.BaseAdvertisingData
+import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.uart.LogResponse
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.job
-import kotlinx.coroutines.launch
 
 internal class ProbeManager(
     serialNumber: String,
     private val owner: LifecycleOwner,
     private val settings: DeviceManager.Settings
 ) {
+    companion object {
+        const val OUT_OF_RANGE_TIMEOUT = 15000L
+    }
+
     // direct ble link to probe
     private var probeBleDevice: ProbeBleDevice? = null
     private val repeatedProbeBleDevices = mutableListOf<RepeatedProbeBleDevice>()
@@ -94,7 +98,7 @@ internal class ProbeManager(
         set(value) {
             if(value != _probe.uploadState) {
                 _probe = _probe.copy(uploadState = value)
-               emit()
+               tryEmit()
             }
         }
 
@@ -122,19 +126,21 @@ internal class ProbeManager(
     fun addJob(job: Job) = jobManager.addJob(job)
 
     fun addProbe(probe: ProbeBleDevice) {
-        if(probeBleDevice != null) {
+        if(probeBleDevice == null) {
             probeBleDevice = probe
-
+            manage(probe)
             Log.i(LOG_TAG, "PM($serialNumber) is managing link ${probe.linkId}")
         }
     }
 
     fun addRepeatedProbe(repeatedProbe: RepeatedProbeBleDevice) {
         repeatedProbeBleDevices.add(repeatedProbe)
+        manage(repeatedProbe)
         Log.i(LOG_TAG, "PM($serialNumber) is managing link ${repeatedProbe.linkId}")
     }
 
     fun connect() {
+        // TODO: Need to Read Session Information Upon Connection To Probe
         TODO()
     }
 
@@ -171,32 +177,157 @@ internal class ProbeManager(
        TODO()
     }
 
-    // TODO: Need to Read Session Information Upon Connection To Probe
-
-    private fun collectProbeStatus() {
-        /*
-        probeStatusCollectJob?.cancel()
-        probeStatusCollectJob = owner.lifecycleScope.launch {
-            val flowList = mutableListOf<Flow<ProbeStatus>>()
-
-            probeBleDevice?.let {
-                flowList.add(it.probeStatusFlow)
-            }
-
-            repeatedProbeBleDevices.forEach {
-                flowList.add(it.probeStatusFlow)
-            }
-
-            merge(*flowList.map{ it }.toTypedArray()).collect {
-            }
-            probeBleDevice?.probeStatusFlow?.collect {
-
-            }
-        }
-         */
+    private fun manage(base: ProbeBleDeviceBase) {
+        base.observeAdvertisingPackets(serialNumber) { advertisement -> handleAdvertisingPackets(base, advertisement) }
+        base.observeConnectionState { state -> handleConnectionState(base, state) }
+        base.observeOutOfRange(OUT_OF_RANGE_TIMEOUT){ handleOutOfRange(base) }
+        base.observeRemoteRssi { rssi ->  handleRemoteRssi(base, rssi) }
     }
 
-    private fun emit() {
+    private fun debuggingWithStaticLink(device: ProbeBleDeviceBase): Boolean {
+        return when(device) {
+            is ProbeBleDevice -> false
+            is RepeatedProbeBleDevice -> true
+            else -> false
+        }
+    }
+
+    private fun shouldUpdateFromAdvertisingPacket(device: ProbeBleDeviceBase, hopCount: UInt): Boolean {
+        // TODO: Implement Multiplexing Business Logic
+        return debuggingWithStaticLink(device)
+    }
+
+    private fun shouldUpdateOnConnectionState(device: ProbeBleDeviceBase, hopCount: UInt, state: DeviceConnectionState): Boolean {
+        // TODO: Implement Multiplexing Business Logic
+        return debuggingWithStaticLink(device)
+    }
+
+    private fun shouldUpdateOnRemoteRssi(device: ProbeBleDeviceBase, hopCount: UInt, rssi: Int): Boolean {
+        // TODO: Implement Multiplexing Business Logic
+        return debuggingWithStaticLink(device)
+    }
+
+    private suspend fun handleAdvertisingPackets(device: ProbeBleDeviceBase, advertisement: CombustionAdvertisingData) {
+        when(device) {
+            is ProbeBleDevice -> {
+                if(shouldUpdateFromAdvertisingPacket(device, advertisement.hopCount)) {
+                    updateStateFromAdvertisement(
+                        rssi = advertisement.rssi,
+                        mode = advertisement.mode,
+                        temperatures = advertisement.probeTemperatures,
+                        sensors = advertisement.virtualSensors,
+                        hopCount = advertisement.hopCount
+                    )
+                }
+                emit()
+            }
+            is RepeatedProbeBleDevice -> {
+                if(shouldUpdateFromAdvertisingPacket(device, advertisement.hopCount)) {
+                    updateStateFromAdvertisement(
+                        rssi = advertisement.rssi,
+                        mode = advertisement.mode,
+                        temperatures = advertisement.probeTemperatures,
+                        sensors = advertisement.virtualSensors,
+                        hopCount = advertisement.hopCount
+                    )
+                }
+                emit()
+            }
+        }
+    }
+
+    private suspend fun handleConnectionState(device: ProbeBleDeviceBase, state: DeviceConnectionState) {
+        when(device) {
+            is ProbeBleDevice -> {
+                if(shouldUpdateOnConnectionState(device, device.hopCount, state)) {
+                    _probe = _probe.copy(baseDevice = _probe.baseDevice.copy(connectionState = state))
+                    emit()
+                }
+            }
+            is RepeatedProbeBleDevice -> {
+                if(shouldUpdateOnConnectionState(device, device.hopCount, state)) {
+                    _probe = _probe.copy(baseDevice = _probe.baseDevice.copy(connectionState = state))
+                    emit()
+                }
+            }
+        }
+    }
+
+    private suspend fun handleOutOfRange(device: ProbeBleDeviceBase) {
+        when(device) {
+            is ProbeBleDevice -> {
+                // TODO
+            }
+            is RepeatedProbeBleDevice -> {
+                // TODO
+            }
+        }
+    }
+
+    private suspend fun handleRemoteRssi(device: ProbeBleDeviceBase, rssi: Int) {
+        when(device) {
+            is ProbeBleDevice -> {
+                if(shouldUpdateOnRemoteRssi(device, device.hopCount, rssi)) {
+                    _probe = _probe.copy(baseDevice = _probe.baseDevice.copy(rssi = rssi))
+                }
+                emit()
+            }
+            is RepeatedProbeBleDevice -> {
+                if(shouldUpdateOnRemoteRssi(device, device.hopCount, rssi)) {
+                    _probe = _probe.copy(baseDevice = _probe.baseDevice.copy(rssi = rssi))
+                }
+                emit()
+            }
+        }
+    }
+
+    private fun updateStateFromAdvertisement(
+        rssi: Int, mode: ProbeMode, temperatures: ProbeTemperatures, sensors: ProbeVirtualSensors, hopCount: UInt
+    ) {
+        _probe = _probe.copy(
+            baseDevice = _probe.baseDevice.copy(rssi = rssi),
+            hopCount = hopCount
+        )
+
+        if(mode == ProbeMode.INSTANT_READ) {
+            // TODO: Keep Track of Instant Read Activity
+            _probe = _probe.copy(
+                instantReadCelsius = temperatures.values[0]
+            )
+        } else if(mode == ProbeMode.NORMAL) {
+            // TODO: Keep Track of Instant Read Stale/Idle/Timeout
+            _probe = _probe.copy(
+                temperaturesCelsius = temperatures,
+                virtualSensors = sensors,
+                coreTemperatureCelsius = when(sensors.virtualCoreSensor) {
+                    ProbeVirtualSensors.VirtualCoreSensor.T1 -> temperatures.values[0]
+                    ProbeVirtualSensors.VirtualCoreSensor.T2 -> temperatures.values[1]
+                    ProbeVirtualSensors.VirtualCoreSensor.T3 -> temperatures.values[2]
+                    ProbeVirtualSensors.VirtualCoreSensor.T4 -> temperatures.values[3]
+                    ProbeVirtualSensors.VirtualCoreSensor.T5 -> temperatures.values[4]
+                    ProbeVirtualSensors.VirtualCoreSensor.T6 -> temperatures.values[5]
+                },
+                surfaceTemperatureCelsius = when(sensors.virtualSurfaceSensor) {
+                    ProbeVirtualSensors.VirtualSurfaceSensor.T4 -> temperatures.values[3]
+                    ProbeVirtualSensors.VirtualSurfaceSensor.T5 -> temperatures.values[4]
+                    ProbeVirtualSensors.VirtualSurfaceSensor.T6 -> temperatures.values[5]
+                    ProbeVirtualSensors.VirtualSurfaceSensor.T7 -> temperatures.values[6]
+                },
+                ambientTemperatureCelsius = when(sensors.virtualAmbientSensor) {
+                    ProbeVirtualSensors.VirtualAmbientSensor.T5 -> temperatures.values[4]
+                    ProbeVirtualSensors.VirtualAmbientSensor.T6 -> temperatures.values[5]
+                    ProbeVirtualSensors.VirtualAmbientSensor.T7 -> temperatures.values[6]
+                    ProbeVirtualSensors.VirtualAmbientSensor.T8 -> temperatures.values[7]
+                }
+            )
+        }
+    }
+
+    private suspend fun emit() {
+        _probeFlow.emit(_probe)
+    }
+
+    private fun tryEmit() {
         _probeFlow.tryEmit(_probe)
     }
 }

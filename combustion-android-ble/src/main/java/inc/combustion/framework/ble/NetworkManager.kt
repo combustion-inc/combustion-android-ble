@@ -33,14 +33,14 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.util.Log
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.ble.device.*
 import inc.combustion.framework.ble.device.ProbeBleDevice
-import inc.combustion.framework.ble.scanning.BaseAdvertisingData
+import inc.combustion.framework.ble.scanning.*
+import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.scanning.DeviceScanner
-import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
-import inc.combustion.framework.ble.scanning.RepeaterAdvertisingData
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -259,27 +259,26 @@ internal class NetworkManager(
         DeviceScanner.stop()
     }
 
-    private fun manageMeatNetDevice(advertisement: BaseAdvertisingData): Boolean {
+    private fun manageMeatNetDevice(advertisement: CombustionAdvertisingData): Boolean {
         var discoveredProbe = false
-        val (serialNumber, deviceId, linkId) = when(advertisement) {
-            is ProbeAdvertisingData -> {
-                Triple(advertisement.probeSerialNumber, advertisement.id, ProbeBleDeviceBase.makeLinkId(advertisement))
-            }
-            is RepeaterAdvertisingData -> {
-                Triple(advertisement.probeSerialNumber, advertisement.id, ProbeBleDeviceBase.makeLinkId(advertisement))
-            }
-            else -> NOT_IMPLEMENTED("Unknown type of advertising data")
-        }
+        val serialNumber = advertisement.probeSerialNumber
+        val deviceId = advertisement.id
+        val linkId = ProbeBleDeviceBase.makeLinkId(advertisement)
 
         // if we have not seen this device by its uid, then track in the device map.
         if(!devices.containsKey(deviceId)) {
-            val deviceHolder = when(advertisement) {
-                is ProbeAdvertisingData -> {
+            val deviceHolder = when(advertisement.productType) {
+                CombustionProductType.PROBE -> {
                     DeviceHolder.ProbeHolder(
                         ProbeBleDevice(advertisement.mac, owner, advertisement, adapter)
                     )
                 }
-                is RepeaterAdvertisingData -> {
+                CombustionProductType.DISPLAY -> {
+                    DeviceHolder.RepeaterHolder(
+                        UartBleDevice(advertisement.mac, owner, advertisement, adapter)
+                    )
+                }
+                CombustionProductType.CHARGER -> {
                     DeviceHolder.RepeaterHolder(
                         UartBleDevice(advertisement.mac, owner, advertisement, adapter)
                     )
@@ -307,8 +306,8 @@ internal class NetworkManager(
                     probeManger?.addProbe(device.probe)
                 }
                 is DeviceHolder.RepeaterHolder -> {
-                    val repeaterAdvertisement = advertisement as RepeaterAdvertisingData
-                    val repeatedProbe = RepeatedProbeBleDevice(repeaterAdvertisement, device.repeater)
+                    device.repeater.addRepeatedAdvertisement(serialNumber, advertisement)
+                    val repeatedProbe = RepeatedProbeBleDevice(serialNumber, device.repeater)
                     meatNetLinks[linkId] = LinkHolder.RepeatedProbeHolder(repeatedProbe)
                     probeManger?.addRepeatedProbe(repeatedProbe)
                 }
@@ -322,22 +321,11 @@ internal class NetworkManager(
     private suspend fun collectAdvertisingData() {
         DeviceScanner.advertisements.collect {
             if(scanningForProbes) {
-                when(it) {
-                    is ProbeAdvertisingData -> {
-                        if(manageMeatNetDevice(it)) {
-                            mutableDiscoveredProbesFlow.emit(
-                                ProbeDiscoveredEvent.ProbeDiscovered(it.probeSerialNumber)
-                            )
-                        }
-                    }
-                    is RepeaterAdvertisingData -> {
-                        if(it.probeSerialNumber != "0") {
-                            if(manageMeatNetDevice(it)) {
-                                mutableDiscoveredProbesFlow.emit(
-                                    ProbeDiscoveredEvent.ProbeDiscovered(it.probeSerialNumber)
-                                )
-                            }
-                        }
+                if(manageMeatNetDevice(it)) {
+                    if(it.probeSerialNumber != "0") {
+                        mutableDiscoveredProbesFlow.emit(
+                            ProbeDiscoveredEvent.ProbeDiscovered(it.probeSerialNumber)
+                        )
                     }
                 }
             }
