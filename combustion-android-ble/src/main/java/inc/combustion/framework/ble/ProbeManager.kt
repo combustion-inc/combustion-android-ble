@@ -290,10 +290,8 @@ internal open class ProbeManager (
             )
         }
 
-        if(predictionStatusMonitor.isIdle(PROBE_PREDICTION_IDLE_TIMEOUT_MS)) {
-            probeBleDevice.predictionStatus = null
-            predictionCountdownSeconds = null
-        }
+        // Calculate if prediction has gone stale
+        val predictionStale = predictionStatusMonitor.isIdle(PROBE_PREDICTION_IDLE_TIMEOUT_MS)
 
         _probe = _probe.copy(
             predictionState = probeBleDevice.predictionStatus?.predictionState,
@@ -303,7 +301,8 @@ internal open class ProbeManager (
             heatStartTemperatureCelsius = probeBleDevice.predictionStatus?.heatStartTemperature,
             rawPredictionSeconds = probeBleDevice.predictionStatus?.predictionValueSeconds,
             predictionSeconds = predictionCountdownSeconds,
-            estimatedCoreCelsius = probeBleDevice.predictionStatus?.estimatedCoreTemperature
+            estimatedCoreCelsius = probeBleDevice.predictionStatus?.estimatedCoreTemperature,
+            predictionStale = predictionStale
         )
 
         return _probe
