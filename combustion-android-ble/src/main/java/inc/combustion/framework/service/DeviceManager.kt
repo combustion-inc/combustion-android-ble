@@ -38,6 +38,7 @@ import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.NetworkManager
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import java.lang.StringBuilder
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -278,7 +279,7 @@ class DeviceManager(
      *
      * @see Probe
      */
-    fun probeFlow(serialNumber: String): SharedFlow<Probe>? {
+    fun probeFlow(serialNumber: String): StateFlow<Probe>? {
         return service.networkManager?.probeFlow(serialNumber)
     }
 

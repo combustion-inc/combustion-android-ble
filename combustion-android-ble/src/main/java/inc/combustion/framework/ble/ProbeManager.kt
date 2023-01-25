@@ -25,7 +25,6 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-
 package inc.combustion.framework.ble
 
 import android.util.Log
@@ -34,7 +33,6 @@ import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.device.ProbeBleDeviceBase
 import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
-import inc.combustion.framework.ble.scanning.BaseAdvertisingData
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.uart.LogResponse
 import inc.combustion.framework.service.*
@@ -61,14 +59,10 @@ internal class ProbeManager(
     private var probeStatusCollectJob: Job? = null
 
     // holds the current state and data for this probe
-    private var _probe: Probe = Probe.create(serialNumber = serialNumber)
-
-    // the flow that produce a state and data updates for this probe from meatnet
-    private val _probeFlow = MutableSharedFlow<Probe>(
-        replay = 0, extraBufferCapacity = 10, BufferOverflow.DROP_OLDEST)
+    private var _probe = MutableStateFlow(Probe.create(serialNumber = serialNumber))
 
     // the flow that is consumed to get state and date updates
-    val probeFlow = _probeFlow.asSharedFlow()
+    val probeFlow = _probe.asStateFlow()
 
     // the flow that produces ProbeStatus updates from MeatNet
     private val _probeStatusFlow = MutableSharedFlow<ProbeStatus>(
@@ -87,24 +81,23 @@ internal class ProbeManager(
     // serial number of the probe that is being managed by this manager
     val serialNumber: String
         get() {
-            return _probe.serialNumber
+            return _probe.value.serialNumber
         }
 
     // current upload state for this probe, determined by LogManager
     var uploadState: ProbeUploadState
         get() {
-            return _probe.uploadState
+            return _probe.value.uploadState
         }
         set(value) {
-            if(value != _probe.uploadState) {
-                _probe = _probe.copy(uploadState = value)
-               tryEmit()
+            if(value != _probe.value.uploadState) {
+                _probe.value = _probe.value.copy(uploadState = value)
             }
         }
 
     val probe: Probe
         get() {
-            return _probe
+            return _probe.value
         }
 
     // current session information for the probe
@@ -114,13 +107,13 @@ internal class ProbeManager(
     // current minimum sequence number for the probe
     val minSequenceNumber: UInt
         get() {
-            return _probe.minSequenceNumber
+            return _probe.value.minSequenceNumber
         }
 
     // current maximum sequence number for the probe
     val maxSequenceNumber: UInt
         get() {
-            return _probe.maxSequenceNumber
+            return _probe.value.maxSequenceNumber
         }
 
     fun addJob(job: Job) = jobManager.addJob(job)
@@ -186,8 +179,8 @@ internal class ProbeManager(
 
     private fun debuggingWithStaticLink(device: ProbeBleDeviceBase): Boolean {
         return when(device) {
-            is ProbeBleDevice -> false
-            is RepeatedProbeBleDevice -> true
+            is ProbeBleDevice -> true
+            is RepeatedProbeBleDevice -> false
             else -> false
         }
     }
@@ -219,7 +212,6 @@ internal class ProbeManager(
                         hopCount = advertisement.hopCount
                     )
                 }
-                emit()
             }
             is RepeatedProbeBleDevice -> {
                 if(shouldUpdateFromAdvertisingPacket(device, advertisement.hopCount)) {
@@ -231,7 +223,6 @@ internal class ProbeManager(
                         hopCount = advertisement.hopCount
                     )
                 }
-                emit()
             }
         }
     }
@@ -240,14 +231,12 @@ internal class ProbeManager(
         when(device) {
             is ProbeBleDevice -> {
                 if(shouldUpdateOnConnectionState(device, device.hopCount, state)) {
-                    _probe = _probe.copy(baseDevice = _probe.baseDevice.copy(connectionState = state))
-                    emit()
+                    _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(connectionState = state))
                 }
             }
             is RepeatedProbeBleDevice -> {
                 if(shouldUpdateOnConnectionState(device, device.hopCount, state)) {
-                    _probe = _probe.copy(baseDevice = _probe.baseDevice.copy(connectionState = state))
-                    emit()
+                    _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(connectionState = state))
                 }
             }
         }
@@ -268,15 +257,13 @@ internal class ProbeManager(
         when(device) {
             is ProbeBleDevice -> {
                 if(shouldUpdateOnRemoteRssi(device, device.hopCount, rssi)) {
-                    _probe = _probe.copy(baseDevice = _probe.baseDevice.copy(rssi = rssi))
+                    _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(rssi = rssi))
                 }
-                emit()
             }
             is RepeatedProbeBleDevice -> {
                 if(shouldUpdateOnRemoteRssi(device, device.hopCount, rssi)) {
-                    _probe = _probe.copy(baseDevice = _probe.baseDevice.copy(rssi = rssi))
+                    _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(rssi = rssi))
                 }
-                emit()
             }
         }
     }
@@ -284,19 +271,19 @@ internal class ProbeManager(
     private fun updateStateFromAdvertisement(
         rssi: Int, mode: ProbeMode, temperatures: ProbeTemperatures, sensors: ProbeVirtualSensors, hopCount: UInt
     ) {
-        _probe = _probe.copy(
-            baseDevice = _probe.baseDevice.copy(rssi = rssi),
+        _probe.value = _probe.value.copy(
+            baseDevice = _probe.value.baseDevice.copy(rssi = rssi),
             hopCount = hopCount
         )
 
         if(mode == ProbeMode.INSTANT_READ) {
             // TODO: Keep Track of Instant Read Activity
-            _probe = _probe.copy(
+            _probe.value = _probe.value.copy(
                 instantReadCelsius = temperatures.values[0]
             )
         } else if(mode == ProbeMode.NORMAL) {
             // TODO: Keep Track of Instant Read Stale/Idle/Timeout
-            _probe = _probe.copy(
+            _probe.value = _probe.value.copy(
                 temperaturesCelsius = temperatures,
                 virtualSensors = sensors,
                 coreTemperatureCelsius = when(sensors.virtualCoreSensor) {
@@ -321,13 +308,5 @@ internal class ProbeManager(
                 }
             )
         }
-    }
-
-    private suspend fun emit() {
-        _probeFlow.emit(_probe)
-    }
-
-    private fun tryEmit() {
-        _probeFlow.tryEmit(_probe)
     }
 }

@@ -45,6 +45,7 @@ import inc.combustion.framework.service.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 
@@ -197,7 +198,7 @@ internal class NetworkManager(
         TODO("Need to implement simulated probes")
     }
 
-    internal fun probeFlow(serialNumber: String): SharedFlow<Probe>? {
+    internal fun probeFlow(serialNumber: String): StateFlow<Probe>? {
         return probeManagers[serialNumber]?.probeFlow
     }
 
