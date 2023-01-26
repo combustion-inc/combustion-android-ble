@@ -67,6 +67,9 @@ internal abstract class ProbeBleDeviceBase() {
     val probeStatusFlow = mutableProbeStatusFlow.asSharedFlow()
     val logResponseFlow = mutableLogResponseFlow.asSharedFlow()
 
+    // mac
+    abstract val mac: String
+
     // identifiers
     abstract val linkId: LinkID
     abstract val id: DeviceID

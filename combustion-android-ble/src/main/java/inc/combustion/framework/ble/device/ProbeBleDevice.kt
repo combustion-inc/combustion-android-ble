@@ -70,6 +70,8 @@ internal class ProbeBleDevice (
             return uart.advertisementForProbe(probeSerialNumber)
         }
 
+    override val mac = uart.mac
+
     // identifiers
     override val linkId: LinkID
         get() {

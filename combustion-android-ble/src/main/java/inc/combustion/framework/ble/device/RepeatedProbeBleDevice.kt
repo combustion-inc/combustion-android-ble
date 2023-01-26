@@ -63,6 +63,11 @@ internal class RepeatedProbeBleDevice (
             return uart.id
         }
 
+    override val mac: String
+        get() {
+            return uart.mac
+        }
+
     override val rssi = uart.rssi
     override val connectionState = uart.connectionState
     override val isConnected = uart.isConnected.get()
@@ -72,6 +77,7 @@ internal class RepeatedProbeBleDevice (
             return advertisement?.hopCount ?: UInt.MAX_VALUE
         }
 
+    val probeMac: String get() { TODO() }
     val probeRssi: Int get() { TODO() }
     val probeConnectionState: DeviceConnectionState get() { TODO() }
     val probeIsConnected: Boolean get() { TODO() }

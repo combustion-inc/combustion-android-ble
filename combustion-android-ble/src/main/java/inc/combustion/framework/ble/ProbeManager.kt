@@ -171,6 +171,8 @@ internal class ProbeManager(
     }
 
     private fun manage(base: ProbeBleDeviceBase) {
+        _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(mac = base.mac))
+
         base.observeAdvertisingPackets(serialNumber) { advertisement -> handleAdvertisingPackets(base, advertisement) }
         base.observeConnectionState { state -> handleConnectionState(base, state) }
         base.observeOutOfRange(OUT_OF_RANGE_TIMEOUT){ handleOutOfRange(base) }
@@ -209,7 +211,8 @@ internal class ProbeManager(
                         mode = advertisement.mode,
                         temperatures = advertisement.probeTemperatures,
                         sensors = advertisement.virtualSensors,
-                        hopCount = advertisement.hopCount
+                        hopCount = advertisement.hopCount,
+                        connectable = advertisement.isConnectable,
                     )
                 }
             }
@@ -220,7 +223,8 @@ internal class ProbeManager(
                         mode = advertisement.mode,
                         temperatures = advertisement.probeTemperatures,
                         sensors = advertisement.virtualSensors,
-                        hopCount = advertisement.hopCount
+                        hopCount = advertisement.hopCount,
+                        connectable = advertisement.isConnectable
                     )
                 }
             }
@@ -269,11 +273,14 @@ internal class ProbeManager(
     }
 
     private fun updateStateFromAdvertisement(
-        rssi: Int, mode: ProbeMode, temperatures: ProbeTemperatures, sensors: ProbeVirtualSensors, hopCount: UInt
+        rssi: Int, mode: ProbeMode, temperatures: ProbeTemperatures, sensors: ProbeVirtualSensors,
+        hopCount: UInt, connectable: Boolean
     ) {
+        val advertisingState = if(connectable) DeviceConnectionState.ADVERTISING_CONNECTABLE else DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE
+
         _probe.value = _probe.value.copy(
-            baseDevice = _probe.value.baseDevice.copy(rssi = rssi),
-            hopCount = hopCount
+            baseDevice = _probe.value.baseDevice.copy(rssi = rssi, connectionState = advertisingState),
+            hopCount = hopCount,
         )
 
         if(mode == ProbeMode.INSTANT_READ) {

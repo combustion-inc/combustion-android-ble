@@ -44,7 +44,7 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 
 internal open class UartBleDevice(
-    mac: String,
+    public val mac: String,
     owner: LifecycleOwner,
     advertisement: CombustionAdvertisingData,
     adapter: BluetoothAdapter

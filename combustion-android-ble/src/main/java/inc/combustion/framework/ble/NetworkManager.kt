@@ -129,12 +129,36 @@ internal class NetworkManager(
             collectAdvertisingData()
         })
 
+        // if MeatNet is enabled,then automatically start and stop scanning state
+        // based on current bluetooth state.  this code cannot handle application permissions
+        // in that case, the client app needs to start scanning once bluetooth permissions are allowed.
+        if(SETTINGS.meatNetEnabled) {
+            jobManager.addJob(owner.lifecycleScope.launch{
+                var bluetoothIsOn = false
+                NETWORK_STATE_FLOW.collect {
+                    if(!bluetoothIsOn && it.bluetoothOn) {
+                        startScanForProbes()
+                    }
+
+                    if(bluetoothIsOn && !it.bluetoothOn) {
+                        stopScanForProbes()
+                    }
+
+                    bluetoothIsOn = it.bluetoothOn
+                }
+            })
+        }
+
         if(bluetoothIsEnabled) {
-            startScan()
             networkState.value = networkState.value.copy(
-                scanningOn = true,
                 bluetoothOn = true
             )
+
+            startScan()
+
+            if(SETTINGS.meatNetEnabled) {
+                startScanForProbes()
+            }
         }
         else {
             networkState.value = networkState.value.copy(
@@ -173,6 +197,12 @@ internal class NetworkManager(
 
     fun startDfuMode() {
         if(!dfuModeEnabled) {
+
+            // if MeatNet is managing network, then stop returning probe scan results
+            if(SETTINGS.meatNetEnabled) {
+                stopScanForProbes()
+            }
+
             // disconnect any active connection
             dfuModeEnabled = true
 
@@ -193,6 +223,11 @@ internal class NetworkManager(
     fun stopDfuMode() {
         if(dfuModeEnabled) {
             dfuModeEnabled = false
+
+            // if MeatNet is managing network, then start returning probe scan results
+            if(SETTINGS.meatNetEnabled) {
+                startScanForProbes()
+            }
 
             // Have ProbeManager reconnect to the network nodes based on the current MeatNet
             // connection management scheme.
