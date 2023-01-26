@@ -207,13 +207,13 @@ class DeviceManager(
         }
 
     /**
-     * Kotlin flow for collecting NetworkEvents that are emitted upon system state changes.
+     * Kotlin flow for collecting NetworkState
      *
      * @see NetworkEvent
      */
-    val networkFlow : SharedFlow<NetworkEvent>
+    val networkFlow : StateFlow<NetworkState>
         get() {
-            return NetworkManager.NETWORK_EVENT_FLOW
+            return NetworkManager.NETWORK_STATE_FLOW
         }
 
     /**

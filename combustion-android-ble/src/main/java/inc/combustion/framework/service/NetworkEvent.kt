@@ -28,38 +28,10 @@
 package inc.combustion.framework.service
 
 /**
- * Enumerates the asynchronous events related to the BLE network.
- *
- * @see DeviceManager.networkEventFlow
+ * Enumerates the current network state
  */
-sealed class NetworkEvent {
-    /**
-     * Bluetooth is off, no devices will be discovered
-     */
-    object BluetoothOff: NetworkEvent()
-
-    /**
-     * Bluetooth is on, devices will now be discovered if scanning
-     */
-    object BluetoothOn: NetworkEvent()
-
-    /**
-     * Scanning for Combustion devices
-     */
-    object ScanningOn: NetworkEvent()
-
-    /**
-     * Not scanning for Combustion devices
-     */
-    object ScanningOff: NetworkEvent()
-
-    /**
-     * Normal network operations disabled for device firmware update mode.
-     */
-    object DfuModeOn: NetworkEvent()
-
-    /**
-     * Normal network operation resumed after device firmware update mode.
-     */
-    object DfuModeOff: NetworkEvent()
-}
+data class NetworkState(
+    val bluetoothOn: Boolean = false,
+    val scanningOn: Boolean = false,
+    val dfuModeOn: Boolean = false
+)

@@ -43,10 +43,7 @@ import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.scanning.DeviceScanner
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 internal class NetworkManager(
@@ -77,10 +74,8 @@ internal class NetworkManager(
         )
         internal val DISCOVERED_PROBES_FLOW = mutableDiscoveredProbesFlow.asSharedFlow()
 
-        private val mutableNetworkEventFlow = MutableSharedFlow<NetworkEvent>(
-            FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.SUSPEND
-        )
-        internal val NETWORK_EVENT_FLOW = mutableNetworkEventFlow.asSharedFlow()
+        private val networkState = MutableStateFlow(NetworkState())
+        internal val NETWORK_STATE_FLOW = networkState.asStateFlow()
 
         internal val BLUETOOTH_ADAPTER_STATE_INTENT_FILTER = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
         internal val BLUETOOTH_ADAPTER_STATE_RECEIVER: BroadcastReceiver = object : BroadcastReceiver() {
@@ -94,11 +89,15 @@ internal class NetworkManager(
                     when (state) {
                         BluetoothAdapter.STATE_OFF -> {
                             DeviceScanner.stop()
-                            mutableNetworkEventFlow.tryEmit(NetworkEvent.ScanningOff)
-                            mutableNetworkEventFlow.tryEmit(NetworkEvent.BluetoothOff)
+                            networkState.value = networkState.value.copy(
+                                scanningOn = false,
+                                bluetoothOn = false
+                            )
                         }
                         BluetoothAdapter.STATE_ON -> {
-                            mutableNetworkEventFlow.tryEmit(NetworkEvent.BluetoothOn)
+                            networkState.value = networkState.value.copy(
+                                bluetoothOn = true
+                            )
                         }
                         else -> { }
                     }
@@ -132,11 +131,15 @@ internal class NetworkManager(
 
         if(bluetoothIsEnabled) {
             startScan()
-            mutableNetworkEventFlow.tryEmit(NetworkEvent.BluetoothOn)
-            mutableNetworkEventFlow.tryEmit(NetworkEvent.ScanningOn)
+            networkState.value = networkState.value.copy(
+                scanningOn = true,
+                bluetoothOn = true
+            )
         }
         else {
-            mutableNetworkEventFlow.tryEmit(NetworkEvent.BluetoothOff)
+            networkState.value = networkState.value.copy(
+                bluetoothOn = false
+            )
         }
     }
 
@@ -146,7 +149,9 @@ internal class NetworkManager(
         }
 
         if(scanningForProbes) {
-            mutableNetworkEventFlow.tryEmit(NetworkEvent.ScanningOn)
+            networkState.value = networkState.value.copy(
+                scanningOn = true
+            )
         }
 
         return scanningForProbes
@@ -158,7 +163,9 @@ internal class NetworkManager(
         }
 
         if(!scanningForProbes) {
-            mutableNetworkEventFlow.tryEmit(NetworkEvent.ScanningOff)
+            networkState.value = networkState.value.copy(
+                scanningOn = false
+            )
         }
 
         return scanningForProbes
@@ -177,7 +184,9 @@ internal class NetworkManager(
                 }
             }
 
-            mutableNetworkEventFlow.tryEmit(NetworkEvent.DfuModeOn)
+            networkState.value = networkState.value.copy(
+                dfuModeOn = true
+            )
         }
     }
 
@@ -190,7 +199,9 @@ internal class NetworkManager(
             probeManagers.forEach { (_, probe) ->
                 probe.postDfuReconnect()
             }
-            mutableNetworkEventFlow.tryEmit(NetworkEvent.DfuModeOff)
+            networkState.value = networkState.value.copy(
+                dfuModeOn = false
+            )
         }
     }
 
