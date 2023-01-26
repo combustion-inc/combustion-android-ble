@@ -49,6 +49,7 @@ import kotlinx.coroutines.launch
 internal class NetworkManager(
     private val owner: LifecycleOwner,
     private val adapter: BluetoothAdapter,
+    private val settings: DeviceManager.Settings
 ) {
     sealed class DeviceHolder {
         data class ProbeHolder(val probe: ProbeBleDevice) : DeviceHolder()
@@ -77,6 +78,10 @@ internal class NetworkManager(
         private val networkState = MutableStateFlow(NetworkState())
         internal val NETWORK_STATE_FLOW = networkState.asStateFlow()
 
+        // when a repeater doesn't have connections, it uses the following serial number in
+        // its advertising data.
+        internal const val REPEATER_NO_PROBES_SERIAL_NUMBER = "0"
+
         internal val BLUETOOTH_ADAPTER_STATE_INTENT_FILTER = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
         internal val BLUETOOTH_ADAPTER_STATE_RECEIVER: BroadcastReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent) {
@@ -89,10 +94,7 @@ internal class NetworkManager(
                     when (state) {
                         BluetoothAdapter.STATE_OFF -> {
                             DeviceScanner.stop()
-                            networkState.value = networkState.value.copy(
-                                scanningOn = false,
-                                bluetoothOn = false
-                            )
+                            networkState.value = NetworkState()
                         }
                         BluetoothAdapter.STATE_ON -> {
                             networkState.value = networkState.value.copy(
@@ -104,13 +106,11 @@ internal class NetworkManager(
                 }
             }
         }
-
-        var SETTINGS = DeviceManager.Settings()
     }
 
     internal val bluetoothIsEnabled: Boolean
         get() {
-            return adapter?.isEnabled ?: false
+            return adapter.isEnabled
         }
 
     internal var scanningForProbes: Boolean = false
@@ -132,7 +132,7 @@ internal class NetworkManager(
         // if MeatNet is enabled,then automatically start and stop scanning state
         // based on current bluetooth state.  this code cannot handle application permissions
         // in that case, the client app needs to start scanning once bluetooth permissions are allowed.
-        if(SETTINGS.meatNetEnabled) {
+        if(settings.meatNetEnabled) {
             jobManager.addJob(owner.lifecycleScope.launch{
                 var bluetoothIsOn = false
                 NETWORK_STATE_FLOW.collect {
@@ -156,7 +156,7 @@ internal class NetworkManager(
 
             startScan()
 
-            if(SETTINGS.meatNetEnabled) {
+            if(settings.meatNetEnabled) {
                 startScanForProbes()
             }
         }
@@ -199,7 +199,7 @@ internal class NetworkManager(
         if(!dfuModeEnabled) {
 
             // if MeatNet is managing network, then stop returning probe scan results
-            if(SETTINGS.meatNetEnabled) {
+            if(settings.meatNetEnabled) {
                 stopScanForProbes()
             }
 
@@ -225,7 +225,7 @@ internal class NetworkManager(
             dfuModeEnabled = false
 
             // if MeatNet is managing network, then start returning probe scan results
-            if(SETTINGS.meatNetEnabled) {
+            if(settings.meatNetEnabled) {
                 startScanForProbes()
             }
 
@@ -320,12 +320,7 @@ internal class NetworkManager(
                         ProbeBleDevice(advertisement.mac, owner, advertisement, adapter)
                     )
                 }
-                CombustionProductType.DISPLAY -> {
-                    DeviceHolder.RepeaterHolder(
-                        UartBleDevice(advertisement.mac, owner, advertisement, adapter)
-                    )
-                }
-                CombustionProductType.CHARGER -> {
+                CombustionProductType.DISPLAY, CombustionProductType.CHARGER -> {
                     DeviceHolder.RepeaterHolder(
                         UartBleDevice(advertisement.mac, owner, advertisement, adapter)
                     )
@@ -338,7 +333,7 @@ internal class NetworkManager(
 
         // if we haven't seen this serial number, then create a manager for it
         if(!probeManagers.containsKey(serialNumber)) {
-            probeManagers[serialNumber] = ProbeManager(serialNumber, owner, SETTINGS)
+            probeManagers[serialNumber] = ProbeManager(serialNumber, owner, settings)
             discoveredProbe = true
         }
 
@@ -369,7 +364,7 @@ internal class NetworkManager(
         DeviceScanner.advertisements.collect {
             if(scanningForProbes) {
                 if(manageMeatNetDevice(it)) {
-                    if(it.probeSerialNumber != "0") {
+                    if(it.probeSerialNumber != REPEATER_NO_PROBES_SERIAL_NUMBER) {
                         mutableDiscoveredProbesFlow.emit(
                             ProbeDiscoveredEvent.ProbeDiscovered(it.probeSerialNumber)
                         )

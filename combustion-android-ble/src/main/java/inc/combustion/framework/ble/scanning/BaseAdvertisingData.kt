@@ -132,24 +132,7 @@ open class BaseAdvertisingData(
                 CombustionProductType.UNKNOWN -> {
                     base
                 }
-                CombustionProductType.PROBE -> {
-                    CombustionAdvertisingData(
-                        mac = address,
-                        name = name,
-                        rssi = rssi,
-                        productType = type,
-                        isConnectable = isConnectable,
-                        probeSerialNumber = serialNumber,
-                        probeTemperatures = probeTemperatures,
-                        probeID = probeID,
-                        color = probeColor,
-                        mode = probeMode,
-                        batteryStatus = batteryStatus,
-                        virtualSensors = virtualSensors,
-                        hopCount = hopCount
-                    )
-                }
-                else -> {
+                CombustionProductType.PROBE, CombustionProductType.CHARGER, CombustionProductType.DISPLAY -> {
                     CombustionAdvertisingData(
                         mac = address,
                         name = name,

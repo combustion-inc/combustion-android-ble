@@ -40,6 +40,20 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 
+/**
+ * This class is responsible for managing and arbitrating the data links to a temperature
+ * probe.  When MeatNet is enabled that includes data links through repeater devices over
+ * MeatNet and direct links to temperature probes.  When MeatNet is disabled, this class
+ * manages only direct links to temperature probes.  The class is responsible for presenting
+ * a common interface over both scenarios.
+ *
+ * @property owner LifecycleOnwer for coroutine scope.
+ * @property settings Service settings.
+ * @constructor
+ * Constructs a probe manager
+ *
+ * @param serialNumber The serial number of the probe being managed.
+ */
 internal class ProbeManager(
     serialNumber: String,
     private val owner: LifecycleOwner,

@@ -57,10 +57,11 @@ class CombustionService : LifecycleService() {
         private val serviceIsStarted = AtomicBoolean(false)
         var serviceNotification : Notification? = null
         var notificationId = 0
+        lateinit var settings: DeviceManager.Settings
 
-        fun start(context: Context, notification: Notification?, settings: DeviceManager.Settings = DeviceManager.Settings()): Int {
+        fun start(context: Context, notification: Notification?, serviceSettings: DeviceManager.Settings = DeviceManager.Settings()): Int {
             if(!serviceIsStarted.get()) {
-                NetworkManager.SETTINGS = settings
+                settings = serviceSettings
                 serviceNotification = notification
                 notificationId = ThreadLocalRandom.current().asKotlinRandom().nextInt()
                 Intent(context, CombustionService::class.java).also { intent ->
@@ -99,7 +100,6 @@ class CombustionService : LifecycleService() {
         serviceNotification?.let {
             val service = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             service.cancel(notificationId)
-
             stopForeground(true)
         }
     }
@@ -108,7 +108,7 @@ class CombustionService : LifecycleService() {
         super.onStartCommand(intent, flags, startId)
 
         val bluetooth = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        networkManager = NetworkManager(this, bluetooth.adapter)
+        networkManager = NetworkManager(this, bluetooth.adapter, settings)
 
         // setup receiver to see when platform Bluetooth state changes
         registerReceiver(

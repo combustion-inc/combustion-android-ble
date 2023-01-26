@@ -57,7 +57,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * @param adapter Android BluetoothAdapter.
  */
 internal open class BleDevice (
-    private val mac: String,
+    val mac: String,
     val owner: LifecycleOwner,
     advertisement: CombustionAdvertisingData,
     adapter: BluetoothAdapter

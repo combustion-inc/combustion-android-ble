@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Example
- * File: NetworkEvent.kt
+ * File: NetworkState.kt
  * Author: https://github.com/miwright2
  *
  * MIT License
