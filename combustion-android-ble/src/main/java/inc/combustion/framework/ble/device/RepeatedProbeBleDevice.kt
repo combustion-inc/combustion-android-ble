@@ -42,15 +42,18 @@ import kotlinx.coroutines.launch
 internal class RepeatedProbeBleDevice (
     private val probeSerialNumber: String,
     private val uart: UartBleDevice,
+    advertisement: CombustionAdvertisingData,
 ) : ProbeBleDeviceBase() {
 
     companion object {
         const val MESSAGE_RESPONSE_TIMEOUT_MS = 5000L
     }
 
+    private val advertisementForProbe = hashMapOf<String, CombustionAdvertisingData>()
+
     override val advertisement: CombustionAdvertisingData?
         get() {
-            return uart.advertisementForProbe(probeSerialNumber)
+            return advertisementForProbe[probeSerialNumber]
         }
 
     override val linkId: LinkID
@@ -83,6 +86,7 @@ internal class RepeatedProbeBleDevice (
     val probeIsConnected: Boolean get() { TODO() }
 
     init {
+        advertisementForProbe[advertisement.probeSerialNumber] = advertisement
         observeUartResponses { response ->
             TODO()
             /*
@@ -149,7 +153,17 @@ internal class RepeatedProbeBleDevice (
         TODO()
     }
 
-    override fun observeAdvertisingPackets(serialNumber: String, callback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)?) = uart.observeAdvertisingPackets(serialNumber, callback)
+    override fun observeAdvertisingPackets(serialNumberFilter: String, macFilter: String, callback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)?) {
+        uart.observeAdvertisingPackets(
+            { advertisement ->  macFilter == advertisement.mac && advertisement.probeSerialNumber == serialNumberFilter }
+        ) { advertisement ->
+            callback?.let {
+                advertisementForProbe[probeSerialNumber] = advertisement
+                it(advertisement)
+            }
+        }
+    }
+
     override fun observeRemoteRssi(callback: (suspend (rssi: Int) -> Unit)?) = uart.observeRemoteRssi(callback)
     override fun observeOutOfRange(timeout: Long, callback: (suspend () -> Unit)?) = uart.observeOutOfRange(timeout, callback)
     override fun observeConnectionState(callback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)?) = uart.observeConnectionState(callback)

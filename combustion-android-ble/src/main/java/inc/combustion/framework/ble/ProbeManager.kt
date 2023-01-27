@@ -187,7 +187,7 @@ internal class ProbeManager(
     private fun manage(base: ProbeBleDeviceBase) {
         _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(mac = base.mac))
 
-        base.observeAdvertisingPackets(serialNumber) { advertisement -> handleAdvertisingPackets(base, advertisement) }
+        base.observeAdvertisingPackets(serialNumber, base.mac) { advertisement -> handleAdvertisingPackets(base, advertisement) }
         base.observeConnectionState { state -> handleConnectionState(base, state) }
         base.observeOutOfRange(OUT_OF_RANGE_TIMEOUT){ handleOutOfRange(base) }
         base.observeRemoteRssi { rssi ->  handleRemoteRssi(base, rssi) }
@@ -196,7 +196,7 @@ internal class ProbeManager(
     private fun debuggingWithStaticLink(device: ProbeBleDeviceBase): Boolean {
         return when(device) {
             is ProbeBleDevice -> true
-            is RepeatedProbeBleDevice -> false
+            is RepeatedProbeBleDevice -> true
             else -> false
         }
     }

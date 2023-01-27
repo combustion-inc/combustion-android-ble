@@ -44,9 +44,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal open class UartBleDevice(
     mac: String,
     owner: LifecycleOwner,
-    advertisement: CombustionAdvertisingData,
     adapter: BluetoothAdapter
-) : DeviceInformationBleDevice(mac, owner, advertisement, adapter) {
+) : DeviceInformationBleDevice(mac, owner, adapter) {
 
     class MessageCompletionHandler {
         private val waiting = AtomicBoolean(false)

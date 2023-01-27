@@ -60,8 +60,6 @@ internal abstract class ProbeBleDeviceBase() {
         replay = 0, extraBufferCapacity = 10, BufferOverflow.DROP_OLDEST)
     protected val mutableLogResponseFlow = MutableSharedFlow<LogResponse>(
         replay = 0, extraBufferCapacity = 50, BufferOverflow.SUSPEND)
-    protected val mutableAdvertisementsFlow = MutableSharedFlow<BaseAdvertisingData>(
-        replay = 0, extraBufferCapacity = 10, BufferOverflow.DROP_OLDEST)
 
     // (TBD): shared flows (for subscribing/collecting)
     val probeStatusFlow = mutableProbeStatusFlow.asSharedFlow()
@@ -90,7 +88,7 @@ internal abstract class ProbeBleDeviceBase() {
     abstract fun disconnect()
 
     // advertising updates
-    abstract fun observeAdvertisingPackets(serialNumber: String, callback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)? = null)
+    abstract fun observeAdvertisingPackets(serialNumberFilter: String, macFilter: String, callback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)? = null)
 
     // connection state updates
     abstract fun observeRemoteRssi(callback: (suspend (rssi: Int) -> Unit)? = null)
@@ -108,5 +106,4 @@ internal abstract class ProbeBleDeviceBase() {
     abstract fun sendSetProbeID(id: ProbeID, callback: ((Boolean, Any?) -> Unit)? = null)
     abstract fun sendSetPrediction(setPointTemperatureC: Double, mode: ProbePredictionMode, callback: ((Boolean, Any?) -> Unit)? = null)
     abstract fun sendLogRequest(minSequence: UInt, maxSequence: UInt)
-
 }

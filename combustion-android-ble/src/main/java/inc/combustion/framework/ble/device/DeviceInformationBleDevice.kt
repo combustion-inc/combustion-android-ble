@@ -35,9 +35,8 @@ import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 internal open class DeviceInformationBleDevice(
     mac: String,
     owner: LifecycleOwner,
-    advertisement: CombustionAdvertisingData,
     adapter: BluetoothAdapter
-) : BleDevice(mac, owner, advertisement, adapter) {
+) : BleDevice(mac, owner, adapter) {
 
     var serialNumber: String? = null
     var firmwareVersion: String? = null

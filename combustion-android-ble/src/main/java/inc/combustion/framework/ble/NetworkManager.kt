@@ -322,7 +322,7 @@ internal class NetworkManager(
                 }
                 CombustionProductType.DISPLAY, CombustionProductType.CHARGER -> {
                     DeviceHolder.RepeaterHolder(
-                        UartBleDevice(advertisement.mac, owner, advertisement, adapter)
+                        UartBleDevice(advertisement.mac, owner, adapter)
                     )
                 }
                 else -> NOT_IMPLEMENTED("Unknown type of advertising data")
@@ -348,8 +348,7 @@ internal class NetworkManager(
                     probeManger?.addProbe(device.probe)
                 }
                 is DeviceHolder.RepeaterHolder -> {
-                    device.repeater.addRepeatedAdvertisement(serialNumber, advertisement)
-                    val repeatedProbe = RepeatedProbeBleDevice(serialNumber, device.repeater)
+                    val repeatedProbe = RepeatedProbeBleDevice(serialNumber, device.repeater, advertisement)
                     meatNetLinks[linkId] = LinkHolder.RepeatedProbeHolder(repeatedProbe)
                     probeManger?.addRepeatedProbe(repeatedProbe)
                 }
