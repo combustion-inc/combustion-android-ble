@@ -191,6 +191,7 @@ internal class ProbeManager(
         base.observeConnectionState { state -> handleConnectionState(base, state) }
         base.observeOutOfRange(OUT_OF_RANGE_TIMEOUT){ handleOutOfRange(base) }
         base.observeRemoteRssi { rssi ->  handleRemoteRssi(base, rssi) }
+        // base.readFirmwareVersion()
     }
 
     private fun debuggingWithStaticLink(device: ProbeBleDeviceBase): Boolean {
