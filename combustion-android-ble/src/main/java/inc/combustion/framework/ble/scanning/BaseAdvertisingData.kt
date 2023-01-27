@@ -1,7 +1,7 @@
 /*
- * Project: Combustion Inc. Android Example
+ * Project: Combustion Inc. Android Framework
  * File: BaseAdvertisingData.kt
- * Author:
+ * Author: http://github.com/miwright2
  *
  * MIT License
  *
@@ -31,7 +31,7 @@ package inc.combustion.framework.ble.scanning
 import android.bluetooth.le.ScanResult
 import android.os.Build
 import com.juul.kable.Advertisement
-import inc.combustion.framework.ble.DeviceID
+import inc.combustion.framework.ble.device.DeviceID
 import inc.combustion.framework.service.*
 import kotlin.reflect.full.memberProperties
 import kotlin.reflect.jvm.isAccessible
@@ -132,29 +132,12 @@ open class BaseAdvertisingData(
                 CombustionProductType.UNKNOWN -> {
                     base
                 }
-                CombustionProductType.PROBE -> {
-                    ProbeAdvertisingData(
+                CombustionProductType.PROBE, CombustionProductType.CHARGER, CombustionProductType.DISPLAY -> {
+                    CombustionAdvertisingData(
                         mac = address,
                         name = name,
                         rssi = rssi,
-                        productType = CombustionProductType.UNKNOWN,
-                        isConnectable = isConnectable,
-                        probeSerialNumber = serialNumber,
-                        probeTemperatures = probeTemperatures,
-                        probeID = probeID,
-                        color = probeColor,
-                        mode = probeMode,
-                        batteryStatus = batteryStatus,
-                        virtualSensors = virtualSensors,
-                        hopCount = hopCount
-                    )
-                }
-                else -> {
-                    RepeaterAdvertisingData(
-                        mac = address,
-                        name = name,
-                        rssi = rssi,
-                        productType = CombustionProductType.UNKNOWN,
+                        productType = type,
                         isConnectable = isConnectable,
                         probeSerialNumber = serialNumber,
                         probeTemperatures = probeTemperatures,

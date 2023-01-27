@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: DeviceDiscoveredEvent.kt
+ * File: ProbeDiscoveredEvent.kt
  * Author: https://github.com/miwright2
  *
  * MIT License
@@ -33,38 +33,18 @@ package inc.combustion.framework.service
  *
  * @see DeviceManager.discoveredProbesFlow
  */
-sealed class DeviceDiscoveredEvent {
-    /**
-     * Bluetooth is off, no devices will be discovered
-     */
-    object BluetoothOff: DeviceDiscoveredEvent()
-
-    /**
-     * Bluetooth is on, devices will now be discovered if scanning
-     */
-    object BluetoothOn: DeviceDiscoveredEvent()
-
-    /**
-     * Scanning for Combustion devices
-     */
-    object ScanningOn: DeviceDiscoveredEvent()
-
-    /**
-     * Not scanning for Combustion devices
-     */
-    object ScanningOff: DeviceDiscoveredEvent()
-
+sealed class ProbeDiscoveredEvent {
     /**
      * Combustion device discovered
      *
      * @property serialNumber serial number of the discovered device
      */
-    data class DeviceDiscovered(
+    data class ProbeDiscovered(
         val serialNumber: String
-    ) : DeviceDiscoveredEvent()
+    ) : ProbeDiscoveredEvent()
 
     /**
      * The device cache was cleared.
      */
-    object DevicesCleared: DeviceDiscoveredEvent()
+    object DevicesCleared: ProbeDiscoveredEvent()
 }

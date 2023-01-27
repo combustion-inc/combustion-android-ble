@@ -1,7 +1,7 @@
 /*
- * Project: Combustion Inc. Android Example
+ * Project: Combustion Inc. Android Framework
  * File: ProbeBleDeviceBase.kt
- * Author:
+ * Author: http://github.com/miwright2
  *
  * MIT License
  *
@@ -25,50 +25,85 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+package inc.combustion.framework.ble.device
 
-package inc.combustion.framework.ble
-
+import inc.combustion.framework.ble.ProbeStatus
+import inc.combustion.framework.ble.scanning.BaseAdvertisingData
+import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.uart.LogResponse
-import inc.combustion.framework.service.Probe
+import inc.combustion.framework.service.DeviceConnectionState
+import inc.combustion.framework.service.ProbeColor
+import inc.combustion.framework.service.ProbeID
+import inc.combustion.framework.service.ProbePredictionMode
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 
-internal interface IProbeBleDeviceBase {
-    suspend fun emit(probe: Probe)
-    suspend fun emit(probeStatus: ProbeStatus)
-    suspend fun emit(logResponse: LogResponse)
+typealias LinkID = String
 
-    val probeFlow: SharedFlow<Probe>
-    val probeStatusFlow: SharedFlow<ProbeStatus>
-    val logResponseFlow: SharedFlow<LogResponse>
+internal abstract class ProbeBleDeviceBase() {
 
-    val probe: Probe
-}
+    companion object {
+        fun makeLinkId(advertisement: CombustionAdvertisingData?): LinkID {
+            return "${advertisement?.id}_${advertisement?.probeSerialNumber}"
+        }
+    }
 
-internal class ProbeBleDeviceBase() : IProbeBleDeviceBase {
-    private val _probeFlow = MutableSharedFlow<Probe>(
+    // message completion handlers
+    protected val sessionInfoHandler = UartBleDevice.MessageCompletionHandler()
+    protected val setColorHandler = UartBleDevice.MessageCompletionHandler()
+    protected val setIdHandler = UartBleDevice.MessageCompletionHandler()
+    protected val setPredictionHandler = UartBleDevice.MessageCompletionHandler()
+
+    // (TBD): just make callbacks ? mutable flows (for publishing)
+    protected val mutableProbeStatusFlow = MutableSharedFlow<ProbeStatus>(
         replay = 0, extraBufferCapacity = 10, BufferOverflow.DROP_OLDEST)
-
-    private val _probeStatusFlow = MutableSharedFlow<ProbeStatus>(
-        replay = 0, extraBufferCapacity = 10, BufferOverflow.DROP_OLDEST)
-
-    private val _logResponseFlow = MutableSharedFlow<LogResponse>(
+    protected val mutableLogResponseFlow = MutableSharedFlow<LogResponse>(
         replay = 0, extraBufferCapacity = 50, BufferOverflow.SUSPEND)
 
-    private var _probe: Probe = Probe.create(mac = "")
+    // (TBD): shared flows (for subscribing/collecting)
+    val probeStatusFlow = mutableProbeStatusFlow.asSharedFlow()
+    val logResponseFlow = mutableLogResponseFlow.asSharedFlow()
 
-    override suspend fun emit(probe: Probe) = _probeFlow.emit(probe)
-    override suspend fun emit(probeStatus: ProbeStatus) = _probeStatusFlow.emit(probeStatus)
-    override suspend fun emit(logResponse: LogResponse) = _logResponseFlow.emit(logResponse)
+    // mac
+    abstract val mac: String
 
-    override val probeFlow = _probeFlow.asSharedFlow()
-    override val probeStatusFlow = _probeStatusFlow.asSharedFlow()
-    override val logResponseFlow = _logResponseFlow.asSharedFlow()
-    override val probe: Probe get() = update()
+    // identifiers
+    abstract val linkId: LinkID
+    abstract val id: DeviceID
 
-    private fun update(): Probe {
-        TODO()
-    }
+    // advertising
+    abstract val advertisement: CombustionAdvertisingData?
+
+    // connection state
+    abstract val rssi: Int
+    abstract val connectionState: DeviceConnectionState
+    abstract val isConnected: Boolean
+
+    // meatnet
+    abstract val hopCount: UInt
+
+    // connection management
+    abstract fun connect()
+    abstract fun disconnect()
+
+    // advertising updates
+    abstract fun observeAdvertisingPackets(serialNumberFilter: String, macFilter: String, callback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)? = null)
+
+    // connection state updates
+    abstract fun observeRemoteRssi(callback: (suspend (rssi: Int) -> Unit)? = null)
+    abstract fun observeOutOfRange(timeout: Long, callback: (suspend () -> Unit)? = null)
+    abstract fun observeConnectionState(callback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)? = null)
+
+    // device information service
+    abstract suspend fun readSerialNumber()
+    abstract suspend fun readFirmwareVersion()
+    abstract suspend fun readHardwareRevision()
+
+    // Probe UART Command APIs
+    abstract fun sendSessionInformationRequest(callback: ((Boolean, Any?) -> Unit)? = null)
+    abstract fun sendSetProbeColor(color: ProbeColor, callback: ((Boolean, Any?) -> Unit)? = null)
+    abstract fun sendSetProbeID(id: ProbeID, callback: ((Boolean, Any?) -> Unit)? = null)
+    abstract fun sendSetPrediction(setPointTemperatureC: Double, mode: ProbePredictionMode, callback: ((Boolean, Any?) -> Unit)? = null)
+    abstract fun sendLogRequest(minSequence: UInt, maxSequence: UInt)
 }

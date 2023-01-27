@@ -1,5 +1,5 @@
 /*
- * Project: Combustion Inc. Android Example
+ * Project: Combustion Inc. Android Framework
  * File: DeviceScanner.kt
  * Author: https://github.com/miwright2
  *
@@ -48,8 +48,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 internal class DeviceScanner private constructor() {
     companion object {
-        // TODO: This is the wrong UUID.
-        private const val NORDIC_DFU_SERVICE_UUID_STRING = "0000180A-0000-1000-8000-0080BEEFBEEF"
+        private const val NORDIC_DFU_SERVICE_UUID_STRING = "0000FE59-0000-1000-8000-00805F9B34FB"
         private val NORDIC_DFU_SERVICE_UUID: ParcelUuid = ParcelUuid.fromString(
             NORDIC_DFU_SERVICE_UUID_STRING
         )
@@ -68,7 +67,7 @@ internal class DeviceScanner private constructor() {
         val isScanning: Boolean
             get() = atomicIsScanning.get()
 
-        private val mutableAdvertisements = MutableSharedFlow<BaseAdvertisingData>()
+        private val mutableAdvertisements = MutableSharedFlow<CombustionAdvertisingData>()
         val advertisements = mutableAdvertisements.asSharedFlow()
 
         fun scan(owner: LifecycleOwner) {
@@ -94,8 +93,7 @@ internal class DeviceScanner private constructor() {
                             }
                             .collect { advertisement ->
                                 when (val advertisingData = BaseAdvertisingData.create(advertisement)) {
-                                    is ProbeAdvertisingData -> mutableAdvertisements.emit(advertisingData)
-                                    is RepeaterAdvertisingData -> mutableAdvertisements.emit(advertisingData)
+                                    is CombustionAdvertisingData -> mutableAdvertisements.emit(advertisingData)
                                     // else, if just BaseAdvertisingData, then no need to produce to flow.
                                 }
                             }

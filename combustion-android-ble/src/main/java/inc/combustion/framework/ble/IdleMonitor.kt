@@ -1,5 +1,5 @@
 /*
- * Project: Combustion Inc
+ * Project: Combustion Inc. Android Framework
  * File: IdleMonitor.kt
  * Author: https://github.com/miwright2
  *
@@ -25,7 +25,6 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-
 package inc.combustion.framework.ble
 
 import android.os.SystemClock

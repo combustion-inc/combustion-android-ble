@@ -1,7 +1,7 @@
 /*
- * Project: Combustion Inc. Android Example
+ * Project: Combustion Inc. Android Framework
  * File: UartBleDevice.kt
- * Author:
+ * Author: http://github.com/miwright2
  *
  * MIT License
  *
@@ -33,38 +33,36 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import com.juul.kable.characteristicOf
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.LegacyProbeAdvertisingData
-import inc.combustion.framework.service.DebugSettings
+import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
+import inc.combustion.framework.service.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 
 internal open class UartBleDevice(
     mac: String,
     owner: LifecycleOwner,
-    advertisement: LegacyProbeAdvertisingData,
     adapter: BluetoothAdapter
-) : DeviceInformationBleDevice(mac, owner, advertisement, adapter) {
+) : DeviceInformationBleDevice(mac, owner, adapter) {
 
     class MessageCompletionHandler {
         private val waiting = AtomicBoolean(false)
-        private var completionCallback: ((Boolean) -> Unit)? = null
+        private var completionCallback: ((Boolean, Any?) -> Unit)? = null
 
-        fun handled(result: Boolean) {
+        fun handled(result: Boolean, data: Any?) {
             waiting.set(false)
             completionCallback?.let {
-                it(result)
+                it(result, data)
             }
             completionCallback = null
         }
 
-        fun wait(owner: LifecycleOwner, duration: Long, callback: ((Boolean) -> Unit)?) {
+        fun wait(owner: LifecycleOwner, duration: Long, callback: ((Boolean, Any?) -> Unit)?) {
             if(waiting.get()) {
                 completionCallback?.let {
-                    it(false)
+                    it(false, null)
                 }
                 return
             }
@@ -75,7 +73,7 @@ internal open class UartBleDevice(
                 delay(duration)
                 if(waiting.get()) {
                     completionCallback?.let {
-                       it(false)
+                       it(false, null)
                     }
                 }
             }
@@ -93,7 +91,7 @@ internal open class UartBleDevice(
         )
     }
 
-    protected suspend fun writeUartCharacteristic(data: ByteArray) {
+    suspend fun writeUartCharacteristic(data: ByteArray) {
         if(isConnected.get()) {
             owner.lifecycleScope.launch(Dispatchers.IO) {
                 try {
@@ -105,7 +103,7 @@ internal open class UartBleDevice(
         }
     }
 
-    protected suspend fun observeUartCharacteristic(callback: (suspend (data: UByteArray) -> Unit)? = null) {
+    suspend fun observeUartCharacteristic(callback: (suspend (data: UByteArray) -> Unit)?) {
         peripheral.observe(UART_TX_CHARACTERISTIC)
             .onCompletion {
                 if (DebugSettings.DEBUG_LOG_BLE_UART_IO) {

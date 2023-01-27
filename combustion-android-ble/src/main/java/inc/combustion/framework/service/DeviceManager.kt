@@ -38,6 +38,7 @@ import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.NetworkManager
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import java.lang.StringBuilder
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -178,24 +179,41 @@ class DeviceManager(
             return service.networkManager?.bluetoothIsEnabled ?: false
         }
 
-
-    /**
-     * Kotlin flow for collecting device discovery events that occur when the service
-     * is scanning for devices.  This is a hot flow.
-     *
-     * @see DeviceDiscoveredEvent
-     */
-    val discoveredProbesFlow : SharedFlow<DeviceDiscoveredEvent>
-        get() {
-            return NetworkManager.DISCOVERED_PROBES_FLOW
-        }
-
     /**
      * True if scanning for thermometers.  False otherwise.
      */
     val scanningForProbes: Boolean
         get() {
             return service.networkManager?.scanningForProbes ?: false
+        }
+
+    /**
+     * True if in DFU mode. False otherwise.
+     */
+    val dfuModeIsEnabled: Boolean
+        get() {
+            return service.networkManager?.dfuModeEnabled ?: false
+        }
+
+    /**
+     * Kotlin flow for collecting ProbeDiscoveredEvents that occur when the service
+     * is scanning for thermometers.  This is a hot flow.
+     *
+     * @see ProbeDiscoveredEvent
+     */
+    val discoveredProbesFlow : SharedFlow<ProbeDiscoveredEvent>
+        get() {
+            return NetworkManager.DISCOVERED_PROBES_FLOW
+        }
+
+    /**
+     * Kotlin flow for collecting NetworkState
+     *
+     * @see NetworkEvent
+     */
+    val networkFlow : StateFlow<NetworkState>
+        get() {
+            return NetworkManager.NETWORK_STATE_FLOW
         }
 
     /**
@@ -225,28 +243,28 @@ class DeviceManager(
     }
 
     /**
-     * Starts scanning for temperature probes.  Will generate a DeviceDiscoveredEvent
+     * Starts scanning for temperature probes.  Will generate a ProbeDiscoveredEvent
      * to the discoveredProbesFlow property.
      *
      * @return true if scanning has started, false otherwise.
      *
      * @see discoveredProbesFlow
-     * @see DeviceDiscoveredEvent
-     * @see DeviceDiscoveredEvent.ScanningOn
+     * @see ProbeDiscoveredEvent
+     * @see ProbeDiscoveredEvent.ScanningOn
      */
     fun startScanningForProbes(): Boolean {
         return service.networkManager?.startScanForProbes() ?: false
     }
 
     /**
-     * Stops scanning for temperature probes.  Will generate a DeviceDiscoveredEvent
+     * Stops scanning for temperature probes.  Will generate a ProbeDiscoveredEvent
      * to the discoveredProbFlow property.
      *
      * @return true if scanning has stopped, false otherwise.
      *
      * @see discoveredProbesFlow
-     * @see DeviceDiscoveredEvent
-     * @see DeviceDiscoveredEvent.ScanningOff
+     * @see ProbeDiscoveredEvent
+     * @see ProbeDiscoveredEvent.ScanningOff
      */
     fun stopScanningForProbes(): Boolean {
         return service.networkManager?.stopScanForProbes() ?: false
@@ -261,7 +279,7 @@ class DeviceManager(
      *
      * @see Probe
      */
-    fun probeFlow(serialNumber: String): SharedFlow<Probe>? {
+    fun probeFlow(serialNumber: String): StateFlow<Probe>? {
         return service.networkManager?.probeFlow(serialNumber)
     }
 
@@ -401,7 +419,7 @@ class DeviceManager(
      * discoveredProbesFlow.  The simulated probe has a state flow that can be collected
      * use the probeFlow method.
      *
-     * @see DeviceDiscoveredEvent
+     * @see ProbeDiscoveredEvent
      * @see discoveredProbesFlow
      * @see probeFlow
      */
@@ -468,6 +486,16 @@ class DeviceManager(
             completionHandler(false)
         }
     }
+
+    /**
+     * TODO - Document Me
+     */
+    fun startDfuMode() = service.startDfuMode()
+
+    /**
+     * TODO - Document Me
+     */
+    fun stopDfuMode() = service.stopDfuMode()
 
     private fun probeDataToCsv(probe: Probe?, probeData: List<LoggedProbeDataPoint>?, appNameAndVersion: String): Pair<String, String> {
         val csvVersion = 3

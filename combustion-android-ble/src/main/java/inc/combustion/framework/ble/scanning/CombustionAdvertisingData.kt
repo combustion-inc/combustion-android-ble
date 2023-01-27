@@ -1,7 +1,7 @@
 /*
- * Project: Combustion Inc. Android Example
- * File: RepeaterAdvertisingData.kt
- * Author:
+ * Project: Combustion Inc. Android Framework
+ * File: CombustionAdvertisingData.kt
+ * Author: httpsL//github.com/miwright2
  *
  * MIT License
  *
@@ -30,27 +30,7 @@ package inc.combustion.framework.ble.scanning
 
 import inc.combustion.framework.service.*
 
-/**
- * TODO - document me
- *
- * @property probeSerialNumber
- * @property probeTemperatures
- * @property probeID
- * @property color
- * @property mode
- * @property batteryStatus
- * @property virtualSensors
- * @property hopCount
- * @constructor
- * TODO
- *
- * @param mac
- * @param name
- * @param rssi
- * @param productType
- * @param isConnectable
- */
-class RepeaterAdvertisingData(
+internal class CombustionAdvertisingData(
     mac: String,
     name: String,
     rssi: Int,
@@ -63,5 +43,11 @@ class RepeaterAdvertisingData(
     val mode: ProbeMode,
     val batteryStatus: ProbeBatteryStatus,
     val virtualSensors: ProbeVirtualSensors,
-    val hopCount: UInt
-): BaseAdvertisingData(mac, name, rssi, productType, isConnectable)
+    val hopCount: UInt = 0u
+): BaseAdvertisingData(mac, name, rssi, productType, isConnectable) {
+
+    val isRepeater: Boolean
+        get() {
+            return productType == CombustionProductType.CHARGER || productType == CombustionProductType.DISPLAY
+        }
+}

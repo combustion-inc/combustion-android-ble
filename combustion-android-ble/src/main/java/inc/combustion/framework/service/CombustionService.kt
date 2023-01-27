@@ -57,10 +57,11 @@ class CombustionService : LifecycleService() {
         private val serviceIsStarted = AtomicBoolean(false)
         var serviceNotification : Notification? = null
         var notificationId = 0
+        lateinit var settings: DeviceManager.Settings
 
-        fun start(context: Context, notification: Notification?, settings: DeviceManager.Settings = DeviceManager.Settings()): Int {
+        fun start(context: Context, notification: Notification?, serviceSettings: DeviceManager.Settings = DeviceManager.Settings()): Int {
             if(!serviceIsStarted.get()) {
-                NetworkManager.SETTINGS = settings
+                settings = serviceSettings
                 serviceNotification = notification
                 notificationId = ThreadLocalRandom.current().asKotlinRandom().nextInt()
                 Intent(context, CombustionService::class.java).also { intent ->
@@ -89,42 +90,6 @@ class CombustionService : LifecycleService() {
         fun getService(): CombustionService = this@CombustionService
     }
 
-    init {
-        /*
-        lifecycleScope.launch {
-            // launches the block in a new coroutine every time the service is
-            // in the CREATED state or above, and cancels the block when the
-            // service is destroyed
-            repeatOnLifecycle(Lifecycle.State.CREATED) {
-                LegacyDeviceScanner.probeAdvertisements.collect {
-                    if(it.type == LegacyProbeAdvertisingData.CombustionProductType.PROBE) {
-
-                        _probes.getOrPut(key = it.serialNumber) {
-                            // create new probe instance
-                            var newProbe =
-                                LegacyProbeManager(
-                                    it.mac,
-                                    this@CombustionService,
-                                    it,
-                                    (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter)
-
-                            // add it to the LogManager
-                            LogManager.instance.manage(this@CombustionService, newProbe)
-
-                            // new probe discovered, so emit into the discovered probes flow
-                            _discoveredProbesFlow.emit(
-                                DeviceDiscoveredEvent.DeviceDiscovered(it.serialNumber)
-                            )
-
-                            newProbe
-                        }.onNewAdvertisement(it)
-                    }
-                }
-            }
-        }
-         */
-    }
-
     private fun startForeground() {
         serviceNotification?.let {
             startForeground(notificationId, serviceNotification)
@@ -135,7 +100,6 @@ class CombustionService : LifecycleService() {
         serviceNotification?.let {
             val service = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             service.cancel(notificationId)
-
             stopForeground(true)
         }
     }
@@ -144,7 +108,7 @@ class CombustionService : LifecycleService() {
         super.onStartCommand(intent, flags, startId)
 
         val bluetooth = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        networkManager = NetworkManager(this, bluetooth.adapter)
+        networkManager = NetworkManager(this, bluetooth.adapter, settings)
 
         // setup receiver to see when platform Bluetooth state changes
         registerReceiver(
@@ -227,11 +191,19 @@ class CombustionService : LifecycleService() {
         // emit into the discovered probes flow
         lifecycleScope.launch {
             _discoveredProbesFlow.emit(
-                DeviceDiscoveredEvent.DeviceDiscovered(simulatedProbeManager.probe.serialNumber)
+                ProbeDiscoveredEvent.ProbeDiscovered(simulatedProbeManager.probe.serialNumber)
             )
         }
          */
         networkManager?.addSimulatedProbe()
         TODO()
+    }
+
+    internal fun startDfuMode() {
+        networkManager?.startDfuMode()
+    }
+
+    internal fun stopDfuMode() {
+        networkManager?.stopDfuMode()
     }
 }

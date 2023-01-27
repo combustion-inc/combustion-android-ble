@@ -1,7 +1,7 @@
 /*
  * Project: Combustion Inc. Android Example
- * File: SetPredictionRequest.kt
- * Author: https://github.com/miwright2
+ * File: NodeProbeStatusRequest.kt
+ * Author: https://github.com/jmaha
  *
  * MIT License
  *
@@ -33,11 +33,10 @@ import inc.combustion.framework.ble.getLittleEndianUInt32At
 import inc.combustion.framework.service.HopCount
 
 internal class NodeProbeStatusRequest(
-    private val rawData : UByteArray,
+    rawData : UByteArray,
     requestId : UInt,
     payloadLength : UByte,
     val probeStatus: ProbeStatus
-
 ) : NodeRequest(requestId, payloadLength) {
 
     companion object {

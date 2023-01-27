@@ -1,7 +1,7 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: MessageType.kt
- * Author: https://github.com/miwright2
+ * File: NodeMessageType.kt
+ * Author: https://github.com/jmaha
  *
  * MIT License
  *

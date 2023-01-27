@@ -1,7 +1,7 @@
 /*
- * Project: Combustion Inc. Android Example
+ * Project: Combustion Inc. Android Framework
  * File: BleDevice.kt
- * Author:
+ * Author: https://github.com/miwright2
  *
  * MIT License
  *
@@ -36,11 +36,13 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.juul.kable.*
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.*
-import inc.combustion.framework.ble.LegacyProbeAdvertisingData
-import inc.combustion.framework.ble.SimulatedLegacyProbeManager
+import inc.combustion.framework.ble.scanning.*
+import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
+import inc.combustion.framework.ble.scanning.DeviceScanner
 import inc.combustion.framework.service.DeviceConnectionState
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.onCompletion
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -55,9 +57,8 @@ import java.util.concurrent.atomic.AtomicInteger
  * @param adapter Android BluetoothAdapter.
  */
 internal open class BleDevice (
-    private val mac: String,
-    protected val owner: LifecycleOwner,
-    var advertisingData: LegacyProbeAdvertisingData,
+    val mac: String,
+    val owner: LifecycleOwner,
     adapter: BluetoothAdapter
 ) {
     companion object {
@@ -87,7 +88,7 @@ internal open class BleDevice (
         get() = mac
 
     val jobManager = JobManager()
-    protected var peripheral: Peripheral =
+    var peripheral: Peripheral =
         owner.lifecycleScope.peripheral(adapter.getRemoteDevice(mac)) {
             logging {
                 /* The following enables logging in Kable
@@ -99,15 +100,66 @@ internal open class BleDevice (
             }
         }
 
-    // TODO: This variable should ideally be scoped as private.
-    //  This should be possible when this class is able handle and process advertising
-    //  packets directly from the device scanner.
-    val remoteRssi = AtomicInteger(0)
+    private val remoteRssi = AtomicInteger(0)
+    private val connectionMonitor = IdleMonitor()
 
-    protected val connectionMonitor = IdleMonitor()
     val rssi get() = remoteRssi.get()
     var connectionState = DeviceConnectionState.OUT_OF_RANGE
     val isConnected = AtomicBoolean(false)
+
+    open fun connect() {
+        owner.lifecycleScope.launch {
+            Log.d(LOG_TAG, "Connecting to $mac")
+            try {
+                peripheral.connect()
+            } catch (e: Exception) {
+                Log.e(LOG_TAG, "Connect Error: ${e.localizedMessage}")
+                Log.e(LOG_TAG, Log.getStackTraceString(e))
+            }
+        }
+    }
+
+    open fun disconnect() {
+        owner.lifecycleScope.launch {
+            withTimeoutOrNull(DISCONNECT_TIMEOUT_MS) {
+                peripheral.disconnect()
+            }
+        }
+    }
+
+    fun finish() {
+        disconnect()
+        jobManager.cancelJobs()
+    }
+
+    fun observeConnectionState(callback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)? = null) {
+        jobManager.addJob(owner.lifecycleScope.launch {
+            owner.repeatOnLifecycle(Lifecycle.State.CREATED) {
+                peripheral.state.onCompletion {
+                    Log.d(LOG_TAG, "Connection State Monitor Complete")
+                }
+                .catch {
+                    Log.i(LOG_TAG, "Connection State Monitor Catch: $it")
+                }
+                .collect { state ->
+                    connectionMonitor.activity()
+
+                    connectionState = when (state) {
+                        is State.Connecting -> DeviceConnectionState.CONNECTING
+                        State.Connected -> DeviceConnectionState.CONNECTED
+                        State.Disconnecting -> DeviceConnectionState.DISCONNECTING
+                        is State.Disconnected -> DeviceConnectionState.DISCONNECTED
+                    }
+
+                    isConnected.set(connectionState == DeviceConnectionState.CONNECTED)
+
+                    callback?.let {
+                        it(connectionState)
+                    }
+                }
+            }
+        })
+    }
 
     fun observeOutOfRange(timeout: Long, callback: (suspend () -> Unit)? = null) {
         jobManager.addJob(owner.lifecycleScope.launch(Dispatchers.IO) {
@@ -134,7 +186,7 @@ internal open class BleDevice (
         jobManager.addJob(owner.lifecycleScope.launch(Dispatchers.IO) {
             var exceptionCount = 0;
             while(isActive) {
-                if(isConnected.get() && mac != SimulatedLegacyProbeManager.SIMULATED_MAC) {
+                if(isConnected.get() && mac != SimulatedProbeBleDevice.SIMULATED_MAC) {
                     try {
                         remoteRssi.set(peripheral.rssi())
                         exceptionCount = 0;
@@ -159,83 +211,42 @@ internal open class BleDevice (
         })
     }
 
-    fun handleAdvertisement(newAdvertisingData: LegacyProbeAdvertisingData) {
-        advertisingData = newAdvertisingData
-        connectionMonitor.activity()
+    fun observeAdvertisingPackets(filter: (advertisement: CombustionAdvertisingData) -> Boolean, callback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)? = null) {
+        jobManager.addJob(owner.lifecycleScope.launch(Dispatchers.IO) {
+            DeviceScanner.advertisements.filter {
 
-        // the probe continues to advertise even while a BLE connection is
-        // established.  determine if the device is currently advertising as
-        // connectable or not.
-        val advertisingState = when(newAdvertisingData.isConnectable) {
-            true -> DeviceConnectionState.ADVERTISING_CONNECTABLE
-            else -> DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE
-        }
+                // call the passed in filter condition to determine if the packet should be filtered or passed along.
+                filter(it)
 
-        // if the device is advertising as connectable, advertising as non-connectable,
-        // currently disconnected, or currently out of range then it's new state is the
-        // advertising state determined above. otherwise, (connected, connected or
-        // disconnecting) the state is unchanged by the advertising packet.
-        connectionState = when(connectionState) {
-            DeviceConnectionState.ADVERTISING_CONNECTABLE -> advertisingState
-            DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE -> advertisingState
-            DeviceConnectionState.OUT_OF_RANGE -> advertisingState
-            DeviceConnectionState.DISCONNECTED -> advertisingState
-            else -> connectionState
-        }
-    }
+            }.collect {
+                remoteRssi.set(it.rssi)
+                connectionMonitor.activity()
 
-    open fun connect() {
-        owner.lifecycleScope.launch {
-            Log.d(LOG_TAG, "Connecting to $mac")
-            try {
-                peripheral.connect()
-            } catch (e: Exception) {
-                Log.e(LOG_TAG, "Connect Error: ${e.localizedMessage}")
-                Log.e(LOG_TAG, Log.getStackTraceString(e))
-            }
-        }
-    }
-
-    fun observeConnectionState(callback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)? = null) {
-        jobManager.addJob(owner.lifecycleScope.launch {
-            owner.repeatOnLifecycle(Lifecycle.State.CREATED) {
-                peripheral.state.onCompletion {
-                    Log.d(LOG_TAG, "Connection State Monitor Complete")
+                // the probe continues to advertise even while a BLE connection is
+                // established.  determine if the device is currently advertising as
+                // connectable or not.
+                val advertisingState = when(it.isConnectable) {
+                    true -> DeviceConnectionState.ADVERTISING_CONNECTABLE
+                    else -> DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE
                 }
-                    .catch {
-                        Log.i(LOG_TAG, "Connection State Monitor Catch: $it")
-                    }
-                    .collect { state ->
-                        connectionMonitor.activity()
 
-                        connectionState = when (state) {
-                            is State.Connecting -> DeviceConnectionState.CONNECTING
-                            State.Connected -> DeviceConnectionState.CONNECTED
-                            State.Disconnecting -> DeviceConnectionState.DISCONNECTING
-                            is State.Disconnected -> DeviceConnectionState.DISCONNECTED
-                        }
+                // if the device is advertising as connectable, advertising as non-connectable,
+                // currently disconnected, or currently out of range then it's new state is the
+                // advertising state determined above. otherwise, (connected, connected or
+                // disconnecting) the state is unchanged by the advertising packet.
+                connectionState = when(connectionState) {
+                    DeviceConnectionState.ADVERTISING_CONNECTABLE -> advertisingState
+                    DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE -> advertisingState
+                    DeviceConnectionState.OUT_OF_RANGE -> advertisingState
+                    DeviceConnectionState.DISCONNECTED -> advertisingState
+                    else -> connectionState
+                }
 
-                        isConnected.set(connectionState == DeviceConnectionState.CONNECTED)
-
-                        callback?.let {
-                            it(connectionState)
-                        }
-                    }
+                callback?.let { clientCallback ->
+                    clientCallback(it)
+                }
             }
         })
-    }
-
-    open fun disconnect() {
-        owner.lifecycleScope.launch {
-            withTimeoutOrNull(DISCONNECT_TIMEOUT_MS) {
-                peripheral.disconnect()
-            }
-        }
-    }
-
-    fun finish() {
-        disconnect()
-        jobManager.cancelJobs()
     }
 
     protected suspend fun readSerialNumberCharacteristic(): String? =

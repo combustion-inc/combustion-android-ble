@@ -1,7 +1,7 @@
 /*
- * Project: Combustion Inc. Android Example
+ * Project: Combustion Inc. Android Framework
  * File: DeviceInformationBleDevice.kt
- * Author:
+ * Author: http://github.com/miwright2
  *
  * MIT License
  *
@@ -29,14 +29,14 @@ package inc.combustion.framework.ble.device
 
 import android.bluetooth.BluetoothAdapter
 import androidx.lifecycle.LifecycleOwner
-import inc.combustion.framework.ble.LegacyProbeAdvertisingData
+import inc.combustion.framework.ble.scanning.BaseAdvertisingData
+import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 
 internal open class DeviceInformationBleDevice(
     mac: String,
     owner: LifecycleOwner,
-    advertisement: LegacyProbeAdvertisingData,
     adapter: BluetoothAdapter
-) : BleDevice(mac, owner, advertisement, adapter) {
+) : BleDevice(mac, owner, adapter) {
 
     var serialNumber: String? = null
     var firmwareVersion: String? = null
