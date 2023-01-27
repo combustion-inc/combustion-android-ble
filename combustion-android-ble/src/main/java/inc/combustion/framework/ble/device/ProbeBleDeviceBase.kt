@@ -78,7 +78,7 @@ internal abstract class ProbeBleDeviceBase() {
 
     // device information service
     abstract val deviceInfoSerialNumber: String?
-    abstract val deviceInfoFirmwareVersion: String?
+    abstract val deviceInfoFirmwareVersion: FirmwareVersion?
     abstract val deviceInfoHardwareRevision: String?
 
     // meatnet

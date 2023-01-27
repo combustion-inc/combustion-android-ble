@@ -36,7 +36,7 @@ data class FirmwareState(
     data class Node(
         val id: DeviceID,
         val type: CombustionProductType,
-        val firmwareVersion: String
+        val firmwareVersion: FirmwareVersion,
     )
 }
 

@@ -1,7 +1,7 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: Device.kt
- * Author: https://github.com/nick-sasquatch
+ * File: DfuDevice.kt
+ * Author:
  *
  * MIT License
  *
@@ -26,29 +26,41 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.service
+package inc.combustion.framework.service.dfu
 
 import inc.combustion.framework.ble.device.DeviceID
+import inc.combustion.framework.service.CombustionProductType
+import inc.combustion.framework.service.DeviceConnectionState
+import inc.combustion.framework.service.FirmwareVersion
 
 /**
- * Representation of a Combustion device.
+ * Representation of a Combustion device that's capable of performing a firmware upgrade.
  *
- * @property serialNumber The device serial number.
- * @property mac The device's MAC address.
- * @property fwVersion The device's firmware version.
- * @property hwRevision The device's hardware revision.
- * @property rssi The BLE RSSI value.
- * @property productType The device product type.
- * @property connectionState The device's current BLE connection state.
+ * @param serialNumber The device serial number.
+ * @param mac The device's MAC address.
+ * @param fwVersion The device's firmware version.
+ * @param hwRevision The device's hardware revision.
+ * @param rssi The BLE RSSI value.
+ * @param isDirectConnection Whether this device representation is obtained through a direct
+ *                           connection to the device or if it's rebroadcast through a MeatNet node.
+ * @param productType The device product type.
+ * @param connectionState The device's current BLE connection state.
  */
-data class Device(
+data class DfuDevice(
     val serialNumber: String = "",
     val mac: String,
     val fwVersion: FirmwareVersion? = null,
     val hwRevision: String? = null,
     val rssi: Int = 0,
+    val isDirectConnection: Boolean? = null,
     val productType: CombustionProductType? = null,
     val connectionState: DeviceConnectionState = DeviceConnectionState.DISCONNECTED,
 ) {
     val id: DeviceID = mac
+
+    companion object {
+        fun createFromID(id: DeviceID): DfuDevice {
+            return DfuDevice(mac = id)
+        }
+    }
 }

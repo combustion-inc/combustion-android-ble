@@ -29,10 +29,8 @@ package inc.combustion.framework.ble.device
 
 import android.bluetooth.BluetoothAdapter
 import androidx.lifecycle.LifecycleOwner
-import com.juul.kable.Advertisement
-import inc.combustion.framework.ble.scanning.BaseAdvertisingData
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
-import inc.combustion.framework.service.CombustionProductType
+import inc.combustion.framework.service.FirmwareVersion
 
 internal open class DeviceInformationBleDevice(
     mac: String,
@@ -42,7 +40,7 @@ internal open class DeviceInformationBleDevice(
 ) : BleDevice(mac, advertisement, owner, adapter) {
 
     var serialNumber: String? = null
-    var firmwareVersion: String? = null
+    var firmwareVersion: FirmwareVersion? = null
     var hardwareRevision: String? = null
 
 
@@ -60,7 +58,9 @@ internal open class DeviceInformationBleDevice(
 
     suspend fun readFirmwareVersion() {
         if(isConnected.get()) {
-            firmwareVersion = readFirmwareVersionCharacteristic()
+            firmwareVersion = readFirmwareVersionCharacteristic()?.let {versionString ->
+                FirmwareVersion.fromString(versionString = versionString)
+            }
         }
     }
 

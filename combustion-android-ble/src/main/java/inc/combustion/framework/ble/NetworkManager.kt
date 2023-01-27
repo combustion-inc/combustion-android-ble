@@ -77,6 +77,10 @@ internal class NetworkManager(
         private val networkState = MutableStateFlow(NetworkState())
         internal val NETWORK_STATE_FLOW = networkState.asStateFlow()
 
+        // flow for producing changes to the identified version of firmware for devices in the network
+        private var firmwareUpdateState = MutableStateFlow(FirmwareState(listOf()))
+        internal val FIRMWARE_UPDATE_STATE_FLOW = firmwareUpdateState.asStateFlow()
+
         // when a repeater doesn't have connections, it uses the following serial number in
         // its advertising data.
         internal const val REPEATER_NO_PROBES_SERIAL_NUMBER = "0"
@@ -109,10 +113,6 @@ internal class NetworkManager(
 
     // map tracking the firmware of devices
     private val firmwareStateOfNetwork = hashMapOf<DeviceID, FirmwareState.Node>()
-
-    // flow for producing changes to the identified version of firmware for devices in the network
-    private var _firmwareUpdateState = MutableStateFlow(FirmwareState(listOf()))
-    internal val firmwareUpdateState = _firmwareUpdateState.asStateFlow()
 
     internal val bluetoothIsEnabled: Boolean
         get() {
@@ -372,7 +372,7 @@ internal class NetworkManager(
                         firmwareStateOfNetwork[it.id] = it
 
                         // publish the list of firmware details for the network
-                        _firmwareUpdateState.value = FirmwareState(
+                        firmwareUpdateState.value = FirmwareState(
                             nodes = firmwareStateOfNetwork.values.toList()
                         )
                     }
@@ -382,7 +382,7 @@ internal class NetworkManager(
                     firmwareStateOfNetwork.remove(it)
 
                     // publish the list of firmware details for the network
-                    _firmwareUpdateState.value = FirmwareState(
+                    firmwareUpdateState.value = FirmwareState(
                         nodes = firmwareStateOfNetwork.values.toList()
                     )
                 }

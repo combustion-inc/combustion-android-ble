@@ -87,7 +87,7 @@ internal class RepeatedProbeBleDevice (
 
     // device information service values from the repeated probe's node.
     override val deviceInfoSerialNumber: String? get() { return uart.serialNumber }
-    override val deviceInfoFirmwareVersion: String? get() { return uart.firmwareVersion }
+    override val deviceInfoFirmwareVersion: FirmwareVersion? get() { return uart.firmwareVersion }
     override val deviceInfoHardwareRevision: String? get() { return uart.hardwareRevision }
 
     override val productType: CombustionProductType get() { return uart.productType}
