@@ -108,6 +108,13 @@ internal class NetworkManager(
         }
     }
 
+    // map tracking the firmware of devices
+    private val firmwareStateOfNetwork = hashMapOf<DeviceID, FirmwareState.Node>()
+
+    // flow for producing changes to the identified version of firmware for devices in the network
+    private var _firmwareUpdateState = MutableStateFlow(FirmwareState(listOf()))
+    internal val firmwareUpdateState = _firmwareUpdateState.asStateFlow()
+
     internal val bluetoothIsEnabled: Boolean
         get() {
             return adapter.isEnabled
@@ -322,7 +329,7 @@ internal class NetworkManager(
                 }
                 CombustionProductType.DISPLAY, CombustionProductType.CHARGER -> {
                     DeviceHolder.RepeaterHolder(
-                        UartBleDevice(advertisement.mac, owner, adapter)
+                        UartBleDevice(advertisement.mac, advertisement.productType, owner, adapter)
                     )
                 }
                 else -> NOT_IMPLEMENTED("Unknown type of advertising data")
@@ -333,7 +340,31 @@ internal class NetworkManager(
 
         // if we haven't seen this serial number, then create a manager for it
         if(!probeManagers.containsKey(serialNumber)) {
-            probeManagers[serialNumber] = ProbeManager(serialNumber, owner, settings)
+            probeManagers[serialNumber] = ProbeManager(
+                serialNumber = serialNumber,
+                owner = owner,
+                settings = settings,
+                // called by the ProbeManager whenever it connects to a new meatnet node,
+                // providing it's firmware details
+                dfuConnectedNodeCallback = {
+                    // keep track of each nodes firmware details
+                    if(!firmwareStateOfNetwork.containsKey(it.id)) {
+                        // publish the list of firmware details for the network
+                        _firmwareUpdateState.value = FirmwareState(
+                            nodes = firmwareStateOfNetwork.values.toList()
+                        )
+                    }
+                },
+                // called by the ProbeManager whenever a meatnet node is disconnected
+                dfuDisconnectedNodeCallback = {
+                    firmwareStateOfNetwork.remove(it)
+
+                    // publish the list of firmware details for the network
+                    _firmwareUpdateState.value = FirmwareState(
+                        nodes = firmwareStateOfNetwork.values.toList()
+                    )
+                }
+            )
             discoveredProbe = true
         }
 
@@ -345,12 +376,13 @@ internal class NetworkManager(
             when(device) {
                 is DeviceHolder.ProbeHolder -> {
                     meatNetLinks[linkId] = LinkHolder.ProbeHolder(device.probe)
-                    probeManger?.addProbe(device.probe)
+                    probeManger?.addProbe(device.probe, device.probe.baseDevice)
                 }
                 is DeviceHolder.RepeaterHolder -> {
-                    val repeatedProbe = RepeatedProbeBleDevice(serialNumber, device.repeater, advertisement)
+                    val repeatedProbe = RepeatedProbeBleDevice(serialNumber, device.repeater, advertisement
+                    )
                     meatNetLinks[linkId] = LinkHolder.RepeatedProbeHolder(repeatedProbe)
-                    probeManger?.addRepeatedProbe(repeatedProbe)
+                    probeManger?.addRepeatedProbe(repeatedProbe, device.repeater)
                 }
                 else -> NOT_IMPLEMENTED("Unknown type of device holder")
             }

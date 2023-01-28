@@ -47,13 +47,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
 
 internal class ProbeBleDevice (
     mac: String,
     owner: LifecycleOwner,
     private var probeAdvertisingData: CombustionAdvertisingData,
     adapter: BluetoothAdapter,
-    private val uart: UartBleDevice = UartBleDevice(mac, owner, adapter),
+    private val uart: UartBleDevice = UartBleDevice(mac, probeAdvertisingData.productType, owner, adapter),
 ) : ProbeBleDeviceBase() {
 
     companion object {
@@ -79,9 +80,25 @@ internal class ProbeBleDevice (
     override val id = uart.id
 
     // ble properties
-    override val rssi = uart.rssi
-    override val connectionState = uart.connectionState
-    override val isConnected = uart.isConnected.get()
+    override val rssi: Int get() { return uart.rssi }
+    override val connectionState: DeviceConnectionState get() { return uart.connectionState }
+    override val isConnected: Boolean get() { return uart.isConnected.get() }
+    override val isDisconnected: Boolean get() { return uart.isDisconnected.get() }
+    override val isInRange: Boolean get() { return uart.isInRange.get() }
+    override val isConnectable: Boolean get() { return uart.isConnectable.get() }
+
+    // device information service values from the probe
+    override val deviceInfoSerialNumber: String? get() { return uart.serialNumber }
+    override val deviceInfoFirmwareVersion: String? get() { return uart.firmwareVersion }
+    override val deviceInfoHardwareRevision: String? get() { return uart.hardwareRevision }
+
+    override val productType: CombustionProductType get() { return uart.productType}
+
+    // auto-reconnect flag
+    var shouldAutoReconnect: Boolean = false
+
+    // instance used for connection/disconnection
+    var baseDevice: DeviceInformationBleDevice = uart
 
     override val hopCount: UInt
         get() {
@@ -93,6 +110,7 @@ internal class ProbeBleDevice (
         processUartResponses()
     }
 
+    // connection management
     override fun connect() = uart.connect()
     override fun disconnect() = uart.disconnect()
 

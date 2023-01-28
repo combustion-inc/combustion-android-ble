@@ -29,7 +29,10 @@ package inc.combustion.framework.ble
 
 import android.util.Log
 import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
+import inc.combustion.framework.ble.device.*
+import inc.combustion.framework.ble.device.DeviceInformationBleDevice
 import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.device.ProbeBleDeviceBase
 import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
@@ -39,6 +42,7 @@ import inc.combustion.framework.service.*
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 
 /**
  * This class is responsible for managing and arbitrating the data links to a temperature
@@ -57,15 +61,16 @@ import kotlinx.coroutines.flow.*
 internal class ProbeManager(
     serialNumber: String,
     private val owner: LifecycleOwner,
-    private val settings: DeviceManager.Settings
+    private val settings: DeviceManager.Settings,
+    private val dfuConnectedNodeCallback: (FirmwareState.Node) -> Unit,
+    private val dfuDisconnectedNodeCallback: (DeviceID) -> Unit
 ) {
     companion object {
         const val OUT_OF_RANGE_TIMEOUT = 15000L
     }
 
-    // direct ble link to probe
-    private var probeBleDevice: ProbeBleDevice? = null
-    private val repeatedProbeBleDevices = mutableListOf<RepeatedProbeBleDevice>()
+    // encapsulates logic for managing network data links
+    private val arbitrator = DataLinkArbitrator(settings)
 
     // manages long-running coroutine scopes for data handling
     private val jobManager = JobManager()
@@ -132,31 +137,36 @@ internal class ProbeManager(
 
     fun addJob(job: Job) = jobManager.addJob(job)
 
-    fun addProbe(probe: ProbeBleDevice) {
-        if(probeBleDevice == null) {
-            probeBleDevice = probe
-            manage(probe)
+    fun addProbe(probe: ProbeBleDevice, baseDevice: DeviceInformationBleDevice) {
+        if(arbitrator.addProbe(probe, baseDevice)) {
+            observe(probe)
             Log.i(LOG_TAG, "PM($serialNumber) is managing link ${probe.linkId}")
         }
     }
 
-    fun addRepeatedProbe(repeatedProbe: RepeatedProbeBleDevice) {
-        repeatedProbeBleDevices.add(repeatedProbe)
-        manage(repeatedProbe)
-        Log.i(LOG_TAG, "PM($serialNumber) is managing link ${repeatedProbe.linkId}")
+    fun addRepeatedProbe(repeatedProbe: RepeatedProbeBleDevice, repeater: DeviceInformationBleDevice) {
+        if(arbitrator.addRepeatedProbe(repeatedProbe, repeater))  {
+            observe(repeatedProbe)
+            Log.i(LOG_TAG, "PM($serialNumber) is managing link ${repeatedProbe.linkId}")
+        }
     }
 
     fun connect() {
-        // TODO: Need to Read Session Information Upon Connection To Probe
-        TODO()
+        arbitrator.getNodesNeedingConnection(true).forEach { node ->
+            node.connect()
+        }
     }
 
     fun disconnect() {
-        TODO()
+        arbitrator.getNodesNeedingDisconnect(true).forEach {node ->
+            node.disconnect()
+        }
     }
 
     fun postDfuReconnect() {
-        TODO()
+        arbitrator.getNodesNeedingConnection(false).forEach {node ->
+            node.connect()
+        }
     }
 
     fun setProbeColor(color: ProbeColor, completionHandler: (Boolean) -> Unit) {
@@ -181,120 +191,136 @@ internal class ProbeManager(
     }
 
     fun finish() {
-       TODO()
+        arbitrator.finish()
+        jobManager.cancelJobs()
     }
 
-    private fun manage(base: ProbeBleDeviceBase) {
+    private fun observe(base: ProbeBleDeviceBase) {
         _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(mac = base.mac))
 
         base.observeAdvertisingPackets(serialNumber, base.mac) { advertisement -> handleAdvertisingPackets(base, advertisement) }
         base.observeConnectionState { state -> handleConnectionState(base, state) }
         base.observeOutOfRange(OUT_OF_RANGE_TIMEOUT){ handleOutOfRange(base) }
         base.observeRemoteRssi { rssi ->  handleRemoteRssi(base, rssi) }
-        // base.readFirmwareVersion()
     }
 
-    private fun debuggingWithStaticLink(device: ProbeBleDeviceBase): Boolean {
-        return when(device) {
-            is ProbeBleDevice -> true
-            is RepeatedProbeBleDevice -> true
-            else -> false
+    private fun handleAdvertisingPackets(device: ProbeBleDeviceBase, advertisement: CombustionAdvertisingData) {
+        if(arbitrator.shouldUpdateDataFromAdvertisingPacket(device)) {
+            updateDataFromAdvertisement(
+                rssi = advertisement.rssi,
+                mode = advertisement.mode,
+                temperatures = advertisement.probeTemperatures,
+                sensors = advertisement.virtualSensors,
+                hopCount = advertisement.hopCount,
+            )
+        }
+
+        if(arbitrator.shouldUpdateConnectionStateFromAdvertisingPacket(device)) {
+            updateConnectionStateFromAdvertisement(
+                connectable = advertisement.isConnectable
+            )
         }
     }
 
-    private fun shouldUpdateFromAdvertisingPacket(device: ProbeBleDeviceBase, hopCount: UInt): Boolean {
-        // TODO: Implement Multiplexing Business Logic
-        return debuggingWithStaticLink(device)
+    private fun handleConnectionState(device: ProbeBleDeviceBase, state: DeviceConnectionState) {
+        val isConnected = state == DeviceConnectionState.CONNECTED
+        val isDisconnected = state == DeviceConnectionState.DISCONNECTED
+
+        arbitrator.handleConnectionState(device, state)
+
+        if(isConnected) {
+            handleConnectedState(device)
+        }
+
+        if(isDisconnected) {
+            // perform any cleanup
+            device.disconnect()
+
+            // update
+            _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(
+                fwVersion = device.deviceInfoFirmwareVersion,
+                hwRevision = device.deviceInfoHardwareRevision
+            ))
+
+            // remove this item from the list of firmware details for the network
+            dfuDisconnectedNodeCallback(device.id)
+        }
+
+        if(arbitrator.shouldUpdateOnConnectionState(device, state)) {
+            _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(connectionState = state))
+        }
     }
 
-    private fun shouldUpdateOnConnectionState(device: ProbeBleDeviceBase, hopCount: UInt, state: DeviceConnectionState): Boolean {
-        // TODO: Implement Multiplexing Business Logic
-        return debuggingWithStaticLink(device)
+    private fun handleOutOfRange(device: ProbeBleDeviceBase) {
+        arbitrator.handleOutOfRange(device)
+        if(arbitrator.shouldUpdateOnOutOfRange(device)) {
+            updateStateOnOutOfRange()
+        }
     }
 
-    private fun shouldUpdateOnRemoteRssi(device: ProbeBleDeviceBase, hopCount: UInt, rssi: Int): Boolean {
-        // TODO: Implement Multiplexing Business Logic
-        return debuggingWithStaticLink(device)
+    private fun handleRemoteRssi(device: ProbeBleDeviceBase, rssi: Int) {
+        if(arbitrator.shouldUpdateOnRemoteRssi(device, rssi)) {
+            _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(rssi = rssi))
+        }
     }
 
-    private suspend fun handleAdvertisingPackets(device: ProbeBleDeviceBase, advertisement: CombustionAdvertisingData) {
-        when(device) {
-            is ProbeBleDevice -> {
-                if(shouldUpdateFromAdvertisingPacket(device, advertisement.hopCount)) {
-                    updateStateFromAdvertisement(
-                        rssi = advertisement.rssi,
-                        mode = advertisement.mode,
-                        temperatures = advertisement.probeTemperatures,
-                        sensors = advertisement.virtualSensors,
-                        hopCount = advertisement.hopCount,
-                        connectable = advertisement.isConnectable,
-                    )
-                }
+    private fun handleConnectedState(device: ProbeBleDeviceBase) {
+        var didReadDeviceInfo = false
+        owner.lifecycleScope.launch {
+            device.deviceInfoFirmwareVersion ?: run {
+                didReadDeviceInfo = true
+                device.readFirmwareVersion()
             }
-            is RepeatedProbeBleDevice -> {
-                if(shouldUpdateFromAdvertisingPacket(device, advertisement.hopCount)) {
-                    updateStateFromAdvertisement(
-                        rssi = advertisement.rssi,
-                        mode = advertisement.mode,
-                        temperatures = advertisement.probeTemperatures,
-                        sensors = advertisement.virtualSensors,
-                        hopCount = advertisement.hopCount,
-                        connectable = advertisement.isConnectable
-                    )
+            device.deviceInfoSerialNumber ?: run {
+                didReadDeviceInfo = true
+                device.readSerialNumber()
+            }
+            device.deviceInfoHardwareRevision ?: run {
+                didReadDeviceInfo = true
+                device.readHardwareRevision()
+            }
+        }.invokeOnCompletion {
+            // if we read any of the device information characteristics above
+            if(didReadDeviceInfo) {
+
+                // if we should update the current external state of the probe base on device info data
+                if(arbitrator.shouldUpdateOnDeviceInfoRead(device)) {
+                    _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(
+                        fwVersion = device.deviceInfoFirmwareVersion,
+                        hwRevision = device.deviceInfoHardwareRevision
+                    ))
+                }
+
+                device.deviceInfoFirmwareVersion?.let {
+                    dfuConnectedNodeCallback(FirmwareState.Node(
+                        id = device.id,
+                        type = device.productType,
+                        firmwareVersion = it
+                    ))
                 }
             }
         }
     }
 
-    private suspend fun handleConnectionState(device: ProbeBleDeviceBase, state: DeviceConnectionState) {
-        when(device) {
-            is ProbeBleDevice -> {
-                if(shouldUpdateOnConnectionState(device, device.hopCount, state)) {
-                    _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(connectionState = state))
-                }
-            }
-            is RepeatedProbeBleDevice -> {
-                if(shouldUpdateOnConnectionState(device, device.hopCount, state)) {
-                    _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(connectionState = state))
-                }
-            }
-        }
+    private fun updateStateOnOutOfRange()  {
+        _probe.value = _probe.value.copy(
+            baseDevice = _probe.value.baseDevice.copy(connectionState = DeviceConnectionState.OUT_OF_RANGE)
+        )
     }
 
-    private suspend fun handleOutOfRange(device: ProbeBleDeviceBase) {
-        when(device) {
-            is ProbeBleDevice -> {
-                // TODO
-            }
-            is RepeatedProbeBleDevice -> {
-                // TODO
-            }
-        }
-    }
-
-    private suspend fun handleRemoteRssi(device: ProbeBleDeviceBase, rssi: Int) {
-        when(device) {
-            is ProbeBleDevice -> {
-                if(shouldUpdateOnRemoteRssi(device, device.hopCount, rssi)) {
-                    _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(rssi = rssi))
-                }
-            }
-            is RepeatedProbeBleDevice -> {
-                if(shouldUpdateOnRemoteRssi(device, device.hopCount, rssi)) {
-                    _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(rssi = rssi))
-                }
-            }
-        }
-    }
-
-    private fun updateStateFromAdvertisement(
-        rssi: Int, mode: ProbeMode, temperatures: ProbeTemperatures, sensors: ProbeVirtualSensors,
-        hopCount: UInt, connectable: Boolean
-    ) {
+    private fun updateConnectionStateFromAdvertisement(connectable: Boolean) {
         val advertisingState = if(connectable) DeviceConnectionState.ADVERTISING_CONNECTABLE else DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE
 
         _probe.value = _probe.value.copy(
-            baseDevice = _probe.value.baseDevice.copy(rssi = rssi, connectionState = advertisingState),
+            baseDevice = _probe.value.baseDevice.copy(connectionState = advertisingState),
+        )
+    }
+
+    private fun updateDataFromAdvertisement(
+        rssi: Int, mode: ProbeMode, temperatures: ProbeTemperatures, sensors: ProbeVirtualSensors, hopCount: UInt,
+    ) {
+        _probe.value = _probe.value.copy(
+            baseDevice = _probe.value.baseDevice.copy(rssi = rssi),
             hopCount = hopCount,
         )
 

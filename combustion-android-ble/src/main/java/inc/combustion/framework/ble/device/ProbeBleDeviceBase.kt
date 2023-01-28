@@ -31,13 +31,11 @@ import inc.combustion.framework.ble.ProbeStatus
 import inc.combustion.framework.ble.scanning.BaseAdvertisingData
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.uart.LogResponse
-import inc.combustion.framework.service.DeviceConnectionState
-import inc.combustion.framework.service.ProbeColor
-import inc.combustion.framework.service.ProbeID
-import inc.combustion.framework.service.ProbePredictionMode
+import inc.combustion.framework.service.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import java.util.concurrent.atomic.AtomicBoolean
 
 typealias LinkID = String
 
@@ -79,9 +77,18 @@ internal abstract class ProbeBleDeviceBase() {
     abstract val rssi: Int
     abstract val connectionState: DeviceConnectionState
     abstract val isConnected: Boolean
+    abstract val isDisconnected: Boolean
+    abstract val isInRange: Boolean
+    abstract val isConnectable: Boolean
+
+    // device information service
+    abstract val deviceInfoSerialNumber: String?
+    abstract val deviceInfoFirmwareVersion: String?
+    abstract val deviceInfoHardwareRevision: String?
 
     // meatnet
     abstract val hopCount: UInt
+    abstract val productType: CombustionProductType
 
     // connection management
     abstract fun connect()

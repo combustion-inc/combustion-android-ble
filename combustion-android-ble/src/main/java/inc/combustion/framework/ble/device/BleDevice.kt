@@ -39,6 +39,7 @@ import inc.combustion.framework.ble.*
 import inc.combustion.framework.ble.scanning.*
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.scanning.DeviceScanner
+import inc.combustion.framework.service.CombustionProductType
 import inc.combustion.framework.service.DeviceConnectionState
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.catch
@@ -58,6 +59,7 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 internal open class BleDevice (
     val mac: String,
+    val productType: CombustionProductType,
     val owner: LifecycleOwner,
     adapter: BluetoothAdapter
 ) {
@@ -105,7 +107,11 @@ internal open class BleDevice (
 
     val rssi get() = remoteRssi.get()
     var connectionState = DeviceConnectionState.OUT_OF_RANGE
+
     val isConnected = AtomicBoolean(false)
+    val isDisconnected = AtomicBoolean(false)
+    val isInRange = AtomicBoolean(false)
+    val isConnectable = AtomicBoolean(false)
 
     open fun connect() {
         owner.lifecycleScope.launch {
@@ -127,7 +133,7 @@ internal open class BleDevice (
         }
     }
 
-    fun finish() {
+    open fun finish() {
         disconnect()
         jobManager.cancelJobs()
     }
@@ -152,6 +158,7 @@ internal open class BleDevice (
                     }
 
                     isConnected.set(connectionState == DeviceConnectionState.CONNECTED)
+                    isDisconnected.set(state is State.Disconnected)
 
                     callback?.let {
                         it(connectionState)
@@ -174,6 +181,10 @@ internal open class BleDevice (
                         DeviceConnectionState.DISCONNECTED -> DeviceConnectionState.OUT_OF_RANGE
                         else -> connectionState
                     }
+
+                    isInRange.set(false)
+                    isConnectable.set(false)
+
                     callback?.let {
                         it()
                     }
@@ -222,6 +233,9 @@ internal open class BleDevice (
                 remoteRssi.set(it.rssi)
                 connectionMonitor.activity()
 
+                isInRange.set(true)
+                isConnectable.set(it.isConnectable)
+
                 // the probe continues to advertise even while a BLE connection is
                 // established.  determine if the device is currently advertising as
                 // connectable or not.
@@ -242,8 +256,12 @@ internal open class BleDevice (
                     else -> connectionState
                 }
 
-                callback?.let { clientCallback ->
-                    clientCallback(it)
+                // only pass advertising packets up when not connected
+                if(connectionState == DeviceConnectionState.ADVERTISING_CONNECTABLE ||
+                    connectionState == DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE) {
+                    callback?.let { clientCallback ->
+                        clientCallback(it)
+                    }
                 }
             }
         })

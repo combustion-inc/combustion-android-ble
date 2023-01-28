@@ -71,9 +71,20 @@ internal class RepeatedProbeBleDevice (
             return uart.mac
         }
 
-    override val rssi = uart.rssi
-    override val connectionState = uart.connectionState
-    override val isConnected = uart.isConnected.get()
+    // ble properties
+    override val rssi: Int get() { return uart.rssi }
+    override val connectionState: DeviceConnectionState get() { return uart.connectionState }
+    override val isConnected: Boolean get() { return uart.isConnected.get() }
+    override val isDisconnected: Boolean get() { return uart.isDisconnected.get() }
+    override val isInRange: Boolean get() { return uart.isInRange.get() }
+    override val isConnectable: Boolean get() { return uart.isConnectable.get() }
+
+    // device information service values from the repeated probe's node.
+    override val deviceInfoSerialNumber: String? get() { return uart.serialNumber }
+    override val deviceInfoFirmwareVersion: String? get() { return uart.firmwareVersion }
+    override val deviceInfoHardwareRevision: String? get() { return uart.hardwareRevision }
+
+    override val productType: CombustionProductType get() { return uart.productType}
 
     override val hopCount: UInt
         get() {
