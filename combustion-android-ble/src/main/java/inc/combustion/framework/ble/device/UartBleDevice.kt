@@ -43,10 +43,10 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 internal open class UartBleDevice(
     mac: String,
-    type: CombustionProductType,
+    advertisement: CombustionAdvertisingData,
     owner: LifecycleOwner,
     adapter: BluetoothAdapter
-) : DeviceInformationBleDevice(mac, type, owner, adapter) {
+) : DeviceInformationBleDevice(mac, advertisement, owner, adapter) {
 
     class MessageCompletionHandler {
         private val waiting = AtomicBoolean(false)

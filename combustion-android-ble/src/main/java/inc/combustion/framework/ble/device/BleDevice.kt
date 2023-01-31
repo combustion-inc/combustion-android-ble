@@ -59,9 +59,10 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 internal open class BleDevice (
     val mac: String,
-    val productType: CombustionProductType,
+    advertisement: CombustionAdvertisingData,
     val owner: LifecycleOwner,
-    adapter: BluetoothAdapter
+    adapter: BluetoothAdapter,
+    val productType: CombustionProductType = advertisement.productType,
 ) {
     companion object {
         private const val REMOTE_RSSI_POLL_RATE_MS = 2000L
@@ -109,9 +110,13 @@ internal open class BleDevice (
     var connectionState = DeviceConnectionState.OUT_OF_RANGE
 
     val isConnected = AtomicBoolean(false)
-    val isDisconnected = AtomicBoolean(false)
+    val isDisconnected = AtomicBoolean(true)
     val isInRange = AtomicBoolean(false)
     val isConnectable = AtomicBoolean(false)
+
+    init {
+        handleAdvertisement(advertisement)
+    }
 
     open fun connect() {
         owner.lifecycleScope.launch {
@@ -184,6 +189,7 @@ internal open class BleDevice (
 
                     isInRange.set(false)
                     isConnectable.set(false)
+                    isDisconnected.set(true)
 
                     callback?.let {
                         it()
@@ -230,38 +236,12 @@ internal open class BleDevice (
                 filter(it)
 
             }.collect {
-                remoteRssi.set(it.rssi)
+                handleAdvertisement(it)
+
                 connectionMonitor.activity()
 
-                isInRange.set(true)
-                isConnectable.set(it.isConnectable)
-
-                // the probe continues to advertise even while a BLE connection is
-                // established.  determine if the device is currently advertising as
-                // connectable or not.
-                val advertisingState = when(it.isConnectable) {
-                    true -> DeviceConnectionState.ADVERTISING_CONNECTABLE
-                    else -> DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE
-                }
-
-                // if the device is advertising as connectable, advertising as non-connectable,
-                // currently disconnected, or currently out of range then it's new state is the
-                // advertising state determined above. otherwise, (connected, connected or
-                // disconnecting) the state is unchanged by the advertising packet.
-                connectionState = when(connectionState) {
-                    DeviceConnectionState.ADVERTISING_CONNECTABLE -> advertisingState
-                    DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE -> advertisingState
-                    DeviceConnectionState.OUT_OF_RANGE -> advertisingState
-                    DeviceConnectionState.DISCONNECTED -> advertisingState
-                    else -> connectionState
-                }
-
-                // only pass advertising packets up when not connected
-                if(connectionState == DeviceConnectionState.ADVERTISING_CONNECTABLE ||
-                    connectionState == DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE) {
-                    callback?.let { clientCallback ->
-                        clientCallback(it)
-                    }
+                callback?.let { clientCallback ->
+                    clientCallback(it)
                 }
             }
         })
@@ -289,5 +269,31 @@ internal open class BleDevice (
             }
         }
         return bytes
+    }
+
+    private fun handleAdvertisement(advertisement: CombustionAdvertisingData) {
+        remoteRssi.set(advertisement.rssi)
+        isInRange.set(true)
+        isConnectable.set(advertisement.isConnectable)
+
+        // the probe continues to advertise even while a BLE connection is
+        // established.  determine if the device is currently advertising as
+        // connectable or not.
+        val advertisingState = when(advertisement.isConnectable) {
+            true -> DeviceConnectionState.ADVERTISING_CONNECTABLE
+            else -> DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE
+        }
+
+        // if the device is advertising as connectable, advertising as non-connectable,
+        // currently disconnected, or currently out of range then it's new state is the
+        // advertising state determined above. otherwise, (connected, connected or
+        // disconnecting) the state is unchanged by the advertising packet.
+        connectionState = when(connectionState) {
+            DeviceConnectionState.ADVERTISING_CONNECTABLE -> advertisingState
+            DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE -> advertisingState
+            DeviceConnectionState.OUT_OF_RANGE -> advertisingState
+            DeviceConnectionState.DISCONNECTED -> advertisingState
+            else -> connectionState
+        }
     }
 }

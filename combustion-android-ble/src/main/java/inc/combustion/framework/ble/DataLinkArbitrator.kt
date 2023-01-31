@@ -157,11 +157,12 @@ internal class DataLinkArbitrator(
             // if not using meatnet, and the client app is asking us to connect
             if(fromApiCall) {
                 device.shouldAutoReconnect = settings.autoReconnect
+                return canConnect
             }
 
             // if not using meatnet, and this is a call from inside the framework then
             // we want to use the auto-reconnect setting.
-            return canConnect
+            return device.shouldAutoReconnect
         }
 
         // if not meatnet and not a probe
@@ -196,6 +197,14 @@ internal class DataLinkArbitrator(
     fun shouldUpdateOnOutOfRange(device: ProbeBleDeviceBase): Boolean {
         // TODO: Implement Multiplexing Business Logic
         return debuggingWithStaticLink(device)
+    }
+
+    fun shouldHandleAdvertisingPacket(device: ProbeBleDeviceBase): Boolean {
+        /*
+        return true
+        */
+        return device.connectionState == DeviceConnectionState.ADVERTISING_CONNECTABLE ||
+                device.connectionState == DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE
     }
 
     fun shouldUpdateDataFromAdvertisingPacket(device: ProbeBleDeviceBase): Boolean {

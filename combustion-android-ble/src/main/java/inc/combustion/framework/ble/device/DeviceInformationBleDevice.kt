@@ -29,16 +29,17 @@ package inc.combustion.framework.ble.device
 
 import android.bluetooth.BluetoothAdapter
 import androidx.lifecycle.LifecycleOwner
+import com.juul.kable.Advertisement
 import inc.combustion.framework.ble.scanning.BaseAdvertisingData
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.service.CombustionProductType
 
 internal open class DeviceInformationBleDevice(
     mac: String,
-    type: CombustionProductType,
+    advertisement: CombustionAdvertisingData,
     owner: LifecycleOwner,
     adapter: BluetoothAdapter
-) : BleDevice(mac, type, owner, adapter) {
+) : BleDevice(mac, advertisement, owner, adapter) {
 
     var serialNumber: String? = null
     var firmwareVersion: String? = null

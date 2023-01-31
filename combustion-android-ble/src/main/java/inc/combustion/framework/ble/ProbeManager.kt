@@ -75,8 +75,6 @@ internal class ProbeManager(
     // manages long-running coroutine scopes for data handling
     private val jobManager = JobManager()
 
-    private var probeStatusCollectJob: Job? = null
-
     // holds the current state and data for this probe
     private var _probe = MutableStateFlow(Probe.create(serialNumber = serialNumber))
 
@@ -205,6 +203,10 @@ internal class ProbeManager(
     }
 
     private fun handleAdvertisingPackets(device: ProbeBleDeviceBase, advertisement: CombustionAdvertisingData) {
+        if(!arbitrator.shouldHandleAdvertisingPacket(device)) {
+            return
+        }
+
         if(arbitrator.shouldUpdateDataFromAdvertisingPacket(device)) {
             updateDataFromAdvertisement(
                 rssi = advertisement.rssi,
@@ -220,6 +222,11 @@ internal class ProbeManager(
                 connectable = advertisement.isConnectable
             )
         }
+
+        if(arbitrator.shouldConnect(device)) {
+            Log.i(LOG_TAG, "PM($serialNumber) automatically connecting to ${device.id}")
+            device.connect()
+        }
     }
 
     private fun handleConnectionState(device: ProbeBleDeviceBase, state: DeviceConnectionState) {
@@ -229,6 +236,7 @@ internal class ProbeManager(
         arbitrator.handleConnectionState(device, state)
 
         if(isConnected) {
+            Log.i(LOG_TAG, "PM($serialNumber): ${device.productType}[${device.id}] is connected.")
             handleConnectedState(device)
         }
 

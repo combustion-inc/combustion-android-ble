@@ -54,7 +54,7 @@ internal class ProbeBleDevice (
     owner: LifecycleOwner,
     private var probeAdvertisingData: CombustionAdvertisingData,
     adapter: BluetoothAdapter,
-    private val uart: UartBleDevice = UartBleDevice(mac, probeAdvertisingData.productType, owner, adapter),
+    private val uart: UartBleDevice = UartBleDevice(mac, probeAdvertisingData, owner, adapter),
 ) : ProbeBleDeviceBase() {
 
     companion object {

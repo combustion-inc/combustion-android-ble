@@ -31,6 +31,7 @@ package inc.combustion.framework.ble.device
 import android.util.Log
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
+import inc.combustion.framework.ble.NOT_IMPLEMENTED
 import inc.combustion.framework.ble.scanning.BaseAdvertisingData
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.uart.Request
@@ -152,16 +153,20 @@ internal class RepeatedProbeBleDevice (
         TODO()
     }
 
-    override suspend fun readSerialNumber() {
-        TODO()
+    override suspend fun readSerialNumber() = uart.readSerialNumber()
+    override suspend fun readFirmwareVersion() = uart.readFirmwareVersion()
+    override suspend fun readHardwareRevision() = uart.readHardwareRevision()
+
+    suspend fun readProbeSerialNumber() {
+        NOT_IMPLEMENTED("Not able to read probe firmware serial number over meatnet")
     }
 
-    override suspend fun readFirmwareVersion() {
-        TODO()
+    suspend fun readProbeFirmwareVersion() {
+        NOT_IMPLEMENTED("Not able to read probe firmware version over meatnet")
     }
 
-    override suspend fun readHardwareRevision() {
-        TODO()
+    suspend fun readProbeHardwareRevision() {
+        NOT_IMPLEMENTED("Not able to read probe hardware rev over meatnet")
     }
 
     override fun observeAdvertisingPackets(serialNumberFilter: String, macFilter: String, callback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)?) {

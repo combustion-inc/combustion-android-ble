@@ -319,6 +319,12 @@ internal class NetworkManager(
         val deviceId = advertisement.id
         val linkId = ProbeBleDeviceBase.makeLinkId(advertisement)
 
+        // if MeatNet isn't enabled and we see anything other than a probe, then return out now
+        // because that product type isn't supported in this mode.
+        if(!settings.meatNetEnabled && advertisement.productType != CombustionProductType.PROBE) {
+            return false
+        }
+
         // if we have not seen this device by its uid, then track in the device map.
         if(!devices.containsKey(deviceId)) {
             val deviceHolder = when(advertisement.productType) {
@@ -329,7 +335,7 @@ internal class NetworkManager(
                 }
                 CombustionProductType.DISPLAY, CombustionProductType.CHARGER -> {
                     DeviceHolder.RepeaterHolder(
-                        UartBleDevice(advertisement.mac, advertisement.productType, owner, adapter)
+                        UartBleDevice(advertisement.mac, advertisement, owner, adapter)
                     )
                 }
                 else -> NOT_IMPLEMENTED("Unknown type of advertising data")
@@ -394,8 +400,8 @@ internal class NetworkManager(
     private suspend fun collectAdvertisingData() {
         DeviceScanner.advertisements.collect {
             if(scanningForProbes) {
-                if(manageMeatNetDevice(it)) {
-                    if(it.probeSerialNumber != REPEATER_NO_PROBES_SERIAL_NUMBER) {
+                if(it.probeSerialNumber != REPEATER_NO_PROBES_SERIAL_NUMBER) {
+                    if(manageMeatNetDevice(it)) {
                         mutableDiscoveredProbesFlow.emit(
                             ProbeDiscoveredEvent.ProbeDiscovered(it.probeSerialNumber)
                         )
