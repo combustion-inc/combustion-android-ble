@@ -33,9 +33,10 @@ import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.NOT_IMPLEMENTED
 import inc.combustion.framework.ble.ProbeStatus
-import inc.combustion.framework.ble.scanning.BaseAdvertisingData
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.uart.Request
+import inc.combustion.framework.ble.uart.meatnet.NodeProbeStatusRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeResponse
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.Dispatchers
@@ -52,6 +53,8 @@ internal class RepeatedProbeBleDevice (
     }
 
     private val advertisementForProbe = hashMapOf<String, CombustionAdvertisingData>()
+
+    private var probeStatusCallback: (suspend (status: ProbeStatus) -> Unit)? = null
 
     override val advertisement: CombustionAdvertisingData?
         get() {
@@ -88,6 +91,7 @@ internal class RepeatedProbeBleDevice (
 
     override val productType: CombustionProductType get() { return uart.productType}
 
+    private var _hopCount: UInt
     override val hopCount: UInt
         get() {
             return advertisement?.hopCount ?: UInt.MAX_VALUE
@@ -100,6 +104,25 @@ internal class RepeatedProbeBleDevice (
 
     init {
         advertisementForProbe[advertisement.probeSerialNumber] = advertisement
+        _hopCount = advertisement.hopCount
+
+        observeUartRequests { request ->
+            when(request) {
+                is NodeProbeStatusRequest -> {
+                    // Check that this probe status matches this probe serial number
+                    if(request.serialNumberString == probeSerialNumber) {
+
+                        // Save hop count from probeStatus
+                        _hopCount = request.hopCount.hopCount
+
+                        probeStatusCallback?.let {
+                            it(request.probeStatus)
+                        }
+                    }
+                }
+            }
+        }
+
         observeUartResponses { response ->
             TODO()
             /*
@@ -112,11 +135,6 @@ internal class RepeatedProbeBleDevice (
                 is SetIDResponse -> setIdHandler.handled(response.success)
                 is SetPredictionResponse -> setPredictionHandler.handled(response.success)
             }
-             */
-
-            /*
-            Handling the probe status over the UART needs to do this ...
-            probeBleDeviceBase.mutableProbeStatusFlow.emit(probeStatus)
              */
 
             /*
@@ -176,6 +194,7 @@ internal class RepeatedProbeBleDevice (
         ) { advertisement ->
             callback?.let {
                 advertisementForProbe[probeSerialNumber] = advertisement
+                _hopCount = advertisement.hopCount
                 it(advertisement)
             }
         }
@@ -185,16 +204,29 @@ internal class RepeatedProbeBleDevice (
     override fun observeOutOfRange(timeout: Long, callback: (suspend () -> Unit)?) = uart.observeOutOfRange(timeout, callback)
     override fun observeConnectionState(callback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)?) = uart.observeConnectionState(callback)
 
-    override suspend fun observeProbeStatusUpdates(callback: (suspend (status: ProbeStatus) -> Unit)?) {
-        // TODO
+    override fun observeProbeStatusUpdates(callback: (suspend (status: ProbeStatus) -> Unit)?) {
+        probeStatusCallback = callback
     }
 
     private fun observeUartResponses(callback: (suspend (response: NodeResponse) -> Unit)? = null) {
         uart.jobManager.addJob(uart.owner.lifecycleScope.launch {
             uart.observeUartCharacteristic { data ->
-                callback?.let {
+                NodeResponse.responseFromData(data.toUByteArray())?.let {response ->
+                    callback?.let {
+                        it(response)
+                    }
+                }
+            }
+        })
+    }
 
-                    NodeResponse.responseFromData(data.toUByteArray())
+    private fun observeUartRequests(callback: (suspend (request: NodeRequest) -> Unit)? = null) {
+        uart.jobManager.addJob(uart.owner.lifecycleScope.launch {
+            uart.observeUartCharacteristic { data ->
+                NodeRequest.requestFromData(data.toUByteArray())?.let {request ->
+                    callback?.let {
+                        it(request)
+                    }
                 }
             }
         })

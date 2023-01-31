@@ -47,7 +47,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.launch
-import java.util.concurrent.atomic.AtomicBoolean
 
 internal class ProbeBleDevice (
     mac: String,
@@ -157,7 +156,7 @@ internal class ProbeBleDevice (
     override fun observeOutOfRange(timeout: Long, callback: (suspend () -> Unit)?) = uart.observeOutOfRange(timeout, callback)
     override fun observeConnectionState(callback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)?) = uart.observeConnectionState(callback)
 
-    override suspend fun observeProbeStatusUpdates(callback: (suspend (status: ProbeStatus) -> Unit)?) {
+    override fun observeProbeStatusUpdates(callback: (suspend (status: ProbeStatus) -> Unit)?) {
         // TODO
     }
 

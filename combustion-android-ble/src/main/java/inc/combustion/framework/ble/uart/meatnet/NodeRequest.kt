@@ -27,6 +27,8 @@
  */
 package inc.combustion.framework.ble.uart.meatnet
 
+import android.util.Log
+import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.*
 import inc.combustion.framework.ble.getCRC16CCITT
 import inc.combustion.framework.ble.getLittleEndianUInt32At
@@ -49,8 +51,8 @@ internal open class NodeRequest() : NodeUARTMessage() {
         fun requestFromData(data : UByteArray) : NodeRequest? {
             // Sync bytes
             val syncBytes = data.slice(0..1)
-            val syncString = String(syncBytes.toUByteArray().toByteArray())
-            if(syncString != "cafe") {
+            val expectedSync = listOf<UByte>(202u, 254u) // 0xCA, 0xFE
+            if(syncBytes != expectedSync) {
                 return null
             }
 
@@ -76,6 +78,7 @@ internal open class NodeRequest() : NodeUARTMessage() {
             val calculatedCRC = crcData.getCRC16CCITT()
 
             if(crc != calculatedCRC) {
+                Log.w(LOG_TAG, "Invalid CRC")
                 return null
             }
 
@@ -83,53 +86,22 @@ internal open class NodeRequest() : NodeUARTMessage() {
 
             // Invalid number of bytes
             if(data.size < requestLength) {
+                Log.w(LOG_TAG, "Invalid data length")
                 return null
             }
 
-            when(messageType) {
-//                NodeMessageType.LOG -> {
-//                    return NodeLogResponse.fromRaw(
-//                        data,
-//                        success,
-//                        payloadLength.toInt()
-//                    )
-//                }
-
-
-//              NodeMessageType.SET_ID -> {
-//                  return NodeSetIDResponse(success, payloadLength)
-//              }
-//              NodeMessageType.SET_COLOR -> {
-//                  return NodeSetColorResponse(
-//                      success,
-//                      payloadLength
-//                  )
-//              }
-//              NodeMessageType.SESSION_INFO -> {
-//                  return NodeSessionInfoResponse.fromRaw(
-//                      data,
-//                      success,
-//                      payloadLength)
-//              }
+            return when(messageType) {
 
                 NodeMessageType.PROBE_STATUS -> {
-                    return NodeProbeStatusRequest.fromRaw(
+                    NodeProbeStatusRequest.fromRaw(
                         data,
                         requestId,
                         payloadLength
                     )
                 }
 
-//              NodeMessageType.READ_OVER_TEMPERATURE -> {
-//                  return NodeReadOverTemperatureResponse(
-//                      data,
-//                      success,
-//                      payloadLength
-//                  )
-//              }
-
                 else -> {
-                    return null
+                    null
                 }
             }
         }

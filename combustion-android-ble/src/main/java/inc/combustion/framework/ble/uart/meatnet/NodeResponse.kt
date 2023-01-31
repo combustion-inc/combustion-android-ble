@@ -57,8 +57,8 @@ internal open class NodeResponse(
 
             // Sync bytes
             val syncBytes = data.slice(0..1)
-            val syncString = String(syncBytes.toUByteArray().toByteArray())
-            if(syncString != "cafe") {
+            val expectedSync = listOf<UByte>(202u, 254u) // 0xCA, 0xFE
+            if(syncBytes != expectedSync) {
                 return null
             }
 
