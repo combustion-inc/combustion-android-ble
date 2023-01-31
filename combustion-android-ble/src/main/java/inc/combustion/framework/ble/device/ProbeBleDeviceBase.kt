@@ -107,6 +107,9 @@ internal abstract class ProbeBleDeviceBase() {
     abstract suspend fun readFirmwareVersion()
     abstract suspend fun readHardwareRevision()
 
+    // probe status updates
+    abstract suspend fun observeProbeStatusUpdates(callback: (suspend (status: ProbeStatus) -> Unit)? = null)
+
     // Probe UART Command APIs
     abstract fun sendSessionInformationRequest(callback: ((Boolean, Any?) -> Unit)? = null)
     abstract fun sendSetProbeColor(color: ProbeColor, callback: ((Boolean, Any?) -> Unit)? = null)
