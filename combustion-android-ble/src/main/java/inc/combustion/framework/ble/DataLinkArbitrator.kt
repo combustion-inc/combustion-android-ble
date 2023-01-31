@@ -200,9 +200,6 @@ internal class DataLinkArbitrator(
     }
 
     fun shouldHandleAdvertisingPacket(device: ProbeBleDeviceBase): Boolean {
-        /*
-        return true
-        */
         return device.connectionState == DeviceConnectionState.ADVERTISING_CONNECTABLE ||
                 device.connectionState == DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE
     }
