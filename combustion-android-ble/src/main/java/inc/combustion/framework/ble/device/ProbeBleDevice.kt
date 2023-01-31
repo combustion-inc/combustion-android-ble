@@ -157,6 +157,10 @@ internal class ProbeBleDevice (
     override fun observeOutOfRange(timeout: Long, callback: (suspend () -> Unit)?) = uart.observeOutOfRange(timeout, callback)
     override fun observeConnectionState(callback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)?) = uart.observeConnectionState(callback)
 
+    override suspend fun observeProbeStatusUpdates(callback: (suspend (status: ProbeStatus) -> Unit)?) {
+        // TODO
+    }
+
     private fun observeUartResponses(callback: (suspend (responses: List<Response>) -> Unit)? = null) {
         uart.jobManager.addJob(uart.owner.lifecycleScope.launch {
             uart.observeUartCharacteristic { data ->

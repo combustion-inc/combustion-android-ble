@@ -32,6 +32,7 @@ import android.util.Log
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.NOT_IMPLEMENTED
+import inc.combustion.framework.ble.ProbeStatus
 import inc.combustion.framework.ble.scanning.BaseAdvertisingData
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.uart.Request
@@ -183,6 +184,10 @@ internal class RepeatedProbeBleDevice (
     override fun observeRemoteRssi(callback: (suspend (rssi: Int) -> Unit)?) = uart.observeRemoteRssi(callback)
     override fun observeOutOfRange(timeout: Long, callback: (suspend () -> Unit)?) = uart.observeOutOfRange(timeout, callback)
     override fun observeConnectionState(callback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)?) = uart.observeConnectionState(callback)
+
+    override suspend fun observeProbeStatusUpdates(callback: (suspend (status: ProbeStatus) -> Unit)?) {
+        // TODO
+    }
 
     private fun observeUartResponses(callback: (suspend (response: NodeResponse) -> Unit)? = null) {
         uart.jobManager.addJob(uart.owner.lifecycleScope.launch {
