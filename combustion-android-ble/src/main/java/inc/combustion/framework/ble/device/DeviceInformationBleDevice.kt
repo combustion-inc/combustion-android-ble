@@ -29,19 +29,29 @@ package inc.combustion.framework.ble.device
 
 import android.bluetooth.BluetoothAdapter
 import androidx.lifecycle.LifecycleOwner
+import com.juul.kable.Advertisement
 import inc.combustion.framework.ble.scanning.BaseAdvertisingData
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
+import inc.combustion.framework.service.CombustionProductType
 
 internal open class DeviceInformationBleDevice(
     mac: String,
+    advertisement: CombustionAdvertisingData,
     owner: LifecycleOwner,
     adapter: BluetoothAdapter
-) : BleDevice(mac, owner, adapter) {
+) : BleDevice(mac, advertisement, owner, adapter) {
 
     var serialNumber: String? = null
     var firmwareVersion: String? = null
     var hardwareRevision: String? = null
 
+
+    override fun disconnect() {
+        serialNumber = null
+        firmwareVersion = null
+        hardwareRevision = null
+        super.disconnect()
+    }
     suspend fun readSerialNumber() {
         if(isConnected.get()) {
             serialNumber = readSerialNumberCharacteristic()

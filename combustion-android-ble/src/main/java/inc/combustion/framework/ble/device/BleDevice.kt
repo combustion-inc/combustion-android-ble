@@ -39,11 +39,14 @@ import inc.combustion.framework.ble.*
 import inc.combustion.framework.ble.scanning.*
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.scanning.DeviceScanner
+import inc.combustion.framework.service.CombustionProductType
 import inc.combustion.framework.service.DeviceConnectionState
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -58,8 +61,10 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 internal open class BleDevice (
     val mac: String,
+    advertisement: CombustionAdvertisingData,
     val owner: LifecycleOwner,
-    adapter: BluetoothAdapter
+    adapter: BluetoothAdapter,
+    val productType: CombustionProductType = advertisement.productType,
 ) {
     companion object {
         private const val REMOTE_RSSI_POLL_RATE_MS = 2000L
@@ -81,6 +86,8 @@ internal open class BleDevice (
         )
     }
 
+    private val mutex = Mutex()
+
     /**
      * Abstraction of a unique identifier.
      */
@@ -88,6 +95,8 @@ internal open class BleDevice (
         get() = mac
 
     val jobManager = JobManager()
+    var remoteRssiJob: Job? = null
+    val rssiCallbacks = mutableListOf<(suspend (rssi: Int) -> Unit)>()
     var peripheral: Peripheral =
         owner.lifecycleScope.peripheral(adapter.getRemoteDevice(mac)) {
             logging {
@@ -105,7 +114,15 @@ internal open class BleDevice (
 
     val rssi get() = remoteRssi.get()
     var connectionState = DeviceConnectionState.OUT_OF_RANGE
+
     val isConnected = AtomicBoolean(false)
+    val isDisconnected = AtomicBoolean(true)
+    val isInRange = AtomicBoolean(false)
+    val isConnectable = AtomicBoolean(false)
+
+    init {
+        handleAdvertisement(advertisement)
+    }
 
     open fun connect() {
         owner.lifecycleScope.launch {
@@ -127,35 +144,46 @@ internal open class BleDevice (
         }
     }
 
-    fun finish() {
+    open fun finish() {
         disconnect()
+        remoteRssiJob = null
         jobManager.cancelJobs()
+        rssiCallbacks.clear()
+    }
+
+    fun dispatchOnDefault(callback: (suspend () -> Unit)) {
+        // run the code on the default coroutine scope
+        owner.lifecycleScope.launch {
+            callback()
+        }
     }
 
     fun observeConnectionState(callback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)? = null) {
         jobManager.addJob(owner.lifecycleScope.launch {
-            owner.repeatOnLifecycle(Lifecycle.State.CREATED) {
-                peripheral.state.onCompletion {
-                    Log.d(LOG_TAG, "Connection State Monitor Complete")
-                }
-                .catch {
-                    Log.i(LOG_TAG, "Connection State Monitor Catch: $it")
-                }
-                .collect { state ->
-                    connectionMonitor.activity()
+            peripheral.state.onCompletion {
+                Log.d(LOG_TAG, "Connection State Monitor Complete")
+            }
+            .catch {
+                Log.i(LOG_TAG, "Connection State Monitor Catch: $it")
+            }
+            .collect { state ->
+                connectionMonitor.activity()
 
-                    connectionState = when (state) {
-                        is State.Connecting -> DeviceConnectionState.CONNECTING
-                        State.Connected -> DeviceConnectionState.CONNECTED
-                        State.Disconnecting -> DeviceConnectionState.DISCONNECTING
-                        is State.Disconnected -> DeviceConnectionState.DISCONNECTED
-                    }
+                connectionState = when (state) {
+                    is State.Connecting -> DeviceConnectionState.CONNECTING
+                    State.Connected -> DeviceConnectionState.CONNECTED
+                    State.Disconnecting -> DeviceConnectionState.DISCONNECTING
+                    is State.Disconnected -> DeviceConnectionState.DISCONNECTED
+                }
 
+                mutex.withLock {
                     isConnected.set(connectionState == DeviceConnectionState.CONNECTED)
+                    isDisconnected.set(state is State.Disconnected)
+                }
 
-                    callback?.let {
-                        it(connectionState)
-                    }
+                callback?.let {it
+                    // already being dispatched on default
+                    it(connectionState)
                 }
             }
         })
@@ -168,14 +196,22 @@ internal open class BleDevice (
                 val isIdle = connectionMonitor.isIdle(timeout)
 
                 if(isIdle) {
-                    connectionState = when(connectionState) {
-                        DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE -> DeviceConnectionState.OUT_OF_RANGE
-                        DeviceConnectionState.ADVERTISING_CONNECTABLE -> DeviceConnectionState.OUT_OF_RANGE
-                        DeviceConnectionState.DISCONNECTED -> DeviceConnectionState.OUT_OF_RANGE
-                        else -> connectionState
+                    mutex.withLock {
+                        connectionState = when(connectionState) {
+                            DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE -> DeviceConnectionState.OUT_OF_RANGE
+                            DeviceConnectionState.ADVERTISING_CONNECTABLE -> DeviceConnectionState.OUT_OF_RANGE
+                            DeviceConnectionState.DISCONNECTED -> DeviceConnectionState.OUT_OF_RANGE
+                            else -> connectionState
+                        }
+                        isInRange.set(false)
+                        isConnectable.set(false)
+                        isDisconnected.set(true)
                     }
+
                     callback?.let {
-                        it()
+                        dispatchOnDefault {
+                            it()
+                        }
                     }
                 }
             }
@@ -183,32 +219,44 @@ internal open class BleDevice (
     }
 
     fun observeRemoteRssi(callback: (suspend (rssi: Int) -> Unit)? = null) {
-        jobManager.addJob(owner.lifecycleScope.launch(Dispatchers.IO) {
-            var exceptionCount = 0;
-            while(isActive) {
-                if(isConnected.get() && mac != SimulatedProbeBleDevice.SIMULATED_MAC) {
-                    try {
-                        remoteRssi.set(peripheral.rssi())
-                        exceptionCount = 0;
-                    } catch (e: Exception) {
-                        exceptionCount++
-                        Log.w(LOG_TAG, "Exception while reading remote RSSI: $exceptionCount\n${e.stackTrace}")
-                    }
+        // maintain a list of objects that are observing RSSI updates for this device.
+        callback?.let {
+            rssiCallbacks.add(it)
+        }
 
-                    when {
-                        exceptionCount < 5 -> {
-                            callback?.let {
-                                it(remoteRssi.get())
+        // but only need one long running thread for this device to read the RSSI while connected.
+        if(remoteRssiJob == null) {
+            val job = owner.lifecycleScope.launch(Dispatchers.IO) {
+                var exceptionCount = 0;
+                while(isActive) {
+                    if(isConnected.get()) {
+                        try {
+                            remoteRssi.set(peripheral.rssi())
+                            exceptionCount = 0;
+                        } catch (e: Exception) {
+                            exceptionCount++
+                            Log.w(LOG_TAG, "Exception while reading remote RSSI: $exceptionCount\n${e.stackTrace}")
+                        }
+
+                        when {
+                            exceptionCount < 5 -> {
+                                rssiCallbacks.forEach {
+                                    dispatchOnDefault {
+                                        it(remoteRssi.get())
+                                    }
+                                }
+                            }
+                            else -> {
+                                peripheral.disconnect()
                             }
                         }
-                        else -> {
-                            peripheral.disconnect()
-                        }
                     }
+                    delay(REMOTE_RSSI_POLL_RATE_MS)
                 }
-                delay(REMOTE_RSSI_POLL_RATE_MS)
             }
-        })
+            remoteRssiJob = job
+            jobManager.addJob(job)
+        }
     }
 
     fun observeAdvertisingPackets(filter: (advertisement: CombustionAdvertisingData) -> Boolean, callback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)? = null) {
@@ -219,31 +267,16 @@ internal open class BleDevice (
                 filter(it)
 
             }.collect {
-                remoteRssi.set(it.rssi)
+                mutex.withLock {
+                    handleAdvertisement(it)
+                }
+
                 connectionMonitor.activity()
 
-                // the probe continues to advertise even while a BLE connection is
-                // established.  determine if the device is currently advertising as
-                // connectable or not.
-                val advertisingState = when(it.isConnectable) {
-                    true -> DeviceConnectionState.ADVERTISING_CONNECTABLE
-                    else -> DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE
-                }
-
-                // if the device is advertising as connectable, advertising as non-connectable,
-                // currently disconnected, or currently out of range then it's new state is the
-                // advertising state determined above. otherwise, (connected, connected or
-                // disconnecting) the state is unchanged by the advertising packet.
-                connectionState = when(connectionState) {
-                    DeviceConnectionState.ADVERTISING_CONNECTABLE -> advertisingState
-                    DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE -> advertisingState
-                    DeviceConnectionState.OUT_OF_RANGE -> advertisingState
-                    DeviceConnectionState.DISCONNECTED -> advertisingState
-                    else -> connectionState
-                }
-
                 callback?.let { clientCallback ->
-                    clientCallback(it)
+                    dispatchOnDefault {
+                        clientCallback(it)
+                    }
                 }
             }
         })
@@ -271,5 +304,31 @@ internal open class BleDevice (
             }
         }
         return bytes
+    }
+
+    private fun handleAdvertisement(advertisement: CombustionAdvertisingData) {
+        remoteRssi.set(advertisement.rssi)
+        isInRange.set(true)
+        isConnectable.set(advertisement.isConnectable)
+
+        // the probe continues to advertise even while a BLE connection is
+        // established.  determine if the device is currently advertising as
+        // connectable or not.
+        val advertisingState = when(advertisement.isConnectable) {
+            true -> DeviceConnectionState.ADVERTISING_CONNECTABLE
+            else -> DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE
+        }
+
+        // if the device is advertising as connectable, advertising as non-connectable,
+        // currently disconnected, or currently out of range then it's new state is the
+        // advertising state determined above. otherwise, (connected, connected or
+        // disconnecting) the state is unchanged by the advertising packet.
+        connectionState = when(connectionState) {
+            DeviceConnectionState.ADVERTISING_CONNECTABLE -> advertisingState
+            DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE -> advertisingState
+            DeviceConnectionState.OUT_OF_RANGE -> advertisingState
+            DeviceConnectionState.DISCONNECTED -> advertisingState
+            else -> connectionState
+        }
     }
 }

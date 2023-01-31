@@ -31,6 +31,7 @@ package inc.combustion.framework.ble.device
 import android.util.Log
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
+import inc.combustion.framework.ble.NOT_IMPLEMENTED
 import inc.combustion.framework.ble.scanning.BaseAdvertisingData
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.uart.Request
@@ -71,9 +72,20 @@ internal class RepeatedProbeBleDevice (
             return uart.mac
         }
 
-    override val rssi = uart.rssi
-    override val connectionState = uart.connectionState
-    override val isConnected = uart.isConnected.get()
+    // ble properties
+    override val rssi: Int get() { return uart.rssi }
+    override val connectionState: DeviceConnectionState get() { return uart.connectionState }
+    override val isConnected: Boolean get() { return uart.isConnected.get() }
+    override val isDisconnected: Boolean get() { return uart.isDisconnected.get() }
+    override val isInRange: Boolean get() { return uart.isInRange.get() }
+    override val isConnectable: Boolean get() { return uart.isConnectable.get() }
+
+    // device information service values from the repeated probe's node.
+    override val deviceInfoSerialNumber: String? get() { return uart.serialNumber }
+    override val deviceInfoFirmwareVersion: String? get() { return uart.firmwareVersion }
+    override val deviceInfoHardwareRevision: String? get() { return uart.hardwareRevision }
+
+    override val productType: CombustionProductType get() { return uart.productType}
 
     override val hopCount: UInt
         get() {
@@ -141,16 +153,20 @@ internal class RepeatedProbeBleDevice (
         TODO()
     }
 
-    override suspend fun readSerialNumber() {
-        TODO()
+    override suspend fun readSerialNumber() = uart.readSerialNumber()
+    override suspend fun readFirmwareVersion() = uart.readFirmwareVersion()
+    override suspend fun readHardwareRevision() = uart.readHardwareRevision()
+
+    suspend fun readProbeSerialNumber() {
+        NOT_IMPLEMENTED("Not able to read probe firmware serial number over meatnet")
     }
 
-    override suspend fun readFirmwareVersion() {
-        TODO()
+    suspend fun readProbeFirmwareVersion() {
+        NOT_IMPLEMENTED("Not able to read probe firmware version over meatnet")
     }
 
-    override suspend fun readHardwareRevision() {
-        TODO()
+    suspend fun readProbeHardwareRevision() {
+        NOT_IMPLEMENTED("Not able to read probe hardware rev over meatnet")
     }
 
     override fun observeAdvertisingPackets(serialNumberFilter: String, macFilter: String, callback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)?) {

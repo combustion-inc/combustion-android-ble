@@ -497,6 +497,13 @@ class DeviceManager(
      */
     fun stopDfuMode() = service.stopDfuMode()
 
+    /**
+     * State flow containing the firmware details for all nodes on the network.
+     */
+    fun getNetworkFirmwareState(): StateFlow<FirmwareState>? {
+        return service.networkManager?.firmwareUpdateState
+    }
+
     private fun probeDataToCsv(probe: Probe?, probeData: List<LoggedProbeDataPoint>?, appNameAndVersion: String): Pair<String, String> {
         val csvVersion = 3
         val sb = StringBuilder()
