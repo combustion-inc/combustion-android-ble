@@ -355,6 +355,9 @@ internal class NetworkManager(
                 dfuConnectedNodeCallback = {
                     // keep track of each nodes firmware details
                     if(!firmwareStateOfNetwork.containsKey(it.id)) {
+                        // Add the node to the list and...
+                        firmwareStateOfNetwork[it.id] = it
+
                         // publish the list of firmware details for the network
                         _firmwareUpdateState.value = FirmwareState(
                             nodes = firmwareStateOfNetwork.values.toList()
