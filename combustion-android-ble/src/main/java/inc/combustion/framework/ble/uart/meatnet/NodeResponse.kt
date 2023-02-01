@@ -66,7 +66,7 @@ internal open class NodeResponse(
             val typeRaw = data[4]
 
             // Verify that this is a Response by checking the response type flag
-            if(typeRaw or RESPONSE_TYPE_FLAG != RESPONSE_TYPE_FLAG) {
+            if(typeRaw and RESPONSE_TYPE_FLAG != RESPONSE_TYPE_FLAG) {
                 // If that 'response type' bit isn't set, this is probably a Request.
                 return null
             }
