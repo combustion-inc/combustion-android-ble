@@ -88,6 +88,14 @@ internal class DataLinkArbitrator(
         // TODO -- Handle Connection State Changes
     }
 
+    fun getDirectLink(): ProbeBleDevice? {
+        return probeBleDevice
+    }
+
+    fun getPreferredMeatNetLink(): ProbeBleDeviceBase? {
+        return null
+    }
+
     fun getDevice(id: DeviceID): DeviceInformationBleDevice? {
         if(networkNodes.containsKey(id)) {
             return networkNodes[id]
