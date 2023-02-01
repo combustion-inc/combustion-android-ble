@@ -93,7 +93,20 @@ internal class DataLinkArbitrator(
     }
 
     fun getPreferredMeatNetLink(): ProbeBleDeviceBase? {
-        return null
+        // If meatnet is not enabled, then return the probe connection
+        if(!settings.meatNetEnabled) {
+            return probeBleDevice
+        }
+
+        // If meatnet is enabled and connected directly to the probe
+        // then use that connection
+        if(probeBleDevice != null) {
+            return probeBleDevice
+        }
+
+        // Use repeated probe device with lowest hop count
+        repeatedProbeBleDevices.sortBy { it.hopCount }
+        return repeatedProbeBleDevices.firstOrNull()
     }
 
     fun getDevice(id: DeviceID): DeviceInformationBleDevice? {

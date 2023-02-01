@@ -35,9 +35,12 @@ import inc.combustion.framework.ble.NOT_IMPLEMENTED
 import inc.combustion.framework.ble.ProbeStatus
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.uart.Request
+import inc.combustion.framework.ble.uart.SetPredictionRequest
+import inc.combustion.framework.ble.uart.meatnet.*
 import inc.combustion.framework.ble.uart.meatnet.NodeProbeStatusRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeRequest
-import inc.combustion.framework.ble.uart.meatnet.NodeResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeSetPredictionResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -106,42 +109,7 @@ internal class RepeatedProbeBleDevice (
         advertisementForProbe[advertisement.probeSerialNumber] = advertisement
         _hopCount = advertisement.hopCount
 
-        observeUartRequests { request ->
-            when(request) {
-                is NodeProbeStatusRequest -> {
-                    // Check that this probe status matches this probe serial number
-                    if(request.serialNumberString == probeSerialNumber) {
-
-                        // Save hop count from probeStatus
-                        _hopCount = request.hopCount.hopCount
-
-                        probeStatusCallback?.let {
-                            it(request.probeStatus)
-                        }
-                    }
-                }
-            }
-        }
-
-        observeUartResponses { response ->
-            TODO()
-            /*
-            when (response) {
-                is LogResponse -> {
-                    _logResponseFlow.emit(response)
-                }
-                is SessionInfoResponse -> sessionInfoHandler?.let { it(response) }
-                is SetColorResponse -> setColorHandler.handled(response.success)
-                is SetIDResponse -> setIdHandler.handled(response.success)
-                is SetPredictionResponse -> setPredictionHandler.handled(response.success)
-            }
-             */
-
-            /*
-             note this is going to be called back for all responses coming back from the UARt
-             we need to filter in here for the ones destined to this end point / probe
-             */
-        }
+        processUartMessages()
     }
 
     override fun connect() = uart.connect()
@@ -163,8 +131,9 @@ internal class RepeatedProbeBleDevice (
     }
 
     override fun sendSetPrediction(setPointTemperatureC: Double, mode: ProbePredictionMode, callback: ((Boolean, Any?) -> Unit)?) {
-        // see ProbeUartBleDevice
-        TODO()
+        val serialNumber = probeSerialNumber.toLong(radix = 16).toUInt()
+        setPredictionHandler.wait(uart.owner, ProbeBleDevice.MESSAGE_RESPONSE_TIMEOUT_MS, callback)
+        sendUartRequest(NodeSetPredictionRequest(serialNumber, setPointTemperatureC, mode))
     }
 
     override fun sendLogRequest(minSequence: UInt, maxSequence: UInt) {
@@ -208,31 +177,17 @@ internal class RepeatedProbeBleDevice (
         probeStatusCallback = callback
     }
 
-    private fun observeUartResponses(callback: (suspend (response: NodeResponse) -> Unit)? = null) {
+    private fun observeUartMessages(callback: (suspend (responses: List<NodeUARTMessage>) -> Unit)? = null) {
         uart.jobManager.addJob(uart.owner.lifecycleScope.launch {
             uart.observeUartCharacteristic { data ->
-                NodeResponse.responseFromData(data.toUByteArray())?.let {response ->
-                    callback?.let {
-                        it(response)
-                    }
+                callback?.let {
+                    it(NodeUARTMessage.fromData(data.toUByteArray()))
                 }
             }
         })
     }
 
-    private fun observeUartRequests(callback: (suspend (request: NodeRequest) -> Unit)? = null) {
-        uart.jobManager.addJob(uart.owner.lifecycleScope.launch {
-            uart.observeUartCharacteristic { data ->
-                NodeRequest.requestFromData(data.toUByteArray())?.let {request ->
-                    callback?.let {
-                        it(request)
-                    }
-                }
-            }
-        })
-    }
-
-    private fun sendUartRequest(request: Request) {
+    private fun sendUartRequest(request: NodeRequest) {
         uart.owner.lifecycleScope.launch(Dispatchers.IO) {
             if (DebugSettings.DEBUG_LOG_BLE_UART_IO) {
                 val packet = request.data.joinToString("") {
@@ -242,6 +197,36 @@ internal class RepeatedProbeBleDevice (
             }
 
             uart.writeUartCharacteristic(request.sData)
+        }
+    }
+
+    private suspend fun handleProbeStatusRequest(message: NodeProbeStatusRequest) {
+        // Check that this probe status matches this probe serial number
+        if(message.serialNumberString == probeSerialNumber) {
+
+            // Save hop count from probeStatus
+            _hopCount = message.hopCount.hopCount
+
+            probeStatusCallback?.let {
+                it(message.probeStatus)
+            }
+        }
+    }
+
+    private fun processUartMessages() {
+        observeUartMessages { messages ->
+            for (message in messages) {
+                when (message) {
+//                    is LogResponse -> {
+//                        mutableLogResponseFlow.emit(response)
+//                    }
+//                    is SessionInfoResponse -> sessionInfoHandler.handled(response.success, response.sessionInformation)
+//                    is SetColorResponse -> setColorHandler.handled(response.success, null)
+//                    is SetIDResponse -> setIdHandler.handled(response.success, null)
+                    is NodeSetPredictionResponse -> setPredictionHandler.handled(message.success, null)
+                    is NodeProbeStatusRequest -> handleProbeStatusRequest(message)
+                }
+            }
         }
     }
 }
