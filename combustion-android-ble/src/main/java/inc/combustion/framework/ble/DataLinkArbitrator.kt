@@ -209,6 +209,11 @@ internal class DataLinkArbitrator(
         return debuggingWithStaticLink(device)
     }
 
+    fun shouldUpdateDataFromProbeStatus(device: ProbeBleDeviceBase): Boolean {
+        // TODO: Implement Multiplexing Business Logic
+        return debuggingWithStaticLink(device)
+    }
+
     fun shouldUpdateConnectionStateFromAdvertisingPacket(device: ProbeBleDeviceBase): Boolean {
         // TODO: Implement Multiplexing Business Logic
         return debuggingWithStaticLink(device)
@@ -226,8 +231,8 @@ internal class DataLinkArbitrator(
 
     private fun debuggingWithStaticLink(device: ProbeBleDeviceBase): Boolean {
         return when(device) {
-            is ProbeBleDevice -> true
-            is RepeatedProbeBleDevice -> false
+            is ProbeBleDevice -> false
+            is RepeatedProbeBleDevice -> true
             else -> false
         }
     }

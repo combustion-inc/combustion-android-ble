@@ -33,16 +33,22 @@ import inc.combustion.framework.ble.getLittleEndianUInt32At
 import inc.combustion.framework.service.HopCount
 
 internal class NodeProbeStatusRequest(
-    rawData : UByteArray,
     requestId : UInt,
     payloadLength : UByte,
+    val serialNumber: UInt,
+    val hopCount: HopCount,
     val probeStatus: ProbeStatus
 ) : NodeRequest(requestId, payloadLength) {
+
+    val serialNumberString: String
+        get() {
+            return Integer.toHexString(serialNumber.toInt()).uppercase()
+        }
 
     companion object {
         const val PAYLOAD_LENGTH: UByte = 35u
 
-        private val PAYLOAD_START_INDEX = NodeRequest.HEADER_SIZE.toInt()
+        private val PAYLOAD_START_INDEX = HEADER_SIZE.toInt()
         private val SERIAL_NUMBER_INDEX = PAYLOAD_START_INDEX
         private val PROBE_STATUS_RANGE = PAYLOAD_START_INDEX + 4 .. PAYLOAD_START_INDEX + 34
         private val HOP_COUNT_INDEX = PAYLOAD_START_INDEX + 34
@@ -58,16 +64,10 @@ internal class NodeProbeStatusRequest(
             val probeStatus: ProbeStatus = ProbeStatus.fromRawData(data.slice(PROBE_STATUS_RANGE).toUByteArray())
                 ?: return null
 
-            return NodeProbeStatusRequest(data, requestId, payloadLength, probeStatus)
+            val serialNumber: UInt = data.getLittleEndianUInt32At(SERIAL_NUMBER_INDEX)
+            val hopCount: HopCount = HopCount.fromUByte(data[HOP_COUNT_INDEX])
+
+            return NodeProbeStatusRequest(requestId, payloadLength, serialNumber, hopCount, probeStatus)
         }
     }
-
-    val serialNumber: UInt = data.getLittleEndianUInt32At(SERIAL_NUMBER_INDEX)
-    val hopCount: HopCount = HopCount.fromUByte(data[HOP_COUNT_INDEX])
-
-    init {
-        // Store raw data in parent's storage
-        data = rawData
-    }
-
 }
