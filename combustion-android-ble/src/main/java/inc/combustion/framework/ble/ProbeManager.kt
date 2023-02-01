@@ -175,24 +175,42 @@ internal class ProbeManager(
     }
 
     fun setProbeColor(color: ProbeColor, completionHandler: (Boolean) -> Unit) {
-        TODO()
+        // TODO: use preferred meatnet link when the messages are implemented in firmware (see setPrediction)
+        arbitrator.getDirectLink()?.sendSetProbeColor(color) { status, _ ->
+            completionHandler(status)
+        } ?: run {
+            completionHandler(false)
+        }
     }
 
     fun setProbeID(id: ProbeID, completionHandler: (Boolean) -> Unit) {
-        TODO()
+        // TODO: use preferred meatnet link when the messages are implemented in firmware (see setPrediction)
+        arbitrator.getDirectLink()?.sendSetProbeID(id) { status, _ ->
+            completionHandler(status)
+        } ?: run {
+            completionHandler(false)
+        }
     }
 
     fun setPrediction(removalTemperatureC: Double, mode: ProbePredictionMode, completionHandler: (Boolean) -> Unit) {
-        TODO()
+        arbitrator.getPreferredMeatNetLink()?.sendSetPrediction(removalTemperatureC, mode) { status, _ ->
+            completionHandler(status)
+        } ?: run {
+            completionHandler(false)
+        }
     }
 
     fun cancelPrediction(completionHandler: (Boolean) -> Unit) {
-        TODO()
+        arbitrator.getPreferredMeatNetLink()?.sendSetPrediction(0.0, ProbePredictionMode.NONE) { status, _ ->
+            completionHandler(status)
+        } ?: run {
+            completionHandler(false)
+        }
     }
 
     fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt) {
-        // for now we should route to the direct connected probe, right?
-        TODO()
+        // TODO: use preferred meatnet link when the messages are implemented in firmware (see setPrediction)
+        arbitrator.getDirectLink()?.sendLogRequest(startSequenceNumber, endSequenceNumber)
     }
 
     fun finish() {
