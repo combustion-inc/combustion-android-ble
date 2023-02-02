@@ -117,7 +117,10 @@ internal class LogManager {
                                     probeManager.uploadState = ProbeUploadState.ProbeUploadNeeded
                                 }
                                 ProbeUploadState.ProbeUploadNeeded -> {
-                                    // do nothing, wait for the client to request the transfer
+                                    if(DeviceManager.instance.settings.autoLogTransfer) {
+                                        requestLogsFromDevice(owner, probeManager.serialNumber)
+                                    }
+                                    // else, do nothing, wait for the client to request the transfer
                                 }
                                 is ProbeUploadState.ProbeUploadInProgress -> {
                                     // only log normal mode packets
@@ -252,9 +255,7 @@ internal class LogManager {
         val progress = log.startLogRequest(range)
 
         // update the probe's upload state with the progress.
-        owner.lifecycleScope.launch {
-            probeManager.uploadState = progress.toProbeUploadState()
-        }
+        probeManager.uploadState = progress.toProbeUploadState()
 
         // send the request to the device to start the upload
         probeManager.sendLogRequest(range.minSeq, range.maxSeq)

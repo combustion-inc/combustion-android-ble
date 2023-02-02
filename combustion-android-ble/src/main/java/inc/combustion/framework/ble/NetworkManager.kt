@@ -39,6 +39,7 @@ import inc.combustion.framework.ble.device.*
 import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.scanning.DeviceScanner
+import inc.combustion.framework.log.LogManager
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
@@ -344,7 +345,7 @@ internal class NetworkManager(
 
         // if we haven't seen this serial number, then create a manager for it
         if(!probeManagers.containsKey(serialNumber)) {
-            probeManagers[serialNumber] = ProbeManager(
+             val manager = ProbeManager(
                 serialNumber = serialNumber,
                 owner = owner,
                 settings = settings,
@@ -369,6 +370,10 @@ internal class NetworkManager(
                     )
                 }
             )
+
+            probeManagers[serialNumber] = manager
+            LogManager.instance.manage(owner, manager)
+
             discoveredProbe = true
         }
 

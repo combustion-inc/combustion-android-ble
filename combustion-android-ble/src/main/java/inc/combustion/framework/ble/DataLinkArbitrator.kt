@@ -89,24 +89,24 @@ internal class DataLinkArbitrator(
     }
 
     fun getDirectLink(): ProbeBleDevice? {
-        return probeBleDevice
+        return if(probeBleDevice?.isConnected == true) probeBleDevice else null
     }
 
     fun getPreferredMeatNetLink(): ProbeBleDeviceBase? {
         // If meatnet is not enabled, then return the probe connection
         if(!settings.meatNetEnabled) {
-            return probeBleDevice
+            return getDirectLink()
         }
 
         // If meatnet is enabled and connected directly to the probe
         // then use that connection
-        if(probeBleDevice != null) {
-            return probeBleDevice
+        getDirectLink()?.let {
+            return it
         }
 
         // Use repeated probe device with lowest hop count
         repeatedProbeBleDevices.sortBy { it.hopCount }
-        return repeatedProbeBleDevices.firstOrNull()
+        return repeatedProbeBleDevices.firstOrNull { it.isConnected }
     }
 
     fun getDevice(id: DeviceID): DeviceInformationBleDevice? {
@@ -240,7 +240,7 @@ internal class DataLinkArbitrator(
         return debuggingWithStaticLink(device)
     }
 
-    fun shouldUpdateOnConnectionState(device: ProbeBleDeviceBase, state: DeviceConnectionState): Boolean {
+    fun shouldUpdateConnectionState(device: ProbeBleDeviceBase, state: DeviceConnectionState): Boolean {
         // TODO: Implement Multiplexing Business Logic
         return debuggingWithStaticLink(device)
     }
@@ -250,10 +250,15 @@ internal class DataLinkArbitrator(
         return debuggingWithStaticLink(device)
     }
 
+    fun shouldUpdateOnDisconnect(device: ProbeBleDeviceBase): Boolean {
+        // TODO: Implement Multiplexing Business Logic
+        return debuggingWithStaticLink(device)
+    }
+
     private fun debuggingWithStaticLink(device: ProbeBleDeviceBase): Boolean {
         return when(device) {
-            is ProbeBleDevice -> false
-            is RepeatedProbeBleDevice -> true
+            is ProbeBleDevice -> true
+            is RepeatedProbeBleDevice -> false
             else -> false
         }
     }

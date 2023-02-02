@@ -200,17 +200,11 @@ internal class ProbeManager(
         }
     }
 
-    fun cancelPrediction(completionHandler: (Boolean) -> Unit) {
-        arbitrator.getPreferredMeatNetLink()?.sendSetPrediction(0.0, ProbePredictionMode.NONE) { status, _ ->
-            completionHandler(status)
-        } ?: run {
-            completionHandler(false)
-        }
-    }
-
     fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt) {
         // TODO: use preferred meatnet link when the messages are implemented in firmware (see setPrediction)
-        arbitrator.getDirectLink()?.sendLogRequest(startSequenceNumber, endSequenceNumber)
+        arbitrator.getDirectLink()?.sendLogRequest(startSequenceNumber, endSequenceNumber) {
+            _logResponseFlow.emit(it)
+        }
     }
 
     fun finish() {
@@ -228,9 +222,14 @@ internal class ProbeManager(
         base.observeRemoteRssi { rssi ->  handleRemoteRssi(base, rssi) }
     }
 
-    private fun handleProbeStatus(device: ProbeBleDeviceBase, status: ProbeStatus) {
+    private suspend fun handleProbeStatus(device: ProbeBleDeviceBase, status: ProbeStatus) {
         if(arbitrator.shouldUpdateDataFromProbeStatus(device)) {
             updateDataFromProbeStatus(status)
+        }
+
+        // TODO: MeatNet Log Transfer: hard-coded to direct link for now.
+        if(arbitrator.getDirectLink() == device) {
+            _probeStatusFlow.emit(status)
         }
     }
 
@@ -240,13 +239,7 @@ internal class ProbeManager(
         }
 
         if(arbitrator.shouldUpdateDataFromAdvertisingPacket(device)) {
-            updateDataFromAdvertisement(
-                rssi = advertisement.rssi,
-                mode = advertisement.mode,
-                temperatures = advertisement.probeTemperatures,
-                sensors = advertisement.virtualSensors,
-                hopCount = advertisement.hopCount,
-            )
+            updateDataFromAdvertisement(advertisement)
         }
 
         if(arbitrator.shouldUpdateConnectionStateFromAdvertisingPacket(device)) {
@@ -277,16 +270,15 @@ internal class ProbeManager(
             device.disconnect()
 
             // update
-            _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(
-                fwVersion = device.deviceInfoFirmwareVersion,
-                hwRevision = device.deviceInfoHardwareRevision
-            ))
+            if(arbitrator.shouldUpdateOnDisconnect(device)) {
+                updateOnDisconnected()
+            }
 
             // remove this item from the list of firmware details for the network
             dfuDisconnectedNodeCallback(device.id)
         }
 
-        if(arbitrator.shouldUpdateOnConnectionState(device, state)) {
+        if(arbitrator.shouldUpdateConnectionState(device, state)) {
             _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(connectionState = state))
         }
     }
@@ -340,6 +332,17 @@ internal class ProbeManager(
                 }
             }
         }
+
+        // TODO: MeatNet Log Transfer: hard-coded to direct link for now.
+        arbitrator.getDirectLink()?.let {
+            if(sessionInfo == null) {
+                it.sendSessionInformationRequest { status, info ->
+                    if(status && info is SessionInformation) {
+                        updateSessionInfo(info)
+                    }
+                }
+            }
+        }
     }
 
     private fun updateStateOnOutOfRange()  {
@@ -356,19 +359,19 @@ internal class ProbeManager(
         )
     }
 
-    private fun updateDataFromAdvertisement(
-        rssi: Int, mode: ProbeMode, temperatures: ProbeTemperatures, sensors: ProbeVirtualSensors, hopCount: UInt,
-    ) {
+    private fun updateDataFromAdvertisement(advertisement: CombustionAdvertisingData) {
         _probe.value = _probe.value.copy(
-            baseDevice = _probe.value.baseDevice.copy(rssi = rssi),
-            hopCount = hopCount,
+            baseDevice = _probe.value.baseDevice.copy(rssi = advertisement.rssi),
+            hopCount = advertisement.hopCount,
         )
 
-        if(mode == ProbeMode.INSTANT_READ) {
-            updateInstantRead(temperatures.values[0])
-        } else if(mode == ProbeMode.NORMAL) {
-            updateTemperatures(temperatures, sensors)
+        if(advertisement.mode == ProbeMode.INSTANT_READ) {
+            updateInstantRead(advertisement.probeTemperatures.values[0])
+        } else if(advertisement.mode == ProbeMode.NORMAL) {
+            updateTemperatures(advertisement.probeTemperatures, advertisement.virtualSensors)
         }
+
+        updateBatteryIdColor(advertisement.batteryStatus, advertisement.probeID, advertisement.color)
     }
 
     private fun updateDataFromProbeStatus(status: ProbeStatus) {
@@ -376,9 +379,11 @@ internal class ProbeManager(
             updateInstantRead(status.temperatures.values[0])
         } else if(status.mode == ProbeMode.NORMAL) {
             updateTemperatures(status.temperatures, status.virtualSensors)
-
             updatePredictionStatus(status.predictionStatus, _probe.value.maxSequenceNumber)
         }
+
+        updateBatteryIdColor(status.batteryStatus, status.id, status.color)
+        updateSequenceNumbers(status.minSequenceNumber, status.maxSequenceNumber)
     }
 
     private fun updateInstantRead(value: Double?) {
@@ -458,6 +463,49 @@ internal class ProbeManager(
                 ProbeVirtualSensors.VirtualAmbientSensor.T7 -> temperatures.values[6]
                 ProbeVirtualSensors.VirtualAmbientSensor.T8 -> temperatures.values[7]
             }
+        )
+    }
+
+    private fun updateBatteryIdColor(battery: ProbeBatteryStatus, id: ProbeID, color: ProbeColor) {
+        _probe.value = _probe.value.copy(
+            batteryStatus = battery,
+            id = id,
+            color = color
+        )
+    }
+
+    private fun updateSequenceNumbers(minSequenceNumber: UInt, maxSequenceNumber: UInt) {
+        _probe.value = _probe.value.copy(
+            minSequenceNumber = minSequenceNumber,
+            maxSequenceNumber = maxSequenceNumber
+        )
+    }
+
+    private fun updateSessionInfo(info: SessionInformation) {
+        sessionInfo = info
+        _probe.value = _probe.value.copy(
+            sessionInfo = info
+        )
+    }
+
+    private fun updateOnDisconnected() {
+        sessionInfo = null
+        _probe.value = _probe.value.copy(
+            baseDevice = _probe.value.baseDevice.copy(fwVersion = null, hwRevision = null),
+            sessionInfo = null,
+        )
+    }
+
+    private fun updateOnPredictionStale() {
+        _probe.value = _probe.value.copy(
+            predictionState = null,
+            predictionMode = null,
+            predictionType = null,
+            setPointTemperatureCelsius = null,
+            heatStartTemperatureCelsius = null,
+            predictionSeconds = null,
+            rawPredictionSeconds = null,
+            estimatedCoreCelsius = null
         )
     }
 }

@@ -44,6 +44,7 @@ import inc.combustion.framework.ble.uart.SetIDRequest
 import inc.combustion.framework.ble.uart.SetPredictionRequest
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.launch
@@ -57,7 +58,6 @@ internal class ProbeBleDevice (
 ) : ProbeBleDeviceBase() {
 
     companion object {
-        const val MESSAGE_RESPONSE_TIMEOUT_MS = 5000L
         val DEVICE_STATUS_CHARACTERISTIC = characteristicOf(
             service = "00000100-CAAB-3792-3D44-97AE51C1407A",
             characteristic = "00000101-CAAB-3792-3D44-97AE51C1407A"
@@ -104,8 +104,11 @@ internal class ProbeBleDevice (
             return advertisement.hopCount
         }
 
+    private var probeStatusJob: Job? = null
+
+    private var logResponseCallback: (suspend (LogResponse) -> Unit)? = null
+
     init {
-        processProbeStatusCharacteristic()
         processUartResponses()
     }
 
@@ -133,7 +136,8 @@ internal class ProbeBleDevice (
         sendUartRequest(SetPredictionRequest(setPointTemperatureC, mode))
     }
 
-    override fun sendLogRequest(minSequence: UInt, maxSequence: UInt) {
+    override fun sendLogRequest(minSequence: UInt, maxSequence: UInt, callback: (suspend (LogResponse) -> Unit)?) {
+        logResponseCallback = callback
         sendUartRequest(LogRequest(minSequence, maxSequence))
     }
 
@@ -157,7 +161,26 @@ internal class ProbeBleDevice (
     override fun observeConnectionState(callback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)?) = uart.observeConnectionState(callback)
 
     override fun observeProbeStatusUpdates(callback: (suspend (status: ProbeStatus) -> Unit)?) {
-        // TODO
+        if(probeStatusJob == null) {
+            val job = uart.owner.lifecycleScope.launch {
+                uart.peripheral.observe(DEVICE_STATUS_CHARACTERISTIC)
+                    .onCompletion {
+                        Log.d(LOG_TAG, "Device Status Characteristic Monitor Complete")
+                    }
+                    .catch {
+                        Log.i(LOG_TAG, "Device Status Characteristic Monitor Catch: $it")
+                    }
+                    .collect { data ->
+                        ProbeStatus.fromRawData(data.toUByteArray())?.let { status ->
+                            callback?.let {
+                                it(status)
+                            }
+                        }
+                    }
+            }
+            probeStatusJob = job
+            uart.jobManager.addJob(job)
+        }
     }
 
     private fun observeUartResponses(callback: (suspend (responses: List<Response>) -> Unit)? = null) {
@@ -182,30 +205,11 @@ internal class ProbeBleDevice (
         }
     }
 
-    private fun processProbeStatusCharacteristic() {
-        uart.jobManager.addJob(uart.owner.lifecycleScope.launch {
-            uart.peripheral.observe(DEVICE_STATUS_CHARACTERISTIC)
-                .onCompletion {
-                    Log.d(LOG_TAG, "Device Status Characteristic Monitor Complete")
-                }
-                .catch {
-                    Log.i(LOG_TAG, "Device Status Characteristic Monitor Catch: $it")
-                }
-                .collect { data ->
-                    ProbeStatus.fromRawData(data.toUByteArray())?.let { status ->
-                        mutableProbeStatusFlow.emit(status)
-                    }
-                }
-        })
-    }
-
     private fun processUartResponses() {
         observeUartResponses { responses ->
             for (response in responses) {
                 when (response) {
-                    is LogResponse -> {
-                        mutableLogResponseFlow.emit(response)
-                    }
+                    is LogResponse -> logResponseCallback?.let { it(response) }
                     is SessionInfoResponse -> sessionInfoHandler.handled(response.success, response.sessionInformation)
                     is SetColorResponse -> setColorHandler.handled(response.success, null)
                     is SetIDResponse -> setIdHandler.handled(response.success, null)

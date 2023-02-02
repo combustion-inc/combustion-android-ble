@@ -34,6 +34,8 @@ import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.NOT_IMPLEMENTED
 import inc.combustion.framework.ble.ProbeStatus
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
+import inc.combustion.framework.ble.uart.LogRequest
+import inc.combustion.framework.ble.uart.LogResponse
 import inc.combustion.framework.ble.uart.Request
 import inc.combustion.framework.ble.uart.SetPredictionRequest
 import inc.combustion.framework.ble.uart.meatnet.*
@@ -50,10 +52,6 @@ internal class RepeatedProbeBleDevice (
     private val uart: UartBleDevice,
     advertisement: CombustionAdvertisingData,
 ) : ProbeBleDeviceBase() {
-
-    companion object {
-        const val MESSAGE_RESPONSE_TIMEOUT_MS = 5000L
-    }
 
     private val advertisementForProbe = hashMapOf<String, CombustionAdvertisingData>()
 
@@ -132,11 +130,11 @@ internal class RepeatedProbeBleDevice (
 
     override fun sendSetPrediction(setPointTemperatureC: Double, mode: ProbePredictionMode, callback: ((Boolean, Any?) -> Unit)?) {
         val serialNumber = probeSerialNumber.toLong(radix = 16).toUInt()
-        setPredictionHandler.wait(uart.owner, ProbeBleDevice.MESSAGE_RESPONSE_TIMEOUT_MS, callback)
+        setPredictionHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS, callback)
         sendUartRequest(NodeSetPredictionRequest(serialNumber, setPointTemperatureC, mode))
     }
 
-    override fun sendLogRequest(minSequence: UInt, maxSequence: UInt) {
+    override fun sendLogRequest(minSequence: UInt, maxSequence: UInt, callback: (suspend (LogResponse) -> Unit)?) {
         // see ProbeUartBleDevice
         TODO()
     }

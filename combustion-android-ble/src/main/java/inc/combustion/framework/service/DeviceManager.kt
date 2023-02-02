@@ -36,6 +36,7 @@ import android.util.Log
 import inc.combustion.framework.Combustion
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.NetworkManager
+import inc.combustion.framework.log.LogManager
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -346,7 +347,9 @@ class DeviceManager(
      * @see ProbeUploadState.Unavailable
      * @see probeFlow
      */
-    fun startRecordTransfer(serialNumber: String) = service.requestLogsFromDevice(serialNumber)
+    fun startRecordTransfer(serialNumber: String) {
+        LogManager.instance.requestLogsFromDevice(service, serialNumber)
+    }
 
     /**
      * Retrieves the current temperature log as a list of LoggedProbeDataPoint for the specified
@@ -357,9 +360,9 @@ class DeviceManager(
      *
      * @see LoggedProbeDataPoint
      */
-    fun exportLogsForDevice(serialNumber: String): List<LoggedProbeDataPoint>? =
-        service.exportLogsForDevice(serialNumber)
-
+    fun exportLogsForDevice(serialNumber: String): List<LoggedProbeDataPoint>? {
+        return LogManager.instance.exportLogsForDevice(serialNumber)
+    }
 
     /**
      * Retrieves the current temperature log as a comma separate value string with header.
@@ -382,8 +385,9 @@ class DeviceManager(
      * @param serialNumber the serial number of the probe.
      * @return Count of downloaded records
      */
-    fun recordsDownloaded(serialNumber: String): Int =
-        service.recordsDownloaded(serialNumber)
+    fun recordsDownloaded(serialNumber: String): Int {
+        return LogManager.instance.recordsDownloaded(serialNumber)
+    }
 
     /**
      * Retrieves the wall clock timestamp for the first record retrieved from the device
@@ -392,8 +396,10 @@ class DeviceManager(
      * @param serialNumber the serial number of the probe.
      * @return Timestamp or default Date()
      */
-    fun logStartTimestampForDevice(serialNumber: String): Date =
-        service.logStartTimestampForDevice(serialNumber)
+    fun logStartTimestampForDevice(serialNumber: String): Date {
+        return LogManager.instance.logStartTimestampForDevice(serialNumber)
+    }
+
     /**
      * Retrieves the current temperature log as a Kotlin flow of LoggedProbeDataPoint for
      * the specified serial number.  All logs previously transferred are produced to the flow
@@ -405,14 +411,18 @@ class DeviceManager(
      *
      * @see LoggedProbeDataPoint
      */
-    fun createLogFlowForDevice(serialNumber: String): Flow<LoggedProbeDataPoint> =
-        service.createLogFlowForDevice(serialNumber)
+    fun createLogFlowForDevice(serialNumber: String): Flow<LoggedProbeDataPoint> {
+        return LogManager.instance.createLogFlowForDevice(serialNumber)
+    }
 
     /**
      * Clears all probes, logged data from the DeviceManager.  Closes all active connections
      * and disposes related resources.
      */
-    fun clearDevices() = service.clearDevices()
+    fun clearDevices() {
+        service.networkManager?.clearDevices()
+        LogManager.instance.clear()
+    }
 
     /**
      * Creates a simulated probe.  The simulated probe will generate events to the

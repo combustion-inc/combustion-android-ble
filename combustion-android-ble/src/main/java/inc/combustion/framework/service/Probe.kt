@@ -95,7 +95,7 @@ data class Probe(
     val connectionState = baseDevice.connectionState
 
     val predictionStale: Boolean get() { return predictionMode == null }
-    val temperaturesStale: Boolean get() { return temperaturesCelsius == null }
+    val temperaturesStale: Boolean get() { return connectionState == DeviceConnectionState.OUT_OF_RANGE }
     val instantReadStale: Boolean get() { return instantReadCelsius == null }
 
     val predictionPercent: Double?
