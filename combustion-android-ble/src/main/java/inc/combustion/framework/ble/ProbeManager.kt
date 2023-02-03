@@ -70,10 +70,6 @@ internal class ProbeManager(
         private const val PROBE_PREDICTION_IDLE_POLL_RATE_MS = 1000L
         private const val PROBE_PREDICTION_IDLE_TIMEOUT_MS = 15000L
         private const val PROBE_INSTANT_READ_IDLE_TIMEOUT_MS = 5000L
-        private val MAX_PREDICTION_SECONDS = 60u * 60u * 4u
-        private val LOW_RESOLUTION_CUTOFF_SECONDS = 60u * 5u
-        private val LOW_RESOLUTION_PRECISION_SECONDS = 15u
-        private val PREDICTION_TIME_UPDATE_COUNT = 3u
     }
 
     // encapsulates logic for managing network data links
@@ -144,7 +140,22 @@ internal class ProbeManager(
             return _probe.value.maxSequenceNumber
         }
 
-    private var predictionCountdownSeconds: UInt? = null
+    private val predictionManager = PredictionManager()
+
+    init {
+        predictionManager.setPredictionCallback {
+            _probe.value = _probe.value.copy(
+                predictionState = it?.predictionState,
+                predictionMode = it?.predictionMode,
+                predictionType = it?.predictionType,
+                setPointTemperatureCelsius = it?.predictionSetPointTemperature,
+                heatStartTemperatureCelsius = it?.heatStartTemperature,
+                rawPredictionSeconds = it?.rawPredictionSeconds,
+                predictionSeconds = it?.secondsRemaining,
+                estimatedCoreCelsius = it?.estimatedCoreTemperature
+            )
+        }
+    }
 
     init {
         monitorPredictionStatus()
@@ -412,43 +423,7 @@ internal class ProbeManager(
     private fun updatePredictionStatus(predictionStatus: PredictionStatus?, maxSequenceNumber: UInt) {
         predictionStatusMonitor.activity()
 
-        // handle large predictions and prediction resolution
-        predictionStatus?.let {
-            val rawPrediction = it.predictionValueSeconds
-
-            predictionCountdownSeconds = if(rawPrediction > MAX_PREDICTION_SECONDS) {
-                null
-            }
-            else if(rawPrediction < LOW_RESOLUTION_CUTOFF_SECONDS) {
-                rawPrediction
-            }
-            else if(predictionCountdownSeconds == null || (maxSequenceNumber % PREDICTION_TIME_UPDATE_COUNT) == 0u) {
-                val remainder = rawPrediction % LOW_RESOLUTION_PRECISION_SECONDS
-                if(remainder > (LOW_RESOLUTION_PRECISION_SECONDS / 2u)) {
-                    // round up
-                    rawPrediction + (LOW_RESOLUTION_PRECISION_SECONDS - remainder)
-                }
-                else {
-                    // round down
-                    rawPrediction - remainder
-                }
-            }
-            else {
-                predictionCountdownSeconds
-            }
-        }
-
-        _probe.value = _probe.value.copy(
-            predictionState = predictionStatus?.predictionState,
-            predictionMode = predictionStatus?.predictionMode,
-            predictionType = predictionStatus?.predictionType,
-            setPointTemperatureCelsius = predictionStatus?.setPointTemperature,
-            heatStartTemperatureCelsius = predictionStatus?.heatStartTemperature,
-            rawPredictionSeconds = predictionStatus?.predictionValueSeconds,
-            predictionSeconds = predictionCountdownSeconds,
-            estimatedCoreCelsius = predictionStatus?.estimatedCoreTemperature,
-            predictionStale = false
-        )
+        predictionManager.updatePredictionStatus(predictionStatus, maxSequenceNumber)
     }
 
     private fun updateTemperatures(temperatures: ProbeTemperatures, sensors: ProbeVirtualSensors) {
