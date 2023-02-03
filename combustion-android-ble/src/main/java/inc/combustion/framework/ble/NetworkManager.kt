@@ -33,12 +33,10 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.util.Log
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.ble.device.*
 import inc.combustion.framework.ble.device.ProbeBleDevice
-import inc.combustion.framework.ble.scanning.*
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.scanning.DeviceScanner
 import inc.combustion.framework.service.*
@@ -398,16 +396,49 @@ internal class NetworkManager(
     }
 
     private suspend fun collectAdvertisingData() {
-        DeviceScanner.advertisements.collect {
+        DeviceScanner.advertisements.collect {advertisingData ->
             if(scanningForProbes) {
-                if(it.probeSerialNumber != REPEATER_NO_PROBES_SERIAL_NUMBER) {
-                    if(manageMeatNetDevice(it)) {
+                if(advertisingData.probeSerialNumber != REPEATER_NO_PROBES_SERIAL_NUMBER) {
+                    if(manageMeatNetDevice(advertisingData)) {
                         mutableDiscoveredProbesFlow.emit(
-                            ProbeDiscoveredEvent.ProbeDiscovered(it.probeSerialNumber)
+                            ProbeDiscoveredEvent.ProbeDiscovered(advertisingData.probeSerialNumber)
                         )
+                    }
+                }
+                else {
+                    if(firmwareStateOfNetwork[advertisingData.id] == null) {
+                        handleMeatNetLinkWithoutProbe(advertisingData)
                     }
                 }
             }
         }
+    }
+
+    private fun handleMeatNetLinkWithoutProbe(advertisement: CombustionAdvertisingData) {
+        // Create device for reading firmware information
+        val device = DeviceInformationBleDevice(advertisement.id, advertisement, owner, adapter)
+
+        // Setup connection state handler
+        device.observeConnectionState { connectionState ->
+            if(connectionState == DeviceConnectionState.CONNECTED) {
+                owner.lifecycleScope.launch {
+                    device.firmwareVersion ?: run {
+                        device.readFirmwareVersion()
+                    }
+                }.invokeOnCompletion {
+                    device.firmwareVersion?.let { firmwareVersion ->
+                        // Add to firmware state map
+                        val node = FirmwareState.Node(advertisement.id, advertisement.productType, firmwareVersion)
+                        firmwareStateOfNetwork[advertisement.id] = node
+                    }
+
+                    // Disconnect after reading firmware version
+                    device.disconnect()
+                }
+            }
+        }
+
+        // Connect to device
+        device.connect()
     }
 }
