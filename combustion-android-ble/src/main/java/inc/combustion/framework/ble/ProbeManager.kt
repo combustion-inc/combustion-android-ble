@@ -81,7 +81,9 @@ internal class ProbeManager(
     // manages long-running coroutine scopes for data handling
     private val jobManager = JobManager()
 
+    // idle monitors
     private val instantReadMonitor = IdleMonitor()
+    private val predictionStatusMonitor = IdleMonitor()
 
     // holds the current state and data for this probe
     private var _probe = MutableStateFlow(Probe.create(serialNumber = serialNumber))
@@ -172,7 +174,7 @@ internal class ProbeManager(
     }
 
     fun setProbeColor(color: ProbeColor, completionHandler: (Boolean) -> Unit) {
-        // TODO: use preferred meatnet link when the messages are implemented in firmware (see setPrediction)
+        // TODO: MeatNet Multi-Node: Use getPreferredMeatNetLink
         arbitrator.getDirectLink()?.sendSetProbeColor(color) { status, _ ->
             completionHandler(status)
         } ?: run {
@@ -181,7 +183,7 @@ internal class ProbeManager(
     }
 
     fun setProbeID(id: ProbeID, completionHandler: (Boolean) -> Unit) {
-        // TODO: use preferred meatnet link when the messages are implemented in firmware (see setPrediction)
+        // TODO: MeatNet Multi-Node: Use getPreferredMeatNetLink
         arbitrator.getDirectLink()?.sendSetProbeID(id) { status, _ ->
             completionHandler(status)
         } ?: run {
@@ -198,7 +200,7 @@ internal class ProbeManager(
     }
 
     fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt) {
-        // TODO: use preferred meatnet link when the messages are implemented in firmware (see setPrediction)
+        // TODO: MeatNet Log Transfer & Multi-Node: Use getPreferredMeatNetLink
         arbitrator.getDirectLink()?.sendLogRequest(startSequenceNumber, endSequenceNumber) {
             _logResponseFlow.emit(it)
         }
@@ -391,7 +393,7 @@ internal class ProbeManager(
     }
 
     private fun updatePredictionStatus(predictionStatus: PredictionStatus?, maxSequenceNumber: UInt) {
-        // TODO prediction activity monitor
+        predictionStatusMonitor.activity()
 
         // handle large predictions and prediction resolution
         predictionStatus?.let {
@@ -419,10 +421,6 @@ internal class ProbeManager(
             }
         }
 
-        // TODO
-        // Calculate if prediction has gone stale
-//        val predictionStale = predictionStatusMonitor.isIdle(PROBE_PREDICTION_IDLE_TIMEOUT_MS)
-
         _probe.value = _probe.value.copy(
             predictionState = predictionStatus?.predictionState,
             predictionMode = predictionStatus?.predictionMode,
@@ -431,7 +429,8 @@ internal class ProbeManager(
             heatStartTemperatureCelsius = predictionStatus?.heatStartTemperature,
             rawPredictionSeconds = predictionStatus?.predictionValueSeconds,
             predictionSeconds = predictionCountdownSeconds,
-            estimatedCoreCelsius = predictionStatus?.estimatedCoreTemperature
+            estimatedCoreCelsius = predictionStatus?.estimatedCoreTemperature,
+            predictionStale = predictionStatusMonitor.isIdle(PROBE_PREDICTION_IDLE_TIMEOUT_MS)
         )
     }
 
