@@ -432,6 +432,9 @@ internal class NetworkManager(
                         val node = FirmwareState.Node(advertisement.id, advertisement.productType, firmwareVersion)
                         firmwareStateOfNetwork[advertisement.id] = node
                     }
+
+                    // Disconnect after reading firmware version
+                    device.disconnect()
                 }
             }
         }
