@@ -92,6 +92,8 @@ internal open class UartBleDevice(
         )
     }
 
+    var isInDfuMode: Boolean = false
+
     suspend fun writeUartCharacteristic(data: ByteArray) {
         if(isConnected.get()) {
             owner.lifecycleScope.launch(Dispatchers.IO) {

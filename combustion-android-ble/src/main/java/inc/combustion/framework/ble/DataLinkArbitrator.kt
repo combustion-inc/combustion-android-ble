@@ -109,13 +109,6 @@ internal class DataLinkArbitrator(
         return repeatedProbeBleDevices.firstOrNull { it.isConnected }
     }
 
-    fun getDevice(id: DeviceID): DeviceInformationBleDevice? {
-        if(networkNodes.containsKey(id)) {
-            return networkNodes[id]
-        }
-        return null
-    }
-
     fun getNodesNeedingConnection(fromApiCall: Boolean = false): List<DeviceInformationBleDevice> {
         val connectable = mutableListOf<DeviceID>()
         // for meatnet links
@@ -169,7 +162,7 @@ internal class DataLinkArbitrator(
     }
 
     fun shouldConnect(device: ProbeBleDeviceBase, fromApiCall: Boolean = false): Boolean {
-        val canConnect = device.isDisconnected && device.isConnectable
+        val canConnect = device.isDisconnected && device.isConnectable && !device.isInDfuMode
         if(settings.meatNetEnabled) {
             // connect to every connectable device when using meatnet
             return canConnect

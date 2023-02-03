@@ -168,12 +168,6 @@ internal class ProbeManager(
         }
     }
 
-    fun postDfuReconnect() {
-        arbitrator.getNodesNeedingConnection(false).forEach {node ->
-            node.connect()
-        }
-    }
-
     fun setProbeColor(color: ProbeColor, completionHandler: (Boolean) -> Unit) {
         // TODO: use preferred meatnet link when the messages are implemented in firmware (see setPrediction)
         arbitrator.getDirectLink()?.sendSetProbeColor(color) { status, _ ->

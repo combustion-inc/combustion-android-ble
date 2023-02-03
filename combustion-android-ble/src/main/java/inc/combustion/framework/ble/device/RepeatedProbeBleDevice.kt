@@ -92,10 +92,14 @@ internal class RepeatedProbeBleDevice (
 
     override val productType: CombustionProductType get() { return uart.productType}
 
-    private var _hopCount: UInt
+    override var isInDfuMode: Boolean
+        get() = uart.isInDfuMode
+        set(value) { uart.isInDfuMode = value }
+
+    private var _hopCount: UInt = advertisement.hopCount
     override val hopCount: UInt
         get() {
-            return advertisement?.hopCount ?: UInt.MAX_VALUE
+            return _hopCount
         }
 
     val probeMac: String get() { TODO() }
@@ -105,7 +109,6 @@ internal class RepeatedProbeBleDevice (
 
     init {
         advertisementForProbe[advertisement.probeSerialNumber] = advertisement
-        _hopCount = advertisement.hopCount
 
         processUartMessages()
     }

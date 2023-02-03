@@ -55,14 +55,6 @@ internal abstract class ProbeBleDeviceBase() {
     protected val setIdHandler = UartBleDevice.MessageCompletionHandler()
     protected val setPredictionHandler = UartBleDevice.MessageCompletionHandler()
 
-    // (TBD): just make callbacks ? mutable flows (for publishing)
-    protected val mutableProbeStatusFlow = MutableSharedFlow<ProbeStatus>(
-        replay = 0, extraBufferCapacity = 10, BufferOverflow.DROP_OLDEST)
-    protected val mutableLogResponseFlow = MutableSharedFlow<LogResponse>(
-        replay = 0, extraBufferCapacity = 50, BufferOverflow.SUSPEND)
-
-    val logResponseFlow = mutableLogResponseFlow.asSharedFlow()
-
     // mac
     abstract val mac: String
 
@@ -80,6 +72,9 @@ internal abstract class ProbeBleDeviceBase() {
     abstract val isDisconnected: Boolean
     abstract val isInRange: Boolean
     abstract val isConnectable: Boolean
+
+    // dfu
+    abstract var isInDfuMode: Boolean
 
     // device information service
     abstract val deviceInfoSerialNumber: String?

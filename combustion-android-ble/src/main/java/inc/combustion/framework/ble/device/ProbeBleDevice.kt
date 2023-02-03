@@ -93,16 +93,17 @@ internal class ProbeBleDevice (
 
     override val productType: CombustionProductType get() { return uart.productType}
 
+    override var isInDfuMode: Boolean
+        get() = uart.isInDfuMode
+        set(value) { uart.isInDfuMode = value }
+
     // auto-reconnect flag
     var shouldAutoReconnect: Boolean = false
 
     // instance used for connection/disconnection
     var baseDevice: DeviceInformationBleDevice = uart
 
-    override val hopCount: UInt
-        get() {
-            return advertisement.hopCount
-        }
+    override val hopCount: UInt = 0u
 
     private var probeStatusJob: Job? = null
 
