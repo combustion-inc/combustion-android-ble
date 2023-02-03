@@ -68,6 +68,7 @@ internal class ProbeManager(
     companion object {
         const val OUT_OF_RANGE_TIMEOUT = 15000L
         private const val PROBE_PREDICTION_IDLE_TIMEOUT_MS = 15000L
+        private const val PROBE_INSTANT_READ_IDLE_TIMEOUT_MS = 5000L
         private val MAX_PREDICTION_SECONDS = 60u * 60u * 4u
         private val LOW_RESOLUTION_CUTOFF_SECONDS = 60u * 5u
         private val LOW_RESOLUTION_PRECISION_SECONDS = 15u
@@ -79,6 +80,8 @@ internal class ProbeManager(
 
     // manages long-running coroutine scopes for data handling
     private val jobManager = JobManager()
+
+    private val instantReadMonitor = IdleMonitor()
 
     // holds the current state and data for this probe
     private var _probe = MutableStateFlow(Probe.create(serialNumber = serialNumber))
@@ -381,10 +384,10 @@ internal class ProbeManager(
     }
 
     private fun updateInstantRead(value: Double?) {
-        // TODO: Keep Track of Instant Read Activity
         _probe.value = _probe.value.copy(
             instantReadCelsius = value
         )
+        instantReadMonitor.activity()
     }
 
     private fun updatePredictionStatus(predictionStatus: PredictionStatus?, maxSequenceNumber: UInt) {
@@ -433,7 +436,6 @@ internal class ProbeManager(
     }
 
     private fun updateTemperatures(temperatures: ProbeTemperatures, sensors: ProbeVirtualSensors) {
-        // TODO: Keep Track of Instant Read Stale/Idle/Timeout
         _probe.value = _probe.value.copy(
             temperaturesCelsius = temperatures,
             virtualSensors = sensors,
@@ -458,6 +460,10 @@ internal class ProbeManager(
                 ProbeVirtualSensors.VirtualAmbientSensor.T8 -> temperatures.values[7]
             }
         )
+
+        if(instantReadMonitor.isIdle(PROBE_INSTANT_READ_IDLE_TIMEOUT_MS)) {
+            _probe.value = _probe.value.copy(instantReadCelsius = null)
+        }
     }
 
     private fun updateBatteryIdColor(battery: ProbeBatteryStatus, id: ProbeID, color: ProbeColor) {

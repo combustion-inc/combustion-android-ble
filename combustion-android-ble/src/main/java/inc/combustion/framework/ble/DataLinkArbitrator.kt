@@ -28,7 +28,6 @@
 
 package inc.combustion.framework.ble
 
-import android.util.Log
 import inc.combustion.framework.ble.device.*
 import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.device.ProbeBleDeviceBase
