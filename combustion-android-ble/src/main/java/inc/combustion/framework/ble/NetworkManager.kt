@@ -33,7 +33,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.util.Log
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.ble.device.*
@@ -408,14 +407,14 @@ internal class NetworkManager(
                 }
                 else {
                     if(firmwareStateOfNetwork[advertisingData.id] == null) {
-                        handleTimerWithoutProbes(advertisingData)
+                        handleMeatNetLinkWithoutProbe(advertisingData)
                     }
                 }
             }
         }
     }
 
-    private fun handleTimerWithoutProbes(advertisement: CombustionAdvertisingData) {
+    private fun handleMeatNetLinkWithoutProbe(advertisement: CombustionAdvertisingData) {
         // Create device for reading firmware information
         val device = DeviceInformationBleDevice(advertisement.id, advertisement, owner, adapter)
 
