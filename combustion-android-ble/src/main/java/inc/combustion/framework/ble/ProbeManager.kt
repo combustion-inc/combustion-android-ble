@@ -39,10 +39,10 @@ import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.uart.LogResponse
 import inc.combustion.framework.service.*
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 
 /**
  * This class is responsible for managing and arbitrating the data links to a temperature
@@ -67,6 +67,7 @@ internal class ProbeManager(
 ) {
     companion object {
         const val OUT_OF_RANGE_TIMEOUT = 15000L
+        private const val PROBE_PREDICTION_IDLE_POLL_RATE_MS = 1000L
         private const val PROBE_PREDICTION_IDLE_TIMEOUT_MS = 15000L
         private const val PROBE_INSTANT_READ_IDLE_TIMEOUT_MS = 5000L
         private val MAX_PREDICTION_SECONDS = 60u * 60u * 4u
@@ -145,6 +146,10 @@ internal class ProbeManager(
 
     private var predictionCountdownSeconds: UInt? = null
 
+    init {
+        monitorPredictionStatus()
+    }
+
     fun addJob(job: Job) = jobManager.addJob(job)
 
     fun addProbe(probe: ProbeBleDevice, baseDevice: DeviceInformationBleDevice) {
@@ -219,6 +224,18 @@ internal class ProbeManager(
         base.observeOutOfRange(OUT_OF_RANGE_TIMEOUT){ handleOutOfRange(base) }
         base.observeProbeStatusUpdates { status -> handleProbeStatus(base, status) }
         base.observeRemoteRssi { rssi ->  handleRemoteRssi(base, rssi) }
+    }
+
+    fun monitorPredictionStatus() {
+        jobManager.addJob(owner.lifecycleScope.launch(Dispatchers.IO) {
+            while(isActive) {
+                delay(PROBE_PREDICTION_IDLE_POLL_RATE_MS)
+
+                if(predictionStatusMonitor.isIdle(PROBE_PREDICTION_IDLE_TIMEOUT_MS) && !_probe.value.predictionStale) {
+                    _probe.value = _probe.value.copy(predictionStale = true)
+                }
+            }
+        })
     }
 
     private suspend fun handleProbeStatus(device: ProbeBleDeviceBase, status: ProbeStatus) {
@@ -421,9 +438,6 @@ internal class ProbeManager(
             }
         }
 
-        // TODO: prediction stale is true here.
-        //       need a separate timer to monitor how long it has been since you had a connection status update.
-        //       change variable name statusNotificationStale.
         _probe.value = _probe.value.copy(
             predictionState = predictionStatus?.predictionState,
             predictionMode = predictionStatus?.predictionMode,
@@ -433,7 +447,7 @@ internal class ProbeManager(
             rawPredictionSeconds = predictionStatus?.predictionValueSeconds,
             predictionSeconds = predictionCountdownSeconds,
             estimatedCoreCelsius = predictionStatus?.estimatedCoreTemperature,
-            predictionStale = predictionStatusMonitor.isIdle(PROBE_PREDICTION_IDLE_TIMEOUT_MS)
+            predictionStale = false
         )
     }
 
