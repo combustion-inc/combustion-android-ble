@@ -42,6 +42,8 @@ typealias LinkID = String
 internal abstract class ProbeBleDeviceBase() {
 
     companion object {
+        const val MESSAGE_RESPONSE_TIMEOUT_MS = 5000L
+
         fun makeLinkId(advertisement: CombustionAdvertisingData?): LinkID {
             return "${advertisement?.id}_${advertisement?.probeSerialNumber}"
         }
@@ -52,16 +54,6 @@ internal abstract class ProbeBleDeviceBase() {
     protected val setColorHandler = UartBleDevice.MessageCompletionHandler()
     protected val setIdHandler = UartBleDevice.MessageCompletionHandler()
     protected val setPredictionHandler = UartBleDevice.MessageCompletionHandler()
-
-    // (TBD): just make callbacks ? mutable flows (for publishing)
-    protected val mutableProbeStatusFlow = MutableSharedFlow<ProbeStatus>(
-        replay = 0, extraBufferCapacity = 10, BufferOverflow.DROP_OLDEST)
-    protected val mutableLogResponseFlow = MutableSharedFlow<LogResponse>(
-        replay = 0, extraBufferCapacity = 50, BufferOverflow.SUSPEND)
-
-    // (TBD): shared flows (for subscribing/collecting)
-    val probeStatusFlow = mutableProbeStatusFlow.asSharedFlow()
-    val logResponseFlow = mutableLogResponseFlow.asSharedFlow()
 
     // mac
     abstract val mac: String
@@ -80,6 +72,9 @@ internal abstract class ProbeBleDeviceBase() {
     abstract val isDisconnected: Boolean
     abstract val isInRange: Boolean
     abstract val isConnectable: Boolean
+
+    // dfu
+    abstract var isInDfuMode: Boolean
 
     // device information service
     abstract val deviceInfoSerialNumber: String?
@@ -107,10 +102,13 @@ internal abstract class ProbeBleDeviceBase() {
     abstract suspend fun readFirmwareVersion()
     abstract suspend fun readHardwareRevision()
 
+    // probe status updates
+    abstract fun observeProbeStatusUpdates(callback: (suspend (status: ProbeStatus) -> Unit)? = null)
+
     // Probe UART Command APIs
     abstract fun sendSessionInformationRequest(callback: ((Boolean, Any?) -> Unit)? = null)
     abstract fun sendSetProbeColor(color: ProbeColor, callback: ((Boolean, Any?) -> Unit)? = null)
     abstract fun sendSetProbeID(id: ProbeID, callback: ((Boolean, Any?) -> Unit)? = null)
     abstract fun sendSetPrediction(setPointTemperatureC: Double, mode: ProbePredictionMode, callback: ((Boolean, Any?) -> Unit)? = null)
-    abstract fun sendLogRequest(minSequence: UInt, maxSequence: UInt)
+    abstract fun sendLogRequest(minSequence: UInt, maxSequence: UInt, callback: (suspend (LogResponse) -> Unit)? = null)
 }

@@ -39,6 +39,7 @@ import inc.combustion.framework.ble.device.*
 import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.scanning.DeviceScanner
+import inc.combustion.framework.log.LogManager
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
@@ -214,8 +215,14 @@ internal class NetworkManager(
             // disconnect everything at this level
             devices.forEach { (_, device) ->
                 when(device) {
-                    is DeviceHolder.ProbeHolder -> device.probe.disconnect()
-                    is DeviceHolder.RepeaterHolder -> device.repeater.disconnect()
+                    is DeviceHolder.ProbeHolder -> {
+                        device.probe.isInDfuMode = true
+                        device.probe.disconnect()
+                    }
+                    is DeviceHolder.RepeaterHolder -> {
+                        device.repeater.isInDfuMode = true
+                        device.repeater.disconnect()
+                    }
                 }
             }
 
@@ -234,11 +241,19 @@ internal class NetworkManager(
                 startScanForProbes()
             }
 
-            // Have ProbeManager reconnect to the network nodes based on the current MeatNet
-            // connection management scheme.
-            probeManagers.forEach { (_, probe) ->
-                probe.postDfuReconnect()
+            // take all of the devices out of DFU mode.  we will automatically reconnect to
+            // them as they are discovered during scanning
+            devices.forEach { (_, device) ->
+                when(device) {
+                    is DeviceHolder.ProbeHolder -> {
+                        device.probe.isInDfuMode = false
+                    }
+                    is DeviceHolder.RepeaterHolder -> {
+                        device.repeater.isInDfuMode = false
+                    }
+                }
             }
+
             networkState.value = networkState.value.copy(
                 dfuModeOn = false
             )
@@ -344,7 +359,7 @@ internal class NetworkManager(
 
         // if we haven't seen this serial number, then create a manager for it
         if(!probeManagers.containsKey(serialNumber)) {
-            probeManagers[serialNumber] = ProbeManager(
+             val manager = ProbeManager(
                 serialNumber = serialNumber,
                 owner = owner,
                 settings = settings,
@@ -353,6 +368,9 @@ internal class NetworkManager(
                 dfuConnectedNodeCallback = {
                     // keep track of each nodes firmware details
                     if(!firmwareStateOfNetwork.containsKey(it.id)) {
+                        // Add the node to the list and...
+                        firmwareStateOfNetwork[it.id] = it
+
                         // publish the list of firmware details for the network
                         _firmwareUpdateState.value = FirmwareState(
                             nodes = firmwareStateOfNetwork.values.toList()
@@ -369,6 +387,10 @@ internal class NetworkManager(
                     )
                 }
             )
+
+            probeManagers[serialNumber] = manager
+            LogManager.instance.manage(owner, manager)
+
             discoveredProbe = true
         }
 

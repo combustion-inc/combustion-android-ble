@@ -86,6 +86,7 @@ data class Probe(
     val rawPredictionSeconds: UInt? = null,
     val estimatedCoreCelsius: Double? = null,
     val hopCount: UInt? = null,
+    val predictionStale: Boolean = true
 ) {
     val serialNumber = baseDevice.serialNumber
     val mac = baseDevice.mac
@@ -94,8 +95,7 @@ data class Probe(
     val rssi = baseDevice.rssi
     val connectionState = baseDevice.connectionState
 
-    val predictionStale: Boolean get() { return predictionMode == null }
-    val temperaturesStale: Boolean get() { return temperaturesCelsius == null }
+    val temperaturesStale: Boolean get() { return connectionState == DeviceConnectionState.OUT_OF_RANGE }
     val instantReadStale: Boolean get() { return instantReadCelsius == null }
 
     val predictionPercent: Double?

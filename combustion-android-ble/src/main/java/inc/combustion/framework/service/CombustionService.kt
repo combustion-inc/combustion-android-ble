@@ -147,33 +147,14 @@ class CombustionService : LifecycleService() {
 
         }
 
-        clearDevices()
+        LogManager.instance.clear()
+        networkManager?.clearDevices()
         networkManager?.finish()
 
         serviceIsStarted.set(false)
 
         Log.d(LOG_TAG, "Combustion Android Service Destroyed...")
         super.onDestroy()
-    }
-
-    internal fun requestLogsFromDevice(serialNumber: String) =
-        LogManager.instance.requestLogsFromDevice(this, serialNumber)
-
-    internal fun exportLogsForDevice(serialNumber: String): List<LoggedProbeDataPoint>? =
-        LogManager.instance.exportLogsForDevice(serialNumber)
-
-    internal fun createLogFlowForDevice(serialNumber: String): Flow<LoggedProbeDataPoint> =
-        LogManager.instance.createLogFlowForDevice(serialNumber)
-
-    internal fun recordsDownloaded(serialNumber: String): Int =
-        LogManager.instance.recordsDownloaded(serialNumber)
-
-    internal fun logStartTimestampForDevice(serialNumber: String): Date =
-        LogManager.instance.logStartTimestampForDevice(serialNumber)
-
-    internal fun clearDevices() {
-        LogManager.instance.clear()
-        networkManager?.clearDevices()
     }
 
     internal fun addSimulatedProbe() {

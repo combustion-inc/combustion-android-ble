@@ -28,7 +28,6 @@
 
 package inc.combustion.framework.ble
 
-import android.util.Log
 import inc.combustion.framework.ble.device.*
 import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.device.ProbeBleDeviceBase
@@ -88,11 +87,25 @@ internal class DataLinkArbitrator(
         // TODO -- Handle Connection State Changes
     }
 
-    fun getDevice(id: DeviceID): DeviceInformationBleDevice? {
-        if(networkNodes.containsKey(id)) {
-            return networkNodes[id]
+    fun getDirectLink(): ProbeBleDevice? {
+        return if(probeBleDevice?.isConnected == true) probeBleDevice else null
+    }
+
+    fun getPreferredMeatNetLink(): ProbeBleDeviceBase? {
+        // If meatnet is not enabled, then return the probe connection
+        if(!settings.meatNetEnabled) {
+            return getDirectLink()
         }
-        return null
+
+        // If meatnet is enabled and connected directly to the probe
+        // then use that connection
+        getDirectLink()?.let {
+            return it
+        }
+
+        // Use repeated probe device with lowest hop count
+        repeatedProbeBleDevices.sortBy { it.hopCount }
+        return repeatedProbeBleDevices.firstOrNull { it.isConnected }
     }
 
     fun getNodesNeedingConnection(fromApiCall: Boolean = false): List<DeviceInformationBleDevice> {
@@ -148,7 +161,7 @@ internal class DataLinkArbitrator(
     }
 
     fun shouldConnect(device: ProbeBleDeviceBase, fromApiCall: Boolean = false): Boolean {
-        val canConnect = device.isDisconnected && device.isConnectable
+        val canConnect = device.isDisconnected && device.isConnectable && !device.isInDfuMode
         if(settings.meatNetEnabled) {
             // connect to every connectable device when using meatnet
             return canConnect
@@ -209,17 +222,27 @@ internal class DataLinkArbitrator(
         return debuggingWithStaticLink(device)
     }
 
+    fun shouldUpdateDataFromProbeStatus(device: ProbeBleDeviceBase): Boolean {
+        // TODO: Implement Multiplexing Business Logic
+        return debuggingWithStaticLink(device)
+    }
+
     fun shouldUpdateConnectionStateFromAdvertisingPacket(device: ProbeBleDeviceBase): Boolean {
         // TODO: Implement Multiplexing Business Logic
         return debuggingWithStaticLink(device)
     }
 
-    fun shouldUpdateOnConnectionState(device: ProbeBleDeviceBase, state: DeviceConnectionState): Boolean {
+    fun shouldUpdateConnectionState(device: ProbeBleDeviceBase, state: DeviceConnectionState): Boolean {
         // TODO: Implement Multiplexing Business Logic
         return debuggingWithStaticLink(device)
     }
 
     fun shouldUpdateOnRemoteRssi(device: ProbeBleDeviceBase, rssi: Int): Boolean {
+        // TODO: Implement Multiplexing Business Logic
+        return debuggingWithStaticLink(device)
+    }
+
+    fun shouldUpdateOnDisconnect(device: ProbeBleDeviceBase): Boolean {
         // TODO: Implement Multiplexing Business Logic
         return debuggingWithStaticLink(device)
     }
