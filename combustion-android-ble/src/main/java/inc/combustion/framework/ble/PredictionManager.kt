@@ -27,6 +27,7 @@
  */
 package inc.combustion.framework.ble
 
+import android.util.Log
 import inc.combustion.framework.service.PredictionStatus
 import inc.combustion.framework.service.ProbePredictionMode
 import inc.combustion.framework.service.ProbePredictionState
@@ -77,7 +78,7 @@ class PredictionManager {
     private var linearizationTimerUpdateValue: Double = 0.0
     private var currentLinearizationMs: Double = 0.0
 
-    private var linearizationTimer = Timer()
+    private var linearizationTimer: Timer? = null
     private var staleTimer = Timer()
 
     private var completionHandler: ((PredictionInfo?) -> Unit)? = null
@@ -183,10 +184,14 @@ class PredictionManager {
                 linearizationTimerUpdateValue = LINEARIZATION_UPDATE_RATE_MS
             }
 
-            // Setup a linearization timer
-            val intervalMs = LINEARIZATION_UPDATE_RATE_MS.toLong()
+            // Create a new linearization timer
+            clearLinearizationTimer()
+            linearizationTimer = Timer()
 
-            linearizationTimer.scheduleAtFixedRate( object : TimerTask() {
+            // Start the linearization timer
+            Log.d("JDJ", "Start LinearizationTimer")
+            val intervalMs = LINEARIZATION_UPDATE_RATE_MS.toLong()
+            linearizationTimer?.scheduleAtFixedRate( object : TimerTask() {
                 override fun run() {
                     updatePredictionSeconds()
                 }
@@ -251,6 +256,8 @@ class PredictionManager {
     }
 
     private fun clearLinearizationTimer() {
-        linearizationTimer.cancel()
+        Log.d("JDJ", "clearLinearizationTimer")
+        linearizationTimer?.cancel()
+        linearizationTimer = null
     }
 }

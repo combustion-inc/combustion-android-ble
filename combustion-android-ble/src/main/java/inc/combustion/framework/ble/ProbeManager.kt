@@ -237,16 +237,20 @@ internal class ProbeManager(
         base.observeRemoteRssi { rssi ->  handleRemoteRssi(base, rssi) }
     }
 
-    fun monitorPredictionStatus() {
+    private fun monitorPredictionStatus() {
         jobManager.addJob(owner.lifecycleScope.launch(Dispatchers.IO) {
             while(isActive) {
                 delay(PROBE_PREDICTION_IDLE_POLL_RATE_MS)
 
-                if(predictionStatusMonitor.isIdle(PROBE_PREDICTION_IDLE_TIMEOUT_MS) && !_probe.value.predictionStale) {
-                    _probe.value = _probe.value.copy(predictionStale = true)
-                }
+                publishPredictionStale(predictionStatusMonitor.isIdle(PROBE_PREDICTION_IDLE_TIMEOUT_MS))
             }
         })
+    }
+
+    private fun publishPredictionStale(predictionStale: Boolean) {
+        if(predictionStale != _probe.value.predictionStale) {
+            _probe.value = _probe.value.copy(predictionStale = predictionStale)
+        }
     }
 
     private suspend fun handleProbeStatus(device: ProbeBleDeviceBase, status: ProbeStatus) {
