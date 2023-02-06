@@ -421,6 +421,9 @@ internal class ProbeManager(
             }
         }
 
+        // TODO: prediction stale is true here.
+        //       need a separate timer to monitor how long it has been since you had a connection status update.
+        //       change variable name statusNotificationStale.
         _probe.value = _probe.value.copy(
             predictionState = predictionStatus?.predictionState,
             predictionMode = predictionStatus?.predictionMode,
@@ -492,19 +495,6 @@ internal class ProbeManager(
         _probe.value = _probe.value.copy(
             baseDevice = _probe.value.baseDevice.copy(fwVersion = null, hwRevision = null),
             sessionInfo = null,
-        )
-    }
-
-    private fun updateOnPredictionStale() {
-        _probe.value = _probe.value.copy(
-            predictionState = null,
-            predictionMode = null,
-            predictionType = null,
-            setPointTemperatureCelsius = null,
-            heatStartTemperatureCelsius = null,
-            predictionSeconds = null,
-            rawPredictionSeconds = null,
-            estimatedCoreCelsius = null
         )
     }
 }

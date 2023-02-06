@@ -114,12 +114,15 @@ internal class LogManager {
                                 // event the new upload state to the client, and they can initiate
                                 // the record transfer when they are ready.
                                 ProbeUploadState.Unavailable -> {
-                                    probeManager.uploadState = ProbeUploadState.ProbeUploadNeeded
-                                }
-                                ProbeUploadState.ProbeUploadNeeded -> {
                                     if(DeviceManager.instance.settings.autoLogTransfer) {
+                                        // note, this will transfer to ProbeUploadInProgress
                                         requestLogsFromDevice(owner, probeManager.serialNumber)
                                     }
+                                    else {
+                                        probeManager.uploadState = ProbeUploadState.ProbeUploadNeeded
+                                    }
+                                }
+                                ProbeUploadState.ProbeUploadNeeded -> {
                                     // else, do nothing, wait for the client to request the transfer
                                 }
                                 is ProbeUploadState.ProbeUploadInProgress -> {

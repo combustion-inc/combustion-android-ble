@@ -189,16 +189,14 @@ internal class RepeatedProbeBleDevice (
     }
 
     private fun sendUartRequest(request: NodeRequest) {
-        uart.owner.lifecycleScope.launch(Dispatchers.IO) {
-            if (DebugSettings.DEBUG_LOG_BLE_UART_IO) {
-                val packet = request.data.joinToString("") {
-                    it.toString(16).padStart(2, '0').uppercase()
-                }
-                Log.d(LOG_TAG, "UART-TX: $packet")
+        if (DebugSettings.DEBUG_LOG_BLE_UART_IO) {
+            val packet = request.data.joinToString("") {
+                it.toString(16).padStart(2, '0').uppercase()
             }
-
-            uart.writeUartCharacteristic(request.sData)
+            Log.d(LOG_TAG, "UART-TX: $packet")
         }
+
+        uart.writeUartCharacteristic(request.sData)
     }
 
     private suspend fun handleProbeStatusRequest(message: NodeProbeStatusRequest) {

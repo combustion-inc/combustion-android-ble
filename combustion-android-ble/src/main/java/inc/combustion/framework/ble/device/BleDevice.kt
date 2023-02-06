@@ -219,6 +219,7 @@ internal open class BleDevice (
     }
 
     fun observeRemoteRssi(callback: (suspend (rssi: Int) -> Unit)? = null) {
+        /*
         // maintain a list of objects that are observing RSSI updates for this device.
         callback?.let {
             rssiCallbacks.add(it)
@@ -231,6 +232,8 @@ internal open class BleDevice (
                 while(isActive) {
                     if(isConnected.get()) {
                         try {
+                            // TODO: DROID-106
+                            //
                             remoteRssi.set(peripheral.rssi())
                             exceptionCount = 0;
                         } catch (e: Exception) {
@@ -257,6 +260,7 @@ internal open class BleDevice (
             remoteRssiJob = job
             jobManager.addJob(job)
         }
+         */
     }
 
     fun observeAdvertisingPackets(filter: (advertisement: CombustionAdvertisingData) -> Boolean, callback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)? = null) {
