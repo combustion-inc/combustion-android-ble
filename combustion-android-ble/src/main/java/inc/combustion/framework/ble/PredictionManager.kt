@@ -27,6 +27,7 @@
  */
 package inc.combustion.framework.ble
 
+import android.os.SystemClock
 import android.util.Log
 import inc.combustion.framework.service.PredictionStatus
 import inc.combustion.framework.service.ProbePredictionMode
@@ -49,7 +50,7 @@ class PredictionManager {
 
     companion object {
         /// Prediction is considered stale after 15 seconds
-        private const val PREDICTION_STALE_TIMEOUT = 15.0
+        private const val PREDICTION_STALE_TIMEOUT = 15000L // 15 seconds in ms
 
         /// Cap the prediction to 4 hours
         private const val MAX_PREDICTION_TIME : UInt = 14400u // 4 hours
@@ -79,7 +80,7 @@ class PredictionManager {
     private var currentLinearizationMs: Double = 0.0
 
     private var linearizationTimer: Timer? = null
-    private var staleTimer = Timer()
+    private var linearizationStartTime: Long = 0
 
     private var completionHandler: ((PredictionInfo?) -> Unit)? = null
 
@@ -104,15 +105,6 @@ class PredictionManager {
 
         // Publish new prediction info
         publishPredictionInfo(predictionInfo)
-//
-//        // Clear previous staleness timer.
-//        staleTimer.invalidate()
-//        // Restart 'staleness' timer.
-//        let intervalSeconds = Constants.PREDICTION_STALE_TIMEOUT;
-//        staleTimer = Timer.scheduledTimer(withTimeInterval: intervalSeconds, repeats: false, block: { _ in
-//                // If updates have gone stale (not arrived in some time), restart the timer.
-//                self.clearLinearizationTimer()
-//        })
     }
 
     private fun infoFromStatus(predictionStatus: PredictionStatus?, sequenceNumber: UInt): PredictionInfo? {
@@ -187,9 +179,9 @@ class PredictionManager {
             // Create a new linearization timer
             clearLinearizationTimer()
             linearizationTimer = Timer()
+            linearizationStartTime = SystemClock.elapsedRealtime()
 
             // Start the linearization timer
-            Log.d("JDJ", "Start LinearizationTimer")
             val intervalMs = LINEARIZATION_UPDATE_RATE_MS.toLong()
             linearizationTimer?.scheduleAtFixedRate( object : TimerTask() {
                 override fun run() {
@@ -205,6 +197,7 @@ class PredictionManager {
         val previousInfo = previousPredictionInfo  ?: return
 
         currentLinearizationMs -= linearizationTimerUpdateValue
+
         // Don't let the linerization value go below 0 or the UInt conversion will crash.
         if(currentLinearizationMs < 0.0) {
             currentLinearizationMs = 0.0
@@ -224,9 +217,14 @@ class PredictionManager {
             percentThroughCook = previousInfo.percentThroughCook
         )
 
-
         // Publish new prediction info
         publishPredictionInfo(predictionInfo)
+
+        // Stop the timer if the prediction has gone stale
+        if( (SystemClock.elapsedRealtime() - linearizationStartTime) >= PREDICTION_STALE_TIMEOUT ) {
+            Log.d("JDJ", "stop timer due to stale data ${(SystemClock.elapsedRealtime() - linearizationStartTime)}")
+            clearLinearizationTimer()
+        }
     }
 
     private fun percentThroughCook(predictionStatus: PredictionStatus): Int {
@@ -256,7 +254,6 @@ class PredictionManager {
     }
 
     private fun clearLinearizationTimer() {
-        Log.d("JDJ", "clearLinearizationTimer")
         linearizationTimer?.cancel()
         linearizationTimer = null
     }

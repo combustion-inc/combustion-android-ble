@@ -42,7 +42,6 @@ import inc.combustion.framework.service.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.sync.withLock
 
 /**
  * This class is responsible for managing and arbitrating the data links to a temperature
@@ -144,20 +143,9 @@ internal class ProbeManager(
 
     init {
         predictionManager.setPredictionCallback {
-            _probe.value = _probe.value.copy(
-                predictionState = it?.predictionState,
-                predictionMode = it?.predictionMode,
-                predictionType = it?.predictionType,
-                setPointTemperatureCelsius = it?.predictionSetPointTemperature,
-                heatStartTemperatureCelsius = it?.heatStartTemperature,
-                rawPredictionSeconds = it?.rawPredictionSeconds,
-                predictionSeconds = it?.secondsRemaining,
-                estimatedCoreCelsius = it?.estimatedCoreTemperature
-            )
+            updatePredictionInfo(it)
         }
-    }
 
-    init {
         monitorPredictionStatus()
     }
 
@@ -410,7 +398,7 @@ internal class ProbeManager(
             updateInstantRead(status.temperatures.values[0])
         } else if(status.mode == ProbeMode.NORMAL) {
             updateTemperatures(status.temperatures, status.virtualSensors)
-            updatePredictionStatus(status.predictionStatus, _probe.value.maxSequenceNumber)
+            updatePredictionStatus(status.predictionStatus, status.maxSequenceNumber)
         }
 
         updateBatteryIdColor(status.batteryStatus, status.id, status.color)
@@ -428,6 +416,19 @@ internal class ProbeManager(
         predictionStatusMonitor.activity()
 
         predictionManager.updatePredictionStatus(predictionStatus, maxSequenceNumber)
+    }
+
+    private fun updatePredictionInfo(predictionInfo: PredictionManager.PredictionInfo?) {
+        _probe.value = _probe.value.copy(
+            predictionState = predictionInfo?.predictionState,
+            predictionMode = predictionInfo?.predictionMode,
+            predictionType = predictionInfo?.predictionType,
+            setPointTemperatureCelsius = predictionInfo?.predictionSetPointTemperature,
+            heatStartTemperatureCelsius = predictionInfo?.heatStartTemperature,
+            rawPredictionSeconds = predictionInfo?.rawPredictionSeconds,
+            predictionSeconds = predictionInfo?.secondsRemaining,
+            estimatedCoreCelsius = predictionInfo?.estimatedCoreTemperature
+        )
     }
 
     private fun updateTemperatures(temperatures: ProbeTemperatures, sensors: ProbeVirtualSensors) {
