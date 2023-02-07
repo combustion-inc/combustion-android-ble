@@ -68,7 +68,7 @@ class PredictionManager {
         /// Rate at which the linearization timer is run
         private const val LINEARIZATION_UPDATE_RATE_MS : Double = 200.0
 
-        /// Rate at which the linearization timer is run
+        /// Rate at which the prediction status information is transmitted
         private const val PREDICTION_STATUS_RATE_MS : Double = 5000.0
     }
 
@@ -222,7 +222,6 @@ class PredictionManager {
 
         // Stop the timer if the prediction has gone stale
         if( (SystemClock.elapsedRealtime() - linearizationStartTime) >= PREDICTION_STALE_TIMEOUT ) {
-            Log.d("JDJ", "stop timer due to stale data ${(SystemClock.elapsedRealtime() - linearizationStartTime)}")
             clearLinearizationTimer()
         }
     }
