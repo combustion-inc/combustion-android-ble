@@ -35,8 +35,11 @@ import android.os.IBinder
 import android.util.Log
 import inc.combustion.framework.Combustion
 import inc.combustion.framework.LOG_TAG
+import inc.combustion.framework.ble.NetworkManager
+import inc.combustion.framework.log.LogManager
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import java.lang.StringBuilder
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -47,9 +50,17 @@ import java.util.concurrent.atomic.AtomicInteger
 /**
  * Singleton instance for managing communications with Combustion Inc. devices.
  */
-class DeviceManager {
+class DeviceManager(
+    val settings: Settings
+) {
     private val onBoundInitList = mutableListOf<() -> Unit>()
     private lateinit var service: CombustionService
+
+    data class Settings(
+        val autoReconnect: Boolean = false,
+        val autoLogTransfer: Boolean = false,
+        val meatNetEnabled: Boolean = false
+    )
 
     companion object {
         private lateinit var INSTANCE: DeviceManager
@@ -89,13 +100,13 @@ class DeviceManager {
         /**
          * Initializes the singleton
          * @param application Application context.
-         * @param onBound Lambda to be called when the service is connected to an Activity.
+         * @param onBound Optional lambda to be called when the service is connected to an Activity.
          */
-        fun initialize(application: Application, onBound: (deviceManager: DeviceManager) -> Unit) {
+        fun initialize(application: Application, settings: Settings = Settings(), onBound: (deviceManager: DeviceManager) -> Unit = {_ -> }) {
             if(!initialized.getAndSet(true)) {
                 app = application
                 onServiceBound = onBound
-                INSTANCE = DeviceManager()
+                INSTANCE = DeviceManager(settings)
             }
         }
 
@@ -111,7 +122,7 @@ class DeviceManager {
                 if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
                     Log.d(LOG_TAG, "Start Service")
 
-                return CombustionService.start(app.applicationContext, notification)
+                return CombustionService.start(app.applicationContext, notification, INSTANCE.settings)
             }
             return 0;
         }
@@ -164,31 +175,56 @@ class DeviceManager {
     /**
      * Return true if the default Bluetooth adapter is enabled, false otherwise.
      */
-    val bluetoothIsEnabled
-        get() = service.bluetoothIsEnabled
-
+    val bluetoothIsEnabled: Boolean
+        get() {
+            return service.networkManager?.bluetoothIsEnabled ?: false
+        }
 
     /**
-     * Kotlin flow for collecting device discovery events that occur when the service
-     * is scanning for devices.  This is a hot flow.
+     * True if scanning for thermometers.  False otherwise.
+     */
+    val scanningForProbes: Boolean
+        get() {
+            return service.networkManager?.scanningForProbes ?: false
+        }
+
+    /**
+     * True if in DFU mode. False otherwise.
+     */
+    val dfuModeIsEnabled: Boolean
+        get() {
+            return service.networkManager?.dfuModeEnabled ?: false
+        }
+
+    /**
+     * Kotlin flow for collecting ProbeDiscoveredEvents that occur when the service
+     * is scanning for thermometers.  This is a hot flow.
      *
-     * @see DeviceDiscoveredEvent
+     * @see ProbeDiscoveredEvent
      */
-    val discoveredProbesFlow : SharedFlow<DeviceDiscoveredEvent>
-        get() = service.discoveredProbesFlow
+    val discoveredProbesFlow : SharedFlow<ProbeDiscoveredEvent>
+        get() {
+            return NetworkManager.DISCOVERED_PROBES_FLOW
+        }
 
     /**
-     * True if scanning for devices.  False otherwise.
+     * Kotlin flow for collecting NetworkState
+     *
+     * @see NetworkEvent
      */
-    val isScanningForDevices: Boolean
-        get() = service.isScanningForProbes
+    val networkFlow : StateFlow<NetworkState>
+        get() {
+            return NetworkManager.NETWORK_STATE_FLOW
+        }
 
     /**
      * Returns a list of device serial numbers, consisting of all devices that have been
      * discovered.
      */
     val discoveredProbes: List<String>
-        get() = service.discoveredProbes
+        get() {
+            return service.networkManager?.discoveredProbes ?: listOf("")
+        }
 
     /**
      * Registers a lambda to be called by the DeviceManager upon binding with the
@@ -208,28 +244,32 @@ class DeviceManager {
     }
 
     /**
-     * Starts scanning for temperature probes.  Will generate a DeviceDiscoveredEvent
+     * Starts scanning for temperature probes.  Will generate a ProbeDiscoveredEvent
      * to the discoveredProbesFlow property.
      *
      * @return true if scanning has started, false otherwise.
      *
      * @see discoveredProbesFlow
-     * @see DeviceDiscoveredEvent
-     * @see DeviceDiscoveredEvent.ScanningOn
+     * @see ProbeDiscoveredEvent
+     * @see ProbeDiscoveredEvent.ScanningOn
      */
-    fun startScanningForProbes() = service.startScanningForProbes()
+    fun startScanningForProbes(): Boolean {
+        return service.networkManager?.startScanForProbes() ?: false
+    }
 
     /**
-     * Stops scanning for temperature probes.  Will generate a DeviceDiscoveredEvent
+     * Stops scanning for temperature probes.  Will generate a ProbeDiscoveredEvent
      * to the discoveredProbFlow property.
      *
      * @return true if scanning has stopped, false otherwise.
      *
      * @see discoveredProbesFlow
-     * @see DeviceDiscoveredEvent
-     * @see DeviceDiscoveredEvent.ScanningOff
+     * @see ProbeDiscoveredEvent
+     * @see ProbeDiscoveredEvent.ScanningOff
      */
-    fun stopScanningForProbes() = service.stopScanningForProbes()
+    fun stopScanningForProbes(): Boolean {
+        return service.networkManager?.stopScanForProbes() ?: false
+    }
 
     /**
      * Retrieves the Kotlin flow for collecting Probe state updates for the specified
@@ -240,7 +280,9 @@ class DeviceManager {
      *
      * @see Probe
      */
-    fun probeFlow(serialNumber: String) = service.probeFlow(serialNumber)
+    fun probeFlow(serialNumber: String): StateFlow<Probe>? {
+        return service.networkManager?.probeFlow(serialNumber)
+    }
 
     /**
      * Retrieves the current probe state for the specified probe serial number.
@@ -250,7 +292,9 @@ class DeviceManager {
      *
      * @see Probe
      */
-    fun probe(serialNumber: String): Probe? = service.probeState(serialNumber)
+    fun probe(serialNumber: String): Probe? {
+        return service.networkManager?.probeState(serialNumber)
+    }
 
     /**
      * Initiates a BLE connection to the probe with the specified serial number.  Upon
@@ -266,7 +310,9 @@ class DeviceManager {
      * @see DeviceConnectionState.CONNECTING
      * @see probeFlow
      */
-    fun connect(serialNumber : String) = service.connect(serialNumber)
+    fun connect(serialNumber : String) {
+        service.networkManager?.connect(serialNumber)
+    }
 
     /**
      * Initiates a BLE disconnection from the probe with the specified serial number.  Upon
@@ -282,7 +328,9 @@ class DeviceManager {
      * @see DeviceConnectionState.DISCONNECTING
      * @see probeFlow
      */
-    fun disconnect(serialNumber: String) = service.disconnect(serialNumber)
+    fun disconnect(serialNumber: String) {
+        service.networkManager?.disconnect(serialNumber)
+    }
 
     /**
      * Initiates a record transfer from the device to the service for the specified serial
@@ -299,7 +347,9 @@ class DeviceManager {
      * @see ProbeUploadState.Unavailable
      * @see probeFlow
      */
-    fun startRecordTransfer(serialNumber: String) = service.requestLogsFromDevice(serialNumber)
+    fun startRecordTransfer(serialNumber: String) {
+        LogManager.instance.requestLogsFromDevice(service, serialNumber)
+    }
 
     /**
      * Retrieves the current temperature log as a list of LoggedProbeDataPoint for the specified
@@ -310,9 +360,9 @@ class DeviceManager {
      *
      * @see LoggedProbeDataPoint
      */
-    fun exportLogsForDevice(serialNumber: String): List<LoggedProbeDataPoint>? =
-        service.exportLogsForDevice(serialNumber)
-
+    fun exportLogsForDevice(serialNumber: String): List<LoggedProbeDataPoint>? {
+        return LogManager.instance.exportLogsForDevice(serialNumber)
+    }
 
     /**
      * Retrieves the current temperature log as a comma separate value string with header.
@@ -335,8 +385,9 @@ class DeviceManager {
      * @param serialNumber the serial number of the probe.
      * @return Count of downloaded records
      */
-    fun recordsDownloaded(serialNumber: String): Int =
-        service.recordsDownloaded(serialNumber)
+    fun recordsDownloaded(serialNumber: String): Int {
+        return LogManager.instance.recordsDownloaded(serialNumber)
+    }
 
     /**
      * Retrieves the wall clock timestamp for the first record retrieved from the device
@@ -345,8 +396,10 @@ class DeviceManager {
      * @param serialNumber the serial number of the probe.
      * @return Timestamp or default Date()
      */
-    fun logStartTimestampForDevice(serialNumber: String): Date =
-        service.logStartTimestampForDevice(serialNumber)
+    fun logStartTimestampForDevice(serialNumber: String): Date {
+        return LogManager.instance.logStartTimestampForDevice(serialNumber)
+    }
+
     /**
      * Retrieves the current temperature log as a Kotlin flow of LoggedProbeDataPoint for
      * the specified serial number.  All logs previously transferred are produced to the flow
@@ -358,21 +411,25 @@ class DeviceManager {
      *
      * @see LoggedProbeDataPoint
      */
-    fun createLogFlowForDevice(serialNumber: String): Flow<LoggedProbeDataPoint> =
-        service.createLogFlowForDevice(serialNumber)
+    fun createLogFlowForDevice(serialNumber: String): Flow<LoggedProbeDataPoint> {
+        return LogManager.instance.createLogFlowForDevice(serialNumber)
+    }
 
     /**
      * Clears all probes, logged data from the DeviceManager.  Closes all active connections
      * and disposes related resources.
      */
-    fun clearDevices() = service.clearDevices()
+    fun clearDevices() {
+        service.networkManager?.clearDevices()
+        LogManager.instance.clear()
+    }
 
     /**
      * Creates a simulated probe.  The simulated probe will generate events to the
      * discoveredProbesFlow.  The simulated probe has a state flow that can be collected
      * use the probeFlow method.
      *
-     * @see DeviceDiscoveredEvent
+     * @see ProbeDiscoveredEvent
      * @see discoveredProbesFlow
      * @see probeFlow
      */
@@ -387,8 +444,11 @@ class DeviceManager {
      * @param completionHandler completion handler to be called operation is complete
      *
      */
-    fun setProbeColor(serialNumber: String, color: ProbeColor, completionHandler: (Boolean) -> Unit) =
-        service.setProbeColor(serialNumber, color, completionHandler)
+    fun setProbeColor(serialNumber: String, color: ProbeColor, completionHandler: (Boolean) -> Unit) {
+        service.networkManager?.setProbeColor(serialNumber, color, completionHandler) ?: run{
+            completionHandler(false)
+        }
+    }
 
     /**
      * Sends a request to the device to the set the probe ID. The completion handler will
@@ -399,8 +459,11 @@ class DeviceManager {
      * @param completionHandler completion handler to be called operation is complete
      *
      */
-    fun setProbeID(serialNumber: String, id: ProbeID, completionHandler: (Boolean) -> Unit) =
-        service.setProbeID(serialNumber, id, completionHandler)
+    fun setProbeID(serialNumber: String, id: ProbeID, completionHandler: (Boolean) -> Unit) {
+        service.networkManager?.setProbeID(serialNumber, id, completionHandler) ?: run {
+            completionHandler(false)
+        }
+    }
 
     /**
      * Sends a request to the device to set/change the set point temperature for the time to
@@ -417,7 +480,9 @@ class DeviceManager {
             completionHandler(false)
             return
         }
-        service.setRemovalPrediction(serialNumber, removalTemperatureC, completionHandler)
+        service.networkManager?.setRemovalPrediction(serialNumber, removalTemperatureC, completionHandler) ?: run{
+            completionHandler(false)
+        }
     }
 
     /**
@@ -426,8 +491,28 @@ class DeviceManager {
      * @param serialNumber the serial number of the probe.
      * @param completionHandler completion handler to be called operation is complete
      */
-    fun cancelPrediction(serialNumber: String, completionHandler: (Boolean) -> Unit) =
-        service.cancelPrediction(serialNumber, completionHandler)
+    fun cancelPrediction(serialNumber: String, completionHandler: (Boolean) -> Unit) {
+        service.networkManager?.cancelPrediction(serialNumber, completionHandler) ?: run {
+            completionHandler(false)
+        }
+    }
+
+    /**
+     * TODO - Document Me
+     */
+    fun startDfuMode() = service.startDfuMode()
+
+    /**
+     * TODO - Document Me
+     */
+    fun stopDfuMode() = service.stopDfuMode()
+
+    /**
+     * State flow containing the firmware details for all nodes on the network.
+     */
+    fun getNetworkFirmwareState(): StateFlow<FirmwareState>? {
+        return service.networkManager?.firmwareUpdateState
+    }
 
     private fun probeDataToCsv(probe: Probe?, probeData: List<LoggedProbeDataPoint>?, appNameAndVersion: String): Pair<String, String> {
         val csvVersion = 3

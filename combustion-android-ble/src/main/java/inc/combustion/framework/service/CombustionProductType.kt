@@ -44,4 +44,6 @@ enum class CombustionProductType(val type: UByte) {
             }
         }
     }
+
+    val isRepeater: Boolean get() = this != PROBE
 }

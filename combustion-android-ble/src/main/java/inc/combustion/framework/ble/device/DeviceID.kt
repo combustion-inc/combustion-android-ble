@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: DeviceDiscoveredEvent.kt
+ * File: DeviceID.kt
  * Author: https://github.com/miwright2
  *
  * MIT License
  *
- * Copyright (c) 2022. Combustion Inc.
+ * Copyright (c) 2023. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,46 +25,11 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package inc.combustion.framework.service
+
+package inc.combustion.framework.ble.device
 
 /**
- * Enumerates the asynchronous events that can be collected while the device is
- * scanning and producing events to the discovered probes flow.
- *
- * @see DeviceManager.discoveredProbesFlow
+ * Define a type to be used as a key into maps.
  */
-sealed class DeviceDiscoveredEvent {
-    /**
-     * Bluetooth is off, no devices will be discovered
-     */
-    object BluetoothOff: DeviceDiscoveredEvent()
+typealias DeviceID = String
 
-    /**
-     * Bluetooth is on, devices will now be discovered if scanning
-     */
-    object BluetoothOn: DeviceDiscoveredEvent()
-
-    /**
-     * Scanning for Combustion devices
-     */
-    object ScanningOn: DeviceDiscoveredEvent()
-
-    /**
-     * Not scanning for Combustion devices
-     */
-    object ScanningOff: DeviceDiscoveredEvent()
-
-    /**
-     * Combustion device discovered
-     *
-     * @property serialNumber serial number of the discovered device
-     */
-    data class DeviceDiscovered(
-        val serialNumber: String
-    ) : DeviceDiscoveredEvent()
-
-    /**
-     * The device cache was cleared.
-     */
-    object DevicesCleared: DeviceDiscoveredEvent()
-}

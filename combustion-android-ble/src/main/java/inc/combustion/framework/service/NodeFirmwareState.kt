@@ -1,11 +1,11 @@
 /*
- * Project: Combustion Inc. Android Framework
- * File: IdleMonitor.kt
- * Author: https://github.com/miwright2
+ * Project: Combustion Inc. Android Example
+ * File: NodeFirmwareState.kt
+ * Author:
  *
  * MIT License
  *
- * Copyright (c) 2022. Combustion Inc.
+ * Copyright (c) 2023. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,19 +25,18 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package inc.combustion.framework.ble
 
-import android.os.SystemClock
+package inc.combustion.framework.service
 
-class IdleMonitor {
-    var lastUpdateTime: Long = 0
+import inc.combustion.framework.ble.device.DeviceID
 
-    fun activity() {
-        lastUpdateTime = SystemClock.elapsedRealtime()
-    }
-
-    fun isIdle(timeout: Long): Boolean {
-        return (SystemClock.elapsedRealtime() - lastUpdateTime) >= timeout
-    }
+data class FirmwareState(
+    val nodes: List<Node>
+) {
+    data class Node(
+        val id: DeviceID,
+        val type: CombustionProductType,
+        val firmwareVersion: String
+    )
 }
 

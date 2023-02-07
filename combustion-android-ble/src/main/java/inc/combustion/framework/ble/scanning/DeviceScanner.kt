@@ -1,7 +1,7 @@
 /*
  * Project: Combustion Inc. Android Framework
  * File: DeviceScanner.kt
- * Author:
+ * Author: https://github.com/miwright2
  *
  * MIT License
  *
@@ -25,8 +25,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-
-package inc.combustion.framework.service
+package inc.combustion.framework.ble.scanning
 
 import android.bluetooth.le.ScanSettings
 import android.os.ParcelUuid
@@ -38,7 +37,6 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.juul.kable.Filter
 import com.juul.kable.Scanner
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.AdvertisingData
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -50,18 +48,13 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 internal class DeviceScanner private constructor() {
     companion object {
-        private var allMatchesScanJob: Job? = null
-        private val _isScanning = AtomicBoolean(false)
-        private val _advertisements = MutableSharedFlow<AdvertisingData>()
-
-        // TODO: This is the wrong UUID.
-        private const val NORDIC_DFU_SERVICE_UUID_STRING = "0000180A-0000-1000-8000-0080BEEFBEEF"
+        private const val NORDIC_DFU_SERVICE_UUID_STRING = "0000FE59-0000-1000-8000-00805F9B34FB"
         private val NORDIC_DFU_SERVICE_UUID: ParcelUuid = ParcelUuid.fromString(
             NORDIC_DFU_SERVICE_UUID_STRING
         )
 
-        val advertisements = _advertisements.asSharedFlow()
-
+        private var allMatchesScanJob: Job? = null
+        private val atomicIsScanning = AtomicBoolean(false)
         private val allMatchesScanner = Scanner {
             filters = listOf(Filter.Service(NORDIC_DFU_SERVICE_UUID.uuid))
             scanSettings = ScanSettings.Builder()
@@ -72,10 +65,13 @@ internal class DeviceScanner private constructor() {
         }
 
         val isScanning: Boolean
-            get() = _isScanning.get()
+            get() = atomicIsScanning.get()
 
-        fun startScanning(owner: LifecycleOwner) {
-            if(!_isScanning.getAndSet(true)) {
+        private val mutableAdvertisements = MutableSharedFlow<CombustionAdvertisingData>()
+        val advertisements = mutableAdvertisements.asSharedFlow()
+
+        fun scan(owner: LifecycleOwner) {
+            if(!atomicIsScanning.getAndSet(true)) {
                 allMatchesScanJob = owner.lifecycleScope.launch {
                     // launches the block in a new coroutine every time the LifecycleOwner is
                     // in the CREATED state or above, and cancels the block when the LifecycleOwner
@@ -86,20 +82,19 @@ internal class DeviceScanner private constructor() {
                         allMatchesScanner
                             .advertisements
                             .catch { cause ->
-                                stopScanning()
-                                _isScanning.set(false)
+                                stop()
+                                atomicIsScanning.set(false)
                                 Log.e(LOG_TAG, "Scan Error: ${cause.localizedMessage}")
                                 Log.e(LOG_TAG, Log.getStackTraceString(cause))
                             }
                             .onCompletion {
                                 Log.d(LOG_TAG, "Scanning stopped ...")
-                                _isScanning.set(false)
+                                atomicIsScanning.set(false)
                             }
                             .collect { advertisement ->
-                                // This would maybe be an abstract function that lets subclasses
-                                // parse advertisement data and emit into flow as they see fit
-                                AdvertisingData.fromAdvertisement(advertisement)?.let {
-                                    _advertisements.emit(it)
+                                when (val advertisingData = BaseAdvertisingData.create(advertisement)) {
+                                    is CombustionAdvertisingData -> mutableAdvertisements.emit(advertisingData)
+                                    // else, if just BaseAdvertisingData, then no need to produce to flow.
                                 }
                             }
                     }
@@ -107,7 +102,7 @@ internal class DeviceScanner private constructor() {
             }
         }
 
-        fun stopScanning() {
+        fun stop() {
             allMatchesScanJob?.cancelChildren()
             allMatchesScanJob = null
         }

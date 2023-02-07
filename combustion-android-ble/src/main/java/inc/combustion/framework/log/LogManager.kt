@@ -61,23 +61,23 @@ internal class LogManager {
     }
 
     fun manage(owner: LifecycleOwner, probeManager: ProbeManager) {
-        if(!probes.containsKey(probeManager.probe.serialNumber)) {
-            // add probeManager
-            probes[probeManager.probe.serialNumber] = probeManager
+        if(!probes.containsKey(probeManager.serialNumber)) {
+            // add legacyProbeManager
+            probes[probeManager.serialNumber] = probeManager
 
-            // create new temperature log for probeManager and track it
-            if(!temperatureLogs.containsKey(probeManager.probe.serialNumber)) {
-                temperatureLogs[probeManager.probe.serialNumber] =
-                    ProbeTemperatureLog(probeManager.probe.serialNumber)
+            // create new temperature log for legacyProbeManager and track it
+            if(!temperatureLogs.containsKey(probeManager.serialNumber)) {
+                temperatureLogs[probeManager.serialNumber] =
+                    ProbeTemperatureLog(probeManager.serialNumber)
             }
 
             // maintain reference to log for further processing
-            val temperatureLog = temperatureLogs.getValue(probeManager.probe.serialNumber)
+            val temperatureLog = temperatureLogs.getValue(probeManager.serialNumber)
 
             // monitor this probes state flow
             probeManager.addJob(owner.lifecycleScope.launch {
                 owner.repeatOnLifecycle(Lifecycle.State.CREATED) {
-                    probeManager.probeStateFlow
+                    probeManager.probeFlow
                         .onCompletion {
                             Log.d(LOG_TAG, "Probe State Flow Complete")
                         }
@@ -89,9 +89,8 @@ internal class LogManager {
                             // the state if it hs not already been updated and let the log know
                             // to expect another log request at some point in the future, for its
                             // internal bookkeeping.
-                            if(it.connectionState != DeviceConnectionState.CONNECTED
-                                && probeManager.probe.uploadState != ProbeUploadState.Unavailable) {
-                                probeManager.onNewUploadState(ProbeUploadState.Unavailable)
+                            if(it.connectionState != DeviceConnectionState.CONNECTED && probeManager.uploadState != ProbeUploadState.Unavailable) {
+                                probeManager.uploadState = ProbeUploadState.Unavailable
                                 temperatureLog?.expectFutureLogRequest()
                             }
                     }
@@ -100,25 +99,31 @@ internal class LogManager {
             // monitor this probes device status flow
             probeManager.addJob(owner.lifecycleScope.launch {
                 owner.repeatOnLifecycle(Lifecycle.State.CREATED) {
-                    probeManager.deviceStatusFlow
+                    probeManager.probeStatusFlow
                         .onCompletion {
-                            Log.d(LOG_TAG, "Device Status Flow Complete")
+                            Log.d(LOG_TAG, "Probe Status Flow Complete")
                         }
                         .catch {
-                            Log.i(LOG_TAG, "Device Status Flow Catch: $it")
+                            Log.i(LOG_TAG, "Probde Status Flow Catch: $it")
                         }
                         .collect { deviceStatus ->
-                            when(probeManager.probe.uploadState) {
+                            when(probeManager.uploadState) {
                                 // if upload state is currently unavailable, and we now have a
                                 // ProbeStatus, then we have everything we need to start an upload.
                                 //
                                 // event the new upload state to the client, and they can initiate
                                 // the record transfer when they are ready.
                                 ProbeUploadState.Unavailable -> {
-                                    probeManager.onNewUploadState(ProbeUploadState.ProbeUploadNeeded)
+                                    if(DeviceManager.instance.settings.autoLogTransfer) {
+                                        // note, this will transfer to ProbeUploadInProgress
+                                        requestLogsFromDevice(owner, probeManager.serialNumber)
+                                    }
+                                    else {
+                                        probeManager.uploadState = ProbeUploadState.ProbeUploadNeeded
+                                    }
                                 }
                                 ProbeUploadState.ProbeUploadNeeded -> {
-                                    // do nothing, wait for the client to request the transfer
+                                    // else, do nothing, wait for the client to request the transfer
                                 }
                                 is ProbeUploadState.ProbeUploadInProgress -> {
                                     // only log normal mode packets
@@ -134,7 +139,7 @@ internal class LogManager {
                                     // request and transition state.
                                     if(temperatureLog.logRequestIsStalled) {
                                         val sessionStatus = temperatureLog.completeLogRequest()
-                                        probeManager.onNewUploadState(sessionStatus.toProbeUploadState())
+                                        probeManager.uploadState = sessionStatus.toProbeUploadState()
                                     }
                                 }
                                 is ProbeUploadState.ProbeUploadComplete -> {
@@ -182,7 +187,7 @@ internal class LogManager {
                                     // the log with the data points from the device status message.
                                     // and report out the progress as part of the complete state.
                                     else {
-                                        probeManager.onNewUploadState(sessionStatus.toProbeUploadState())
+                                        probeManager.uploadState = sessionStatus.toProbeUploadState()
                                     }
                                 }
                             }
@@ -210,12 +215,12 @@ internal class LogManager {
 
                             // if we aren't complete, then update the stats of the uploading state
                             if(!uploadProgress.isComplete) {
-                                probeManager.onNewUploadState(uploadProgress.toProbeUploadState())
+                                probeManager.uploadState = uploadProgress.toProbeUploadState()
                             }
                             // otherwise complete the request, and change the state to complete
                             else {
                                 val sessionStatus = temperatureLog.completeLogRequest()
-                                probeManager.onNewUploadState(sessionStatus.toProbeUploadState())
+                                probeManager.uploadState = sessionStatus.toProbeUploadState()
                             }
                     }
                 }
@@ -229,14 +234,14 @@ internal class LogManager {
     }
 
     fun requestLogsFromDevice(owner: LifecycleOwner, serialNumber: String) {
-        val probe = probes[serialNumber] ?: return
+        val probeManager = probes[serialNumber] ?: return
         val log = temperatureLogs[serialNumber] ?: return
-        val sessionInfo = probe.probe.sessionInfo ?: return
+        val sessionInfo = probeManager.sessionInfo ?: return
 
         // prepare log for the request and determine the needed range
         val range =  log.prepareForLogRequest(
-            probe.probe.minSequenceNumber,
-            probe.probe.maxSequenceNumber,
+            probeManager.minSequenceNumber,
+            probeManager.maxSequenceNumber,
             sessionInfo
         )
 
@@ -253,12 +258,10 @@ internal class LogManager {
         val progress = log.startLogRequest(range)
 
         // update the probe's upload state with the progress.
-        owner.lifecycleScope.launch {
-            probe.onNewUploadState(progress.toProbeUploadState())
-        }
+        probeManager.uploadState = progress.toProbeUploadState()
 
         // send the request to the device to start the upload
-        probe.sendLogRequest(range.minSeq, range.maxSeq)
+        probeManager.sendLogRequest(range.minSeq, range.maxSeq)
 
         // processing the resulting LogRequest flow happens in the coroutine above.
     }
@@ -277,18 +280,18 @@ internal class LogManager {
 
     fun createLogFlowForDevice(serialNumber: String): Flow<LoggedProbeDataPoint> {
         return flow {
-            probes[serialNumber]?.let { probe ->
+            probes[serialNumber]?.let { probeManager ->
 
                 // if the device isn't uploading or hasn't completed an upload, then
                 // return out of this flow immediately, there is nothing to do.  the device
                 // needs to connect, or the client needs to initiate the record transfer.
-                if(probe.probe.uploadState !is ProbeUploadState.ProbeUploadInProgress &&
-                        probe.probe.uploadState !is ProbeUploadState.ProbeUploadComplete)  {
+                if(probeManager.uploadState !is ProbeUploadState.ProbeUploadInProgress &&
+                        probeManager.uploadState !is ProbeUploadState.ProbeUploadComplete)  {
                    return@flow
                 }
 
                 // wait for the upload to complete before emitting into the flow.
-                while(probe.probe.uploadState is ProbeUploadState.ProbeUploadInProgress &&
+                while(probeManager.uploadState is ProbeUploadState.ProbeUploadInProgress &&
                         currentCoroutineContext().isActive) {
                     delay(250)
                 }
@@ -305,7 +308,7 @@ internal class LogManager {
                     // into the flow for the consumer.  if we are no longer in an upload complete
                     // syncing state, then exit out of this flow.
                     val sessionId = log.currentSessionId
-                    probe.deviceStatusFlow
+                    probeManager.probeStatusFlow
                         .onCompletion {
                             Log.i(LOG_TAG, "Log Flow: Device Status Flow Complete")
                         }
@@ -313,8 +316,8 @@ internal class LogManager {
                             Log.w(LOG_TAG, "Log Flow: Device Status Flow Catch: $it")
                         }
                         .collect { deviceStatus ->
-                            if(probe.probe.uploadState !is ProbeUploadState.ProbeUploadInProgress &&
-                                probe.probe.uploadState !is ProbeUploadState.ProbeUploadComplete)  {
+                            if(probeManager.uploadState !is ProbeUploadState.ProbeUploadInProgress &&
+                                probeManager.uploadState !is ProbeUploadState.ProbeUploadComplete)  {
                                     throw CancellationException("Upload State is Now Invalid")
                             }
 
@@ -341,7 +344,6 @@ internal class LogManager {
         range: RecordRange,
         currentDeviceStatusSequence: UInt
     ) {
-
         // if for some reason there isn't anything to request,
         // log a message and return
         if(range.size == 0u)  {
@@ -354,9 +356,9 @@ internal class LogManager {
         // initialize the start of the log request with the temperature log
         val progress = log.startLogBackfillRequest(range, currentDeviceStatusSequence)
 
-        // update the probeManager's upload state with the progress.
+        // update the legacyProbeManager's upload state with the progress.
         owner.lifecycleScope.launch {
-            probeManager.onNewUploadState(progress.toProbeUploadState())
+            probeManager.uploadState = progress.toProbeUploadState()
         }
 
         // send the request to the device to start the upload

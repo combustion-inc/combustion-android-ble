@@ -1,7 +1,7 @@
 /*
  * Project: Combustion Inc. Android Framework
  * File: Device.kt
- * Author:
+ * Author: https://github.com/nick-sasquatch
  *
  * MIT License
  *
@@ -50,5 +50,4 @@ data class Device(
     val isDirectConnection: Boolean? = null,
     val productType: CombustionProductType? = null,
     val connectionState: DeviceConnectionState = DeviceConnectionState.DISCONNECTED,
-) {
-}
+)

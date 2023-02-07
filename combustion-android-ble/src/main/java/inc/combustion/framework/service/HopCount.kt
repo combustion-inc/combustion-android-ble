@@ -59,4 +59,7 @@ enum class HopCount(val type: UByte) {
             return values().toList().map { it.toString() }
         }
     }
+
+    val hopCount: UInt
+        get() = type + 1u
 }

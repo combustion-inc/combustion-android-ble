@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: DeviceInformationBleDevice.kt
+ * File: ProbeDiscoveredEvent.kt
  * Author: https://github.com/miwright2
  *
  * MIT License
  *
- * Copyright (c) 2023. Combustion Inc.
+ * Copyright (c) 2022. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,38 +25,26 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package inc.combustion.framework.ble
+package inc.combustion.framework.service
 
-import android.bluetooth.BluetoothAdapter
-import android.util.Log
-import androidx.lifecycle.LifecycleOwner
+/**
+ * Enumerates the asynchronous events that can be collected while the device is
+ * scanning and producing events to the discovered probes flow.
+ *
+ * @see DeviceManager.discoveredProbesFlow
+ */
+sealed class ProbeDiscoveredEvent {
+    /**
+     * Combustion device discovered
+     *
+     * @property serialNumber serial number of the discovered device
+     */
+    data class ProbeDiscovered(
+        val serialNumber: String
+    ) : ProbeDiscoveredEvent()
 
-internal open class DeviceInformationBleDevice(
-    mac: String,
-    owner: LifecycleOwner,
-    advertisement: LegacyProbeAdvertisingData,
-    adapter: BluetoothAdapter
-) : BleDevice(mac, owner, advertisement, adapter) {
-
-    var serialNumber: String? = null
-    var firmwareVersion: String? = null
-    var hardwareRevision: String? = null
-
-    suspend fun readSerialNumber() {
-        if(isConnected.get()) {
-            serialNumber = readSerialNumberCharacteristic()
-        }
-    }
-
-    suspend fun readFirmwareVersion() {
-        if(isConnected.get()) {
-            firmwareVersion = readFirmwareVersionCharacteristic()
-        }
-    }
-
-    suspend fun readHardwareRevision() {
-        if(isConnected.get()) {
-            hardwareRevision = readHardwareRevisionCharacteristic()
-        }
-    }
+    /**
+     * The device cache was cleared.
+     */
+    object DevicesCleared: ProbeDiscoveredEvent()
 }

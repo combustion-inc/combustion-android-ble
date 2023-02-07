@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: IdleMonitor.kt
- * Author: https://github.com/miwright2
+ * File: CombustionAdvertisingData.kt
+ * Author: httpsL//github.com/miwright2
  *
  * MIT License
  *
- * Copyright (c) 2022. Combustion Inc.
+ * Copyright (c) 2023. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,19 +25,29 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package inc.combustion.framework.ble
 
-import android.os.SystemClock
+package inc.combustion.framework.ble.scanning
 
-class IdleMonitor {
-    var lastUpdateTime: Long = 0
+import inc.combustion.framework.service.*
 
-    fun activity() {
-        lastUpdateTime = SystemClock.elapsedRealtime()
-    }
+internal class CombustionAdvertisingData(
+    mac: String,
+    name: String,
+    rssi: Int,
+    productType: CombustionProductType,
+    isConnectable: Boolean,
+    val probeSerialNumber: String,
+    val probeTemperatures: ProbeTemperatures,
+    val probeID: ProbeID,
+    val color: ProbeColor,
+    val mode: ProbeMode,
+    val batteryStatus: ProbeBatteryStatus,
+    val virtualSensors: ProbeVirtualSensors,
+    val hopCount: UInt = 0u
+): BaseAdvertisingData(mac, name, rssi, productType, isConnectable) {
 
-    fun isIdle(timeout: Long): Boolean {
-        return (SystemClock.elapsedRealtime() - lastUpdateTime) >= timeout
-    }
+    val isRepeater: Boolean
+        get() {
+            return productType == CombustionProductType.CHARGER || productType == CombustionProductType.DISPLAY
+        }
 }
-

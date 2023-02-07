@@ -56,6 +56,7 @@ internal class Session(
          * consider the log request stalled.
          */
         const val STALE_LOG_REQUEST_PACKET_COUNT = 3u
+        const val MAX_DROPPED_PACKET_HANDLING = 5000
     }
 
     private val _logs: SortedMap<UInt, LoggedProbeDataPoint> = sortedMapOf()
@@ -148,14 +149,17 @@ internal class Session(
         if(logResponse.sequenceNumber > nextExpectedRecord) {
             logResponseDropCount += (logResponse.sequenceNumber - nextExpectedRecord)
 
-            // track and log the dropped packet
-            for(sequence in nextExpectedRecord..(logResponse.sequenceNumber-1u)) {
-                droppedRecords.add(sequence)
-            }
-
             // log a warning
             Log.w(LOG_TAG, "Detected log response data drop ($serialNumber). " +
                     "Drop range ${nextExpectedRecord}..${logResponse.sequenceNumber-1u}")
+
+            // track and log the dropped packet
+            for(sequence in nextExpectedRecord until logResponse.sequenceNumber) {
+                droppedRecords.add(sequence)
+                if(droppedRecords.size > MAX_DROPPED_PACKET_HANDLING) {
+                    break
+                }
+            }
 
             // but still add this data and resync.  and remove any drops.
             _logs[loggedProbeDataPoint.sequenceNumber] = loggedProbeDataPoint
@@ -218,8 +222,11 @@ internal class Session(
             deviceStatusDropCount += (probeStatus.maxSequenceNumber - nextExpectedDeviceStatus)
 
             // track and log the dropped packet
-            for(sequence in nextExpectedDeviceStatus..(probeStatus.maxSequenceNumber-1u)) {
+            for(sequence in nextExpectedDeviceStatus until probeStatus.maxSequenceNumber) {
                 droppedRecords.add(sequence)
+                if(droppedRecords.size > MAX_DROPPED_PACKET_HANDLING) {
+                    break
+                }
             }
 
             // log a warning message
@@ -234,13 +241,13 @@ internal class Session(
         else if(probeStatus.maxSequenceNumber < nextExpectedDeviceStatus) {
             if(_logs.containsKey(probeStatus.maxSequenceNumber)) {
                 Log.w(LOG_TAG,
-                    "Tried to add duplicate device status? " +
+                    "Dropping duplicate device status: " +
                             "$serialNumber.${probeStatus.maxSequenceNumber} " +
                             "($nextExpectedDeviceStatus)(${probeStatus.maxSequenceNumber})")
             }
             else {
                 Log.w(LOG_TAG,
-                    "Received unexpected old record? " +
+                    "Dropping old device status: " +
                             "$serialNumber.${probeStatus.maxSequenceNumber} " +
                             "($nextExpectedDeviceStatus)(${probeStatus.maxSequenceNumber})")
             }

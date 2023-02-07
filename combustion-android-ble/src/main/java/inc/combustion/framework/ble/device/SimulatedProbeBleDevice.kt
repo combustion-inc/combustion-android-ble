@@ -1,7 +1,7 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: AdvertisingData.kt
- * Author:
+ * File: SimulatedProbeBleDevice.kt
+ * Author: http://github.com/miwright2
  *
  * MIT License
  *
@@ -26,35 +26,10 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble
+package inc.combustion.framework.ble.device
 
-import com.juul.kable.Advertisement
-import inc.combustion.framework.service.CombustionProductType
-
-/**
- * Representation of Combustion device-specific advertising data.
- *
- * @param mac MAC address of the device.
- * @param name Bluetooth name of the device.
- * @param rssi RSSI of the device.
- * @param productType Combustion product type.
- * @param isConnectable Whether the device can be connected to.
- */
-internal open class AdvertisingData(
-    val mac: String,
-    val name: String,
-    val rssi: Int,
-    val productType: CombustionProductType,
-    val isConnectable: Boolean,
-) {
+class SimulatedProbeBleDevice {
     companion object {
-        fun fromAdvertisement(advertisement: Advertisement): AdvertisingData? {
-            return AdvertisingData(
-                advertisement.address,
-                advertisement.name ?: "",
-                advertisement.rssi,
-                CombustionProductType.DISPLAY,
-                false)
-        }
+        const val SIMULATED_MAC = "00:00:00:00:00:00"
     }
 }

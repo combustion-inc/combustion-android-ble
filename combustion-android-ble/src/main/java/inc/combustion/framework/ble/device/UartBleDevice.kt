@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: ProbeBleDevice.kt
- * Author: https://github.com/miwright2
+ * File: UartBleDevice.kt
+ * Author: http://github.com/miwright2
  *
  * MIT License
  *
- * Copyright (c) 2022. Combustion Inc.
+ * Copyright (c) 2023. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,64 +25,64 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package inc.combustion.framework.ble
+package inc.combustion.framework.ble.device
 
 import android.bluetooth.BluetoothAdapter
 import android.util.Log
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import com.juul.kable.WriteType
 import com.juul.kable.characteristicOf
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.uart.*
-import inc.combustion.framework.ble.uart.LogResponse
-import inc.combustion.framework.ble.uart.Response
-import inc.combustion.framework.ble.uart.SessionInfoResponse
-import inc.combustion.framework.ble.uart.SetColorResponse
-import inc.combustion.framework.ble.uart.SetIDResponse
-import inc.combustion.framework.ble.uart.SetPredictionResponse
-import inc.combustion.framework.service.DebugSettings
+import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
+import inc.combustion.framework.service.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 
 internal open class UartBleDevice(
     mac: String,
+    advertisement: CombustionAdvertisingData,
     owner: LifecycleOwner,
-    advertisement: LegacyProbeAdvertisingData,
     adapter: BluetoothAdapter
-) : DeviceInformationBleDevice(mac, owner, advertisement, adapter) {
+) : DeviceInformationBleDevice(mac, advertisement, owner, adapter) {
 
     class MessageCompletionHandler {
         private val waiting = AtomicBoolean(false)
-        private var completionCallback: ((Boolean) -> Unit)? = null
+        private var completionCallback: ((Boolean, Any?) -> Unit)? = null
+        private var job: Job? = null
 
-        fun handled(result: Boolean) {
+        fun handled(result: Boolean, data: Any?) {
+            job?.cancel()
             waiting.set(false)
             completionCallback?.let {
-                it(result)
+                it(result, data)
             }
             completionCallback = null
         }
 
-        fun wait(owner: LifecycleOwner, duration: Long, callback: ((Boolean) -> Unit)?) {
+        fun wait(owner: LifecycleOwner, duration: Long, callback: ((Boolean, Any?) -> Unit)?) {
+            completionCallback?.let {
+                callback?.let { it(false, null) }
+                return
+            }
+
             if(waiting.get()) {
-                completionCallback?.let {
-                    it(false)
-                }
+                callback?.let { it(false, null) }
                 return
             }
 
             waiting.set(true)
             completionCallback = callback
-            owner.lifecycleScope.launch {
+
+            job = owner.lifecycleScope.launch {
                 delay(duration)
-                if(waiting.get()) {
-                    completionCallback?.let {
-                       it(false)
-                    }
+                if(waiting.getAndSet(false)) {
+                    callback?.let { it(false, null) }
+                    completionCallback = null
                 }
             }
         }
@@ -99,11 +99,13 @@ internal open class UartBleDevice(
         )
     }
 
-    protected suspend fun writeUartCharacteristic(data: ByteArray) {
+    var isInDfuMode: Boolean = false
+
+    fun writeUartCharacteristic(data: ByteArray) {
         if(isConnected.get()) {
             owner.lifecycleScope.launch(Dispatchers.IO) {
                 try {
-                    peripheral.write(UART_RX_CHARACTERISTIC, data)
+                    peripheral.write(UART_RX_CHARACTERISTIC, data, WriteType.WithoutResponse)
                 } catch(e: Exception)  {
                     Log.w(LOG_TAG, "UART-TX: Unable to write to RX characteristic.")
                 }
@@ -111,7 +113,7 @@ internal open class UartBleDevice(
         }
     }
 
-    protected suspend fun observeUartCharacteristic(callback: (suspend (data: UByteArray) -> Unit)? = null) {
+    suspend fun observeUartCharacteristic(callback: (suspend (data: UByteArray) -> Unit)?) {
         peripheral.observe(UART_TX_CHARACTERISTIC)
             .onCompletion {
                 if (DebugSettings.DEBUG_LOG_BLE_UART_IO) {

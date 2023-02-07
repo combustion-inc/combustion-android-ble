@@ -1,7 +1,7 @@
 /*
- * Project: Combustion Inc. Android Framework
- * File: ProbeAdvertisingData.kt
- * Author:
+ * Project: Combustion Inc. Android Example
+ * File: NetworkState.kt
+ * Author: https://github.com/miwright2
  *
  * MIT License
  *
@@ -25,27 +25,13 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-
-package inc.combustion.framework.ble
-
-import inc.combustion.framework.service.CombustionProductType
+package inc.combustion.framework.service
 
 /**
- * Advertising data specific to a Combustion probe.
- *
- * @note This data may be sourced from either a probe directly or rebroadcast from a MeatNet node.
- *
- * @param isDirectConnection If true, this advertising data was obtained directly from a probe; if
- *                           false, the data was rebroadcast over MeatNet.
+ * Enumerates the current network state
  */
-internal class ProbeAdvertisingData(
-    mac: String,
-    name: String,
-    rssi: Int,
-    productType: CombustionProductType,
-    isConnectable: Boolean,
-
-    val isDirectConnection: Boolean,
-    // TODO: Additional probe advertising data (temperatures, etc.)
-): AdvertisingData(mac, name, rssi, productType, isConnectable) {
-}
+data class NetworkState(
+    val bluetoothOn: Boolean = false,
+    val scanningOn: Boolean = false,
+    val dfuModeOn: Boolean = false
+)

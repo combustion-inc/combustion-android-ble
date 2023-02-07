@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: ProbeAdvertisingData.kt
- * Author: https://github.com/miwright2
+ * File: BaseAdvertisingData.kt
+ * Author: http://github.com/miwright2
  *
  * MIT License
  *
- * Copyright (c) 2022. Combustion Inc.
+ * Copyright (c) 2023. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,39 +25,32 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package inc.combustion.framework.ble
 
-import android.os.Build
+package inc.combustion.framework.ble.scanning
+
 import android.bluetooth.le.ScanResult
+import android.os.Build
 import com.juul.kable.Advertisement
+import inc.combustion.framework.ble.device.DeviceID
 import inc.combustion.framework.service.*
 import kotlin.reflect.full.memberProperties
 import kotlin.reflect.jvm.isAccessible
 
 /**
- * Data object for probe's advertising packet.
+ * Representation of Combustion device-specific advertising data.
  *
- * @property name Bluetooth name
- * @property mac Bluetooth MAC address
- * @property rssi Bluetooth RSSI
- * @property serialNumber Device serial number
- * @property type Device type
- * @property isConnectable True if the device is currently connectable
- * @property probeTemperatures Probe's current temperature values.
+ * @param mac MAC address of the device.
+ * @param name Bluetooth name of the device.
+ * @param rssi RSSI of the device.
+ * @param productType Combustion product type.
+ * @param isConnectable Whether the device can be connected to.
  */
-internal data class LegacyProbeAdvertisingData (
-    val name: String,
+open class BaseAdvertisingData(
     val mac: String,
+    val name: String,
     val rssi: Int,
-    val serialNumber: String,
-    val type: CombustionProductType,
+    val productType: CombustionProductType,
     val isConnectable: Boolean,
-    val probeTemperatures: ProbeTemperatures,
-    val id: ProbeID,
-    val color: ProbeColor,
-    val mode: ProbeMode,
-    val batteryStatus: ProbeBatteryStatus,
-    val virtualSensors: ProbeVirtualSensors
 ) {
     companion object {
         private const val VENDOR_ID = 0x09C7
@@ -66,12 +59,36 @@ internal data class LegacyProbeAdvertisingData (
         private val TEMPERATURE_RANGE = 5..17
         private val MODE_COLOR_ID_RANGE = 18..18
         private val STATUS_RANGE = 19..19
+        private val NETWORK_INFO_RANGE = 20..20
 
-        fun fromAdvertisement(advertisement: Advertisement): LegacyProbeAdvertisingData? {
-            // Check vendor ID of Manufacturing data
-            val manufacturerData = advertisement.manufacturerData(VENDOR_ID)?.toUByteArray() ?: return null
-
+        /**
+         * Factory method to create a BaseAdvertisingData instance from an
+         * advertising packet received from the the DeviceScanner.
+         *
+         * @param advertisement Advertising packet
+         * @return
+         */
+        fun create(advertisement: Advertisement): BaseAdvertisingData {
             val scanResult = advertisement.getPrivateProperty<Advertisement, ScanResult>("scanResult")
+            val address = advertisement.address
+            val name = advertisement.name ?: ""
+            val rssi = advertisement.rssi
+            val isConnectable = scanResult?.getIsConnectable() ?: false
+            val base = BaseAdvertisingData(
+                    mac = address,
+                    name = name,
+                    rssi = rssi,
+                    productType = CombustionProductType.UNKNOWN,
+                    isConnectable = isConnectable
+                )
+
+            // get Combustion's manufacturer data, if not available create the base class.
+            val manufacturerData = advertisement.manufacturerData(VENDOR_ID)?.toUByteArray()
+                ?: run { return base }
+
+            val type = CombustionProductType.fromUByte(
+                manufacturerData.copyOf().sliceArray(PRODUCT_TYPE_RANGE)[0]
+            )
 
             var serial: UInt = 0u
             // Reverse the byte order (this is a little-endian packed bitfield)
@@ -82,9 +99,6 @@ internal data class LegacyProbeAdvertisingData (
             }
 
             val serialNumber = Integer.toHexString(serial.toInt()).uppercase()
-            val type = CombustionProductType.fromUByte(
-                manufacturerData.copyOf().sliceArray(PRODUCT_TYPE_RANGE)[0]
-            )
 
             val probeTemperatures = ProbeTemperatures.fromRawData(
                 manufacturerData.copyOf().sliceArray(TEMPERATURE_RANGE)
@@ -102,74 +116,59 @@ internal data class LegacyProbeAdvertisingData (
             else
                 null
 
+            // use hopCount if available (and turn it into an unsigned integer)
+            val hopCount = if(type.isRepeater && manufacturerData.size > 20)
+                HopCount.fromUByte(manufacturerData.copyOf().sliceArray(NETWORK_INFO_RANGE)[0]).hopCount
+            else
+                0u
+
             val probeColor = modeColorId?.let { ProbeColor.fromUByte(it) } ?: run { ProbeColor.COLOR1 }
             val probeID = modeColorId?.let { ProbeID.fromUByte(it) } ?: run { ProbeID.ID1 }
             val probeMode = modeColorId?.let { ProbeMode.fromUByte(it) } ?: run { ProbeMode.NORMAL }
             val batteryStatus = deviceStatus?.let { ProbeBatteryStatus.fromUByte(it) } ?: run { ProbeBatteryStatus.OK }
             val virtualSensors = deviceStatus?.let { ProbeVirtualSensors.fromDeviceStatus(it) } ?: run { ProbeVirtualSensors.DEFAULT }
 
-            // API level 26 (Android 8) and Higher
-            return if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                LegacyProbeAdvertisingData(
-                    advertisement.name ?: "",
-                    advertisement.address,
-                    advertisement.rssi,
-                    serialNumber,
-                    type,
-                    scanResult?.isConnectable ?: false,
-                    probeTemperatures,
-                    probeID,
-                    probeColor,
-                    probeMode,
-                    batteryStatus,
-                    virtualSensors
-                )
-            // Lower than API level 26, always return true for isConnectable
-            } else {
-                LegacyProbeAdvertisingData(
-                    advertisement.name ?: "",
-                    advertisement.address,
-                    advertisement.rssi,
-                    serialNumber,
-                    type,
-                    true,
-                    probeTemperatures,
-                    probeID,
-                    probeColor,
-                    probeMode,
-                    batteryStatus,
-                    virtualSensors
-                )
-            }
-        }
-    }
-
-    enum class CombustionProductType(val type: UByte) {
-        UNKNOWN(0x00u),
-        PROBE(0x01u),
-        NODE(0x02u);
-
-        companion object {
-            fun fromUByte(byte: UByte) : CombustionProductType {
-                return when(byte.toUInt()) {
-                    0x01u -> PROBE
-                    0x02u -> NODE
-                    else -> UNKNOWN
+            return when(type) {
+                CombustionProductType.UNKNOWN -> {
+                    base
+                }
+                CombustionProductType.PROBE, CombustionProductType.CHARGER, CombustionProductType.DISPLAY -> {
+                    CombustionAdvertisingData(
+                        mac = address,
+                        name = name,
+                        rssi = rssi,
+                        productType = type,
+                        isConnectable = isConnectable,
+                        probeSerialNumber = serialNumber,
+                        probeTemperatures = probeTemperatures,
+                        probeID = probeID,
+                        color = probeColor,
+                        mode = probeMode,
+                        batteryStatus = batteryStatus,
+                        virtualSensors = virtualSensors,
+                        hopCount = hopCount
+                    )
                 }
             }
         }
     }
+
+    /**
+     * Unique ID for the Combustion Device that produced this data class.
+     */
+    val id: DeviceID
+        get() = mac
 }
 
-/**
- * This extension gets access to the ScanResult to return the isConnectable
- * state of the advertisement.
- *
- * See related feature request:
- * https://github.com/JuulLabs/kable/issues/210
- *
- * @return value of Advertisement.ScanResult.isConnectable
- */
+private inline fun ScanResult.getIsConnectable(): Boolean {
+    // API level 26 (Android 8) and Higher
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        isConnectable
+    } else {
+        true
+    }
+}
+
 @Suppress("UNCHECKED_CAST")
 private inline fun <reified T : Any, R> T.getPrivateProperty(name: String): R? =
     T::class

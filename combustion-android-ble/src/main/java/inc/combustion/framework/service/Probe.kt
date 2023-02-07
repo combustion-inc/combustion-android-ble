@@ -85,7 +85,8 @@ data class Probe(
     val predictionSeconds: UInt? = null,
     val rawPredictionSeconds: UInt? = null,
     val estimatedCoreCelsius: Double? = null,
-    val predictionStale: Boolean = false
+    val hopCount: UInt? = null,
+    val predictionStale: Boolean = true
 ) {
     val serialNumber = baseDevice.serialNumber
     val mac = baseDevice.mac
