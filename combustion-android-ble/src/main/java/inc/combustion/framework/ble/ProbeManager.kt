@@ -42,7 +42,6 @@ import inc.combustion.framework.service.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.sync.withLock
 
 /**
  * This class is responsible for managing and arbitrating the data links to a temperature
@@ -70,10 +69,6 @@ internal class ProbeManager(
         private const val PROBE_PREDICTION_IDLE_POLL_RATE_MS = 1000L
         private const val PROBE_PREDICTION_IDLE_TIMEOUT_MS = 15000L
         private const val PROBE_INSTANT_READ_IDLE_TIMEOUT_MS = 5000L
-        private val MAX_PREDICTION_SECONDS = 60u * 60u * 4u
-        private val LOW_RESOLUTION_CUTOFF_SECONDS = 60u * 5u
-        private val LOW_RESOLUTION_PRECISION_SECONDS = 15u
-        private val PREDICTION_TIME_UPDATE_COUNT = 3u
     }
 
     // encapsulates logic for managing network data links
@@ -144,9 +139,13 @@ internal class ProbeManager(
             return _probe.value.maxSequenceNumber
         }
 
-    private var predictionCountdownSeconds: UInt? = null
+    private val predictionManager = PredictionManager()
 
     init {
+        predictionManager.setPredictionCallback {
+            updatePredictionInfo(it)
+        }
+
         monitorPredictionStatus()
     }
 
@@ -226,16 +225,20 @@ internal class ProbeManager(
         base.observeRemoteRssi { rssi ->  handleRemoteRssi(base, rssi) }
     }
 
-    fun monitorPredictionStatus() {
+    private fun monitorPredictionStatus() {
         jobManager.addJob(owner.lifecycleScope.launch(Dispatchers.IO) {
             while(isActive) {
                 delay(PROBE_PREDICTION_IDLE_POLL_RATE_MS)
 
-                if(predictionStatusMonitor.isIdle(PROBE_PREDICTION_IDLE_TIMEOUT_MS) && !_probe.value.predictionStale) {
-                    _probe.value = _probe.value.copy(predictionStale = true)
-                }
+                publishPredictionStale(predictionStatusMonitor.isIdle(PROBE_PREDICTION_IDLE_TIMEOUT_MS))
             }
         })
+    }
+
+    private fun publishPredictionStale(predictionStale: Boolean) {
+        if(predictionStale != _probe.value.predictionStale) {
+            _probe.value = _probe.value.copy(predictionStale = predictionStale)
+        }
     }
 
     private suspend fun handleProbeStatus(device: ProbeBleDeviceBase, status: ProbeStatus) {
@@ -395,7 +398,7 @@ internal class ProbeManager(
             updateInstantRead(status.temperatures.values[0])
         } else if(status.mode == ProbeMode.NORMAL) {
             updateTemperatures(status.temperatures, status.virtualSensors)
-            updatePredictionStatus(status.predictionStatus, _probe.value.maxSequenceNumber)
+            updatePredictionStatus(status.predictionStatus, status.maxSequenceNumber)
         }
 
         updateBatteryIdColor(status.batteryStatus, status.id, status.color)
@@ -412,42 +415,19 @@ internal class ProbeManager(
     private fun updatePredictionStatus(predictionStatus: PredictionStatus?, maxSequenceNumber: UInt) {
         predictionStatusMonitor.activity()
 
-        // handle large predictions and prediction resolution
-        predictionStatus?.let {
-            val rawPrediction = it.predictionValueSeconds
+        predictionManager.updatePredictionStatus(predictionStatus, maxSequenceNumber)
+    }
 
-            predictionCountdownSeconds = if(rawPrediction > MAX_PREDICTION_SECONDS) {
-                null
-            }
-            else if(rawPrediction < LOW_RESOLUTION_CUTOFF_SECONDS) {
-                rawPrediction
-            }
-            else if(predictionCountdownSeconds == null || (maxSequenceNumber % PREDICTION_TIME_UPDATE_COUNT) == 0u) {
-                val remainder = rawPrediction % LOW_RESOLUTION_PRECISION_SECONDS
-                if(remainder > (LOW_RESOLUTION_PRECISION_SECONDS / 2u)) {
-                    // round up
-                    rawPrediction + (LOW_RESOLUTION_PRECISION_SECONDS - remainder)
-                }
-                else {
-                    // round down
-                    rawPrediction - remainder
-                }
-            }
-            else {
-                predictionCountdownSeconds
-            }
-        }
-
+    private fun updatePredictionInfo(predictionInfo: PredictionManager.PredictionInfo?) {
         _probe.value = _probe.value.copy(
-            predictionState = predictionStatus?.predictionState,
-            predictionMode = predictionStatus?.predictionMode,
-            predictionType = predictionStatus?.predictionType,
-            setPointTemperatureCelsius = predictionStatus?.setPointTemperature,
-            heatStartTemperatureCelsius = predictionStatus?.heatStartTemperature,
-            rawPredictionSeconds = predictionStatus?.predictionValueSeconds,
-            predictionSeconds = predictionCountdownSeconds,
-            estimatedCoreCelsius = predictionStatus?.estimatedCoreTemperature,
-            predictionStale = false
+            predictionState = predictionInfo?.predictionState,
+            predictionMode = predictionInfo?.predictionMode,
+            predictionType = predictionInfo?.predictionType,
+            setPointTemperatureCelsius = predictionInfo?.predictionSetPointTemperature,
+            heatStartTemperatureCelsius = predictionInfo?.heatStartTemperature,
+            rawPredictionSeconds = predictionInfo?.rawPredictionSeconds,
+            predictionSeconds = predictionInfo?.secondsRemaining,
+            estimatedCoreCelsius = predictionInfo?.estimatedCoreTemperature
         )
     }
 
