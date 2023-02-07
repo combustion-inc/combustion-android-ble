@@ -227,6 +227,10 @@ internal class ProbeManager(
 
     private fun monitorPredictionStatus() {
         jobManager.addJob(owner.lifecycleScope.launch(Dispatchers.IO) {
+            // Wait before starting to monitor prediction status, this allows for initial
+            // connection time
+            delay(PROBE_PREDICTION_IDLE_TIMEOUT_MS)
+
             while(isActive) {
                 delay(PROBE_PREDICTION_IDLE_POLL_RATE_MS)
 
