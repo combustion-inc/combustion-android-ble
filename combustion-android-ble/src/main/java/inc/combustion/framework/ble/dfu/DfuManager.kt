@@ -50,7 +50,7 @@ internal class DfuManager(
     private var owner: LifecycleOwner,
     private var context: Context,
     private var adapter: BluetoothAdapter, // TODO: Should this be nullable? Better to get from context?
-    notificationTarget: Class<out Activity?>
+    private val notificationTarget: Class<out Activity?>?
 ) {
 
     private val devices = hashMapOf<DeviceID, DfuBleDevice>()
@@ -77,8 +77,6 @@ internal class DfuManager(
 
     init {
         Log.i(LOG_TAG, "Initializing DFU manager")
-
-        DfuService.notifyActivity = notificationTarget
 
         _initialized.set(true)
     }
@@ -129,6 +127,12 @@ internal class DfuManager(
      * This flow can also be obtained by using [dfuFlowForDevice].
      */
     fun performDfu(id: DeviceID, file: Uri): StateFlow<DfuState>? {
+        if(notificationTarget == null) {
+            TODO("You must provide a Notification Target when initializing Combustion Service to use DFU")
+        }
+
+        DfuService.notifyActivity = notificationTarget
+
         if (!enabled) {
             return null
         }

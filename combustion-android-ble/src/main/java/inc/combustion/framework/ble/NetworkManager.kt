@@ -64,6 +64,7 @@ internal class NetworkManager(
     private val devices = hashMapOf<DeviceID, DeviceHolder>()
     private val meatNetLinks = hashMapOf<LinkID, LinkHolder>()
     private val probeManagers = hashMapOf<String, ProbeManager>()
+    private val deviceInformationDevices = hashMapOf<DeviceID, DeviceInformationBleDevice>()
 
     companion object {
         private const val FLOW_CONFIG_REPLAY = 5
@@ -306,6 +307,8 @@ internal class NetworkManager(
 
     fun clearDevices() {
         probeManagers.forEach { (_, probe) -> probe.finish() }
+        deviceInformationDevices.forEach{ (_, device) -> device.finish() }
+        deviceInformationDevices.clear()
         probeManagers.clear()
         devices.clear()
         meatNetLinks.clear()
@@ -402,13 +405,12 @@ internal class NetworkManager(
             when(device) {
                 is DeviceHolder.ProbeHolder -> {
                     meatNetLinks[linkId] = LinkHolder.ProbeHolder(device.probe)
-                    probeManger?.addProbe(device.probe, device.probe.baseDevice)
+                    probeManger?.addProbe(device.probe, device.probe.baseDevice, advertisement)
                 }
                 is DeviceHolder.RepeaterHolder -> {
-                    val repeatedProbe = RepeatedProbeBleDevice(serialNumber, device.repeater, advertisement
-                    )
+                    val repeatedProbe = RepeatedProbeBleDevice(serialNumber, device.repeater, advertisement)
                     meatNetLinks[linkId] = LinkHolder.RepeatedProbeHolder(repeatedProbe)
-                    probeManger?.addRepeatedProbe(repeatedProbe, device.repeater)
+                    probeManger?.addRepeatedProbe(repeatedProbe, device.repeater, advertisement)
                 }
                 else -> NOT_IMPLEMENTED("Unknown type of device holder")
             }
@@ -428,7 +430,7 @@ internal class NetworkManager(
                     }
                 }
                 else {
-                    if(firmwareStateOfNetwork[advertisingData.id] == null) {
+                    if(!firmwareStateOfNetwork.containsKey(advertisingData.id)) {
                         handleMeatNetLinkWithoutProbe(advertisingData)
                     }
                 }
@@ -437,30 +439,39 @@ internal class NetworkManager(
     }
 
     private fun handleMeatNetLinkWithoutProbe(advertisement: CombustionAdvertisingData) {
-        // Create device for reading firmware information
-        val device = DeviceInformationBleDevice(advertisement.id, advertisement, owner, adapter)
+        if(!deviceInformationDevices.containsKey(advertisement.id)) {
+            // construct a device info so that we can read the details
+            val device = DeviceInformationBleDevice(advertisement.id, advertisement, owner, adapter)
+            deviceInformationDevices[device.id] = device
 
-        // Setup connection state handler
-        device.observeConnectionState { connectionState ->
-            if(connectionState == DeviceConnectionState.CONNECTED) {
-                owner.lifecycleScope.launch {
+            // read details once connected
+            device.observeConnectionState { connectionState ->
+                if(connectionState == DeviceConnectionState.CONNECTED) {
                     device.firmwareVersion ?: run {
                         device.readFirmwareVersion()
-                    }
-                }.invokeOnCompletion {
-                    device.firmwareVersion?.let { firmwareVersion ->
-                        // Add to firmware state map
-                        val node = FirmwareState.Node(advertisement.id, advertisement.productType, firmwareVersion)
-                        firmwareStateOfNetwork[advertisement.id] = node
+
+                        device.firmwareVersion?.let { firmwareVersion ->
+                            // Add to firmware state map
+                            val node = FirmwareState.Node(device.id, device.productType, firmwareVersion)
+                            firmwareStateOfNetwork[device.id] = node
+                        }
                     }
 
-                    // Disconnect after reading firmware version
-                    device.disconnect()
+                    // free up resources
+                    device.finish()
+
+                    // if we don't have the details at this point, we are going to want to try again
+                    // on the next advertising packet
+                    if(!firmwareStateOfNetwork.containsKey(device.id)) {
+                        deviceInformationDevices.remove(device.id)
+                    }
                 }
             }
-        }
 
-        // Connect to device
-        device.connect()
+            // Connect to device
+            if(device.isDisconnected.get() && device.isConnectable.get()) {
+                device.connect()
+            }
+        }
     }
 }

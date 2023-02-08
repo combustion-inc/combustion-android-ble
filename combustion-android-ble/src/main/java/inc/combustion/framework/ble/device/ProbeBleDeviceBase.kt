@@ -61,6 +61,7 @@ internal abstract class ProbeBleDeviceBase() {
     // identifiers
     abstract val linkId: LinkID
     abstract val id: DeviceID
+    abstract val probeSerialNumber: String
 
     // advertising
     abstract val advertisement: CombustionAdvertisingData?
