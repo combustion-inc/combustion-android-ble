@@ -48,7 +48,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 internal class RepeatedProbeBleDevice (
-    private val probeSerialNumber: String,
+    override val probeSerialNumber: String,
     private val uart: UartBleDevice,
     advertisement: CombustionAdvertisingData,
 ) : ProbeBleDeviceBase() {

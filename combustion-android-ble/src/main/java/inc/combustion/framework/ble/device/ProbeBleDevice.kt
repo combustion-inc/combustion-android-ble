@@ -78,6 +78,8 @@ internal class ProbeBleDevice (
         }
     override val id = uart.id
 
+    override val probeSerialNumber: String = probeAdvertisingData.probeSerialNumber
+
     // ble properties
     override val rssi: Int get() { return uart.rssi }
     override val connectionState: DeviceConnectionState get() { return uart.connectionState }

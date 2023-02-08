@@ -152,15 +152,17 @@ internal class ProbeManager(
 
     fun addJob(job: Job) = jobManager.addJob(job)
 
-    fun addProbe(probe: ProbeBleDevice, baseDevice: DeviceInformationBleDevice) {
+    fun addProbe(probe: ProbeBleDevice, baseDevice: DeviceInformationBleDevice, advertisement: CombustionAdvertisingData) {
         if(arbitrator.addProbe(probe, baseDevice)) {
+            handleAdvertisingPackets(probe, advertisement)
             observe(probe)
             Log.i(LOG_TAG, "PM($serialNumber) is managing link ${probe.linkId}")
         }
     }
 
-    fun addRepeatedProbe(repeatedProbe: RepeatedProbeBleDevice, repeater: DeviceInformationBleDevice) {
+    fun addRepeatedProbe(repeatedProbe: RepeatedProbeBleDevice, repeater: DeviceInformationBleDevice, advertisement: CombustionAdvertisingData) {
         if(arbitrator.addRepeatedProbe(repeatedProbe, repeater))  {
+            handleAdvertisingPackets(repeatedProbe, advertisement)
             observe(repeatedProbe)
             Log.i(LOG_TAG, "PM($serialNumber) is managing link ${repeatedProbe.linkId}")
         }
@@ -262,14 +264,19 @@ internal class ProbeManager(
             return
         }
 
-        if(arbitrator.shouldUpdateDataFromAdvertisingPacket(device)) {
+        if(arbitrator.shouldUpdateDataFromAdvertisingPacket(device, advertisement)) {
             updateDataFromAdvertisement(advertisement)
         }
 
-        if(arbitrator.shouldUpdateConnectionStateFromAdvertisingPacket(device)) {
-            updateConnectionStateFromAdvertisement(
-                connectable = advertisement.isConnectable
-            )
+        if(settings.meatNetEnabled) {
+            // if using meatnet, then the framework is automatically managing the connection, so
+            // we can push out that the state is connectable, independent of what is being advertised.
+            updateConnectionStateFromAdvertisement(connectable = true)
+        }
+        else if (device is ProbeBleDevice){
+            // if not using meatnet, then we can only connect to probes, so use the connectable flag
+            // in the advertising packet.
+            updateConnectionStateFromAdvertisement(connectable = advertisement.isConnectable)
         }
 
         if(arbitrator.shouldConnect(device)) {
@@ -282,8 +289,6 @@ internal class ProbeManager(
         val isConnected = state == DeviceConnectionState.CONNECTED
         val isDisconnected = state == DeviceConnectionState.DISCONNECTED
 
-        arbitrator.handleConnectionState(device, state)
-
         if(isConnected) {
             Log.i(LOG_TAG, "PM($serialNumber): ${device.productType}[${device.id}] is connected.")
             handleConnectedState(device)
@@ -293,22 +298,37 @@ internal class ProbeManager(
             // perform any cleanup
             device.disconnect()
 
-            // update
-            if(arbitrator.shouldUpdateOnDisconnect(device)) {
-                updateOnDisconnected()
-            }
-
             // remove this item from the list of firmware details for the network
             dfuDisconnectedNodeCallback(device.id)
         }
 
-        if(arbitrator.shouldUpdateConnectionState(device, state)) {
+        if(settings.meatNetEnabled) {
+            val meatNetState = if(arbitrator.isConnectedToMeatNet()) DeviceConnectionState.CONNECTED else DeviceConnectionState.DISCONNECTED
+
+            // if not using meatnet, then we use the connection state of the direct link
+            _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(connectionState = meatNetState))
+
+            // TODO: MeatNet Session Information, Firmware Version & Hardware Rev Handling
+            // if(isDisconnected) {
+            //      not sure yet
+            // }
+            //
+        }
+        else if (device is ProbeBleDevice) {
+            // if not using meatnet, then we use the connection state of the direct link
             _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(connectionState = state))
+
+            if(isDisconnected) {
+                sessionInfo = null
+                _probe.value = _probe.value.copy(
+                    baseDevice = _probe.value.baseDevice.copy(fwVersion = null, hwRevision = null),
+                    sessionInfo = null,
+                )
+            }
         }
     }
 
     private fun handleOutOfRange(device: ProbeBleDeviceBase) {
-        arbitrator.handleOutOfRange(device)
         if(arbitrator.shouldUpdateOnOutOfRange(device)) {
             updateStateOnOutOfRange()
         }
@@ -482,14 +502,6 @@ internal class ProbeManager(
         sessionInfo = info
         _probe.value = _probe.value.copy(
             sessionInfo = info
-        )
-    }
-
-    private fun updateOnDisconnected() {
-        sessionInfo = null
-        _probe.value = _probe.value.copy(
-            baseDevice = _probe.value.baseDevice.copy(fwVersion = null, hwRevision = null),
-            sessionInfo = null,
         )
     }
 }
