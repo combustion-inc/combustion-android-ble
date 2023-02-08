@@ -44,7 +44,7 @@ internal class DataLinkArbitrator(
     // meatnet links to probe
     private val repeatedProbeBleDevices = mutableListOf<RepeatedProbeBleDevice>()
 
-    // metnet network nodes
+    // meatnet network nodes
     private val networkNodes = hashMapOf<DeviceID, DeviceInformationBleDevice>()
 
     fun finish() {

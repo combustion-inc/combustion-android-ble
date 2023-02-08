@@ -27,6 +27,7 @@
  */
 package inc.combustion.framework.service
 
+import android.app.Activity
 import android.app.Notification
 import android.app.NotificationManager
 import android.bluetooth.BluetoothManager
@@ -37,6 +38,7 @@ import android.util.Log
 import androidx.lifecycle.LifecycleService
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.*
+import inc.combustion.framework.ble.dfu.DfuManager
 import inc.combustion.framework.log.LogManager
 import kotlinx.coroutines.flow.*
 import java.util.*
@@ -52,17 +54,25 @@ class CombustionService : LifecycleService() {
     private val binder = CombustionServiceBinder()
 
     internal var networkManager: NetworkManager? = null
+    internal var dfuManager: DfuManager? = null
 
     internal companion object {
+        private lateinit var dfuNotificationTarget: Class<out Activity?>
         private val serviceIsStarted = AtomicBoolean(false)
         var serviceNotification : Notification? = null
         var notificationId = 0
         lateinit var settings: DeviceManager.Settings
 
-        fun start(context: Context, notification: Notification?, serviceSettings: DeviceManager.Settings = DeviceManager.Settings()): Int {
+        fun start(
+            context: Context,
+            notification: Notification?,
+            dfuNotificationTarget: Class<out Activity?>,
+            serviceSettings: DeviceManager.Settings = DeviceManager.Settings(),
+        ): Int {
             if(!serviceIsStarted.get()) {
                 settings = serviceSettings
                 serviceNotification = notification
+                this.dfuNotificationTarget = dfuNotificationTarget
                 notificationId = ThreadLocalRandom.current().asKotlinRandom().nextInt()
                 Intent(context, CombustionService::class.java).also { intent ->
                     context.startService(intent)
@@ -109,6 +119,8 @@ class CombustionService : LifecycleService() {
 
         val bluetooth = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         networkManager = NetworkManager(this, bluetooth.adapter, settings)
+
+        dfuManager = DfuManager(this, this, bluetooth.adapter, dfuNotificationTarget)
 
         // setup receiver to see when platform Bluetooth state changes
         registerReceiver(
@@ -182,9 +194,11 @@ class CombustionService : LifecycleService() {
 
     internal fun startDfuMode() {
         networkManager?.startDfuMode()
+        dfuManager?.start()
     }
 
     internal fun stopDfuMode() {
+        dfuManager?.stop()
         networkManager?.stopDfuMode()
     }
 }

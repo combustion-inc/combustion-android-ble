@@ -1,7 +1,7 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: Device.kt
- * Author: https://github.com/nick-sasquatch
+ * File: DfuSystemState.kt
+ * Author:
  *
  * MIT License
  *
@@ -26,29 +26,28 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.service
+package inc.combustion.framework.service.dfu
 
 import inc.combustion.framework.ble.device.DeviceID
 
-/**
- * Representation of a Combustion device.
- *
- * @property serialNumber The device serial number.
- * @property mac The device's MAC address.
- * @property fwVersion The device's firmware version.
- * @property hwRevision The device's hardware revision.
- * @property rssi The BLE RSSI value.
- * @property productType The device product type.
- * @property connectionState The device's current BLE connection state.
- */
-data class Device(
-    val serialNumber: String = "",
-    val mac: String,
-    val fwVersion: FirmwareVersion? = null,
-    val hwRevision: String? = null,
-    val rssi: Int = 0,
-    val productType: CombustionProductType? = null,
-    val connectionState: DeviceConnectionState = DeviceConnectionState.DISCONNECTED,
-) {
-    val id: DeviceID = mac
+sealed class DfuSystemState {
+    /**
+     * The framework is exiting DFU mode.
+     */
+    object DfuModeOff : DfuSystemState()
+
+    /**
+     * The framework is entering DFU mode.
+     */
+    object DfuModeOn : DfuSystemState()
+
+    /**
+     * The DFU system discovered a device with the associated ID [id].
+     */
+    data class DeviceDiscovered(val id: DeviceID) : DfuSystemState()
+
+    /**
+     * The device cache was cleared.
+     */
+    object DevicesCleared : DfuSystemState()
 }

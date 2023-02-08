@@ -27,16 +27,21 @@
  */
 package inc.combustion.framework.service
 
+import android.app.Activity
 import android.app.Application
 import android.app.Notification
 import android.content.ComponentName
 import android.content.ServiceConnection
+import android.net.Uri
 import android.os.IBinder
 import android.util.Log
 import inc.combustion.framework.Combustion
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.NetworkManager
 import inc.combustion.framework.log.LogManager
+import inc.combustion.framework.ble.device.DeviceID
+import inc.combustion.framework.ble.dfu.DfuManager
+import inc.combustion.framework.service.dfu.DfuSystemState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -117,12 +122,17 @@ class DeviceManager(
          *  in the foreground.
          * @return notification ID
          */
-        fun startCombustionService(notification: Notification?): Int {
+        fun startCombustionService(
+            notification: Notification?,
+            dfuNotificationTarget: Class<out Activity?>,
+        ): Int {
             if(!connected.get()) {
                 if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
                     Log.d(LOG_TAG, "Start Service")
 
-                return CombustionService.start(app.applicationContext, notification, INSTANCE.settings)
+                return CombustionService.start(
+                    app.applicationContext, notification, dfuNotificationTarget, INSTANCE.settings
+                )
             }
             return 0;
         }
@@ -498,21 +508,45 @@ class DeviceManager(
     }
 
     /**
-     * TODO - Document Me
+     * State flow containing the firmware details for all nodes on the network.
+     */
+    fun getNetworkFirmwareState(): StateFlow<FirmwareState> {
+        return NetworkManager.FIRMWARE_UPDATE_STATE_FLOW
+    }
+
+    /**
+     * Transitions the framework into DFU mode.
      */
     fun startDfuMode() = service.startDfuMode()
 
     /**
-     * TODO - Document Me
+     * Transitions the framework out of DFU mode and back into 'normal' mode.
      */
     fun stopDfuMode() = service.stopDfuMode()
 
     /**
-     * State flow containing the firmware details for all nodes on the network.
+     * Flow exposing the DFU system's overall state.
      */
-    fun getNetworkFirmwareState(): StateFlow<FirmwareState>? {
-        return service.networkManager?.firmwareUpdateState
-    }
+    val dfuSystemStateFlow : SharedFlow<DfuSystemState>
+        get() {
+            return DfuManager.SYSTEM_STATE_FLOW
+        }
+
+    /**
+     * A set of all devices that are currently available to perform a DFU operation on.
+     */
+    val dfuDevices: Set<DeviceID>
+        get() {
+            return service.dfuManager?.availableDevices?.toSet() ?: setOf()
+        }
+
+    /**
+     * A flow exposing DFU status for a specific device.
+     */
+    fun dfuFlowForDevice(id: DeviceID) = service.dfuManager?.dfuFlowForDevice(id)
+
+    fun performDfuForDevice(id: DeviceID, updateFile: Uri) =
+        service.dfuManager?.performDfu(id, updateFile)
 
     private fun probeDataToCsv(probe: Probe?, probeData: List<LoggedProbeDataPoint>?, appNameAndVersion: String): Pair<String, String> {
         val csvVersion = 3

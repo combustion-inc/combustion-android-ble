@@ -124,14 +124,27 @@ internal open class BleDevice (
         handleAdvertisement(advertisement)
     }
 
-    open fun connect() {
+    /**
+     * Attempts to connect to this peripheral. Occasionally we see exceptions during the Kable
+     * connect operation. Set [numAttempts] to more than 1 to let this function retry connections
+     * on a connect failure. [observeConnectionState] and [connectionState] can be used to monitor
+     * connection status if you'd like to manage connection retries yourself.
+     */
+    open fun connect(numAttempts: Int = 1) {
+        assert(numAttempts > 0)
+
         owner.lifecycleScope.launch {
-            Log.d(LOG_TAG, "Connecting to $mac")
-            try {
-                peripheral.connect()
-            } catch (e: Exception) {
-                Log.e(LOG_TAG, "Connect Error: ${e.localizedMessage}")
-                Log.e(LOG_TAG, Log.getStackTraceString(e))
+            for (attempt in 1..numAttempts) {
+                Log.d(LOG_TAG, "Connecting to $mac (attempt $attempt / $numAttempts)")
+                try {
+                    peripheral.connect()
+                    Log.d(LOG_TAG, "Done connecting to $mac (attempt $attempt / $numAttempts)")
+
+                    break
+                } catch (e: Exception) {
+                    Log.e(LOG_TAG, "Connect Error: ${e.localizedMessage}")
+                    Log.e(LOG_TAG, Log.getStackTraceString(e))
+                }
             }
         }
     }
@@ -144,8 +157,15 @@ internal open class BleDevice (
         }
     }
 
-    open fun finish() {
-        disconnect()
+    /**
+     * Cancels all jobs and unregisters callbacks. Also optionally disconnects the device if
+     * [disconnect] is true.
+     */
+    open fun finish(disconnect: Boolean = true) {
+        if (disconnect) {
+            disconnect()
+        }
+
         remoteRssiJob = null
         jobManager.cancelJobs()
         rssiCallbacks.clear()
