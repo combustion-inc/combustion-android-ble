@@ -124,7 +124,7 @@ class DeviceManager(
          */
         fun startCombustionService(
             notification: Notification?,
-            dfuNotificationTarget: Class<out Activity?>,
+            dfuNotificationTarget: Class<out Activity?>? = null,
         ): Int {
             if(!connected.get()) {
                 if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)

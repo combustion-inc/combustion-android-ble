@@ -307,6 +307,8 @@ internal class NetworkManager(
 
     fun clearDevices() {
         probeManagers.forEach { (_, probe) -> probe.finish() }
+        deviceInformationDevices.forEach{ (_, device) -> device.finish() }
+        deviceInformationDevices.clear()
         probeManagers.clear()
         devices.clear()
         meatNetLinks.clear()

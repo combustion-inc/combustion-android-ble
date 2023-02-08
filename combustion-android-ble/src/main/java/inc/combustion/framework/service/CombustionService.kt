@@ -57,7 +57,7 @@ class CombustionService : LifecycleService() {
     internal var dfuManager: DfuManager? = null
 
     internal companion object {
-        private lateinit var dfuNotificationTarget: Class<out Activity?>
+        private var dfuNotificationTarget: Class<out Activity?>? = null
         private val serviceIsStarted = AtomicBoolean(false)
         var serviceNotification : Notification? = null
         var notificationId = 0
@@ -66,7 +66,7 @@ class CombustionService : LifecycleService() {
         fun start(
             context: Context,
             notification: Notification?,
-            dfuNotificationTarget: Class<out Activity?>,
+            dfuNotificationTarget: Class<out Activity?>?,
             serviceSettings: DeviceManager.Settings = DeviceManager.Settings(),
         ): Int {
             if(!serviceIsStarted.get()) {
