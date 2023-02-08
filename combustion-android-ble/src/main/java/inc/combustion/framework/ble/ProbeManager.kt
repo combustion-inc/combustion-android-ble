@@ -66,8 +66,9 @@ internal class ProbeManager(
 ) {
     companion object {
         const val OUT_OF_RANGE_TIMEOUT = 15000L
-        private const val PROBE_PREDICTION_IDLE_POLL_RATE_MS = 1000L
-        private const val PROBE_PREDICTION_IDLE_TIMEOUT_MS = 15000L
+        private const val PROBE_STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS = 1000L
+        private const val PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS = 15000L
+        private const val PROBE_STATUS_NOTIFICATIONS_POLL_DELAY_MS = 30000L
         private const val PROBE_INSTANT_READ_IDLE_TIMEOUT_MS = 5000L
     }
 
@@ -79,7 +80,7 @@ internal class ProbeManager(
 
     // idle monitors
     private val instantReadMonitor = IdleMonitor()
-    private val predictionStatusMonitor = IdleMonitor()
+    private val statusNotificationsMonitor = IdleMonitor()
 
     // holds the current state and data for this probe
     private var _probe = MutableStateFlow(Probe.create(serialNumber = serialNumber))
@@ -146,7 +147,7 @@ internal class ProbeManager(
             updatePredictionInfo(it)
         }
 
-        monitorPredictionStatus()
+        monitorStatusNotifications()
     }
 
     fun addJob(job: Job) = jobManager.addJob(job)
@@ -225,19 +226,23 @@ internal class ProbeManager(
         base.observeRemoteRssi { rssi ->  handleRemoteRssi(base, rssi) }
     }
 
-    private fun monitorPredictionStatus() {
+    private fun monitorStatusNotifications() {
         jobManager.addJob(owner.lifecycleScope.launch(Dispatchers.IO) {
-            while(isActive) {
-                delay(PROBE_PREDICTION_IDLE_POLL_RATE_MS)
+            // Wait before starting to monitor prediction status, this allows for initial
+            // connection time
+            delay(PROBE_STATUS_NOTIFICATIONS_POLL_DELAY_MS)
 
-                publishPredictionStale(predictionStatusMonitor.isIdle(PROBE_PREDICTION_IDLE_TIMEOUT_MS))
+            while(isActive) {
+                delay(PROBE_STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS)
+
+                publishStatusNotificationsStale(statusNotificationsMonitor.isIdle(PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS))
             }
         })
     }
 
-    private fun publishPredictionStale(predictionStale: Boolean) {
-        if(predictionStale != _probe.value.predictionStale) {
-            _probe.value = _probe.value.copy(predictionStale = predictionStale)
+    private fun publishStatusNotificationsStale(predictionStale: Boolean) {
+        if(predictionStale != _probe.value.statusNotificationsStale) {
+            _probe.value = _probe.value.copy(statusNotificationsStale = predictionStale)
         }
     }
 
@@ -397,8 +402,10 @@ internal class ProbeManager(
         if(status.mode == ProbeMode.INSTANT_READ) {
             updateInstantRead(status.temperatures.values[0])
         } else if(status.mode == ProbeMode.NORMAL) {
+            statusNotificationsMonitor.activity()
+
             updateTemperatures(status.temperatures, status.virtualSensors)
-            updatePredictionStatus(status.predictionStatus, status.maxSequenceNumber)
+            predictionManager.updatePredictionStatus(status.predictionStatus, maxSequenceNumber)
         }
 
         updateBatteryIdColor(status.batteryStatus, status.id, status.color)
@@ -410,12 +417,6 @@ internal class ProbeManager(
             instantReadCelsius = value
         )
         instantReadMonitor.activity()
-    }
-
-    private fun updatePredictionStatus(predictionStatus: PredictionStatus?, maxSequenceNumber: UInt) {
-        predictionStatusMonitor.activity()
-
-        predictionManager.updatePredictionStatus(predictionStatus, maxSequenceNumber)
     }
 
     private fun updatePredictionInfo(predictionInfo: PredictionManager.PredictionInfo?) {
