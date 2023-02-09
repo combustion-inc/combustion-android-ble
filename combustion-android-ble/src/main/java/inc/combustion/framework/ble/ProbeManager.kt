@@ -425,7 +425,7 @@ internal class ProbeManager(
             statusNotificationsMonitor.activity()
 
             updateTemperatures(status.temperatures, status.virtualSensors)
-            predictionManager.updatePredictionStatus(status.predictionStatus, maxSequenceNumber)
+            predictionManager.updatePredictionStatus(status.predictionStatus, status.maxSequenceNumber)
         }
 
         updateBatteryIdColor(status.batteryStatus, status.id, status.color)
