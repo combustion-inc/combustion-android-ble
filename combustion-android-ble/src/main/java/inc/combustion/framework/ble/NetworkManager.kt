@@ -33,6 +33,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.util.Log
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.ble.device.*
@@ -70,22 +71,33 @@ internal class NetworkManager(
         private const val FLOW_CONFIG_REPLAY = 5
         private const val FLOW_CONFIG_BUFFER = FLOW_CONFIG_REPLAY * 2
 
-        private val mutableDiscoveredProbesFlow = MutableSharedFlow<ProbeDiscoveredEvent>(
+        private var mutableDiscoveredProbesFlow = MutableSharedFlow<ProbeDiscoveredEvent>(
             FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.SUSPEND
         )
-        internal val DISCOVERED_PROBES_FLOW = mutableDiscoveredProbesFlow.asSharedFlow()
+        internal var DISCOVERED_PROBES_FLOW = mutableDiscoveredProbesFlow.asSharedFlow()
 
-        private val networkState = MutableStateFlow(NetworkState())
-        internal val NETWORK_STATE_FLOW = networkState.asStateFlow()
+        private var networkState = MutableStateFlow(NetworkState())
+        internal var NETWORK_STATE_FLOW = networkState.asStateFlow()
 
         // flow for producing changes to the identified version of firmware for devices in the network
         private var firmwareUpdateState = MutableStateFlow(FirmwareState(listOf()))
-        internal val FIRMWARE_UPDATE_STATE_FLOW = firmwareUpdateState.asStateFlow()
+        internal var FIRMWARE_UPDATE_STATE_FLOW = firmwareUpdateState.asStateFlow()
 
-        // when a repeater doesn't have connections, it uses the following serial number in
-        // its advertising data.
+        // when a repeater doesn't have connections, it uses the following serial number in its advertising data.
         internal const val REPEATER_NO_PROBES_SERIAL_NUMBER = "0"
+    }
 
+    init {
+        firmwareUpdateState = MutableStateFlow(FirmwareState(listOf()))
+        FIRMWARE_UPDATE_STATE_FLOW = firmwareUpdateState.asStateFlow()
+
+        networkState = MutableStateFlow(NetworkState())
+        NETWORK_STATE_FLOW = networkState.asStateFlow()
+
+        mutableDiscoveredProbesFlow = MutableSharedFlow<ProbeDiscoveredEvent>(
+            FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.SUSPEND
+        )
+        DISCOVERED_PROBES_FLOW = mutableDiscoveredProbesFlow.asSharedFlow()
     }
 
     internal val bluetoothAdapterStateIntentFilter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
