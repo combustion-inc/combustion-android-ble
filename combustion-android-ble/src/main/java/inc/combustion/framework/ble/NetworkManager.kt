@@ -86,27 +86,27 @@ internal class NetworkManager(
         // its advertising data.
         internal const val REPEATER_NO_PROBES_SERIAL_NUMBER = "0"
 
-        internal val BLUETOOTH_ADAPTER_STATE_INTENT_FILTER = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
-        internal val BLUETOOTH_ADAPTER_STATE_RECEIVER: BroadcastReceiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent) {
-                val action = intent.action
-                if (action == BluetoothAdapter.ACTION_STATE_CHANGED) {
-                    val state = intent.getIntExtra(
-                        BluetoothAdapter.EXTRA_STATE,
-                        BluetoothAdapter.ERROR
-                    )
-                    when (state) {
-                        BluetoothAdapter.STATE_OFF -> {
-                            DeviceScanner.stop()
-                            networkState.value = NetworkState()
-                        }
-                        BluetoothAdapter.STATE_ON -> {
-                            networkState.value = networkState.value.copy(
-                                bluetoothOn = true
-                            )
-                        }
-                        else -> { }
+    }
+
+    internal val bluetoothAdapterStateIntentFilter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
+    internal val bluetoothAdapterStateReceiver: BroadcastReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent) {
+            val action = intent.action
+            if (action == BluetoothAdapter.ACTION_STATE_CHANGED) {
+                val state = intent.getIntExtra(
+                    BluetoothAdapter.EXTRA_STATE,
+                    BluetoothAdapter.ERROR
+                )
+                when (state) {
+                    BluetoothAdapter.STATE_OFF -> {
+                        DeviceScanner.stop()
+                        networkState.value = NetworkState()
                     }
+                    BluetoothAdapter.STATE_ON -> {
+                        DeviceScanner.scan(owner)
+                        networkState.value = networkState.value.copy(bluetoothOn = true)
+                    }
+                    else -> { }
                 }
             }
         }
@@ -161,7 +161,7 @@ internal class NetworkManager(
                 bluetoothOn = true
             )
 
-            startScan()
+            DeviceScanner.scan(owner)
 
             if(settings.meatNetEnabled) {
                 startScanForProbes()
@@ -316,17 +316,9 @@ internal class NetworkManager(
     }
 
     fun finish() {
-        stopScan()
+        DeviceScanner.stop()
         clearDevices()
         jobManager.cancelJobs()
-    }
-
-    private fun startScan() {
-        DeviceScanner.scan(owner)
-    }
-
-    private fun stopScan() {
-        DeviceScanner.stop()
     }
 
     private fun manageMeatNetDevice(advertisement: CombustionAdvertisingData): Boolean {
