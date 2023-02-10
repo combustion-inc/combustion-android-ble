@@ -34,8 +34,8 @@ package inc.combustion.framework.service
  * @property mac Bluetooth MAC Address
  * @property fwVersion Firmware Version
  * @property hwRevision Hardware Revision
- * @property temperatures Current temperature values
- * @property instantRead Current instant read value
+ * @property temperaturesCelsius Current temperature values
+ * @property instantReadCelsius Current instant read value
  * @property rssi Received signal strength
  * @property minSequence Minimum log sequence number
  * @property maxSequence Current sequence number
@@ -43,17 +43,17 @@ package inc.combustion.framework.service
  * @property uploadState Upload State
  * @property id Probe ID
  * @property color Probe Color
- * @property mode Probe Mode
+ * @property mode Probe Mode, see related.  For instance, normal mode or instant read.
  * @property batteryStatus Probe battery status
  * @property virtualSensors Virtual sensor positions
- * @property hopCount Number of network hops
  * @property predictionState Current state of cook
  * @property predictionMode Current prediction mode
  * @property predictionType Current type of prediction
- * @property setPointTemperatureC Current setpoint temperature of prediction.
- * @property heatStartTemperatureC Temperature at heat start of prediction, if known.
- * @property predictionS The prediction in number of seconds from now.
- * @property estimatedCoreC Current estimate of the core temperature for prediction.
+ * @property setPointTemperatureCelsius Current setpoint temperature of prediction.
+ * @property heatStartTemperatureCelsius Temperature at heat start of prediction, if known.
+ * @property predictionSeconds The prediction in number of seconds from now, filtered and intended for display to the user.
+ * @property rawPredictionSeconds The raw prediction from the probe in number of seconds from now.
+ * @property estimatedCoreCelsisus Current estimate of the core temperature for prediction.
  *
  * @see DeviceConnectionState
  * @see ProbeUploadState
@@ -63,32 +63,69 @@ package inc.combustion.framework.service
  * @see ProbeMode
  */
 data class Probe(
-    val serialNumber: String,
-    val mac: String,
-    val fwVersion: String?,
-    val hwRevision: String?,
-    val sessionInfo: SessionInformation?,
-    val temperatures: ProbeTemperatures?,
-    val instantRead: Double?,
-    val coreTemperature: Double?,
-    val surfaceTemperature: Double?,
-    val ambientTemperature: Double?,
-    val rssi: Int,
-    val minSequence: UInt,
-    val maxSequence: UInt,
-    val connectionState: DeviceConnectionState,
-    val uploadState: ProbeUploadState,
-    val id: ProbeID,
-    val color: ProbeColor,
-    val mode: ProbeMode,
-    val batteryStatus: ProbeBatteryStatus,
-    val virtualSensors: ProbeVirtualSensors,
-    val predictionState: ProbePredictionState?,
-    val predictionMode: ProbePredictionMode?,
-    val predictionType: ProbePredictionType?,
-    val setPointTemperatureC: Double?,
-    val heatStartTemperatureC: Double?,
-    val predictionS: UInt?,
-    val estimatedCoreC: Double?
-)
+    val baseDevice: Device,
+    val sessionInfo: SessionInformation? = null,
+    val temperaturesCelsius: ProbeTemperatures? = null,
+    val instantReadCelsius: Double? = null,
+    val coreTemperatureCelsius: Double? = null,
+    val surfaceTemperatureCelsius: Double? = null,
+    val ambientTemperatureCelsius: Double? = null,
+    val minSequenceNumber: UInt = 0u,
+    val maxSequenceNumber: UInt = 0u,
+    val uploadState: ProbeUploadState = ProbeUploadState.Unavailable,
+    val id: ProbeID = ProbeID.ID1,
+    val color: ProbeColor = ProbeColor.COLOR1,
+    val batteryStatus: ProbeBatteryStatus = ProbeBatteryStatus.OK,
+    val virtualSensors: ProbeVirtualSensors = ProbeVirtualSensors(),
+    val predictionState: ProbePredictionState? = null,
+    val predictionMode: ProbePredictionMode? = null,
+    val predictionType: ProbePredictionType? = null,
+    val setPointTemperatureCelsius: Double? = null,
+    val heatStartTemperatureCelsius: Double? = null,
+    val predictionSeconds: UInt? = null,
+    val rawPredictionSeconds: UInt? = null,
+    val estimatedCoreCelsius: Double? = null,
+    val hopCount: UInt? = null,
+    val statusNotificationsStale: Boolean = false
+) {
+    val serialNumber = baseDevice.serialNumber
+    val mac = baseDevice.mac
+    val fwVersion = baseDevice.fwVersion
+    val hwRevision = baseDevice.hwRevision
+    val rssi = baseDevice.rssi
+    val connectionState = baseDevice.connectionState
+
+    val temperaturesStale: Boolean get() { return connectionState == DeviceConnectionState.OUT_OF_RANGE }
+    val instantReadStale: Boolean get() { return instantReadCelsius == null }
+
+    val predictionPercent: Double?
+        get() {
+            heatStartTemperatureCelsius?.let { start ->
+                setPointTemperatureCelsius?.let { end ->
+                    estimatedCoreCelsius?.let { core ->
+                        if(core > end) {
+                            return 100.0
+                        }
+
+                        if(core < start) {
+                            return 0.0
+                        }
+
+                        return (((core - start) / (end - start)) * 100.0)
+                    }
+                }
+            }
+
+            return null
+        }
+
+    companion object {
+        fun create(serialNumber: String = "", mac: String = "") : Probe {
+            return Probe(baseDevice = Device(
+                serialNumber = serialNumber,
+                mac = mac
+            ))
+        }
+    }
+}
 

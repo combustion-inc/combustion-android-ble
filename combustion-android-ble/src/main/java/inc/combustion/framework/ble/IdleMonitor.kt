@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: DeviceDiscoveredEvent.kt
+ * File: IdleMonitor.kt
  * Author: https://github.com/miwright2
  *
  * MIT License
@@ -25,46 +25,19 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package inc.combustion.framework.service
+package inc.combustion.framework.ble
 
-/**
- * Enumerates the asynchronous events that can be collected while the device is
- * scanning and producing events to the discovered probes flow.
- *
- * @see DeviceManager.discoveredProbesFlow
- */
-sealed class DeviceDiscoveredEvent {
-    /**
-     * Bluetooth is off, no devices will be discovered
-     */
-    object BluetoothOff: DeviceDiscoveredEvent()
+import android.os.SystemClock
 
-    /**
-     * Bluetooth is on, devices will now be discovered if scanning
-     */
-    object BluetoothOn: DeviceDiscoveredEvent()
+class IdleMonitor {
+    var lastUpdateTime: Long = 0
 
-    /**
-     * Scanning for Combustion devices
-     */
-    object ScanningOn: DeviceDiscoveredEvent()
+    fun activity() {
+        lastUpdateTime = SystemClock.elapsedRealtime()
+    }
 
-    /**
-     * Not scanning for Combustion devices
-     */
-    object ScanningOff: DeviceDiscoveredEvent()
-
-    /**
-     * Combustion device discovered
-     *
-     * @property serialNumber serial number of the discovered device
-     */
-    data class DeviceDiscovered(
-        val serialNumber: String
-    ) : DeviceDiscoveredEvent()
-
-    /**
-     * The device cache was cleared.
-     */
-    object DevicesCleared: DeviceDiscoveredEvent()
+    fun isIdle(timeout: Long): Boolean {
+        return (SystemClock.elapsedRealtime() - lastUpdateTime) >= timeout
+    }
 }
+

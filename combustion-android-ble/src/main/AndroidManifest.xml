@@ -27,6 +27,10 @@
             android:name="inc.combustion.framework.service.CombustionService"
             android:enabled="true"
             android:exported="false" />
+        <service
+            android:name=".ble.dfu.DfuService"
+            android:enabled="true"
+            android:exported="false" />
     </application>
 
 </manifest>

@@ -32,9 +32,9 @@ import android.util.Log
 import inc.combustion.framework.ble.shr
 
 data class ProbeVirtualSensors(
-    val virtualCoreSensor: VirtualCoreSensor,
-    val virtualSurfaceSensor: VirtualSurfaceSensor,
-    val virtualAmbientSensor: VirtualAmbientSensor
+    val virtualCoreSensor: VirtualCoreSensor = VirtualCoreSensor.T1,
+    val virtualSurfaceSensor: VirtualSurfaceSensor = VirtualSurfaceSensor.T4,
+    val virtualAmbientSensor: VirtualAmbientSensor = VirtualAmbientSensor.T8
 ) {
     companion object {
         val DEFAULT = ProbeVirtualSensors(VirtualCoreSensor.T1, VirtualSurfaceSensor.T4, VirtualAmbientSensor.T8)
