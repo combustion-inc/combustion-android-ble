@@ -118,14 +118,15 @@ class CombustionService : LifecycleService() {
         super.onStartCommand(intent, flags, startId)
 
         val bluetooth = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        networkManager = NetworkManager(this, bluetooth.adapter, settings)
+        val network = NetworkManager(this, bluetooth.adapter, settings)
+        networkManager = network
 
         dfuManager = DfuManager(this, this, bluetooth.adapter, dfuNotificationTarget)
 
         // setup receiver to see when platform Bluetooth state changes
         registerReceiver(
-            NetworkManager.BLUETOOTH_ADAPTER_STATE_RECEIVER,
-            NetworkManager.BLUETOOTH_ADAPTER_STATE_INTENT_FILTER
+            network.bluetoothAdapterStateReceiver,
+            network.bluetoothAdapterStateIntentFilter
         )
 
         startForeground()
@@ -154,7 +155,9 @@ class CombustionService : LifecycleService() {
 
         // always try to unregister, even if the previous register didn't complete.
         try {
-            unregisterReceiver(NetworkManager.BLUETOOTH_ADAPTER_STATE_RECEIVER)
+            networkManager?.let {
+                unregisterReceiver(it.bluetoothAdapterStateReceiver)
+            }
         } catch (_: Exception) {
 
         }
