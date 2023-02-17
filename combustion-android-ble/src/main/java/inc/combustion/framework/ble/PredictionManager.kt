@@ -89,9 +89,13 @@ class PredictionManager {
     }
 
     fun updatePredictionStatus(predictionStatus: PredictionStatus?, sequenceNumber: UInt) {
-        // Ignore calls with duplicate predictionStatus
-        if(previousSequenceNumber != null && previousSequenceNumber == sequenceNumber) {
-            return
+        // Duplicate status messages are sent when prediction is started. Ignore the duplicate sequence number
+        // unless the prediction information has changed
+        previousSequenceNumber?.let {
+            if (it == sequenceNumber &&
+                predictionStatus?.setPointTemperature == previousPredictionInfo?.predictionSetPointTemperature) {
+                return
+            }
         }
 
         // Stop the previous timer
@@ -239,6 +243,11 @@ class PredictionManager {
         // Minimum percentage is 0
         if(start > core) {
             return 0
+        }
+
+        // This should never happen, but would cause a crash
+        if(end == start) {
+            return 100
         }
 
         return (((core - start) / (end - start)) * 100.0).toInt()
