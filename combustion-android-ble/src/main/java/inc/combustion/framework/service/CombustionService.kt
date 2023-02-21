@@ -40,6 +40,7 @@ import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.*
 import inc.combustion.framework.ble.dfu.DfuManager
 import inc.combustion.framework.log.LogManager
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import java.util.*
 import java.util.concurrent.ThreadLocalRandom
@@ -49,16 +50,17 @@ import kotlin.random.asKotlinRandom
 /**
  * Android Service for managing Combustion Inc. Predictive Thermometers
  */
+@ExperimentalCoroutinesApi
 class CombustionService : LifecycleService() {
 
     private val binder = CombustionServiceBinder()
 
-    internal var networkManager: NetworkManager? = null
     internal var dfuManager: DfuManager? = null
 
     internal companion object {
         private var dfuNotificationTarget: Class<out Activity?>? = null
         private val serviceIsStarted = AtomicBoolean(false)
+        private val serviceIsStopping = AtomicBoolean(false)
         var serviceNotification : Notification? = null
         var notificationId = 0
         lateinit var settings: DeviceManager.Settings
@@ -69,7 +71,7 @@ class CombustionService : LifecycleService() {
             dfuNotificationTarget: Class<out Activity?>?,
             serviceSettings: DeviceManager.Settings = DeviceManager.Settings(),
         ): Int {
-            if(!serviceIsStarted.get()) {
+            if(!serviceIsStarted.get() || serviceIsStopping.get()) {
                 settings = serviceSettings
                 serviceNotification = notification
                 this.dfuNotificationTarget = dfuNotificationTarget
@@ -77,6 +79,7 @@ class CombustionService : LifecycleService() {
                 Intent(context, CombustionService::class.java).also { intent ->
                     context.startService(intent)
                 }
+                serviceIsStopping.set(false)
             }
 
             return notificationId
@@ -90,6 +93,7 @@ class CombustionService : LifecycleService() {
         }
 
         fun stop(context: Context) {
+            serviceIsStopping.set(true)
             Intent(context, CombustionService::class.java).also { intent ->
                 context.stopService(intent)
             }
@@ -118,15 +122,17 @@ class CombustionService : LifecycleService() {
         super.onStartCommand(intent, flags, startId)
 
         val bluetooth = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        val network = NetworkManager(this, bluetooth.adapter, settings)
-        networkManager = network
 
-        dfuManager = DfuManager(this, this, bluetooth.adapter, dfuNotificationTarget)
+        NetworkManager.initialize(this, bluetooth.adapter, settings)
+
+        if(dfuManager == null) {
+            dfuManager = DfuManager(this, this, bluetooth.adapter, dfuNotificationTarget)
+        }
 
         // setup receiver to see when platform Bluetooth state changes
         registerReceiver(
-            network.bluetoothAdapterStateReceiver,
-            network.bluetoothAdapterStateIntentFilter
+            NetworkManager.instance.bluetoothAdapterStateReceiver,
+            NetworkManager.instance.bluetoothAdapterStateIntentFilter
         )
 
         startForeground()
@@ -155,18 +161,17 @@ class CombustionService : LifecycleService() {
 
         // always try to unregister, even if the previous register didn't complete.
         try {
-            networkManager?.let {
-                unregisterReceiver(it.bluetoothAdapterStateReceiver)
-            }
-        } catch (_: Exception) {
-
+            unregisterReceiver(NetworkManager.instance.bluetoothAdapterStateReceiver)
+        } catch (e: Exception) {
+            Log.e(LOG_TAG, "Unable to unregister NetworkManager Bluetooth Intent Receiver")
         }
 
         LogManager.instance.clear()
-        networkManager?.clearDevices()
-        networkManager?.finish()
+        NetworkManager.instance.clearDevices()
+        NetworkManager.instance.finish()
 
         serviceIsStarted.set(false)
+        serviceIsStopping.set(false)
 
         Log.d(LOG_TAG, "Combustion Android Service Destroyed...")
         super.onDestroy()
@@ -191,17 +196,17 @@ class CombustionService : LifecycleService() {
             )
         }
          */
-        networkManager?.addSimulatedProbe()
+        NetworkManager.instance.addSimulatedProbe()
         TODO()
     }
 
     internal fun startDfuMode() {
-        networkManager?.startDfuMode()
+        NetworkManager.instance.startDfuMode()
         dfuManager?.start()
     }
 
     internal fun stopDfuMode() {
         dfuManager?.stop()
-        networkManager?.stopDfuMode()
+        NetworkManager.instance.stopDfuMode()
     }
 }

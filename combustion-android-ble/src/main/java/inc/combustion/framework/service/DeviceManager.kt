@@ -187,7 +187,7 @@ class DeviceManager(
      */
     val bluetoothIsEnabled: Boolean
         get() {
-            return service.networkManager?.bluetoothIsEnabled ?: false
+            return NetworkManager.instance.bluetoothIsEnabled
         }
 
     /**
@@ -195,7 +195,7 @@ class DeviceManager(
      */
     val scanningForProbes: Boolean
         get() {
-            return service.networkManager?.scanningForProbes ?: false
+            return NetworkManager.instance.scanningForProbes
         }
 
     /**
@@ -203,7 +203,7 @@ class DeviceManager(
      */
     val dfuModeIsEnabled: Boolean
         get() {
-            return service.networkManager?.dfuModeEnabled ?: false
+            return NetworkManager.instance.dfuModeEnabled
         }
 
     /**
@@ -214,7 +214,7 @@ class DeviceManager(
      */
     val discoveredProbesFlow : SharedFlow<ProbeDiscoveredEvent>
         get() {
-            return NetworkManager.DISCOVERED_PROBES_FLOW
+            return NetworkManager.discoveredProbesFlow
         }
 
     /**
@@ -224,7 +224,7 @@ class DeviceManager(
      */
     val networkFlow : StateFlow<NetworkState>
         get() {
-            return NetworkManager.NETWORK_STATE_FLOW
+            return NetworkManager.networkStateFlow
         }
 
     /**
@@ -233,7 +233,7 @@ class DeviceManager(
      */
     val discoveredProbes: List<String>
         get() {
-            return service.networkManager?.discoveredProbes ?: listOf("")
+            return NetworkManager.instance.discoveredProbes
         }
 
     /**
@@ -264,7 +264,7 @@ class DeviceManager(
      * @see ProbeDiscoveredEvent.ScanningOn
      */
     fun startScanningForProbes(): Boolean {
-        return service.networkManager?.startScanForProbes() ?: false
+        return NetworkManager.instance.startScanForProbes()
     }
 
     /**
@@ -278,7 +278,7 @@ class DeviceManager(
      * @see ProbeDiscoveredEvent.ScanningOff
      */
     fun stopScanningForProbes(): Boolean {
-        return service.networkManager?.stopScanForProbes() ?: false
+        return NetworkManager.instance.stopScanForProbes()
     }
 
     /**
@@ -291,7 +291,7 @@ class DeviceManager(
      * @see Probe
      */
     fun probeFlow(serialNumber: String): StateFlow<Probe>? {
-        return service.networkManager?.probeFlow(serialNumber)
+        return NetworkManager.instance.probeFlow(serialNumber)
     }
 
     /**
@@ -303,7 +303,7 @@ class DeviceManager(
      * @see Probe
      */
     fun probe(serialNumber: String): Probe? {
-        return service.networkManager?.probeState(serialNumber)
+        return NetworkManager.instance.probeState(serialNumber)
     }
 
     /**
@@ -321,7 +321,7 @@ class DeviceManager(
      * @see probeFlow
      */
     fun connect(serialNumber : String) {
-        service.networkManager?.connect(serialNumber)
+        NetworkManager.instance.connect(serialNumber)
     }
 
     /**
@@ -339,7 +339,7 @@ class DeviceManager(
      * @see probeFlow
      */
     fun disconnect(serialNumber: String) {
-        service.networkManager?.disconnect(serialNumber)
+        NetworkManager.instance.disconnect(serialNumber)
     }
 
     /**
@@ -430,7 +430,7 @@ class DeviceManager(
      * and disposes related resources.
      */
     fun clearDevices() {
-        service.networkManager?.clearDevices()
+        NetworkManager.instance.clearDevices()
         LogManager.instance.clear()
     }
 
@@ -455,9 +455,7 @@ class DeviceManager(
      *
      */
     fun setProbeColor(serialNumber: String, color: ProbeColor, completionHandler: (Boolean) -> Unit) {
-        service.networkManager?.setProbeColor(serialNumber, color, completionHandler) ?: run{
-            completionHandler(false)
-        }
+        NetworkManager.instance.setProbeColor(serialNumber, color, completionHandler)
     }
 
     /**
@@ -470,9 +468,7 @@ class DeviceManager(
      *
      */
     fun setProbeID(serialNumber: String, id: ProbeID, completionHandler: (Boolean) -> Unit) {
-        service.networkManager?.setProbeID(serialNumber, id, completionHandler) ?: run {
-            completionHandler(false)
-        }
+        NetworkManager.instance.setProbeID(serialNumber, id, completionHandler)
     }
 
     /**
@@ -490,9 +486,7 @@ class DeviceManager(
             completionHandler(false)
             return
         }
-        service.networkManager?.setRemovalPrediction(serialNumber, removalTemperatureC, completionHandler) ?: run{
-            completionHandler(false)
-        }
+        NetworkManager.instance.setRemovalPrediction(serialNumber, removalTemperatureC, completionHandler)
     }
 
     /**
@@ -502,16 +496,14 @@ class DeviceManager(
      * @param completionHandler completion handler to be called operation is complete
      */
     fun cancelPrediction(serialNumber: String, completionHandler: (Boolean) -> Unit) {
-        service.networkManager?.cancelPrediction(serialNumber, completionHandler) ?: run {
-            completionHandler(false)
-        }
+        NetworkManager.instance.cancelPrediction(serialNumber, completionHandler)
     }
 
     /**
      * State flow containing the firmware details for all nodes on the network.
      */
     fun getNetworkFirmwareState(): StateFlow<FirmwareState> {
-        return NetworkManager.FIRMWARE_UPDATE_STATE_FLOW
+        return NetworkManager.firmwareUpdateStateFlow
     }
 
     /**
