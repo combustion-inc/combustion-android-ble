@@ -37,8 +37,10 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.juul.kable.Filter
 import com.juul.kable.Scanner
 import inc.combustion.framework.LOG_TAG
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.catch
@@ -67,12 +69,12 @@ internal class DeviceScanner private constructor() {
         val isScanning: Boolean
             get() = atomicIsScanning.get()
 
-        private val mutableAdvertisements = MutableSharedFlow<CombustionAdvertisingData>()
+        private val mutableAdvertisements = MutableSharedFlow<CombustionAdvertisingData>(5, 10, BufferOverflow.DROP_OLDEST)
         val advertisements = mutableAdvertisements.asSharedFlow()
 
         fun scan(owner: LifecycleOwner) {
             if(!atomicIsScanning.getAndSet(true)) {
-                allMatchesScanJob = owner.lifecycleScope.launch {
+                allMatchesScanJob = owner.lifecycleScope.launch(Dispatchers.IO) {
                     // launches the block in a new coroutine every time the LifecycleOwner is
                     // in the CREATED state or above, and cancels the block when the LifecycleOwner
                     // is destroyed
@@ -93,7 +95,7 @@ internal class DeviceScanner private constructor() {
                             }
                             .collect { advertisement ->
                                 when (val advertisingData = BaseAdvertisingData.create(advertisement)) {
-                                    is CombustionAdvertisingData -> mutableAdvertisements.emit(advertisingData)
+                                    is CombustionAdvertisingData -> mutableAdvertisements.tryEmit(advertisingData)
                                     // else, if just BaseAdvertisingData, then no need to produce to flow.
                                 }
                             }

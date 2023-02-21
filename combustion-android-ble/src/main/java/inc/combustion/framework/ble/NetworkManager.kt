@@ -42,14 +42,17 @@ import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.scanning.DeviceScanner
 import inc.combustion.framework.log.LogManager
 import inc.combustion.framework.service.*
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.reflect.jvm.internal.impl.builtins.jvm.JvmBuiltInsSignatures
 
 internal class NetworkManager(
-    private val owner: LifecycleOwner,
-    private val adapter: BluetoothAdapter,
-    private val settings: DeviceManager.Settings
+    private var owner: LifecycleOwner,
+    private var adapter: BluetoothAdapter,
+    private var settings: DeviceManager.Settings
 ) {
     sealed class DeviceHolder {
         data class ProbeHolder(val probe: ProbeBleDevice) : DeviceHolder()
@@ -61,44 +64,73 @@ internal class NetworkManager(
         data class RepeatedProbeHolder(val repeatedProbe: RepeatedProbeBleDevice) : LinkHolder()
     }
 
-    private val jobManager = JobManager()
-    private val devices = hashMapOf<DeviceID, DeviceHolder>()
-    private val meatNetLinks = hashMapOf<LinkID, LinkHolder>()
-    private val probeManagers = hashMapOf<String, ProbeManager>()
-    private val deviceInformationDevices = hashMapOf<DeviceID, DeviceInformationBleDevice>()
+    internal data class FlowHowHolder(
+        var mutableDiscoveredProbesFlow: MutableSharedFlow<ProbeDiscoveredEvent>,
+        var mutableNetworkState: MutableStateFlow<NetworkState>,
+        var mutableFirmwareUpdateState: MutableStateFlow<FirmwareState>,
+    )
 
     companion object {
         private const val FLOW_CONFIG_REPLAY = 5
         private const val FLOW_CONFIG_BUFFER = FLOW_CONFIG_REPLAY * 2
 
-        private var mutableDiscoveredProbesFlow = MutableSharedFlow<ProbeDiscoveredEvent>(
-            FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.SUSPEND
-        )
-        internal var DISCOVERED_PROBES_FLOW = mutableDiscoveredProbesFlow.asSharedFlow()
-
-        private var networkState = MutableStateFlow(NetworkState())
-        internal var NETWORK_STATE_FLOW = networkState.asStateFlow()
-
-        // flow for producing changes to the identified version of firmware for devices in the network
-        private var firmwareUpdateState = MutableStateFlow(FirmwareState(listOf()))
-        internal var FIRMWARE_UPDATE_STATE_FLOW = firmwareUpdateState.asStateFlow()
-
         // when a repeater doesn't have connections, it uses the following serial number in its advertising data.
         internal const val REPEATER_NO_PROBES_SERIAL_NUMBER = "0"
-    }
 
-    init {
-        firmwareUpdateState = MutableStateFlow(FirmwareState(listOf()))
-        FIRMWARE_UPDATE_STATE_FLOW = firmwareUpdateState.asStateFlow()
+        private lateinit var INSTANCE: NetworkManager
+        private val initialized = AtomicBoolean(false)
 
-        networkState = MutableStateFlow(NetworkState())
-        NETWORK_STATE_FLOW = networkState.asStateFlow()
-
-        mutableDiscoveredProbesFlow = MutableSharedFlow<ProbeDiscoveredEvent>(
-            FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.SUSPEND
+        internal var flowHolder = FlowHowHolder(
+            MutableSharedFlow(FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.SUSPEND),
+            MutableStateFlow(NetworkState()),
+            MutableStateFlow(FirmwareState(listOf()))
         )
-        DISCOVERED_PROBES_FLOW = mutableDiscoveredProbesFlow.asSharedFlow()
+
+        fun initialize(owner: LifecycleOwner, adapter: BluetoothAdapter, settings: DeviceManager.Settings)  {
+            if(!initialized.getAndSet(true)) {
+                INSTANCE = NetworkManager(owner, adapter, settings)
+            }
+            else {
+                // assumption is that CombustionService will correctly manage things as part of its
+                // lifecycle, clearing this manager when the service is stopped.
+                INSTANCE.owner = owner
+                INSTANCE.adapter = adapter
+                INSTANCE.settings = settings
+            }
+
+            INSTANCE.initialize()
+        }
+
+        val instance: NetworkManager
+            get() {
+                if(!initialized.get()) {
+                    throw IllegalStateException("NetworkManager has not been initialized")
+                }
+
+                return INSTANCE
+            }
+
+        val discoveredProbesFlow: SharedFlow<ProbeDiscoveredEvent>
+            get() {
+                return flowHolder.mutableDiscoveredProbesFlow.asSharedFlow()
+            }
+
+        val networkStateFlow: StateFlow<NetworkState>
+            get() {
+                return flowHolder.mutableNetworkState.asStateFlow()
+            }
+
+        val firmwareUpdateStateFlow:StateFlow<FirmwareState>
+            get() {
+                return flowHolder.mutableFirmwareUpdateState.asStateFlow()
+            }
     }
+
+    private val jobManager = JobManager()
+    private val devices = hashMapOf<DeviceID, DeviceHolder>()
+    private val meatNetLinks = hashMapOf<LinkID, LinkHolder>()
+    private val probeManagers = hashMapOf<String, ProbeManager>()
+    private val deviceInformationDevices = hashMapOf<DeviceID, DeviceInformationBleDevice>()
 
     internal val bluetoothAdapterStateIntentFilter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
     internal val bluetoothAdapterStateReceiver: BroadcastReceiver = object : BroadcastReceiver() {
@@ -112,11 +144,11 @@ internal class NetworkManager(
                 when (state) {
                     BluetoothAdapter.STATE_OFF -> {
                         DeviceScanner.stop()
-                        networkState.value = NetworkState()
+                        flowHolder.mutableNetworkState.value = NetworkState()
                     }
                     BluetoothAdapter.STATE_ON -> {
                         DeviceScanner.scan(owner)
-                        networkState.value = networkState.value.copy(bluetoothOn = true)
+                        flowHolder.mutableNetworkState.value = flowHolder.mutableNetworkState.value.copy(bluetoothOn = true)
                     }
                     else -> { }
                 }
@@ -143,58 +175,13 @@ internal class NetworkManager(
             return  probeManagers.keys.toList()
         }
 
-    init {
-        jobManager.addJob(owner.lifecycleScope.launch {
-            collectAdvertisingData()
-        })
-
-        // if MeatNet is enabled,then automatically start and stop scanning state
-        // based on current bluetooth state.  this code cannot handle application permissions
-        // in that case, the client app needs to start scanning once bluetooth permissions are allowed.
-        if(settings.meatNetEnabled) {
-            jobManager.addJob(owner.lifecycleScope.launch{
-                var bluetoothIsOn = false
-                NETWORK_STATE_FLOW.collect {
-                    if(!bluetoothIsOn && it.bluetoothOn) {
-                        startScanForProbes()
-                    }
-
-                    if(bluetoothIsOn && !it.bluetoothOn) {
-                        stopScanForProbes()
-                    }
-
-                    bluetoothIsOn = it.bluetoothOn
-                }
-            })
-        }
-
-        if(bluetoothIsEnabled) {
-            networkState.value = networkState.value.copy(
-                bluetoothOn = true
-            )
-
-            DeviceScanner.scan(owner)
-
-            if(settings.meatNetEnabled) {
-                startScanForProbes()
-            }
-        }
-        else {
-            networkState.value = networkState.value.copy(
-                bluetoothOn = false
-            )
-        }
-    }
-
     fun startScanForProbes(): Boolean {
         if(bluetoothIsEnabled) {
             scanningForProbes = true
         }
 
         if(scanningForProbes) {
-            networkState.value = networkState.value.copy(
-                scanningOn = true
-            )
+            flowHolder.mutableNetworkState.value = flowHolder.mutableNetworkState.value.copy(scanningOn = true)
         }
 
         return scanningForProbes
@@ -206,9 +193,7 @@ internal class NetworkManager(
         }
 
         if(!scanningForProbes) {
-            networkState.value = networkState.value.copy(
-                scanningOn = false
-            )
+            flowHolder.mutableNetworkState.value = flowHolder.mutableNetworkState.value.copy(scanningOn = false)
         }
 
         return scanningForProbes
@@ -239,9 +224,7 @@ internal class NetworkManager(
                 }
             }
 
-            networkState.value = networkState.value.copy(
-                dfuModeOn = true
-            )
+            flowHolder.mutableNetworkState.value = flowHolder.mutableNetworkState.value.copy(dfuModeOn = true)
         }
     }
 
@@ -267,9 +250,7 @@ internal class NetworkManager(
                 }
             }
 
-            networkState.value = networkState.value.copy(
-                dfuModeOn = false
-            )
+            flowHolder.mutableNetworkState.value = flowHolder.mutableNetworkState.value.copy(dfuModeOn = false)
         }
     }
 
@@ -317,6 +298,7 @@ internal class NetworkManager(
         }
     }
 
+    @ExperimentalCoroutinesApi
     fun clearDevices() {
         probeManagers.forEach { (_, probe) -> probe.finish() }
         deviceInformationDevices.forEach{ (_, device) -> device.finish() }
@@ -324,7 +306,13 @@ internal class NetworkManager(
         probeManagers.clear()
         devices.clear()
         meatNetLinks.clear()
-        mutableDiscoveredProbesFlow.tryEmit(ProbeDiscoveredEvent.DevicesCleared)
+
+        // clear the discovered probes flow
+        flowHolder.mutableDiscoveredProbesFlow.resetReplayCache()
+        flowHolder.mutableDiscoveredProbesFlow.tryEmit(ProbeDiscoveredEvent.DevicesCleared)
+
+        flowHolder.mutableNetworkState.value = NetworkState()
+        flowHolder.mutableFirmwareUpdateState.value = FirmwareState(listOf())
     }
 
     fun finish() {
@@ -379,7 +367,7 @@ internal class NetworkManager(
                         firmwareStateOfNetwork[it.id] = it
 
                         // publish the list of firmware details for the network
-                        firmwareUpdateState.value = FirmwareState(
+                        flowHolder.mutableFirmwareUpdateState.value = FirmwareState(
                             nodes = firmwareStateOfNetwork.values.toList()
                         )
                     }
@@ -389,7 +377,7 @@ internal class NetworkManager(
                     firmwareStateOfNetwork.remove(it)
 
                     // publish the list of firmware details for the network
-                    firmwareUpdateState.value = FirmwareState(
+                    flowHolder.mutableFirmwareUpdateState.value = FirmwareState(
                         nodes = firmwareStateOfNetwork.values.toList()
                     )
                 }
@@ -428,7 +416,7 @@ internal class NetworkManager(
             if(scanningForProbes) {
                 if(advertisingData.probeSerialNumber != REPEATER_NO_PROBES_SERIAL_NUMBER) {
                     if(manageMeatNetDevice(advertisingData)) {
-                        mutableDiscoveredProbesFlow.emit(
+                        flowHolder.mutableDiscoveredProbesFlow.emit(
                             ProbeDiscoveredEvent.ProbeDiscovered(advertisingData.probeSerialNumber)
                         )
                     }
@@ -478,4 +466,44 @@ internal class NetworkManager(
             }
         }
     }
+
+    private fun initialize() {
+        jobManager.addJob(owner.lifecycleScope.launch {
+            collectAdvertisingData()
+        })
+
+        // if MeatNet is enabled,then automatically start and stop scanning state
+        // based on current bluetooth state.  this code cannot handle application permissions
+        // in that case, the client app needs to start scanning once bluetooth permissions are allowed.
+        if(settings.meatNetEnabled) {
+            jobManager.addJob(owner.lifecycleScope.launch{
+                var bluetoothIsOn = false
+                networkStateFlow.collect {
+                    if(!bluetoothIsOn && it.bluetoothOn) {
+                        startScanForProbes()
+                    }
+
+                    if(bluetoothIsOn && !it.bluetoothOn) {
+                        stopScanForProbes()
+                    }
+
+                    bluetoothIsOn = it.bluetoothOn
+                }
+            })
+        }
+
+        if(bluetoothIsEnabled) {
+            flowHolder.mutableNetworkState.value = flowHolder.mutableNetworkState.value.copy(bluetoothOn = true)
+
+            DeviceScanner.scan(owner)
+
+            if(settings.meatNetEnabled) {
+                startScanForProbes()
+            }
+        }
+        else {
+            flowHolder.mutableNetworkState.value = flowHolder.mutableNetworkState.value.copy(bluetoothOn = false)
+        }
+    }
+
 }
