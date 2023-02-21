@@ -55,6 +55,7 @@ import java.util.concurrent.atomic.AtomicInteger
 /**
  * Singleton instance for managing communications with Combustion Inc. devices.
  */
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class DeviceManager(
     val settings: Settings
 ) {

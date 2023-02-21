@@ -28,7 +28,6 @@
 
 package inc.combustion.framework.service
 
-import android.util.Log
 import inc.combustion.framework.ble.shr
 
 data class ProbeVirtualSensors(
@@ -62,13 +61,19 @@ data class ProbeVirtualSensors(
         }
     }
 
-    enum class VirtualCoreSensor(val uByte: UByte) {
-        T1(0x00u),
-        T2(0x01u),
-        T3(0x02u),
-        T4(0x03u),
-        T5(0x04u),
-        T6(0x05u);
+    enum class VirtualCoreSensor {
+        T1, T2, T3, T4, T5, T6;
+
+        fun temperatureFrom(temperatures: ProbeTemperatures): Double {
+            return when(this) {
+                T1 -> temperatures.values[0]
+                T2 -> temperatures.values[1]
+                T3 -> temperatures.values[2]
+                T4 -> temperatures.values[3]
+                T5 -> temperatures.values[4]
+                T6 -> temperatures.values[5]
+            }
+        }
 
         companion object {
             private const val MASK = 0x07
@@ -93,11 +98,17 @@ data class ProbeVirtualSensors(
         }
     }
 
-    enum class VirtualSurfaceSensor(val uByte: UByte) {
-        T4(0x00u),
-        T5(0x01u),
-        T6(0x02u),
-        T7(0x03u);
+    enum class VirtualSurfaceSensor {
+        T4, T5, T6, T7;
+
+        fun temperatureFrom(temperatures: ProbeTemperatures): Double {
+            return when(this) {
+                T4 -> temperatures.values[3]
+                T5 -> temperatures.values[4]
+                T6 -> temperatures.values[5]
+                T7 -> temperatures.values[6]
+            }
+        }
 
         companion object {
             private const val MASK = 0x18
@@ -120,11 +131,17 @@ data class ProbeVirtualSensors(
         }
     }
 
-    enum class VirtualAmbientSensor(val uByte: UByte) {
-        T5(0x00u),
-        T6(0x01u),
-        T7(0x02u),
-        T8(0x03u);
+    enum class VirtualAmbientSensor {
+        T5, T6, T7, T8;
+
+        fun temperatureFrom(temperatures: ProbeTemperatures): Double {
+            return when(this) {
+                T5 -> temperatures.values[4]
+                T6 -> temperatures.values[5]
+                T7 -> temperatures.values[6]
+                T8 -> temperatures.values[7]
+            }
+        }
 
         companion object {
             private const val MASK = 0x60

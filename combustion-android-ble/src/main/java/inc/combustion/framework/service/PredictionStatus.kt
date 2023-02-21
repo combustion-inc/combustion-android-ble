@@ -45,8 +45,10 @@ data class PredictionStatus(
     companion object {
         const val SIZE_BYTES = 7
 
-        fun fromRawData(data: UByteArray): PredictionStatus? {
-            if (data.size < SIZE_BYTES) return null
+        fun fromRawData(data: UByteArray): PredictionStatus {
+            if (data.size < SIZE_BYTES) {
+                throw IllegalArgumentException("Invalid buffer")
+            }
 
             // enums
             val stateModeType   = data[0]
