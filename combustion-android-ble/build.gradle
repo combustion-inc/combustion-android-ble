@@ -86,7 +86,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.5.1")
     implementation("com.juul.kable:core:0.21.0")
     implementation("androidx.lifecycle:lifecycle-service:2.5.1")
-    implementation("org.jetbrains.kotlin:kotlin-reflect:1.7.10")
+    implementation("org.jetbrains.kotlin:kotlin-reflect:1.7.21")
     implementation("no.nordicsemi.android:dfu:2.3.0")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
