@@ -36,6 +36,15 @@ enum class ProbePredictionMode(val uByte: UByte) {
     REMOVAL_AND_RESTING(0x02u),
     RESERVED(0x04u);
 
+    override fun toString(): String {
+        return when(this) {
+            NONE -> "None"
+            TIME_TO_REMOVAL -> "Time to Removal"
+            REMOVAL_AND_RESTING -> "Remove and Resting"
+            RESERVED -> "Reserved"
+        }
+    }
+
     companion object {
         private const val DEVICE_STATUS_MASK = 0x30
         private const val DEVICE_STATUS_SHIFT = 0x04

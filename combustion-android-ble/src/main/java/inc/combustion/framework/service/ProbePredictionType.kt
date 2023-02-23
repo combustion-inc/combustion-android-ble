@@ -30,11 +30,20 @@ package inc.combustion.framework.service
 
 import inc.combustion.framework.ble.shr
 
-enum class ProbePredictionType(val uByte: UByte) {
-    NONE(0x00u),
-    REMOVAL(0x01u),
-    RESTING(0x02u),
-    RESERVED(0x04u);
+enum class ProbePredictionType {
+    NONE,
+    REMOVAL,
+    RESTING,
+    RESERVED;
+
+    override fun toString(): String {
+        return when(this) {
+            NONE -> "None"
+            REMOVAL -> "Removal"
+            RESTING -> "Resting"
+            RESERVED -> "Reserved"
+        }
+    }
 
     companion object {
         private const val DEVICE_STATUS_MASK = 0xC0

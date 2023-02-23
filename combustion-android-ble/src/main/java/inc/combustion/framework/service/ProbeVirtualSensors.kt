@@ -64,6 +64,17 @@ data class ProbeVirtualSensors(
     enum class VirtualCoreSensor {
         T1, T2, T3, T4, T5, T6;
 
+        override fun toString(): String {
+            return when(this) {
+                T1 -> "T1"
+                T2 -> "T2"
+                T3 -> "T3"
+                T4 -> "T4"
+                T5 -> "T5"
+                T6 -> "T6"
+            }
+        }
+
         fun temperatureFrom(temperatures: ProbeTemperatures): Double {
             return when(this) {
                 T1 -> temperatures.values[0]
@@ -101,6 +112,15 @@ data class ProbeVirtualSensors(
     enum class VirtualSurfaceSensor {
         T4, T5, T6, T7;
 
+        override fun toString(): String {
+            return when(this) {
+                T4 -> "T4"
+                T5 -> "T5"
+                T6 -> "T6"
+                T7 -> "T7"
+            }
+        }
+
         fun temperatureFrom(temperatures: ProbeTemperatures): Double {
             return when(this) {
                 T4 -> temperatures.values[3]
@@ -133,6 +153,15 @@ data class ProbeVirtualSensors(
 
     enum class VirtualAmbientSensor {
         T5, T6, T7, T8;
+
+        override fun toString(): String {
+            return when(this) {
+                T5 -> "T5"
+                T6 -> "T6"
+                T7 -> "T7"
+                T8 -> "T8"
+            }
+        }
 
         fun temperatureFrom(temperatures: ProbeTemperatures): Double {
             return when(this) {
