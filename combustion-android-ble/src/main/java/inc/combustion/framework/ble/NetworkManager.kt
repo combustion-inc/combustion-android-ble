@@ -33,7 +33,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.util.Log
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.ble.device.*
@@ -47,7 +46,6 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.reflect.jvm.internal.impl.builtins.jvm.JvmBuiltInsSignatures
 
 internal class NetworkManager(
     private var owner: LifecycleOwner,
@@ -143,11 +141,15 @@ internal class NetworkManager(
                 )
                 when (state) {
                     BluetoothAdapter.STATE_OFF -> {
-                        DeviceScanner.stop()
+                        if(scanningForProbes) {
+                            DeviceScanner.stop()
+                        }
                         flowHolder.mutableNetworkState.value = NetworkState()
                     }
                     BluetoothAdapter.STATE_ON -> {
-                        DeviceScanner.scan(owner)
+                        if(scanningForProbes) {
+                            DeviceScanner.scan(owner)
+                        }
                         flowHolder.mutableNetworkState.value = flowHolder.mutableNetworkState.value.copy(bluetoothOn = true)
                     }
                     else -> { }
@@ -181,6 +183,7 @@ internal class NetworkManager(
         }
 
         if(scanningForProbes) {
+            DeviceScanner.scan(owner)
             flowHolder.mutableNetworkState.value = flowHolder.mutableNetworkState.value.copy(scanningOn = true)
         }
 
@@ -495,9 +498,9 @@ internal class NetworkManager(
         if(bluetoothIsEnabled) {
             flowHolder.mutableNetworkState.value = flowHolder.mutableNetworkState.value.copy(bluetoothOn = true)
 
-            DeviceScanner.scan(owner)
-
             if(settings.meatNetEnabled) {
+                // MeatNet automatically starts scanning without API call.
+                DeviceScanner.scan(owner)
                 startScanForProbes()
             }
         }
@@ -505,5 +508,4 @@ internal class NetworkManager(
             flowHolder.mutableNetworkState.value = flowHolder.mutableNetworkState.value.copy(bluetoothOn = false)
         }
     }
-
 }
