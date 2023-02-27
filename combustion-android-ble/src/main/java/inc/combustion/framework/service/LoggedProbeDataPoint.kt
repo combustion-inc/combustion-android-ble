@@ -43,8 +43,32 @@ data class LoggedProbeDataPoint (
     val sessionId: UInt,
     val sequenceNumber: UInt,
     val timestamp: Date,
-    val temperatures: ProbeTemperatures
+    val temperatures: ProbeTemperatures,
+    val virtualCoreSensor: ProbeVirtualSensors.VirtualCoreSensor,
+    val virtualSurfaceSensor: ProbeVirtualSensors.VirtualSurfaceSensor,
+    val virtualAmbientSensor: ProbeVirtualSensors.VirtualAmbientSensor,
+    val predictionState: ProbePredictionState,
+    val predictionMode: ProbePredictionMode,
+    val predictionType: ProbePredictionType,
+    val predictionSetPointTemperature: Double,
+    val predictionValueSeconds: UInt,
+    val estimatedCoreTemperature: Double
 ) : Comparable<LoggedProbeDataPoint> {
+
+    val virtualCoreTemperature: Double
+        get() {
+            return virtualCoreSensor.temperatureFrom(temperatures)
+        }
+
+    val virtualSurfaceTemperature: Double
+        get() {
+            return virtualSurfaceSensor.temperatureFrom(temperatures)
+        }
+
+    val virtualAmbientTemperature: Double
+        get() {
+            return virtualAmbientSensor.temperatureFrom(temperatures)
+        }
 
     override fun compareTo(other: LoggedProbeDataPoint): Int {
         return when {
@@ -62,7 +86,21 @@ data class LoggedProbeDataPoint (
             samplePeriod: UInt
         ): LoggedProbeDataPoint {
             val timestamp = getTimestamp(sessionStart, status.maxSequenceNumber, samplePeriod)
-            return LoggedProbeDataPoint(sessionId, status.maxSequenceNumber, timestamp, status.temperatures)
+            return LoggedProbeDataPoint(
+                sessionId,
+                status.maxSequenceNumber,
+                timestamp,
+                status.temperatures,
+                status.virtualSensors.virtualCoreSensor,
+                status.virtualSensors.virtualSurfaceSensor,
+                status.virtualSensors.virtualAmbientSensor,
+                status.predictionStatus.predictionState,
+                status.predictionStatus.predictionMode,
+                status.predictionStatus.predictionType,
+                status.predictionStatus.setPointTemperature,
+                status.predictionStatus.predictionValueSeconds,
+                status.predictionStatus.estimatedCoreTemperature
+            )
         }
 
         fun fromLogResponse(
@@ -72,7 +110,21 @@ data class LoggedProbeDataPoint (
             samplePeriod: UInt
         ): LoggedProbeDataPoint {
             val timestamp = getTimestamp(sessionStart, response.sequenceNumber, samplePeriod)
-            return LoggedProbeDataPoint(sessionId, response.sequenceNumber, timestamp, response.temperatures)
+            return LoggedProbeDataPoint(
+                sessionId,
+                response.sequenceNumber,
+                timestamp,
+                response.temperatures,
+                response.predictionLog.virtualSensors.virtualCoreSensor,
+                response.predictionLog.virtualSensors.virtualSurfaceSensor,
+                response.predictionLog.virtualSensors.virtualAmbientSensor,
+                response.predictionLog.predictionState,
+                response.predictionLog.predictionMode,
+                response.predictionLog.predictionType,
+                response.predictionLog.predictionSetPointTemperature,
+                response.predictionLog.predictionValueSeconds,
+                response.predictionLog.estimatedCoreTemperature
+            )
         }
 
         private fun getTimestamp(sessionStart: Date?, sequenceNumber: UInt, samplePeriod: UInt): Date {
