@@ -28,7 +28,6 @@
 package inc.combustion.framework.ble
 
 import android.os.SystemClock
-import android.util.Log
 import inc.combustion.framework.service.PredictionStatus
 import inc.combustion.framework.service.ProbePredictionMode
 import inc.combustion.framework.service.ProbePredictionState
@@ -78,6 +77,7 @@ class PredictionManager {
     private var linearizationTargetSeconds = 0
     private var linearizationTimerUpdateValue: Double = 0.0
     private var currentLinearizationMs: Double = 0.0
+    private var runningLinearization = false
 
     private var linearizationTimer: Timer? = null
     private var linearizationStartTime: Long = 0
@@ -140,6 +140,9 @@ class PredictionManager {
         val previousSecondsRemaining = previousPredictionInfo?.secondsRemaining
 
         if(predictionStatus.predictionValueSeconds > LOW_RESOLUTION_CUTOFF_SECONDS) {
+
+            runningLinearization = false
+
             // If the prediction is longer than the low-resolution cutoff, only update every few samples
             // (unless we don't yet have a value), using modulo to sync with other apps, Displays etc.
             if (previousSecondsRemaining == null || sequenceNumber % PREDICTION_TIME_UPDATE_COUNT == 0u) {
@@ -171,13 +174,14 @@ class PredictionManager {
                 linearizationTargetSeconds = (predictionStatus.predictionValueSeconds - predictionUpdateRateSeconds).toInt()
             }
 
-            if (previousPredictionInfo?.predictionState == ProbePredictionState.PREDICTING) {
-                val intervalCount = PREDICTION_STATUS_RATE_MS / LINEARIZATION_UPDATE_RATE_MS
-                linearizationTimerUpdateValue = (currentLinearizationMs - linearizationTargetSeconds * 1000.0) / intervalCount
-            }
-            else {
+            if (!runningLinearization) {
+                // If not already running linearization, then initialize values
                 currentLinearizationMs = predictionStatus.predictionValueSeconds.toDouble() * 1000.0
                 linearizationTimerUpdateValue = LINEARIZATION_UPDATE_RATE_MS
+            }
+            else {
+                val intervalCount = PREDICTION_STATUS_RATE_MS / LINEARIZATION_UPDATE_RATE_MS
+                linearizationTimerUpdateValue = (currentLinearizationMs - linearizationTargetSeconds * 1000.0) / intervalCount
             }
 
             // Create a new linearization timer
@@ -192,6 +196,8 @@ class PredictionManager {
                     updatePredictionSeconds()
                 }
             }, intervalMs, intervalMs)
+
+            runningLinearization = true
 
             return (currentLinearizationMs / 1000.0).toUInt()
         }

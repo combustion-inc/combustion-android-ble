@@ -55,6 +55,7 @@ import java.util.concurrent.atomic.AtomicInteger
 /**
  * Singleton instance for managing communications with Combustion Inc. devices.
  */
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class DeviceManager(
     val settings: Settings
 ) {
@@ -541,7 +542,7 @@ class DeviceManager(
         service.dfuManager?.performDfu(id, updateFile)
 
     private fun probeDataToCsv(probe: Probe?, probeData: List<LoggedProbeDataPoint>?, appNameAndVersion: String): Pair<String, String> {
-        val csvVersion = 3
+        val csvVersion = 4
         val sb = StringBuilder()
         val serialNumber = probe?.serialNumber ?: "UNKNOWN"
         val firmwareVersion = probe?.fwVersion ?: "UNKNOWN"
@@ -566,7 +567,7 @@ class DeviceManager(
         sb.appendLine()
 
         // column headers
-        sb.appendLine("Timestamp,SessionID,SequenceNumber,T1,T2,T3,T4,T5,T6,T7,T8")
+        sb.appendLine("Timestamp,SessionID,SequenceNumber,T1,T2,T3,T4,T5,T6,T7,T8,VirtualCoreTemperature,VirtualSurfaceTemperature,VirtualAmbientTemperature,EstimatedCoreTemperature,PredictionSetPoint,VirtualCoreSensor,VirtualSurfaceSensor,VirtualAmbientSensor,PredictionState,PredictionMode,PredictionType,PredictionValueSeconds")
 
         // the data
         val startTime = probeData?.first()?.timestamp?.time ?: 0
@@ -575,18 +576,17 @@ class DeviceManager(
             val elapsed = (timestamp - startTime) / 1000.0f
             sb.appendLine(
                 String.format(
-                    "%.3f,%s,%s,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f",
+                    "%.3f,%s,%s,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%s,%s,%s,%s,%s,%s,%d",
                     elapsed,
                     dataPoint.sessionId.toString(),
                     dataPoint.sequenceNumber.toString(),
-                    dataPoint.temperatures.values[0],
-                    dataPoint.temperatures.values[1],
-                    dataPoint.temperatures.values[2],
-                    dataPoint.temperatures.values[3],
-                    dataPoint.temperatures.values[4],
-                    dataPoint.temperatures.values[5],
-                    dataPoint.temperatures.values[6],
-                    dataPoint.temperatures.values[7]
+                    dataPoint.temperatures.values[0], dataPoint.temperatures.values[1], dataPoint.temperatures.values[2], dataPoint.temperatures.values[3],
+                    dataPoint.temperatures.values[4], dataPoint.temperatures.values[5], dataPoint.temperatures.values[6], dataPoint.temperatures.values[7],
+                    dataPoint.virtualCoreTemperature, dataPoint.virtualSurfaceTemperature, dataPoint.virtualAmbientTemperature,
+                    dataPoint.estimatedCoreTemperature, dataPoint.predictionSetPointTemperature,
+                    dataPoint.virtualCoreSensor.toString(), dataPoint.virtualSurfaceSensor.toString(), dataPoint.virtualAmbientSensor.toString(),
+                    dataPoint.predictionState.toString(), dataPoint.predictionMode.toString(), dataPoint.predictionType.toString(),
+                    dataPoint.predictionValueSeconds.toInt()
                 )
             )
         }

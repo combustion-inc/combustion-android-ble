@@ -52,7 +52,7 @@ internal open class DeviceInformationBleDevice(
     }
     suspend fun readSerialNumber() {
         if(isConnected.get()) {
-            serialNumber = readSerialNumberCharacteristic()
+            serialNumber = readSerialNumberCharacteristic()?.uppercase()
         }
     }
 

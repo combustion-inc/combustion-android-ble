@@ -36,13 +36,32 @@ enum class ProbePredictionMode(val uByte: UByte) {
     REMOVAL_AND_RESTING(0x02u),
     RESERVED(0x04u);
 
+    override fun toString(): String {
+        return when(this) {
+            NONE -> "None"
+            TIME_TO_REMOVAL -> "Time to Removal"
+            REMOVAL_AND_RESTING -> "Remove and Resting"
+            RESERVED -> "Reserved"
+        }
+    }
+
     companion object {
-        private const val MASK = 0x30
-        private const val SHIFT = 0x04
+        private const val DEVICE_STATUS_MASK = 0x30
+        private const val DEVICE_STATUS_SHIFT = 0x04
+        private const val LOG_RESPONSE_MASK = 0x1800
+        private const val LOG_RESPONSE_SHIFT = 0x0B
 
         fun fromPredictionStatus(byte: UByte) : ProbePredictionMode {
-            val raw = ((byte.toUShort() and MASK.toUShort()) shr SHIFT).toUInt()
-            return fromRaw(raw)
+            return fromUShortWorker(byte.toUShort(), DEVICE_STATUS_MASK.toUShort(), DEVICE_STATUS_SHIFT)
+        }
+
+        fun fromLogResponse(word: UShort) : ProbePredictionMode {
+            return fromUShortWorker(word, LOG_RESPONSE_MASK.toUShort(), LOG_RESPONSE_SHIFT)
+        }
+
+        private fun fromUShortWorker(ushort: UShort, mask: UShort, shift: Int) : ProbePredictionMode {
+            val raw = ((ushort and mask) shr shift).toUInt()
+            return ProbePredictionMode.fromRaw(raw)
         }
 
         private fun fromRaw(raw: UInt) : ProbePredictionMode {

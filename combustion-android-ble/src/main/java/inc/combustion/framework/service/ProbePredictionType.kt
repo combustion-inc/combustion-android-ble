@@ -30,19 +30,38 @@ package inc.combustion.framework.service
 
 import inc.combustion.framework.ble.shr
 
-enum class ProbePredictionType(val uByte: UByte) {
-    NONE(0x00u),
-    REMOVAL(0x01u),
-    RESTING(0x02u),
-    RESERVED(0x04u);
+enum class ProbePredictionType {
+    NONE,
+    REMOVAL,
+    RESTING,
+    RESERVED;
+
+    override fun toString(): String {
+        return when(this) {
+            NONE -> "None"
+            REMOVAL -> "Removal"
+            RESTING -> "Resting"
+            RESERVED -> "Reserved"
+        }
+    }
 
     companion object {
-        private const val MASK = 0xC0
-        private const val SHIFT = 0x06
+        private const val DEVICE_STATUS_MASK = 0xC0
+        private const val DEVICE_STATUS_SHIFT = 0x06
+        private const val LOG_RESPONSE_MASK = 0x6000
+        private const val LOG_RESPONSE_SHIFT = 0x0D
 
         fun fromPredictionStatus(byte: UByte) : ProbePredictionType {
-            val raw = ((byte.toUShort() and MASK.toUShort()) shr SHIFT).toUInt()
-            return fromRaw(raw)
+            return fromUShortWorker(byte.toUShort(), DEVICE_STATUS_MASK.toUShort(), DEVICE_STATUS_SHIFT)
+        }
+
+        fun fromLogResponse(word: UShort) : ProbePredictionType {
+            return fromUShortWorker(word, LOG_RESPONSE_MASK.toUShort(), LOG_RESPONSE_SHIFT)
+        }
+
+        private fun fromUShortWorker(ushort: UShort, mask: UShort, shift: Int) : ProbePredictionType {
+            val raw = ((ushort and mask) shr shift).toUInt()
+            return ProbePredictionType.fromRaw(raw)
         }
 
         private fun fromRaw(raw: UInt) : ProbePredictionType {

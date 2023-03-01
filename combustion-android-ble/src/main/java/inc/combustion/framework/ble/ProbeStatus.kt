@@ -45,8 +45,23 @@ internal data class ProbeStatus(
     val mode: ProbeMode,
     val batteryStatus: ProbeBatteryStatus,
     val virtualSensors: ProbeVirtualSensors,
-    val predictionStatus: PredictionStatus?
+    val predictionStatus: PredictionStatus
 ) {
+    val virtualCoreTemperature: Double
+        get() {
+            return virtualSensors.virtualCoreSensor.temperatureFrom(temperatures)
+        }
+
+    val virtualSurfaceTemperature: Double
+        get() {
+            return virtualSensors.virtualSurfaceSensor.temperatureFrom(temperatures)
+        }
+
+    val virtualAmbientTemperature: Double
+        get() {
+            return virtualSensors.virtualAmbientSensor.temperatureFrom(temperatures)
+        }
+
     companion object {
         private const val MIN_SEQ_INDEX = 0
         private const val MAX_SEQ_INDEX = 4
@@ -56,34 +71,19 @@ internal data class ProbeStatus(
         private val PREDICTION_STATUS_RANGE = 23 until 23 + PredictionStatus.SIZE_BYTES
 
         fun fromRawData(data: UByteArray): ProbeStatus? {
-            if (data.size < 21) return null
+            if (data.size < 30) return null
 
             val minSequenceNumber = data.getLittleEndianUInt32At(MIN_SEQ_INDEX)
             val maxSequenceNumber = data.getLittleEndianUInt32At(MAX_SEQ_INDEX)
             val temperatures = ProbeTemperatures.fromRawData(data.sliceArray(TEMPERATURE_RANGE))
-
-            // use mode and color ID if available
-            val modeColorId = if (data.size > 21)
-               data.sliceArray(MODE_COLOR_ID_RANGE)[0]
-            else
-                null
-
-            // use device status if available
-            val deviceStatus = if (data.size > 22)
-                data.sliceArray(STATUS_RANGE)[0]
-            else
-                null
-
-            val predictionStatus = if (data.size > 22 + PredictionStatus.SIZE_BYTES)
-                PredictionStatus.fromRawData(data.sliceArray(PREDICTION_STATUS_RANGE))
-            else
-                null
-
-            val probeColor = modeColorId?.let { ProbeColor.fromUByte(it) } ?: run { ProbeColor.COLOR1 }
-            val probeID = modeColorId?.let { ProbeID.fromUByte(it) } ?: run { ProbeID.ID1 }
-            val probeMode = modeColorId?.let { ProbeMode.fromUByte(it) } ?: run { ProbeMode.NORMAL }
-            val batteryStatus = deviceStatus?.let { ProbeBatteryStatus.fromUByte(it) } ?: run { ProbeBatteryStatus.OK }
-            val virtualSensors = deviceStatus?.let { ProbeVirtualSensors.fromDeviceStatus(it) } ?: run { ProbeVirtualSensors.DEFAULT }
+            val modeColorId = data.sliceArray(MODE_COLOR_ID_RANGE)[0]
+            val deviceStatus = data.sliceArray(STATUS_RANGE)[0]
+            val predictionStatus = PredictionStatus.fromRawData(data.sliceArray(PREDICTION_STATUS_RANGE))
+            val probeColor = ProbeColor.fromUByte(modeColorId)
+            val probeID = ProbeID.fromUByte(modeColorId)
+            val probeMode = ProbeMode.fromUByte(modeColorId)
+            val batteryStatus = ProbeBatteryStatus.fromUByte(deviceStatus)
+            val virtualSensors = ProbeVirtualSensors.fromDeviceStatus(deviceStatus)
 
             return ProbeStatus(
                 minSequenceNumber,
