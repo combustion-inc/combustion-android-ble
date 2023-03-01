@@ -123,17 +123,29 @@ class CombustionService : LifecycleService() {
 
         val bluetooth = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
 
-        NetworkManager.initialize(this, bluetooth.adapter, settings)
+        if(bluetooth.adapter != null) {
+            // Note: Older versions of Android running on emulator (e.g. Pixel 4 API 29) do not
+            // emulate a Bluetooth adapter.  In this case, the BLE isn't functional.  This is consistent
+            // with our manifest file requiring BLE.  So we check for null, and do not initialize the
+            // main components of the service if it is null.  This allows the service to run, but
+            // most of the API is non-functional, which is reasonable, since Bluetooth can't even be turned on.
+            //
+            // Newer versions of Android running on emulator (e.g. Pixel XL API 33) do emulate a Bluetooth adapter.
 
-        if(dfuManager == null) {
-            dfuManager = DfuManager(this, this, bluetooth.adapter, dfuNotificationTarget)
+            // Initialize Network Manager
+            NetworkManager.initialize(this, bluetooth.adapter, settings)
+
+            // Allocate DFU Manager
+            if(dfuManager == null) {
+                dfuManager = DfuManager(this, this, bluetooth.adapter, dfuNotificationTarget)
+            }
+
+            // setup receiver to see when platform Bluetooth state changes
+            registerReceiver(
+                NetworkManager.instance.bluetoothAdapterStateReceiver,
+                NetworkManager.instance.bluetoothAdapterStateIntentFilter
+            )
         }
-
-        // setup receiver to see when platform Bluetooth state changes
-        registerReceiver(
-            NetworkManager.instance.bluetoothAdapterStateReceiver,
-            NetworkManager.instance.bluetoothAdapterStateIntentFilter
-        )
 
         startForeground()
 
