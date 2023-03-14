@@ -300,6 +300,15 @@ internal class ProbeManager(
 
             // remove this item from the list of firmware details for the network
             dfuDisconnectedNodeCallback(device.id)
+
+            // session info is now invalid
+            sessionInfo = null
+
+            // event out the invalid session info, fw version, and hardware revision.
+            _probe.value = _probe.value.copy(
+                baseDevice = _probe.value.baseDevice.copy(fwVersion = null, hwRevision = null),
+                sessionInfo = null,
+            )
         }
 
         if(settings.meatNetEnabled) {
@@ -313,14 +322,6 @@ internal class ProbeManager(
             // if not using meatnet, then we use the connection state of the direct link
             _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(connectionState = state))
 
-        }
-
-        if(isDisconnected) {
-            sessionInfo = null
-            _probe.value = _probe.value.copy(
-                baseDevice = _probe.value.baseDevice.copy(fwVersion = null, hwRevision = null),
-                sessionInfo = null,
-            )
         }
     }
 
