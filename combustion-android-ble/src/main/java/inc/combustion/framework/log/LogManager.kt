@@ -278,7 +278,7 @@ internal class LogManager {
         return temperatureLogs[serialNumber]?.dataPoints
     }
 
-    fun createLogFlowForDevice(serialNumber: String): Flow<LoggedProbeDataPoint> {
+    fun createLogFlowForDevice(serialNumber: String, includeHistory: Boolean = true): Flow<LoggedProbeDataPoint> {
         return flow {
             probes[serialNumber]?.let { probeManager ->
 
@@ -300,8 +300,10 @@ internal class LogManager {
                 // them into the flow, in order.
                 val log = temperatureLogs[serialNumber]
                 log?.let { temperatureLog ->
-                    temperatureLog.dataPoints.forEach {
-                        emit(it)
+                    if(includeHistory) {
+                        temperatureLog.dataPoints.forEach {
+                            emit(it)
+                        }
                     }
 
                     // collect the probe status updates as they come in, in order, and emit them
