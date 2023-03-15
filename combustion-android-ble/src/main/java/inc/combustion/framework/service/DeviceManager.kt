@@ -34,7 +34,6 @@ import android.content.ComponentName
 import android.content.ServiceConnection
 import android.net.Uri
 import android.os.IBinder
-import android.service.autofill.FillEventHistory
 import android.util.Log
 import inc.combustion.framework.Combustion
 import inc.combustion.framework.LOG_TAG
@@ -569,7 +568,7 @@ class DeviceManager(
         sb.appendLine()
 
         // column headers
-        sb.appendLine("Timestamp,SessionID,SequenceNumber,T1,T2,T3,T4,T5,T6,T7,T8,VirtualCoreTemperature,VirtualSurfaceTemperature,VirtualAmbientTemperature,EstimatedCoreTemperature,PredictionSetPoint,VirtualCoreSensor,VirtualSurfaceSensor,VirtualAmbientSensor,PredictionState,PredictionMode,PredictionType,PredictionValueSeconds,WallClock")
+        sb.appendLine("Timestamp,SessionID,SequenceNumber,T1,T2,T3,T4,T5,T6,T7,T8,VirtualCoreTemperature,VirtualSurfaceTemperature,VirtualAmbientTemperature,EstimatedCoreTemperature,PredictionSetPoint,VirtualCoreSensor,VirtualSurfaceSensor,VirtualAmbientSensor,PredictionState,PredictionMode,PredictionType,PredictionValueSeconds")
 
         // the data
         val startTime = probeData?.first()?.timestamp?.time ?: 0
@@ -578,7 +577,7 @@ class DeviceManager(
             val elapsed = (timestamp - startTime) / 1000.0f
             sb.appendLine(
                 String.format(
-                    "%.3f,%s,%s,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%s,%s,%s,%s,%s,%s,%d,%d",
+                    "%.3f,%s,%s,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%s,%s,%s,%s,%s,%s,%d",
                     elapsed,
                     dataPoint.sessionId.toString(),
                     dataPoint.sequenceNumber.toString(),
@@ -588,8 +587,7 @@ class DeviceManager(
                     dataPoint.estimatedCoreTemperature, dataPoint.predictionSetPointTemperature,
                     dataPoint.virtualCoreSensor.toString(), dataPoint.virtualSurfaceSensor.toString(), dataPoint.virtualAmbientSensor.toString(),
                     dataPoint.predictionState.toString(), dataPoint.predictionMode.toString(), dataPoint.predictionType.toString(),
-                    dataPoint.predictionValueSeconds.toInt(),
-                    dataPoint.timestamp.time
+                    dataPoint.predictionValueSeconds.toInt()
                 )
             )
         }

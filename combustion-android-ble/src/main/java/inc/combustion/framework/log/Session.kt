@@ -35,7 +35,6 @@ import inc.combustion.framework.service.DebugSettings
 import inc.combustion.framework.service.LoggedProbeDataPoint
 import inc.combustion.framework.service.SessionInformation
 import java.util.*
-import kotlin.math.log
 
 /**
  * Log transfer sessions and buffer instance for a probe.
@@ -194,7 +193,6 @@ internal class Session(
         }
         // happy path, add the record, update the next expected.
         else {
-            Log.e("MATT", "Session[${serialNumber}]: log record: ${loggedProbeDataPoint.sequenceNumber} (${loggedProbeDataPoint.timestamp}) (${loggedProbeDataPoint.sessionId})")
             _logs[loggedProbeDataPoint.sequenceNumber] = loggedProbeDataPoint
             nextExpectedRecord = loggedProbeDataPoint.sequenceNumber + 1u
             transferCount++
