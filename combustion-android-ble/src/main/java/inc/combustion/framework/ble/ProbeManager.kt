@@ -472,7 +472,8 @@ internal class ProbeManager(
                 ProbeVirtualSensors.VirtualAmbientSensor.T6 -> temperatures.values[5]
                 ProbeVirtualSensors.VirtualAmbientSensor.T7 -> temperatures.values[6]
                 ProbeVirtualSensors.VirtualAmbientSensor.T8 -> temperatures.values[7]
-            }
+            },
+            overheatingSensors = temperatures.overheatingSensors,
         )
 
         if(instantReadMonitor.isIdle(PROBE_INSTANT_READ_IDLE_TIMEOUT_MS)) {
