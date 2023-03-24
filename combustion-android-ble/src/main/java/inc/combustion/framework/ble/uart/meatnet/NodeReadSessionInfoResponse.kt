@@ -33,16 +33,20 @@ import inc.combustion.framework.ble.getLittleEndianUInt32At
 import inc.combustion.framework.service.SessionInformation
 
 internal class NodeReadSessionInfoResponse (
-    sessionInformation: SessionInformation,
+    val sessionInformation: SessionInformation,
     success: Boolean,
     requestId: UInt,
     responseId: UInt,
     payloadLength: UByte,
-) : NodeResponse(success, requestId, responseId, payloadLength) {
-
+) : NodeResponse(
+    success,
+    requestId,
+    responseId,
+    payloadLength
+) {
     companion object {
 
-        /// payload length 10 = session id (4) + sample period (4) +
+        /// payload length 10 = serial number (4 bytes) + session id (4 bytes) + sample period (s bytes)
         const val PAYLOAD_LENGTH: UByte = 10u
 
         fun fromData(
@@ -61,7 +65,13 @@ internal class NodeReadSessionInfoResponse (
             val samplePeriod: UInt = payload.getLittleEndianUInt16At(HEADER_SIZE.toInt() + 8)
             val sessionInfo = SessionInformation(sessionID, samplePeriod)
 
-            return NodeReadSessionInfoResponse(sessionInfo, success, requestId, responseId, payloadLength)
+            return NodeReadSessionInfoResponse(
+                sessionInfo,
+                success,
+                requestId,
+                responseId,
+                payloadLength
+            )
         }
     }
 }

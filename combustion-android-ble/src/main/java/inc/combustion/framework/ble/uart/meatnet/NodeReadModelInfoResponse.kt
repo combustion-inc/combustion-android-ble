@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: NodeReadHardwareRevisionResponse.kt
+ * File: NodeReadModelInfoResponse.kt
  * Author:
  *
  * MIT License
@@ -30,45 +30,43 @@ package inc.combustion.framework.ble.uart.meatnet
 
 import inc.combustion.framework.ble.getLittleEndianUInt32At
 
-internal class NodeReadHardwareRevisionResponse (
-    val serialNumber: UInt,
-    val hardwareRevision: String,
+internal class NodeReadModelInfoResponse (
+    serialNumber: UInt,
+    modelInfo: String,
     success: Boolean,
     requestId: UInt,
-    response: UInt,
+    responseId: UInt,
     payloadLength: UByte
 ) : NodeResponse(
     success,
     requestId,
-    response,
+    responseId,
     payloadLength
 ) {
+
     companion object {
 
-        // payload is 20 bytes = 4 bytes for serial number + 16 bytes for hardware revision
-        const val PAYLOAD_LENGTH: UByte = 20u
+        // payload is 54 bytes = serial number (4 bytes) + model info (50 bytes)
+        const val PAYLOAD_LENGTH: UByte = 54u
 
-        /**
-         * Helper function that builds up payload of response.
-         */
         fun fromData(
             payload: UByteArray,
             success: Boolean,
             requestId: UInt,
             responseId: UInt,
-            payloadLength: UByte) : NodeReadHardwareRevisionResponse? {
-
+            payloadLength: UByte
+        ): NodeReadModelInfoResponse? {
             if (payloadLength < PAYLOAD_LENGTH) {
                 return null
             }
 
-            val serialNumber = payload.getLittleEndianUInt32At(HEADER_SIZE.toInt())
-            val hardwareRevisionRaw = payload.copyOfRange(HEADER_SIZE.toInt() + 4, HEADER_SIZE.toInt() + 20)
-            val hardwareRevision = String(hardwareRevisionRaw.toByteArray(), Charsets.UTF_8)
+            val serialNumber = payload.getLittleEndianUInt32At(PAYLOAD_LENGTH.toInt())
+            val modelInfoRaw = payload.copyOfRange(HEADER_SIZE.toInt() + 4, HEADER_SIZE.toInt() + 54)
+            val modelInfo = String(modelInfoRaw.toByteArray(), Charsets.UTF_8).trim('\u0000')
 
-            return NodeReadHardwareRevisionResponse(
+            return NodeReadModelInfoResponse(
                 serialNumber,
-                hardwareRevision,
+                modelInfo,
                 success,
                 requestId,
                 responseId,
