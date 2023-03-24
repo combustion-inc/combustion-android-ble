@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: NodeReadHardwareRevisionResponse.kt
+ * File: NodeReadLogsResponse.kt
  * Author:
  *
  * MIT License
@@ -29,46 +29,51 @@
 package inc.combustion.framework.ble.uart.meatnet
 
 import inc.combustion.framework.ble.getLittleEndianUInt32At
+import inc.combustion.framework.service.PredictionLog
+import inc.combustion.framework.service.ProbeTemperatures
 
-internal class NodeReadHardwareRevisionResponse (
-    val serialNumber: UInt,
-    val hardwareRevision: String,
+internal class NodeReadLogsResponse(
+    val sequenceNumber: UInt,
+    val temperatures: ProbeTemperatures,
+    val predictionLog: PredictionLog,
     success: Boolean,
     requestId: UInt,
-    response: UInt,
-    payloadLength: UByte
+    responseId: UInt,
+    payLoadLength: UByte
 ) : NodeResponse(
     success,
     requestId,
-    response,
-    payloadLength
+    responseId,
+    payLoadLength
 ) {
     companion object {
+        private const val MIN_PAYLOAD_LENGTH: UByte = 28u
 
-        // payload is 20 bytes = 4 bytes for serial number + 16 bytes for hardware revision
-        const val PAYLOAD_LENGTH: UByte = 20u
-
-        /**
-         * Helper function that builds up payload of response.
-         */
         fun fromData(
             payload: UByteArray,
             success: Boolean,
             requestId: UInt,
             responseId: UInt,
-            payloadLength: UByte) : NodeReadHardwareRevisionResponse? {
-
-            if (payloadLength < PAYLOAD_LENGTH) {
+            payloadLength: UByte
+        ) : NodeReadLogsResponse? {
+            if (payloadLength < MIN_PAYLOAD_LENGTH) {
                 return null
             }
 
             val serialNumber = payload.getLittleEndianUInt32At(HEADER_SIZE.toInt())
-            val hardwareRevisionRaw = payload.copyOfRange(HEADER_SIZE.toInt() + 4, HEADER_SIZE.toInt() + 20)
-            val hardwareRevision = String(hardwareRevisionRaw.toByteArray(), Charsets.UTF_8).trim('\u0000')
+            val sequenceNumber = payload.getLittleEndianUInt32At(HEADER_SIZE.toInt() + 4)
+            val rawTemperatures =
+                payload.sliceArray(HEADER_SIZE.toInt() + 8 until HEADER_SIZE.toInt() + 20)
+            val rawPredictionLog =
+                payload.sliceArray(HEADER_SIZE.toInt() + 21 until HEADER_SIZE.toInt() + 27)
 
-            return NodeReadHardwareRevisionResponse(
-                serialNumber,
-                hardwareRevision,
+            val temperatures = ProbeTemperatures.fromRawData(rawTemperatures)
+            val predictionLog = PredictionLog.fromRawData(rawPredictionLog)
+
+            return NodeReadLogsResponse(
+                sequenceNumber,
+                temperatures,
+                predictionLog,
                 success,
                 requestId,
                 responseId,
