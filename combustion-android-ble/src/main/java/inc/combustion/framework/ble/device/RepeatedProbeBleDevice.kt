@@ -43,6 +43,7 @@ import inc.combustion.framework.ble.uart.meatnet.NodeProbeStatusRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeSetPredictionResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
+import inc.combustion.framework.ble.uart.meatnet.NodeReadSessionInfoRequest
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -118,7 +119,9 @@ internal class RepeatedProbeBleDevice (
 
     override fun sendSessionInformationRequest(callback: ((Boolean, Any?) -> Unit)?)  {
         // see ProbeUartBleDevice
-        TODO()
+        val serialNumber = probeSerialNumber.toLong(radix =16).toUInt()
+        sessionInfoHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS, callback)
+        sendUartRequest(NodeReadSessionInfoRequest(serialNumber))
     }
 
     override fun sendSetProbeColor(color: ProbeColor, callback: ((Boolean, Any?) -> Unit)?) {
