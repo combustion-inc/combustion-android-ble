@@ -53,7 +53,7 @@ internal class NodeReadLogsRequest(
             serialNumber: UInt,
             minSequence: UInt,
             maxSequence: UInt): UByteArray {
-            val payload = UByteArray(PAYLOAD_LENGTH.toInt())
+            val payload = UByteArray(PAYLOAD_LENGTH.toInt()) { 0u }
 
             payload.putLittleEndianUInt32At(0, serialNumber)
             payload.putLittleEndianUInt32At(4, minSequence)

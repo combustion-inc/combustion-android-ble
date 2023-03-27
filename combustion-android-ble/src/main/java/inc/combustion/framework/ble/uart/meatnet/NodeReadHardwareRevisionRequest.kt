@@ -47,7 +47,7 @@ internal class NodeReadHardwareRevisionRequest (
             serialNumber: String
         ) : UByteArray {
 
-            val payload = UByteArray(PAYLOAD_LENGTH.toInt())
+            val payload = UByteArray(PAYLOAD_LENGTH.toInt()) { 0u }
 
             // Add serial number to payload
             payload.putLittleEndianUInt32At(0, serialNumber.toLong(radix = 16).toUInt())
