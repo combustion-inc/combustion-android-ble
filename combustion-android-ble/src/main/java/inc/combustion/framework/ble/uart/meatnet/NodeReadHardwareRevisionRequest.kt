@@ -31,7 +31,7 @@ package inc.combustion.framework.ble.uart.meatnet
 import inc.combustion.framework.ble.putLittleEndianUInt32At
 
 internal class NodeReadHardwareRevisionRequest (
-    serialNumber: UInt,
+    serialNumber: String,
 ) : NodeRequest(
     populatePayload(serialNumber),
     NodeMessageType.PROBE_HARDWARE_REVISION
@@ -44,13 +44,13 @@ internal class NodeReadHardwareRevisionRequest (
          * Helper function that builds up payload of request.
          */
         fun populatePayload(
-            serialNumber: UInt
+            serialNumber: String
         ) : UByteArray {
 
             val payload = UByteArray(PAYLOAD_LENGTH.toInt())
 
             // Add serial number to payload
-            payload.putLittleEndianUInt32At(0, serialNumber)
+            payload.putLittleEndianUInt32At(0, serialNumber.toLong(radix = 16).toUInt())
 
             return payload
         }

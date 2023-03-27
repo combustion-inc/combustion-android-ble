@@ -31,7 +31,7 @@
 
 
 internal class NodeReadFirmwareRevisionRequest(
-    serialNumber: UInt
+    serialNumber: String
 ) : NodeRequest(
     populatePayload(serialNumber),
     NodeMessageType.PROBE_FIRMWARE_REVISION
@@ -44,13 +44,12 @@ internal class NodeReadFirmwareRevisionRequest(
          * Helper function that builds up payload of request.
          */
         fun populatePayload(
-            serialNumber: UInt
+            serialNumber: String
         ) : UByteArray {
-
             val payload = UByteArray(PAYLOAD_LENGTH.toInt())
 
             // Add serial number to payload
-            payload.putLittleEndianUInt32At(0, serialNumber)
+            payload.putLittleEndianUInt32At(0, serialNumber.toLong(radix = 16).toUInt())
 
             return payload
         }

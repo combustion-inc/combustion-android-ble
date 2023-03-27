@@ -31,7 +31,7 @@ package inc.combustion.framework.ble.uart.meatnet
 import inc.combustion.framework.ble.getLittleEndianUInt32At
 
 internal class NodeReadFirmwareRevisionResponse (
-    val serialNumber: UInt,
+    val serialNumber: String,
     val firmwareRevision: String,
     success: Boolean,
     requestId: UInt,
@@ -60,7 +60,7 @@ internal class NodeReadFirmwareRevisionResponse (
                 return null
             }
 
-            val serialNumber = payload.getLittleEndianUInt32At(HEADER_SIZE.toInt())
+            val serialNumber = payload.getLittleEndianUInt32At(HEADER_SIZE.toInt()).toString(radix = 16).uppercase()
             val firmwareRevisionRaw = payload.copyOfRange(HEADER_SIZE.toInt() + 4, HEADER_SIZE.toInt() + 24)
             val firmwareRevision = String(firmwareRevisionRaw.toByteArray(), Charsets.UTF_8).trim('\u0000')
 
