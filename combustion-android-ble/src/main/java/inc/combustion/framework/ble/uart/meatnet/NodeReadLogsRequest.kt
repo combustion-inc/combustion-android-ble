@@ -1,7 +1,7 @@
 /*
  * Project: Combustion Inc. Android Framework
  * File: NodeReadLogsRequest.kt
- * Author:
+ * Author: https://github.com/angrygorilla
  *
  * MIT License
  *

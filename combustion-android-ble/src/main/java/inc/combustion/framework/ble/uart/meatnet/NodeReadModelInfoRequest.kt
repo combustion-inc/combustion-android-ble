@@ -1,7 +1,7 @@
 /*
  * Project: Combustion Inc. Android Framework
  * File: NodeReadModelInfoRequest.kt
- * Author:
+ * Author: https://github.com/angrygorilla
  *
  * MIT License
  *

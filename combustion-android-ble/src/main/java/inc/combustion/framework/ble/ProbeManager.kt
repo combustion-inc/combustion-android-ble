@@ -342,15 +342,25 @@ internal class ProbeManager(
         owner.lifecycleScope.launch {
             device.deviceInfoFirmwareVersion ?: run {
                 didReadDeviceInfo = true
-                device.readFirmwareVersion()
+                when(device)
+                {
+                    is ProbeBleDevice -> device.readFirmwareVersion()
+                    is RepeatedProbeBleDevice -> device.readProbeFirmwareVersion()
+                }
+//                device.readFirmwareVersion()
             }
-            device.deviceInfoSerialNumber ?: run {
-                didReadDeviceInfo = true
-                device.readSerialNumber()
-            }
+            // TODO: MeatNet does not support reading serial number
+//            device.deviceInfoSerialNumber ?: run {
+//                didReadDeviceInfo = true
+//                device.readSerialNumber()
+//            }
             device.deviceInfoHardwareRevision ?: run {
                 didReadDeviceInfo = true
-                device.readHardwareRevision()
+                when (device) {
+                    is ProbeBleDevice -> device.readHardwareRevision()
+                    is RepeatedProbeBleDevice -> device.readProbeHardwareRevision()
+                }
+//                device.readHardwareRevision()
             }
         }.invokeOnCompletion {
             // if we read any of the device information characteristics above
@@ -375,7 +385,7 @@ internal class ProbeManager(
         }
 
         // TODO: MeatNet Log Transfer: hard-coded to direct link for now.
-        arbitrator.getDirectLink()?.let {
+        arbitrator.getPreferredMeatNetLink()?.let {
             if(sessionInfo == null) {
                 it.sendSessionInformationRequest { status, info ->
                     if(status && info is SessionInformation) {
