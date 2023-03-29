@@ -347,7 +347,6 @@ internal class ProbeManager(
                     is ProbeBleDevice -> device.readFirmwareVersion()
                     is RepeatedProbeBleDevice -> device.readProbeFirmwareVersion()
                 }
-//                device.readFirmwareVersion()
             }
             // TODO: MeatNet does not support reading serial number
 //            device.deviceInfoSerialNumber ?: run {
@@ -360,7 +359,6 @@ internal class ProbeManager(
                     is ProbeBleDevice -> device.readHardwareRevision()
                     is RepeatedProbeBleDevice -> device.readProbeHardwareRevision()
                 }
-//                device.readHardwareRevision()
             }
         }.invokeOnCompletion {
             // if we read any of the device information characteristics above
