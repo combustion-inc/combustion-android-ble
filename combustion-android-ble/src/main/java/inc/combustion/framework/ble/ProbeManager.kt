@@ -376,7 +376,9 @@ internal class ProbeManager(
                 if(arbitrator.shouldUpdateOnDeviceInfoRead(device)) {
                     _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(
                         fwVersion = device.deviceInfoFirmwareVersion,
-                        hwRevision = device.deviceInfoHardwareRevision
+                        hwRevision = device.deviceInfoHardwareRevision,
+                        // TODO: Should we be updating this baseDevice modelInformation or should this be the repeater device modelInformation?
+                        modelInformation = device.deviceInfoModelInformation
                     ))
                 }
 
