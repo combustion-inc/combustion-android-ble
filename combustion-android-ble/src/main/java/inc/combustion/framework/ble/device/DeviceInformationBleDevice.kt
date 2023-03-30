@@ -74,9 +74,9 @@ internal open class DeviceInformationBleDevice(
 
     suspend fun readModelInformation() {
         if(isConnected.get()) {
-            val info = readModelNumberCharacteristic()
-            // break up model number into sku and manufacturing lot
-            modelInformation = ModelInformation.fromString(info)
+            modelInformation = readModelNumberCharacteristic()?.let { infoString ->
+                ModelInformation.fromString(infoString)
+            }
         }
     }
 }

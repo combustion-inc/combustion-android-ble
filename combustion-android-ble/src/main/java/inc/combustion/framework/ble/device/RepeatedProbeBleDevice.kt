@@ -141,7 +141,6 @@ internal class RepeatedProbeBleDevice (
     }
 
     override fun sendSetPrediction(setPointTemperatureC: Double, mode: ProbePredictionMode, callback: ((Boolean, Any?) -> Unit)?) {
-        val serialNumber = probeSerialNumber.toLong(radix = 16).toUInt()
         setPredictionHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS, callback)
         sendUartRequest(NodeSetPredictionRequest(probeSerialNumber, setPointTemperatureC, mode))
     }
@@ -156,21 +155,8 @@ internal class RepeatedProbeBleDevice (
     override suspend fun readHardwareRevision() = uart.readHardwareRevision()
     override suspend fun readModelInformation() = uart.readModelInformation()
 
-    suspend fun readProbeSerialNumber() {
-        NOT_IMPLEMENTED("Not able to read probe firmware serial number over meatnet")
-//        probeSerialNumberHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS) { success, response ->
-//            if (success) {
-////                val resp = response as NodeReadSerialNumberResponse
-//                uart.firmwareVersion = FirmwareVersion.fromString(resp.firmwareRevision)
-//            }
-//        }
-//        sendUartRequest(NodeReadSerialNumberRequest(probeSerialNumber))
-    }
-
     suspend fun readProbeFirmwareVersion() {
-//        NOT_IMPLEMENTED("Not able to read probe firmware version over meatnet")
-
-        Log.d(LOG_TAG, "readProbeFirmwareVersion")
+        Log.d(LOG_TAG, "MeatNet: readProbeFirmwareVersion")
         probeFirmwareRevisionHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS) { success, response ->
             if (success) {
                 val resp = response as NodeReadFirmwareRevisionResponse
@@ -182,7 +168,7 @@ internal class RepeatedProbeBleDevice (
 
     suspend fun readProbeHardwareRevision() {
 //        NOT_IMPLEMENTED("Not able to read probe hardware rev over meatnet")
-        Log.d(LOG_TAG, "readProbeHardwareRevision")
+        Log.d(LOG_TAG, "MeatNet: readProbeHardwareRevision")
         probeHardwareRevisionHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS) { success, response ->
             if (success) {
                 val resp = response as NodeReadHardwareRevisionResponse
@@ -193,7 +179,7 @@ internal class RepeatedProbeBleDevice (
     }
 
     suspend fun readProbeModelInformation() {
-        Log.d(LOG_TAG, "readProbeModelInformation")
+        Log.d(LOG_TAG, "MeatNet: readProbeModelInformation")
         probeModelInfoHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS) { success, response ->
             if (success) {
                 val resp = response as NodeReadModelInfoResponse
@@ -264,13 +250,18 @@ internal class RepeatedProbeBleDevice (
 //                    is LogResponse -> {
 //                        mutableLogResponseFlow.emit(response)
 //                    }
-                    is NodeReadSessionInfoResponse -> sessionInfoHandler.handled(message.success, message.sessionInformation)
 //                    is SetColorResponse -> setColorHandler.handled(response.success, null)
 //                    is SetIDResponse -> setIdHandler.handled(response.success, null)
+
+                    // Syncronous Requests that are responded to with a single message
                     is NodeSetPredictionResponse -> setPredictionHandler.handled(message.success, null)
-                    is NodeProbeStatusRequest -> handleProbeStatusRequest(message)
                     is NodeReadFirmwareRevisionResponse -> probeFirmwareRevisionHandler.handled(message.success, message)
                     is NodeReadHardwareRevisionResponse -> probeHardwareRevisionHandler.handled(message.success, message)
+                    is NodeReadModelInfoResponse -> probeModelInfoHandler.handled(message.success, message)
+
+                    /// Async Requests that are Broadcast on certain events from a Node
+                    is NodeProbeStatusRequest -> handleProbeStatusRequest(message)
+                    is NodeReadSessionInfoResponse -> sessionInfoHandler.handled(message.success, message.sessionInformation)
                 }
             }
         }

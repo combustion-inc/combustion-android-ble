@@ -306,7 +306,7 @@ internal class ProbeManager(
 
             // event out the invalid session info, fw version, and hardware revision.
             _probe.value = _probe.value.copy(
-                baseDevice = _probe.value.baseDevice.copy(fwVersion = null, hwRevision = null),
+                baseDevice = _probe.value.baseDevice.copy(fwVersion = null, hwRevision = null, modelInformation = null),
                 sessionInfo = null,
             )
         }
@@ -348,11 +348,14 @@ internal class ProbeManager(
                     is RepeatedProbeBleDevice -> device.readProbeFirmwareVersion()
                 }
             }
-            // TODO: MeatNet does not support reading serial number
-//            device.deviceInfoSerialNumber ?: run {
-//                didReadDeviceInfo = true
-//                device.readSerialNumber()
-//            }
+
+            device.deviceInfoSerialNumber ?: run {
+                didReadDeviceInfo = true
+                when (device) {
+                    is ProbeBleDevice -> device.readSerialNumber()
+                }
+            }
+
             device.deviceInfoHardwareRevision ?: run {
                 didReadDeviceInfo = true
                 when (device) {
@@ -377,7 +380,6 @@ internal class ProbeManager(
                     _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(
                         fwVersion = device.deviceInfoFirmwareVersion,
                         hwRevision = device.deviceInfoHardwareRevision,
-                        // TODO: Should we be updating this baseDevice modelInformation or should this be the repeater device modelInformation?
                         modelInformation = device.deviceInfoModelInformation
                     ))
                 }
