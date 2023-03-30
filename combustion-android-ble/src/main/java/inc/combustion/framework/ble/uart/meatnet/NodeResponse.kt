@@ -127,16 +127,48 @@ internal open class NodeResponse(
 //                    )
 //                }
 
-//                NodeMessageType.SESSION_INFO -> {
-//                    return NodeSessionInfoResponse.fromRaw(
-//                        data,
-//                        success,
-//                        payloadLength
-//                    )
-//                }
+                NodeMessageType.SESSION_INFO -> {
+                    return NodeReadSessionInfoResponse.fromData(
+                        data,
+                        success,
+                        requestId,
+                        responseId,
+                        payloadLength
+                    )
+                }
 
                 NodeMessageType.SET_PREDICTION -> {
                     return NodeSetPredictionResponse(
+                        success,
+                        requestId,
+                        responseId,
+                        payloadLength
+                    )
+                }
+
+                NodeMessageType.PROBE_FIRMWARE_REVISION -> {
+                    return NodeReadFirmwareRevisionResponse.fromData(
+                        data,
+                        success,
+                        requestId,
+                        responseId,
+                        payloadLength
+                    )
+                }
+
+                NodeMessageType.PROBE_HARDWARE_REVISION -> {
+                    return NodeReadHardwareRevisionResponse.fromData(
+                        data,
+                        success,
+                        requestId,
+                        responseId,
+                        payloadLength
+                    )
+                }
+
+                NodeMessageType.PROBE_MODEL_INFORMATION -> {
+                    return NodeReadModelInfoResponse.fromData(
+                        data,
                         success,
                         requestId,
                         responseId,

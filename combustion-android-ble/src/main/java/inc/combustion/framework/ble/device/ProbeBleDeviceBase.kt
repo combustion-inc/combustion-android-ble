@@ -81,6 +81,7 @@ internal abstract class ProbeBleDeviceBase() {
     abstract val deviceInfoSerialNumber: String?
     abstract val deviceInfoFirmwareVersion: FirmwareVersion?
     abstract val deviceInfoHardwareRevision: String?
+    abstract val deviceInfoModelInformation: ModelInformation?
 
     // meatnet
     abstract val hopCount: UInt
@@ -102,6 +103,7 @@ internal abstract class ProbeBleDeviceBase() {
     abstract suspend fun readSerialNumber()
     abstract suspend fun readFirmwareVersion()
     abstract suspend fun readHardwareRevision()
+    abstract suspend fun readModelInformation()
 
     // probe status updates
     abstract fun observeProbeStatusUpdates(callback: (suspend (status: ProbeStatus) -> Unit)? = null)

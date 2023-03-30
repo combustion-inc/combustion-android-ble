@@ -31,6 +31,7 @@ import android.bluetooth.BluetoothAdapter
 import androidx.lifecycle.LifecycleOwner
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.service.FirmwareVersion
+import inc.combustion.framework.service.ModelInformation
 
 internal open class DeviceInformationBleDevice(
     mac: String,
@@ -42,6 +43,7 @@ internal open class DeviceInformationBleDevice(
     var serialNumber: String? = null
     var firmwareVersion: FirmwareVersion? = null
     var hardwareRevision: String? = null
+    var modelInformation: ModelInformation? = null
 
 
     override fun disconnect() {
@@ -67,6 +69,14 @@ internal open class DeviceInformationBleDevice(
     suspend fun readHardwareRevision() {
         if(isConnected.get()) {
             hardwareRevision = readHardwareRevisionCharacteristic()
+        }
+    }
+
+    suspend fun readModelInformation() {
+        if(isConnected.get()) {
+            val info = readModelNumberCharacteristic()
+            // break up model number into sku and manufacturing lot
+            modelInformation = ModelInformation.fromString(info)
         }
     }
 }

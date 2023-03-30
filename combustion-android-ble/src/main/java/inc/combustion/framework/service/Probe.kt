@@ -92,6 +92,7 @@ data class Probe(
     val mac = baseDevice.mac
     val fwVersion = baseDevice.fwVersion
     val hwRevision = baseDevice.hwRevision
+    val modelInformation = baseDevice.modelInformation
     val rssi = baseDevice.rssi
     val connectionState = baseDevice.connectionState
 

@@ -360,6 +360,14 @@ internal class ProbeManager(
                     is RepeatedProbeBleDevice -> device.readProbeHardwareRevision()
                 }
             }
+
+            device.deviceInfoModelInformation ?: run {
+                didReadDeviceInfo = true
+                when (device) {
+                    is ProbeBleDevice -> device.readModelInformation()
+                    is RepeatedProbeBleDevice -> device.readProbeModelInformation()
+                }
+            }
         }.invokeOnCompletion {
             // if we read any of the device information characteristics above
             if(didReadDeviceInfo) {

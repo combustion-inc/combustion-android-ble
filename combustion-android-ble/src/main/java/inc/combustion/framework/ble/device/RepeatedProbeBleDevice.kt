@@ -89,6 +89,7 @@ internal class RepeatedProbeBleDevice (
     override val deviceInfoSerialNumber: String? get() { return uart.serialNumber }
     override val deviceInfoFirmwareVersion: FirmwareVersion? get() { return uart.firmwareVersion }
     override val deviceInfoHardwareRevision: String? get() { return uart.hardwareRevision }
+    override val deviceInfoModelInformation: ModelInformation? get() { return uart.modelInformation }
 
     override val productType: CombustionProductType get() { return uart.productType}
 
@@ -118,6 +119,7 @@ internal class RepeatedProbeBleDevice (
 
         processUartMessages()
     }
+
 
     override fun connect() = uart.connect()
     override fun disconnect() = uart.disconnect()
@@ -152,6 +154,7 @@ internal class RepeatedProbeBleDevice (
     override suspend fun readSerialNumber() = uart.readSerialNumber()
     override suspend fun readFirmwareVersion() = uart.readFirmwareVersion()
     override suspend fun readHardwareRevision() = uart.readHardwareRevision()
+    override suspend fun readModelInformation() = uart.readModelInformation()
 
     suspend fun readProbeSerialNumber() {
         NOT_IMPLEMENTED("Not able to read probe firmware serial number over meatnet")
@@ -187,6 +190,17 @@ internal class RepeatedProbeBleDevice (
             }
         }
         sendUartRequest(NodeReadHardwareRevisionRequest(probeSerialNumber))
+    }
+
+    suspend fun readProbeModelInformation() {
+        Log.d(LOG_TAG, "readProbeModelInformation")
+        probeModelInfoHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS) { success, response ->
+            if (success) {
+                val resp = response as NodeReadModelInfoResponse
+                uart.modelInformation = resp.modelInfo
+            }
+        }
+        sendUartRequest(NodeReadModelInfoRequest(probeSerialNumber))
     }
 
     override fun observeAdvertisingPackets(serialNumberFilter: String, macFilter: String, callback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)?) {
