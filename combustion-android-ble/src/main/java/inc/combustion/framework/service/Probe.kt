@@ -54,6 +54,8 @@ package inc.combustion.framework.service
  * @property predictionSeconds The prediction in number of seconds from now, filtered and intended for display to the user.
  * @property rawPredictionSeconds The raw prediction from the probe in number of seconds from now.
  * @property estimatedCoreCelsisus Current estimate of the core temperature for prediction.
+ * @property overheatingSensors List of indices into [temperaturesCelsius], where each entry is an
+ *                              overheating sensor.
  *
  * @see DeviceConnectionState
  * @see ProbeUploadState
@@ -86,7 +88,8 @@ data class Probe(
     val rawPredictionSeconds: UInt? = null,
     val estimatedCoreCelsius: Double? = null,
     val hopCount: UInt? = null,
-    val statusNotificationsStale: Boolean = false
+    val statusNotificationsStale: Boolean = false,
+    val overheatingSensors: List<Int> = listOf(),
 ) {
     val serialNumber = baseDevice.serialNumber
     val mac = baseDevice.mac
@@ -118,6 +121,9 @@ data class Probe(
 
             return null
         }
+
+    val isOverheating: Boolean
+        get() = overheatingSensors.isNotEmpty()
 
     companion object {
         fun create(serialNumber: String = "", mac: String = "") : Probe {
