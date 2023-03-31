@@ -40,7 +40,7 @@ import inc.combustion.framework.service.ProbeVirtualSensors
  * @constructor
  * Constructs the response from the byte array received over BLE from the UART service.
  *
- * @param data Data received over BLUE
+ * @param data Data received over BLE
  * @param success Base response status code.
  */
 internal class LogResponse(

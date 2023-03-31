@@ -36,5 +36,7 @@ class DebugSettings {
         var DEBUG_LOG_CONNECTION_STATE = false
         var DEBUG_LOG_BLE_OPERATIONS = false
         var DEBUG_LOG_SERVICE_LIFECYCLE = false
+        var DEBUG_LOG_MESSAGE_REQUESTS = false
+        var DEBUG_LOG_MESSAGE_RESPONSES = false
     }
 }

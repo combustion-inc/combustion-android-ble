@@ -208,7 +208,7 @@ internal class ProbeManager(
 
     fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt) {
         // TODO: MeatNet Log Transfer & Multi-Node: Use getPreferredMeatNetLink
-        arbitrator.getDirectLink()?.sendLogRequest(startSequenceNumber, endSequenceNumber) {
+        arbitrator.getPreferredMeatNetLink()?.sendLogRequest(startSequenceNumber, endSequenceNumber) {
             _logResponseFlow.emit(it)
         }
     }
@@ -254,7 +254,7 @@ internal class ProbeManager(
         }
 
         // TODO: MeatNet Log Transfer: hard-coded to direct link for now.
-        if(arbitrator.getDirectLink() == device) {
+        if(arbitrator.getPreferredMeatNetLink() == device) {
             _probeStatusFlow.emit(status)
         }
     }
@@ -280,8 +280,10 @@ internal class ProbeManager(
         }
 
         if(arbitrator.shouldConnect(device)) {
-            Log.i(LOG_TAG, "PM($serialNumber) automatically connecting to ${device.id}")
-            device.connect()
+            if( device is RepeatedProbeBleDevice) {
+                Log.i(LOG_TAG, "PM($serialNumber) automatically connecting to ${device.id} ${device.productType} on link ${device.linkId}")
+                device.connect()
+            }
         }
     }
 

@@ -39,7 +39,7 @@ internal class DataLinkArbitrator(
     private val settings: DeviceManager.Settings
 ) {
     companion object {
-        private const val USE_STATIC_LINK: Boolean = false
+        private const val USE_STATIC_LINK: Boolean = true
     }
 
     // direct ble link to probe
@@ -242,8 +242,8 @@ internal class DataLinkArbitrator(
 
     private fun debuggingWithStaticLink(device: ProbeBleDeviceBase): Boolean {
         return when(device) {
-            is ProbeBleDevice -> true
-            is RepeatedProbeBleDevice -> false
+            is ProbeBleDevice -> false
+            is RepeatedProbeBleDevice -> true
             else -> false
         }
     }

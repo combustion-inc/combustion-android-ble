@@ -27,9 +27,12 @@
  */
 package inc.combustion.framework.ble.uart.meatnet
 
+import android.util.Log
+import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.getCRC16CCITT
 import inc.combustion.framework.ble.getLittleEndianUInt32At
 import inc.combustion.framework.ble.getLittleEndianUShortAt
+import inc.combustion.framework.service.DebugSettings
 
 /**
  * Baseclass for UART response messages
@@ -108,24 +111,15 @@ internal open class NodeResponse(
             }
 
             when(messageType) {
-//                NodeMessageType.LOG -> {
-//                    return NodeLogResponse.fromRaw(
-//                        data,
-//                        success,
-//                        payloadLength
-//                    )
-//                }
-
-//                NodeMessageType.SET_ID -> {
-//                    return NodeSetIDResponse(success, payloadLength.toInt())
-//                }
-
-//                NodeMessageType.SET_COLOR -> {
-//                    return NodeSetColorResponse(
-//                        success,
-//                        payloadLength
-//                    )
-//                }
+                NodeMessageType.LOG -> {
+                    return NodeReadLogsResponse.fromData(
+                        data,
+                        success,
+                        requestId,
+                        responseId,
+                        payloadLength
+                    )
+                }
 
                 NodeMessageType.SESSION_INFO -> {
                     return NodeReadSessionInfoResponse.fromData(
@@ -176,6 +170,19 @@ internal open class NodeResponse(
                     )
                 }
 
+// TODO: The messages types below are not currently implemented
+
+//                NodeMessageType.SET_ID -> {
+//                    return NodeSetIDResponse(success, payloadLength.toInt())
+//                }
+
+//                NodeMessageType.SET_COLOR -> {
+//                    return NodeSetColorResponse(
+//                        success,
+//                        payloadLength
+//                    )
+//                }
+
 //                NodeMessageType.READ_OVER_TEMPERATURE -> {
 //                    return NodeReadOverTemperatureResponse(
 //                        data,
@@ -185,6 +192,9 @@ internal open class NodeResponse(
 //                }
 
                 else -> {
+                    if ( DebugSettings.DEBUG_LOG_MESSAGE_RESPONSES ) {
+                        Log.d(LOG_TAG, "NodeResponse: responseFromData: Unknown message type: $messageType")
+                    }
                     return null
                 }
             }

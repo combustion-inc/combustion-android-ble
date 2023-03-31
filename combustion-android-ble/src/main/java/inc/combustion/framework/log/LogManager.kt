@@ -86,9 +86,10 @@ internal class LogManager {
                         }
                         .collect {
                             // if device is disconnected, uploading is unavailable, so update
-                            // the state if it hs not already been updated and let the log know
+                            // the state if it is not already been updated and let the log know
                             // to expect another log request at some point in the future, for its
                             // internal bookkeeping.
+                            Log.d(LOG_TAG, "Probe State Flow: $it")
                             if(it.connectionState != DeviceConnectionState.CONNECTED && probeManager.uploadState != ProbeUploadState.Unavailable) {
                                 probeManager.uploadState = ProbeUploadState.Unavailable
                                 temperatureLog?.expectFutureLogRequest()
