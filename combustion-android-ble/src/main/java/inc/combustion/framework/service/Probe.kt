@@ -30,12 +30,21 @@ package inc.combustion.framework.service
 /**
  * Data class for the current state of a probe.
  *
+ * [instantReadCelsius] and [instantReadFahrenheit] have the same deadband filtering and rounding
+ * that are applied to the instant read value on the display--use these when displaying to users as
+ * it minimizes 'flicker', where the reading jumps between two adjacent values quickly.
+ *
+ * [instantReadRawCelsius] contains the actual instant read value, which can be prone to the flicker
+ * mentioned above.
+ *
+ * If [instantReadCelsius], [instantReadFahrenheit], and [instantReadRawCelsius] will be null if the
+ * thermometer is not in instant read mode.
+ *
  * @property serialNumber Serial Number
  * @property mac Bluetooth MAC Address
  * @property fwVersion Firmware Version
  * @property hwRevision Hardware Revision
  * @property temperaturesCelsius Current temperature values
- * @property instantReadCelsius Current instant read value
  * @property rssi Received signal strength
  * @property minSequence Minimum log sequence number
  * @property maxSequence Current sequence number
@@ -69,6 +78,8 @@ data class Probe(
     val sessionInfo: SessionInformation? = null,
     val temperaturesCelsius: ProbeTemperatures? = null,
     val instantReadCelsius: Double? = null,
+    val instantReadFahrenheit: Double? = null,
+    val instantReadRawCelsius: Double? = null,
     val coreTemperatureCelsius: Double? = null,
     val surfaceTemperatureCelsius: Double? = null,
     val ambientTemperatureCelsius: Double? = null,

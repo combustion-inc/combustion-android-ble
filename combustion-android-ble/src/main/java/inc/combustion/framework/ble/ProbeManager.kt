@@ -30,6 +30,7 @@ package inc.combustion.framework.ble
 import android.util.Log
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import inc.combustion.framework.InstantReadFilter
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.device.*
 import inc.combustion.framework.ble.device.DeviceInformationBleDevice
@@ -141,6 +142,8 @@ internal class ProbeManager(
         }
 
     private val predictionManager = PredictionManager()
+
+    private val instantReadFilter = InstantReadFilter()
 
     init {
         predictionManager.setPredictionCallback {
@@ -430,8 +433,11 @@ internal class ProbeManager(
     }
 
     private fun updateInstantRead(value: Double?) {
+        instantReadFilter.addReading(value)
         _probe.value = _probe.value.copy(
-            instantReadCelsius = value
+            instantReadCelsius = instantReadFilter.values?.first,
+            instantReadFahrenheit = instantReadFilter.values?.second,
+            instantReadRawCelsius = value
         )
         instantReadMonitor.activity()
     }
@@ -477,7 +483,11 @@ internal class ProbeManager(
         )
 
         if(instantReadMonitor.isIdle(PROBE_INSTANT_READ_IDLE_TIMEOUT_MS)) {
-            _probe.value = _probe.value.copy(instantReadCelsius = null)
+            _probe.value = _probe.value.copy(
+                instantReadCelsius = null,
+                instantReadFahrenheit = null,
+                instantReadRawCelsius = null,
+            )
         }
     }
 
