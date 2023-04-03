@@ -31,7 +31,7 @@ package inc.combustion.framework.ble.uart.meatnet
 import inc.combustion.framework.ble.putLittleEndianUInt32At
 
 internal class NodeReadLogsRequest(
-    serialNumber: UInt,
+    serialNumber: String,
     minSequence: UInt,
     maxSequence: UInt,
 ) : NodeRequest(
@@ -50,12 +50,12 @@ internal class NodeReadLogsRequest(
          * Helper function that builds up payload of request.
          */
         fun populatePayload(
-            serialNumber: UInt,
+            serialNumber: String,
             minSequence: UInt,
             maxSequence: UInt): UByteArray {
             val payload = UByteArray(PAYLOAD_LENGTH.toInt()) { 0u }
 
-            payload.putLittleEndianUInt32At(0, serialNumber)
+            payload.putLittleEndianUInt32At(0, serialNumber.toLong(radix = 16).toUInt())
             payload.putLittleEndianUInt32At(4, minSequence)
             payload.putLittleEndianUInt32At(8, maxSequence)
             return payload

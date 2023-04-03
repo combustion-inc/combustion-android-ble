@@ -27,6 +27,10 @@
  */
 package inc.combustion.framework.ble.uart.meatnet
 
+import android.util.Log
+import inc.combustion.framework.LOG_TAG
+import inc.combustion.framework.service.DebugSettings
+
 /**
  * Representation of Combustion BLE Node UART request. This top-level representation
  * is useful for decoding multiple UART messages from a single notification that can
@@ -60,6 +64,12 @@ internal open class NodeUARTMessage {
                     }
                     else {
                         // Found invalid response, break out of while loop
+                        if (DebugSettings.DEBUG_LOG_MESSAGE_REQUESTS || DebugSettings.DEBUG_LOG_MESSAGE_RESPONSES) {
+                            Log.d(
+                                LOG_TAG,
+                                "Node UART: Found invalid request or response, breaking out of while loop"
+                            )
+                        }
                         break
                     }
                 }

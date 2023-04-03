@@ -31,7 +31,6 @@ package inc.combustion.framework.ble.device
 import android.util.Log
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.NOT_IMPLEMENTED
 import inc.combustion.framework.ble.ProbeStatus
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.uart.*
@@ -44,7 +43,6 @@ import inc.combustion.framework.ble.uart.meatnet.NodeSetPredictionResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.ble.uart.meatnet.NodeReadSessionInfoRequest
 import inc.combustion.framework.service.*
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 internal class RepeatedProbeBleDevice (
@@ -56,6 +54,7 @@ internal class RepeatedProbeBleDevice (
     private val advertisementForProbe = hashMapOf<String, CombustionAdvertisingData>()
 
     private var probeStatusCallback: (suspend (status: ProbeStatus) -> Unit)? = null
+    private var logResponseCallback: (suspend (LogResponse) -> Unit)? = null
 
     override val advertisement: CombustionAdvertisingData?
         get() {
@@ -146,8 +145,8 @@ internal class RepeatedProbeBleDevice (
     }
 
     override fun sendLogRequest(minSequence: UInt, maxSequence: UInt, callback: (suspend (LogResponse) -> Unit)?) {
-        // see ProbeUartBleDevice
-        TODO()
+        logResponseCallback = callback
+        sendUartRequest(NodeReadLogsRequest(probeSerialNumber, minSequence, maxSequence))
     }
 
     override suspend fun readSerialNumber() = uart.readSerialNumber()
@@ -242,15 +241,33 @@ internal class RepeatedProbeBleDevice (
         }
     }
 
+    private suspend fun handleLogResponse(message: NodeReadLogsResponse) {
+        // Check that this log response matches this probe serial number
+        if(message.serialNumber == probeSerialNumber) {
+            // Send log response to callback
+            logResponseCallback?.let {
+                it( LogResponse(
+                        message.sequenceNumber,
+                        message.temperatures,
+                        message.predictionLog,
+                        message.success,
+                        message.payloadLength.toUInt())
+                )
+            }
+        }
+    }
+
     private fun processUartMessages() {
         observeUartMessages { messages ->
             for (message in messages) {
                 when (message) {
-//                    is LogResponse -> {
-//                        mutableLogResponseFlow.emit(response)
-//                    }
-//                    is SetColorResponse -> setColorHandler.handled(response.success, null)
-//                    is SetIDResponse -> setIdHandler.handled(response.success, null)
+
+                    // Unsupported Messages
+//                  is NodeSetColorResponse -> setColorHandler.handled(response.success, null)
+//                  is NodeSetIDResponse -> setIdHandler.handled(response.success, null)
+
+                    // Repeated Responses
+                    is NodeReadLogsResponse -> handleLogResponse(message)
 
                     // Syncronous Requests that are responded to with a single message
                     is NodeSetPredictionResponse -> setPredictionHandler.handled(message.success, null)
