@@ -306,7 +306,7 @@ internal class ProbeManager(
 
             // event out the invalid session info, fw version, and hardware revision.
             _probe.value = _probe.value.copy(
-                baseDevice = _probe.value.baseDevice.copy(fwVersion = null, hwRevision = null),
+                baseDevice = _probe.value.baseDevice.copy(fwVersion = null, hwRevision = null, modelInformation = null),
                 sessionInfo = null,
             )
         }
@@ -342,15 +342,34 @@ internal class ProbeManager(
         owner.lifecycleScope.launch {
             device.deviceInfoFirmwareVersion ?: run {
                 didReadDeviceInfo = true
-                device.readFirmwareVersion()
+                when(device)
+                {
+                    is ProbeBleDevice -> device.readFirmwareVersion()
+                    is RepeatedProbeBleDevice -> device.readProbeFirmwareVersion()
+                }
             }
+
             device.deviceInfoSerialNumber ?: run {
                 didReadDeviceInfo = true
-                device.readSerialNumber()
+                when (device) {
+                    is ProbeBleDevice -> device.readSerialNumber()
+                }
             }
+
             device.deviceInfoHardwareRevision ?: run {
                 didReadDeviceInfo = true
-                device.readHardwareRevision()
+                when (device) {
+                    is ProbeBleDevice -> device.readHardwareRevision()
+                    is RepeatedProbeBleDevice -> device.readProbeHardwareRevision()
+                }
+            }
+
+            device.deviceInfoModelInformation ?: run {
+                didReadDeviceInfo = true
+                when (device) {
+                    is ProbeBleDevice -> device.readModelInformation()
+                    is RepeatedProbeBleDevice -> device.readProbeModelInformation()
+                }
             }
         }.invokeOnCompletion {
             // if we read any of the device information characteristics above
@@ -360,7 +379,8 @@ internal class ProbeManager(
                 if(arbitrator.shouldUpdateOnDeviceInfoRead(device)) {
                     _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(
                         fwVersion = device.deviceInfoFirmwareVersion,
-                        hwRevision = device.deviceInfoHardwareRevision
+                        hwRevision = device.deviceInfoHardwareRevision,
+                        modelInformation = device.deviceInfoModelInformation
                     ))
                 }
 
@@ -375,7 +395,7 @@ internal class ProbeManager(
         }
 
         // TODO: MeatNet Log Transfer: hard-coded to direct link for now.
-        arbitrator.getDirectLink()?.let {
+        arbitrator.getPreferredMeatNetLink()?.let {
             if(sessionInfo == null) {
                 it.sendSessionInformationRequest { status, info ->
                     if(status && info is SessionInformation) {

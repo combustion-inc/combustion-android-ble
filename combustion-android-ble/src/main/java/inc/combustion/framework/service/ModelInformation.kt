@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: NodeReadLogsRequest.kt
+ * File: ModelInformation.kt
  * Author: https://github.com/angrygorilla
  *
  * MIT License
@@ -26,40 +26,29 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble.uart.meatnet
+package inc.combustion.framework.service
 
-import inc.combustion.framework.ble.putLittleEndianUInt32At
-
-internal class NodeReadLogsRequest(
-    serialNumber: UInt,
-    minSequence: UInt,
-    maxSequence: UInt,
-) : NodeRequest(
-    populatePayload(
-        serialNumber,
-        minSequence,
-        maxSequence
-    ),
-    NodeMessageType.LOG
+data class ModelInformation(
+    val sku: String,
+    val manufacturingLot: String
 ) {
+
     companion object {
-        /// payload length 12 = serial number (4 bytes) + min sequence (4 bytes) + max sequence (4 bytes)
-        const val PAYLOAD_LENGTH: UByte = 12u
-
         /**
-         * Helper function that builds up payload of request.
+         * Converts this model information string into a [ModelInformation] object, which includes the
+         * SKU and manufacturing lot.
          */
-        fun populatePayload(
-            serialNumber: UInt,
-            minSequence: UInt,
-            maxSequence: UInt): UByteArray {
-            val payload = UByteArray(PAYLOAD_LENGTH.toInt()) { 0u }
-
-            payload.putLittleEndianUInt32At(0, serialNumber)
-            payload.putLittleEndianUInt32At(4, minSequence)
-            payload.putLittleEndianUInt32At(8, maxSequence)
-            return payload
+        fun fromString(modelInformationString: String?): ModelInformation {
+            return if(modelInformationString == null) {
+                ModelInformation("", "")
+            } else {
+                val split = modelInformationString.split(":")
+                if(split.size == 2) {
+                    ModelInformation(split[0], split[1])
+                } else {
+                    ModelInformation("", "")
+                }
+            }
         }
     }
-
 }

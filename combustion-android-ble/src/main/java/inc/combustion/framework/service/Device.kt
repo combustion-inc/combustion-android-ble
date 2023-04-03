@@ -37,6 +37,7 @@ import inc.combustion.framework.ble.device.DeviceID
  * @property mac The device's MAC address.
  * @property fwVersion The device's firmware version.
  * @property hwRevision The device's hardware revision.
+ * @property modelInformation The device's model information which contains the SKU and manufacturing lot #.
  * @property rssi The BLE RSSI value.
  * @property productType The device product type.
  * @property connectionState The device's current BLE connection state.
@@ -46,6 +47,7 @@ data class Device(
     val mac: String,
     val fwVersion: FirmwareVersion? = null,
     val hwRevision: String? = null,
+    val modelInformation: ModelInformation? = null,
     val rssi: Int = 0,
     val productType: CombustionProductType? = null,
     val connectionState: DeviceConnectionState = DeviceConnectionState.DISCONNECTED,

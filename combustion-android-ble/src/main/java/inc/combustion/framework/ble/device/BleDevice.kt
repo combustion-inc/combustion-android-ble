@@ -84,6 +84,10 @@ internal open class BleDevice (
             service = DEV_INFO_SERVICE_UUID_STRING,
             characteristic = "00002A27-0000-1000-8000-00805F9B34FB"
         )
+        private val MODEL_INFO_CHARACTERISTIC = characteristicOf(
+            service = DEV_INFO_SERVICE_UUID_STRING,
+            characteristic = "00002A24-0000-1000-8000-00805F9B34FB"
+        )
     }
 
     private val mutex = Mutex()
@@ -314,6 +318,9 @@ internal open class BleDevice (
 
     protected suspend fun readHardwareRevisionCharacteristic(): String? =
         readCharacteristic(HW_REVISION_CHARACTERISTIC, "remote hardware revision")?.toString(Charsets.UTF_8)
+
+    protected suspend fun readModelNumberCharacteristic(): String? =
+        readCharacteristic(MODEL_INFO_CHARACTERISTIC, "remote model info")?.toString(Charsets.UTF_8)
 
     private suspend fun readCharacteristic(
         characteristic: Characteristic,

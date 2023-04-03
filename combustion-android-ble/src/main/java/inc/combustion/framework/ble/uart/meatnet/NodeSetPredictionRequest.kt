@@ -32,7 +32,7 @@ import inc.combustion.framework.ble.putLittleEndianUInt32At
 import inc.combustion.framework.service.ProbePredictionMode
 
 internal class NodeSetPredictionRequest(
-    serialNumber: UInt,
+    serialNumber: String,
     setPointTemperatureC: Double,
     mode: ProbePredictionMode
 
@@ -46,7 +46,7 @@ internal class NodeSetPredictionRequest(
          * Helper function that builds up payload of request.
          */
         fun populatePayload(
-            serialNumber: UInt,
+            serialNumber: String,
             setPointTemperatureC: Double,
             mode: ProbePredictionMode
         ) : UByteArray {
@@ -54,7 +54,7 @@ internal class NodeSetPredictionRequest(
             val payload = UByteArray(PAYLOAD_LENGTH.toInt())
 
             // Add serial number to payload
-            payload.putLittleEndianUInt32At(0, serialNumber)
+            payload.putLittleEndianUInt32At(0, serialNumber.toLong(radix = 16).toUInt())
 
             // Encode prediction info in payload
             val converted = (setPointTemperatureC * 10.0).toUInt()

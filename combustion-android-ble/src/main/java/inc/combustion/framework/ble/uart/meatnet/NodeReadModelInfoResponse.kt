@@ -1,7 +1,7 @@
 /*
  * Project: Combustion Inc. Android Framework
  * File: NodeReadModelInfoResponse.kt
- * Author:
+ * Author: https://github.com/angrygorilla
  *
  * MIT License
  *
@@ -29,10 +29,11 @@
 package inc.combustion.framework.ble.uart.meatnet
 
 import inc.combustion.framework.ble.getLittleEndianUInt32At
+import inc.combustion.framework.service.ModelInformation
 
 internal class NodeReadModelInfoResponse (
-    serialNumber: UInt,
-    modelInfo: String,
+    val serialNumber: String,
+    val modelInfo: ModelInformation,
     success: Boolean,
     requestId: UInt,
     responseId: UInt,
@@ -60,9 +61,9 @@ internal class NodeReadModelInfoResponse (
                 return null
             }
 
-            val serialNumber = payload.getLittleEndianUInt32At(PAYLOAD_LENGTH.toInt())
-            val modelInfoRaw = payload.copyOfRange(HEADER_SIZE.toInt() + 4, HEADER_SIZE.toInt() + 54)
-            val modelInfo = String(modelInfoRaw.toByteArray(), Charsets.UTF_8).trim('\u0000')
+            val serialNumber = payload.getLittleEndianUInt32At(PAYLOAD_LENGTH.toInt()).toString(radix = 16).uppercase()
+            val modelInformationString = String(payload.copyOfRange(HEADER_SIZE.toInt() + 4, HEADER_SIZE.toInt() + 54).toByteArray(), Charsets.UTF_8).trim('\u0000')
+            val modelInfo = ModelInformation.fromString(modelInformationString)
 
             return NodeReadModelInfoResponse(
                 serialNumber,
