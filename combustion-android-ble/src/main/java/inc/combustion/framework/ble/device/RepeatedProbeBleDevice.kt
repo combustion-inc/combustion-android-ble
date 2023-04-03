@@ -167,7 +167,6 @@ internal class RepeatedProbeBleDevice (
     }
 
     suspend fun readProbeHardwareRevision() {
-//        NOT_IMPLEMENTED("Not able to read probe hardware rev over meatnet")
         Log.d(LOG_TAG, "MeatNet: readProbeHardwareRevision")
         probeHardwareRevisionHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS) { success, response ->
             if (success) {
