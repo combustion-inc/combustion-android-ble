@@ -71,6 +71,8 @@ internal class ProbeManager(
         private const val PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS = 15000L
         private const val PROBE_STATUS_NOTIFICATIONS_POLL_DELAY_MS = 30000L
         private const val PROBE_INSTANT_READ_IDLE_TIMEOUT_MS = 5000L
+        private const val IGNORE_PROBES = true
+        private const val IGNORE_REPEATERS = false
     }
 
     // encapsulates logic for managing network data links
@@ -151,6 +153,9 @@ internal class ProbeManager(
             return _probe.value.maxSequenceNumber
         }
 
+    // signals when logs are no longer being added to LogManager.
+    var logTransferCompleteCallback: () -> Unit = { }
+
     private val predictionManager = PredictionManager()
 
     private val instantReadFilter = InstantReadFilter()
@@ -166,6 +171,8 @@ internal class ProbeManager(
     fun addJob(job: Job) = jobManager.addJob(job)
 
     fun addProbe(probe: ProbeBleDevice, baseDevice: DeviceInformationBleDevice, advertisement: CombustionAdvertisingData) {
+        if(IGNORE_PROBES) return
+
         if(arbitrator.addProbe(probe, baseDevice)) {
             handleAdvertisingPackets(probe, advertisement)
             observe(probe)
@@ -174,6 +181,8 @@ internal class ProbeManager(
     }
 
     fun addRepeatedProbe(repeatedProbe: RepeatedProbeBleDevice, repeater: DeviceInformationBleDevice, advertisement: CombustionAdvertisingData) {
+        if(IGNORE_REPEATERS) return
+
         if(arbitrator.addRepeatedProbe(repeatedProbe, repeater))  {
             handleAdvertisingPackets(repeatedProbe, advertisement)
             observe(repeatedProbe)
@@ -220,8 +229,8 @@ internal class ProbeManager(
     }
 
     fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt) {
-        // TODO: MeatNet Log Transfer & Multi-Node: Use getPreferredMeatNetLink
-        arbitrator.getDirectLink()?.sendLogRequest(startSequenceNumber, endSequenceNumber) {
+        //Log.e("MATT", "Requesting Logs: $startSequenceNumber to $endSequenceNumber (${endSequenceNumber - startSequenceNumber}) ($uploadState)")
+        arbitrator.getPreferredMeatNetLink()?.sendLogRequest(startSequenceNumber, endSequenceNumber) {
             _logResponseFlow.emit(it)
         }
     }
@@ -264,10 +273,6 @@ internal class ProbeManager(
     private suspend fun handleProbeStatus(device: ProbeBleDeviceBase, status: ProbeStatus) {
         if(arbitrator.shouldUpdateDataFromProbeStatus(device)) {
             updateDataFromProbeStatus(status)
-        }
-
-        // TODO: MeatNet Log Transfer: hard-coded to direct link for now.
-        if(arbitrator.getDirectLink() == device) {
             _probeStatusFlow.emit(status)
         }
     }
@@ -293,7 +298,7 @@ internal class ProbeManager(
         }
 
         if(arbitrator.shouldConnect(device)) {
-            Log.i(LOG_TAG, "PM($serialNumber) automatically connecting to ${device.id}")
+            Log.i(LOG_TAG, "PM($serialNumber) automatically connecting to ${device.id} (${device.productType}) on link ${device.linkId}")
             device.connect()
         }
     }
@@ -329,12 +334,18 @@ internal class ProbeManager(
 
             // if using meatnet, then we use the arbitrated connection state
             _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(connectionState = meatNetState))
-
         }
         else if (device is ProbeBleDevice) {
             // if not using meatnet, then we use the connection state of the direct link
             _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(connectionState = state))
+        }
 
+        // if the arbitrated connection state now says that we aren't able to send UART messages,
+        // and we are currently in an active Upload State, coordinate with Log Manager that it can
+        // no longer expect log messages, and transition the upload state to Unavailable.
+        if(!arbitrator.isAbleToSendUartMessages() && uploadState != ProbeUploadState.Unavailable) {
+            uploadState = ProbeUploadState.Unavailable
+            logTransferCompleteCallback()
         }
     }
 
@@ -355,8 +366,7 @@ internal class ProbeManager(
         owner.lifecycleScope.launch {
             device.deviceInfoFirmwareVersion ?: run {
                 didReadDeviceInfo = true
-                when(device)
-                {
+                when(device) {
                     is ProbeBleDevice -> device.readFirmwareVersion()
                     is RepeatedProbeBleDevice -> device.readProbeFirmwareVersion()
                 }
@@ -407,7 +417,6 @@ internal class ProbeManager(
             }
         }
 
-        // TODO: MeatNet Log Transfer: hard-coded to direct link for now.
         arbitrator.getPreferredMeatNetLink()?.let {
             if(sessionInfo == null) {
                 it.sendSessionInformationRequest { status, info ->

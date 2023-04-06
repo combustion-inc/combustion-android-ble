@@ -33,6 +33,7 @@ import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.device.ProbeBleDeviceBase
 import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
+import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.service.DeviceManager
 
 internal class DataLinkArbitrator(
@@ -102,10 +103,6 @@ internal class DataLinkArbitrator(
 
     fun isConnectedToMeatNet(): Boolean {
         return getPreferredMeatNetLink() != null
-    }
-
-    private fun isConnectedToAnyRepeater(): Boolean {
-        return repeatedProbeBleDevices.firstOrNull { it.isConnected } != null
     }
 
     fun getNodesNeedingConnection(fromApiCall: Boolean = false): List<DeviceInformationBleDevice> {
@@ -230,6 +227,20 @@ internal class DataLinkArbitrator(
 
     fun shouldUpdateOnRemoteRssi(device: ProbeBleDeviceBase, rssi: Int): Boolean {
         return arbitrateConnected(device)
+    }
+
+    fun isAbleToSendUartMessages(): Boolean {
+        // MIW
+        return if(settings.meatNetEnabled) {
+            isConnectedToMeatNet()
+        }
+        else {
+            getDirectLink() != null
+        }
+    }
+
+    private fun isConnectedToAnyRepeater(): Boolean {
+        return repeatedProbeBleDevices.firstOrNull { it.isConnected } != null
     }
 
     private fun arbitrateConnected(device: ProbeBleDeviceBase): Boolean {
