@@ -448,6 +448,12 @@ internal class ProbeManager(
             predictionManager.updatePredictionStatus(status.predictionStatus, status.maxSequenceNumber)
         }
 
+        arbitrator.getPreferredMeatNetLink()?.let {
+            _probe.value = _probe.value.copy(
+                hopCount = it.hopCount
+            )
+        }
+
         updateBatteryIdColor(status.batteryStatus, status.id, status.color)
         updateSequenceNumbers(status.minSequenceNumber, status.maxSequenceNumber)
     }
