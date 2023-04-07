@@ -120,6 +120,16 @@ internal class ProbeManager(
             }
         }
 
+    var recordsDownloaded: Int
+        get() {
+            return _probe.value.recordsDownloaded
+        }
+        set(value) {
+            if(value != _probe.value.recordsDownloaded) {
+                _probe.value = _probe.value.copy(recordsDownloaded = value)
+            }
+        }
+
     val probe: Probe
         get() {
             return _probe.value
@@ -446,6 +456,12 @@ internal class ProbeManager(
 
             updateTemperatures(status.temperatures, status.virtualSensors)
             predictionManager.updatePredictionStatus(status.predictionStatus, status.maxSequenceNumber)
+        }
+
+        arbitrator.getPreferredMeatNetLink()?.let {
+            _probe.value = _probe.value.copy(
+                hopCount = it.hopCount
+            )
         }
 
         updateBatteryIdColor(status.batteryStatus, status.id, status.color)

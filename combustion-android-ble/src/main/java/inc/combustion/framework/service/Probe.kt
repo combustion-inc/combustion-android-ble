@@ -101,6 +101,7 @@ data class Probe(
     val hopCount: UInt? = null,
     val statusNotificationsStale: Boolean = false,
     val overheatingSensors: List<Int> = listOf(),
+    val recordsDownloaded: Int = 0
 ) {
     val serialNumber = baseDevice.serialNumber
     val mac = baseDevice.mac
