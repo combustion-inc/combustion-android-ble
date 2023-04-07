@@ -135,6 +135,9 @@ internal class LogManager {
                                     // do that below in processing the log response.
                                     temperatureLog.addFromDeviceStatus(deviceStatus)
 
+                                    // update the count of records downloaded
+                                    probeManager.recordsDownloaded = temperatureLog.dataPointCount
+
                                     // not receiving expected log responses, then complete the log
                                     // request and transition state.
                                     if(temperatureLog.logRequestIsStalled) {
@@ -156,6 +159,9 @@ internal class LogManager {
 
                                     // add the device status to the temperature log
                                     val sessionStatus = temperatureLog.addFromDeviceStatus(deviceStatus)
+
+                                    // update the count of records downloaded
+                                    probeManager.recordsDownloaded = temperatureLog.dataPointCount
 
                                     // if we have any dropped records then initiate a log request to
                                     // backfill from the missing records.
@@ -212,6 +218,9 @@ internal class LogManager {
 
                             // add the response to the temperature log and handle upload progress
                             val uploadProgress = temperatureLog.addFromLogResponse(response)
+
+                            // update the count of records downloaded
+                            probeManager.recordsDownloaded = temperatureLog.dataPointCount
 
                             // if we aren't complete, then update the stats of the uploading state
                             if(!uploadProgress.isComplete) {

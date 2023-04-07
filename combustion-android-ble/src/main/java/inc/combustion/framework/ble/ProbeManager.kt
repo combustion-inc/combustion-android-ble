@@ -120,6 +120,16 @@ internal class ProbeManager(
             }
         }
 
+    var recordsDownloaded: Int
+        get() {
+            return _probe.value.recordsDownloaded
+        }
+        set(value) {
+            if(value != _probe.value.recordsDownloaded) {
+                _probe.value = _probe.value.copy(recordsDownloaded = value)
+            }
+        }
+
     val probe: Probe
         get() {
             return _probe.value
