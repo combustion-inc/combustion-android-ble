@@ -229,7 +229,6 @@ internal class ProbeManager(
     }
 
     fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt) {
-        //Log.e("MATT", "Requesting Logs: $startSequenceNumber to $endSequenceNumber (${endSequenceNumber - startSequenceNumber}) ($uploadState)")
         arbitrator.getPreferredMeatNetLink()?.sendLogRequest(startSequenceNumber, endSequenceNumber) {
             _logResponseFlow.emit(it)
         }
@@ -399,13 +398,11 @@ internal class ProbeManager(
             if(didReadDeviceInfo) {
 
                 // if we should update the current external state of the probe base on device info data
-                if(arbitrator.shouldUpdateOnDeviceInfoRead(device)) {
-                    _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(
-                        fwVersion = device.deviceInfoFirmwareVersion,
-                        hwRevision = device.deviceInfoHardwareRevision,
-                        modelInformation = device.deviceInfoModelInformation
-                    ))
-                }
+                _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(
+                    fwVersion = device.deviceInfoFirmwareVersion,
+                    hwRevision = device.deviceInfoHardwareRevision,
+                    modelInformation = device.deviceInfoModelInformation
+                ))
 
                 device.deviceInfoFirmwareVersion?.let {
                     dfuConnectedNodeCallback(FirmwareState.Node(

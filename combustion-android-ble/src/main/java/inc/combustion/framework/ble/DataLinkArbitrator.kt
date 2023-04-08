@@ -200,10 +200,6 @@ internal class DataLinkArbitrator(
         return false
     }
 
-    fun shouldUpdateOnDeviceInfoRead(device: ProbeBleDeviceBase): Boolean {
-        return device is ProbeBleDevice
-    }
-
     fun shouldUpdateOnOutOfRange(device: ProbeBleDeviceBase): Boolean {
         return device is ProbeBleDevice && !settings.meatNetEnabled
         // TODO: Else, Decide how to handle with Multi-Node MeatNet

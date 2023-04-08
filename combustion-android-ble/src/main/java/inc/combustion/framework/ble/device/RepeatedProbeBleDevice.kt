@@ -33,9 +33,7 @@ import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.ProbeStatus
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
-import inc.combustion.framework.ble.uart.*
 import inc.combustion.framework.ble.uart.LogResponse
-import inc.combustion.framework.ble.uart.SessionInfoResponse
 import inc.combustion.framework.ble.uart.meatnet.*
 import inc.combustion.framework.ble.uart.meatnet.NodeProbeStatusRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeRequest
@@ -43,6 +41,7 @@ import inc.combustion.framework.ble.uart.meatnet.NodeSetPredictionResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.ble.uart.meatnet.NodeReadSessionInfoRequest
 import inc.combustion.framework.service.*
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 
 internal class RepeatedProbeBleDevice (
@@ -119,7 +118,6 @@ internal class RepeatedProbeBleDevice (
         processUartMessages()
     }
 
-
     override fun connect() = uart.connect()
     override fun disconnect() = uart.disconnect()
 
@@ -155,36 +153,51 @@ internal class RepeatedProbeBleDevice (
     override suspend fun readModelInformation() = uart.readModelInformation()
 
     suspend fun readProbeFirmwareVersion() {
-        Log.d(LOG_TAG, "MeatNet: readProbeFirmwareVersion")
+        val channel = Channel<Unit>(0)
         probeFirmwareRevisionHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS) { success, response ->
             if (success) {
                 val resp = response as NodeReadFirmwareRevisionResponse
                 uart.firmwareVersion = FirmwareVersion.fromString(resp.firmwareRevision)
+                Log.d(LOG_TAG, "MeatNet: readProbeFirmwareVersion: ${uart.firmwareVersion}")
+            }
+            uart.owner.lifecycleScope.launch {
+                channel.send(Unit)
             }
         }
         sendUartRequest(NodeReadFirmwareRevisionRequest(probeSerialNumber))
+        channel.receive()
     }
 
     suspend fun readProbeHardwareRevision() {
-        Log.d(LOG_TAG, "MeatNet: readProbeHardwareRevision")
+        val channel = Channel<Unit>(0)
         probeHardwareRevisionHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS) { success, response ->
             if (success) {
                 val resp = response as NodeReadHardwareRevisionResponse
                 uart.hardwareRevision = resp.hardwareRevision
+                Log.d(LOG_TAG, "MeatNet: readProbeHardwareRevision: ${uart.hardwareRevision}")
+            }
+            uart.owner.lifecycleScope.launch {
+                channel.send(Unit)
             }
         }
         sendUartRequest(NodeReadHardwareRevisionRequest(probeSerialNumber))
+        channel.receive()
     }
 
     suspend fun readProbeModelInformation() {
-        Log.d(LOG_TAG, "MeatNet: readProbeModelInformation")
+        val channel = Channel<Unit>(0)
         probeModelInfoHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS) { success, response ->
             if (success) {
                 val resp = response as NodeReadModelInfoResponse
                 uart.modelInformation = resp.modelInfo
+                Log.d(LOG_TAG, "MeatNet: readProbeModelInformation: ${uart.modelInformation?.sku} ${uart.modelInformation?.manufacturingLot}")
+            }
+            uart.owner.lifecycleScope.launch {
+                channel.send(Unit)
             }
         }
         sendUartRequest(NodeReadModelInfoRequest(probeSerialNumber))
+        channel.receive()
     }
 
     override fun observeAdvertisingPackets(serialNumberFilter: String, macFilter: String, callback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)?) {
