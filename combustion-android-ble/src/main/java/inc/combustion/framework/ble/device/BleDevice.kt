@@ -229,7 +229,6 @@ internal open class BleDevice (
                         }
                         isInRange.set(false)
                         isConnectable.set(false)
-                        isDisconnected.set(true)
                     }
 
                     callback?.let {
@@ -352,7 +351,7 @@ internal open class BleDevice (
 
         // if the device is advertising as connectable, advertising as non-connectable,
         // currently disconnected, or currently out of range then it's new state is the
-        // advertising state determined above. otherwise, (connected, connected or
+        // advertising state determined above. otherwise, (connected, connecting or
         // disconnecting) the state is unchanged by the advertising packet.
         connectionState = when(connectionState) {
             DeviceConnectionState.ADVERTISING_CONNECTABLE -> advertisingState

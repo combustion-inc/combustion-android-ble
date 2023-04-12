@@ -28,6 +28,7 @@
 
 package inc.combustion.framework.ble
 
+import android.util.Log
 import inc.combustion.framework.ble.device.*
 import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.device.ProbeBleDeviceBase
@@ -55,6 +56,78 @@ internal class DataLinkArbitrator(
     // advertising data arbitration
     private val advertisingArbitrator = AdvertisingArbitrator()
 
+    val directLink: ProbeBleDevice?
+        get() {
+            return if(probeBleDevice?.isConnected == true) probeBleDevice else null
+        }
+
+    val preferredMeatNetLink: ProbeBleDeviceBase?
+        get() {
+            // If meatnet is not enabled, then return the probe connection
+            if(!settings.meatNetEnabled) {
+                return directLink
+            }
+
+            // If meatnet is enabled and connected directly to the probe
+            // then use that connection
+            directLink?.let {
+                return it
+            }
+
+            // Use repeated probe device with lowest hop count that has route to the probe,
+            // additionally sort by ID to keep the selection consistent when multiple nodes are
+            // repeating at the same hop count.
+            return repeatedProbeBleDevices.sortedWith(
+                compareBy(RepeatedProbeBleDevice::hopCount, RepeatedProbeBleDevice::id)
+            ).firstOrNull {
+                it.isConnected && it.connectionState != DeviceConnectionState.NO_ROUTE
+            }
+        }
+
+    val hasUartRoute: Boolean
+        get() {
+            if(directLink?.isConnected == true) {
+                return true
+            }
+
+            return repeatedProbeBleDevices.firstOrNull {
+                it.isConnected && it.connectionState != DeviceConnectionState.NO_ROUTE
+            } != null
+        }
+
+    val hasNoUartRoute: Boolean
+        get() {
+            val noDirectRoute = directLink?.isConnected ?: true
+            var noRepeatedRoute = true
+
+            for(probe in repeatedProbeBleDevices)  {
+                if(!(probe.isConnected && probe.connectionState == DeviceConnectionState.NO_ROUTE)) {
+                    noRepeatedRoute = false
+                    break
+                }
+            }
+
+            return noDirectRoute && noRepeatedRoute
+        }
+
+    val meatNetIsAdvertisingConnectable: Boolean
+        get() {
+            if(directLink?.isConnectable == true) {
+                return true
+            }
+
+            return repeatedProbeBleDevices.firstOrNull { it.isConnectable } != null
+        }
+
+    val meatNetIsOutOfRange: Boolean
+        get() {
+            val directInRange = directLink?.isInRange ?: true
+
+            return repeatedProbeBleDevices.firstOrNull {
+                it.isInRange
+            } == null && !directInRange
+        }
+
     fun finish() {
         networkNodes.forEach { it.value.finish() }
         repeatedProbeBleDevices.clear()
@@ -78,31 +151,6 @@ internal class DataLinkArbitrator(
             networkNodes[repeater.id] = repeater
         }
         return true
-    }
-
-    fun getDirectLink(): ProbeBleDevice? {
-        return if(probeBleDevice?.isConnected == true) probeBleDevice else null
-    }
-
-    fun getPreferredMeatNetLink(): ProbeBleDeviceBase? {
-        // If meatnet is not enabled, then return the probe connection
-        if(!settings.meatNetEnabled) {
-            return getDirectLink()
-        }
-
-        // If meatnet is enabled and connected directly to the probe
-        // then use that connection
-        getDirectLink()?.let {
-            return it
-        }
-
-        // Use repeated probe device with lowest hop count, additionally sort by ID to keep the selection consistent when multiple
-        // nodes are repeating at the same hop count.
-        return repeatedProbeBleDevices.sortedWith(compareBy(RepeatedProbeBleDevice::hopCount, RepeatedProbeBleDevice::id)).firstOrNull { it.isConnected }
-    }
-
-    fun isConnectedToMeatNet(): Boolean {
-        return getPreferredMeatNetLink() != null
     }
 
     fun getNodesNeedingConnection(fromApiCall: Boolean = false): List<DeviceInformationBleDevice> {
@@ -172,14 +220,14 @@ internal class DataLinkArbitrator(
 
             // if not using meatnet, and this is a call from inside the framework then
             // we want to use the auto-reconnect setting.
-            return device.shouldAutoReconnect
+            return device.shouldAutoReconnect && canConnect
         }
 
         // if not meatnet and not a probe
         return false
     }
 
-    fun shouldDisconnect(device: ProbeBleDeviceBase, fromApiCall: Boolean = false): Boolean {
+    private fun shouldDisconnect(device: ProbeBleDeviceBase, fromApiCall: Boolean = false): Boolean {
         val canDisconnect = device.isConnected
         if(settings.meatNetEnabled) {
             // don't disconnect from meatnet
@@ -200,19 +248,6 @@ internal class DataLinkArbitrator(
         return false
     }
 
-    fun shouldUpdateOnOutOfRange(device: ProbeBleDeviceBase): Boolean {
-        return device is ProbeBleDevice && !settings.meatNetEnabled
-        // TODO: Else, Decide how to handle with Multi-Node MeatNet
-    }
-
-    fun shouldHandleAdvertisingPacket(device: ProbeBleDeviceBase): Boolean {
-        if(device == probeBleDevice) {
-            return !device.isConnected
-        }
-
-        return !isConnectedToAnyRepeater()
-    }
-
     fun shouldUpdateDataFromAdvertisingPacket(device: ProbeBleDeviceBase, advertisement: CombustionAdvertisingData): Boolean {
         return if(!USE_STATIC_LINK) advertisingArbitrator.shouldUpdate(device, advertisement) else debuggingWithStaticLink(device)
     }
@@ -225,26 +260,8 @@ internal class DataLinkArbitrator(
         return arbitrateConnected(device)
     }
 
-    fun isAbleToSendUartMessages(): Boolean {
-        // MIW
-        return if(settings.meatNetEnabled) {
-            isConnectedToMeatNet()
-        }
-        else {
-            getDirectLink() != null
-        }
-    }
-
-    private fun isConnectedToAnyRepeater(): Boolean {
-        return repeatedProbeBleDevices.firstOrNull { it.isConnected } != null
-    }
-
     private fun arbitrateConnected(device: ProbeBleDeviceBase): Boolean {
-        return if(!USE_STATIC_LINK) usePreferredLink(device) else debuggingWithStaticLink(device)
-    }
-
-    private fun usePreferredLink(device: ProbeBleDeviceBase): Boolean {
-        return device == getPreferredMeatNetLink()
+        return if(!USE_STATIC_LINK) (device == preferredMeatNetLink) else debuggingWithStaticLink(device)
     }
 
     private fun debuggingWithStaticLink(device: ProbeBleDeviceBase): Boolean {

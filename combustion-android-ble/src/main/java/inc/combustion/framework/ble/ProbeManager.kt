@@ -132,6 +132,39 @@ internal class ProbeManager(
             }
         }
 
+    val connectionState: DeviceConnectionState
+        get() {
+            // if all devices are out of range, then connection state is Out of Range
+            if(arbitrator.meatNetIsOutOfRange) {
+                return DeviceConnectionState.OUT_OF_RANGE
+            }
+
+            // if there is direct (connected) link to probe, then use that link's connection state
+            arbitrator.directLink?.let {
+                return it.connectionState
+            }
+
+            // else, if have a preferred meatnet link (connected with route), then use that connection state
+            arbitrator.preferredMeatNetLink?.let {
+                return it.connectionState
+            }
+
+            // else, if all of the MeatNet devices are connected with no route, then the state is no route
+            if(arbitrator.hasNoUartRoute) {
+                return DeviceConnectionState.NO_ROUTE
+            }
+
+            // if fallen through to this point, then there has to be at least one device that
+            // is in range that we are not connected to (i.e hearing adv packets).
+
+            // else, if there is any device that is advertising connectable, then Connectable
+            if(arbitrator.meatNetIsAdvertisingConnectable) {
+                return DeviceConnectionState.ADVERTISING_CONNECTABLE
+            }
+
+            return DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE
+        }
+
     val probe: Probe
         get() {
             return _probe.value
@@ -203,8 +236,8 @@ internal class ProbeManager(
     }
 
     fun setProbeColor(color: ProbeColor, completionHandler: (Boolean) -> Unit) {
-        // TODO: MeatNet Multi-Node: Use getPreferredMeatNetLink
-        arbitrator.getDirectLink()?.sendSetProbeColor(color) { status, _ ->
+        // Note: not supported by MeatNet
+        arbitrator.directLink?.sendSetProbeColor(color) { status, _ ->
             completionHandler(status)
         } ?: run {
             completionHandler(false)
@@ -212,8 +245,8 @@ internal class ProbeManager(
     }
 
     fun setProbeID(id: ProbeID, completionHandler: (Boolean) -> Unit) {
-        // TODO: MeatNet Multi-Node: Use getPreferredMeatNetLink
-        arbitrator.getDirectLink()?.sendSetProbeID(id) { status, _ ->
+        // Note: not supported by MeatNet
+        arbitrator.directLink?.sendSetProbeID(id) { status, _ ->
             completionHandler(status)
         } ?: run {
             completionHandler(false)
@@ -221,7 +254,7 @@ internal class ProbeManager(
     }
 
     fun setPrediction(removalTemperatureC: Double, mode: ProbePredictionMode, completionHandler: (Boolean) -> Unit) {
-        arbitrator.getPreferredMeatNetLink()?.sendSetPrediction(removalTemperatureC, mode) { status, _ ->
+        arbitrator.preferredMeatNetLink?.sendSetPrediction(removalTemperatureC, mode) { status, _ ->
             completionHandler(status)
         } ?: run {
             completionHandler(false)
@@ -229,7 +262,7 @@ internal class ProbeManager(
     }
 
     fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt) {
-        arbitrator.getPreferredMeatNetLink()?.sendLogRequest(startSequenceNumber, endSequenceNumber) {
+        arbitrator.preferredMeatNetLink?.sendLogRequest(startSequenceNumber, endSequenceNumber) {
             _logResponseFlow.emit(it)
         }
     }
@@ -240,7 +273,9 @@ internal class ProbeManager(
     }
 
     private fun observe(base: ProbeBleDeviceBase) {
-        _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(mac = base.mac))
+        if(base is ProbeBleDevice) {
+            _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(mac = base.mac))
+        }
 
         base.observeAdvertisingPackets(serialNumber, base.mac) { advertisement -> handleAdvertisingPackets(base, advertisement) }
         base.observeConnectionState { state -> handleConnectionState(base, state) }
@@ -277,23 +312,18 @@ internal class ProbeManager(
     }
 
     private fun handleAdvertisingPackets(device: ProbeBleDeviceBase, advertisement: CombustionAdvertisingData) {
-        if(!arbitrator.shouldHandleAdvertisingPacket(device)) {
-            return
-        }
+        val state = connectionState
+        val networkIsOnlyAdvertising =
+            (state == DeviceConnectionState.ADVERTISING_CONNECTABLE || state == DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE)
 
-        if(arbitrator.shouldUpdateDataFromAdvertisingPacket(device, advertisement)) {
-            updateDataFromAdvertisement(advertisement)
-        }
+        if(networkIsOnlyAdvertising) {
+            if(arbitrator.shouldUpdateDataFromAdvertisingPacket(device, advertisement)) {
+                updateDataFromAdvertisement(advertisement)
+            }
 
-        if(settings.meatNetEnabled) {
-            // if using meatnet, then the framework is automatically managing the connection, so
-            // we can push out that the state is connectable, independent of what is being advertised.
-            updateConnectionStateFromAdvertisement(connectable = true)
-        }
-        else if (device is ProbeBleDevice){
-            // if not using meatnet, then we can only connect to probes, so use the connectable flag
-            // in the advertising packet.
-            updateConnectionStateFromAdvertisement(connectable = advertisement.isConnectable)
+            _probe.value = _probe.value.copy(
+                baseDevice = _probe.value.baseDevice.copy(connectionState = state)
+            )
         }
 
         if(arbitrator.shouldConnect(device)) {
@@ -328,29 +358,31 @@ internal class ProbeManager(
             )
         }
 
-        if(settings.meatNetEnabled) {
-            val meatNetState = if(arbitrator.isConnectedToMeatNet()) DeviceConnectionState.CONNECTED else DeviceConnectionState.DISCONNECTED
-
-            // if using meatnet, then we use the arbitrated connection state
-            _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(connectionState = meatNetState))
-        }
-        else if (device is ProbeBleDevice) {
-            // if not using meatnet, then we use the connection state of the direct link
-            _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(connectionState = state))
-        }
-
-        // if the arbitrated connection state now says that we aren't able to send UART messages,
-        // and we are currently in an active Upload State, coordinate with Log Manager that it can
-        // no longer expect log messages, and transition the upload state to Unavailable.
-        if(!arbitrator.isAbleToSendUartMessages() && uploadState != ProbeUploadState.Unavailable) {
+        // if don't have a route to send UART messages and we are currently in an active
+        // Upload State, coordinate with Log Manager that it can no longer expect log
+        // messages, and transition the upload state to Unavailable.  Null SessionInfo
+        // so that it can be requested again when a route is established
+        if(!arbitrator.hasUartRoute && uploadState != ProbeUploadState.Unavailable) {
+            sessionInfo = null
             uploadState = ProbeUploadState.Unavailable
             logTransferCompleteCallback()
         }
+
+        // use the arbitrated connection state
+        _probe.value = _probe.value.copy(
+            baseDevice = _probe.value.baseDevice.copy(connectionState = connectionState),
+            preferredLink = arbitrator.preferredMeatNetLink?.mac ?: ""
+        )
     }
 
     private fun handleOutOfRange(device: ProbeBleDeviceBase) {
-        if(arbitrator.shouldUpdateOnOutOfRange(device)) {
-            updateStateOnOutOfRange()
+        // if the arbitrated connection state is out of range, then update.
+        if(connectionState == DeviceConnectionState.OUT_OF_RANGE) {
+            _probe.value = _probe.value.copy(
+                baseDevice = _probe.value.baseDevice.copy(
+                    connectionState = DeviceConnectionState.OUT_OF_RANGE
+                )
+            )
         }
     }
 
@@ -414,7 +446,7 @@ internal class ProbeManager(
             }
         }
 
-        arbitrator.getPreferredMeatNetLink()?.let {
+        arbitrator.preferredMeatNetLink?.let {
             if(sessionInfo == null) {
                 it.sendSessionInformationRequest { status, info ->
                     if(status && info is SessionInformation) {
@@ -423,20 +455,6 @@ internal class ProbeManager(
                 }
             }
         }
-    }
-
-    private fun updateStateOnOutOfRange()  {
-        _probe.value = _probe.value.copy(
-            baseDevice = _probe.value.baseDevice.copy(connectionState = DeviceConnectionState.OUT_OF_RANGE)
-        )
-    }
-
-    private fun updateConnectionStateFromAdvertisement(connectable: Boolean) {
-        val advertisingState = if(connectable) DeviceConnectionState.ADVERTISING_CONNECTABLE else DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE
-
-        _probe.value = _probe.value.copy(
-            baseDevice = _probe.value.baseDevice.copy(connectionState = advertisingState),
-        )
     }
 
     private fun updateDataFromAdvertisement(advertisement: CombustionAdvertisingData) {
@@ -464,7 +482,7 @@ internal class ProbeManager(
             predictionManager.updatePredictionStatus(status.predictionStatus, status.maxSequenceNumber)
         }
 
-        arbitrator.getPreferredMeatNetLink()?.let {
+        arbitrator.preferredMeatNetLink?.let {
             _probe.value = _probe.value.copy(
                 hopCount = it.hopCount
             )

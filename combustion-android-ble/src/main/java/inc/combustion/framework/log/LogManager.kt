@@ -252,7 +252,7 @@ internal class LogManager {
         // update the probe's upload state with the progress.
         probeManager.uploadState = progress.toProbeUploadState()
 
-        Log.e("MATT", "Request Logs From Device: $progress. State: ${probeManager.uploadState}")
+        Log.i(LOG_TAG, "Requesting Logs: ${range.minSeq} to ${range.maxSeq} (${log.currentSessionId})")
 
         // send the request to the device to start the upload
         probeManager.sendLogRequest(range.minSeq, range.maxSeq)
@@ -305,9 +305,6 @@ internal class LogManager {
                     // syncing state, then exit out of this flow.
                     val sessionId = log.currentSessionId
                     probeManager.probeStatusFlow
-                        .onCompletion {
-                            Log.d(LOG_TAG, "Log Flow: Device Status Flow Complete")
-                        }
                         .catch {
                             Log.w(LOG_TAG, "Log Flow: Device Status Flow Catch: $it")
                         }
@@ -354,6 +351,8 @@ internal class LogManager {
 
         // update the legacyProbeManager's upload state with the progress.
         probeManager.uploadState = progress.toProbeUploadState()
+
+        Log.i(LOG_TAG, "Requesting Logs for Backfill: ${range.minSeq} to ${range.maxSeq} (${log.currentSessionId})")
 
         // send the request to the device to start the upload
         probeManager.sendLogRequest(range.minSeq, range.maxSeq)
