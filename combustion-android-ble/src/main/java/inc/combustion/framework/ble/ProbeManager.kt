@@ -397,9 +397,9 @@ internal class ProbeManager(
         // messages, and transition the upload state to Unavailable.  Null SessionInfo
         // so that it can be requested again when a route is established
         if(arbitrator.hasNoUartRoute && uploadState != ProbeUploadState.Unavailable) {
+            logTransferCompleteCallback()
             sessionInfo = null
             uploadState = ProbeUploadState.Unavailable
-            logTransferCompleteCallback()
         }
 
         // use the arbitrated connection state, fw version, hw revision, model information
