@@ -27,6 +27,10 @@
  */
 package inc.combustion.framework.ble.uart.meatnet
 
+import android.util.Log
+import inc.combustion.framework.LOG_TAG
+import inc.combustion.framework.service.DebugSettings
+
 /**
  * Representation of Combustion BLE Node UART request. This top-level representation
  * is useful for decoding multiple UART messages from a single notification that can
@@ -47,20 +51,21 @@ internal open class NodeUARTMessage {
                 val bytesToDecode = data.copyOfRange(numberBytesRead, data.size)
 
                 // Try to parse a NodeResponse
-                val response = NodeResponse.responseFromData(bytesToDecode)
-                if (response != null) {
-                    messages.add(response)
-                    numberBytesRead += (response.payloadLength + NodeResponse.HEADER_SIZE).toInt()
-                } else {
+                NodeResponse.responseFromData(bytesToDecode)?.let {
+                    messages.add(it)
+                    numberBytesRead += (it.payloadLength + NodeResponse.HEADER_SIZE).toInt()
+
+                } ?: run {
+
                     // If NodeResponse parsing failed, try to decode a NodeRequest.
-                    val request = NodeRequest.requestFromData(bytesToDecode)
-                    if (request != null) {
-                        messages.add(request)
-                        numberBytesRead += (request.payloadLength + NodeRequest.HEADER_SIZE).toInt()
-                    }
-                    else {
-                        // Found invalid response, break out of while loop
-                        break
+                    NodeRequest.requestFromData(bytesToDecode)?.let {
+                        messages.add(it)
+                        numberBytesRead += (it.payloadLength + NodeRequest.HEADER_SIZE).toInt()
+                    } ?: run {
+
+                        // drop data here, and return out what we have parsed so far
+                        Log.w(LOG_TAG, "MeatNet: Parsed invalid data! Dropping bytes $numberBytesRead to ${data.size}")
+                        return messages
                     }
                 }
             }

@@ -67,7 +67,6 @@ internal class Session(
     private var logResponseDropCount = 0u
     private var deviceStatusDropCount = 0u
     private var staleLogRequestCount = STALE_LOG_REQUEST_PACKET_COUNT
-    private val droppedRecords = mutableListOf<UInt>()
     private val minSequenceNumber: UInt get() = if(isEmpty) 0u else _logs.firstKey()
     private val maxSequenceNumber: UInt get() = if(isEmpty) 0u else _logs.lastKey()
 
@@ -75,6 +74,7 @@ internal class Session(
     val samplePeriod = sessionInfo.samplePeriod
     val isEmpty get() = _logs.isEmpty()
     val startTime: Date
+    val droppedRecords = mutableListOf<UInt>()
 
     val maxSequentialSequenceNumber: UInt get() {
         val iterator = _logs.keys.sorted().iterator()
@@ -240,7 +240,7 @@ internal class Session(
         // check to see if we received duplicate data
         else if(probeStatus.maxSequenceNumber < nextExpectedDeviceStatus) {
             if(_logs.containsKey(probeStatus.maxSequenceNumber)) {
-                Log.w(LOG_TAG,
+                Log.d(LOG_TAG,
                     "Dropping duplicate device status: " +
                             "$serialNumber.${probeStatus.maxSequenceNumber} " +
                             "($nextExpectedDeviceStatus)(${probeStatus.maxSequenceNumber})")

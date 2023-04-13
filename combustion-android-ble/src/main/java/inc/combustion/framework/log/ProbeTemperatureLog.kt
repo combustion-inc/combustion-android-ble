@@ -60,6 +60,7 @@ internal class ProbeTemperatureLog(private val serialNumber: String) {
     val currentSessionSamplePeriod: UInt get() = sessions.lastOrNull()?.samplePeriod ?: 0u
     val currentSessionStartTime: Date? get() = sessions.lastOrNull()?.startTime
     val logStartTime: Date? get() = sessions.firstOrNull()?.startTime
+    val droppedRecords: List<UInt>? get() = sessions.firstOrNull()?.droppedRecords
 
     val dataPointCount: Int
         get() {

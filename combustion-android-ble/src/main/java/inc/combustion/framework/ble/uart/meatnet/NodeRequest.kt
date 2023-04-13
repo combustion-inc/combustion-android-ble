@@ -34,6 +34,7 @@ import inc.combustion.framework.ble.getCRC16CCITT
 import inc.combustion.framework.ble.getLittleEndianUInt32At
 import inc.combustion.framework.ble.putLittleEndianUInt32At
 import inc.combustion.framework.ble.putLittleEndianUShortAt
+import inc.combustion.framework.service.DebugSettings
 
 /**
  * Baseclass for UART request messages
@@ -101,6 +102,10 @@ internal open class NodeRequest() : NodeUARTMessage() {
                 }
 
                 else -> {
+                    if ( DebugSettings.DEBUG_LOG_MESSAGE_REQUESTS ) {
+                        Log.d(LOG_TAG, "NodeRequest: Unknown message type: $messageType")
+                    }
+
                     null
                 }
             }

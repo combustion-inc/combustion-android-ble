@@ -28,7 +28,10 @@
 
 package inc.combustion.framework.ble.uart.meatnet
 
+import inc.combustion.framework.ble.getLittleEndianUInt32At
+
 internal class NodeSetPredictionResponse (
+    val serialNumber: String,
     success: Boolean,
     requestId: UInt,
     responseId: UInt,
@@ -36,6 +39,30 @@ internal class NodeSetPredictionResponse (
 ) : NodeResponse(success, requestId, responseId, payloadLength) {
 
     companion object {
-        const val PAYLOAD_LENGTH: UInt = 0u
+        // payload is 4 bytes = serial number (4 bytes)
+        const val PAYLOAD_LENGTH: UByte = 4u
+
+        fun fromData(
+            payload: UByteArray,
+            success: Boolean,
+            requestId: UInt,
+            responseId: UInt,
+            payloadLength: UByte
+        ) : NodeSetPredictionResponse? {
+
+            if (payloadLength < PAYLOAD_LENGTH) {
+                return null
+            }
+
+            val serial = payload.getLittleEndianUInt32At(HEADER_SIZE.toInt()).toString(radix = 16).uppercase()
+
+            return NodeSetPredictionResponse(
+                serial,
+                success,
+                requestId,
+                responseId,
+                payloadLength
+            )
+        }
     }
 }

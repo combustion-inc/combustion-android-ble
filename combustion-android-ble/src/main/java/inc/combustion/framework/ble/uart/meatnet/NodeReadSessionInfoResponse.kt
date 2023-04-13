@@ -33,6 +33,7 @@ import inc.combustion.framework.ble.getLittleEndianUInt32At
 import inc.combustion.framework.service.SessionInformation
 
 internal class NodeReadSessionInfoResponse (
+    val serialNumber: String,
     val sessionInformation: SessionInformation,
     success: Boolean,
     requestId: UInt,
@@ -60,12 +61,13 @@ internal class NodeReadSessionInfoResponse (
                 return null
             }
 
-            val serialNumber: UInt = payload.getLittleEndianUInt32At(HEADER_SIZE.toInt())
+            val serial = payload.getLittleEndianUInt32At(HEADER_SIZE.toInt()).toString(radix = 16).uppercase()
             val sessionID: UInt = payload.getLittleEndianUInt32At(HEADER_SIZE.toInt() + 4)
             val samplePeriod: UInt = payload.getLittleEndianUInt16At(HEADER_SIZE.toInt() + 8)
             val sessionInfo = SessionInformation(sessionID, samplePeriod)
 
             return NodeReadSessionInfoResponse(
+                serial,
                 sessionInfo,
                 success,
                 requestId,

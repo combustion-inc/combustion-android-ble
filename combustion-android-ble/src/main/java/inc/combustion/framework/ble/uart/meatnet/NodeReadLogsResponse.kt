@@ -33,6 +33,7 @@ import inc.combustion.framework.service.PredictionLog
 import inc.combustion.framework.service.ProbeTemperatures
 
 internal class NodeReadLogsResponse(
+    val serialNumber: String,
     val sequenceNumber: UInt,
     val temperatures: ProbeTemperatures,
     val predictionLog: PredictionLog,
@@ -60,17 +61,18 @@ internal class NodeReadLogsResponse(
                 return null
             }
 
-            val serialNumber = payload.getLittleEndianUInt32At(HEADER_SIZE.toInt())
-            val sequenceNumber = payload.getLittleEndianUInt32At(HEADER_SIZE.toInt() + 4)
+            val serialNumber = payload.getLittleEndianUInt32At(HEADER_SIZE.toInt()).toString(radix = 16).uppercase()
+            val sequenceNumber = payload.getLittleEndianUInt32At((HEADER_SIZE + 4u).toInt())
             val rawTemperatures =
-                payload.sliceArray(HEADER_SIZE.toInt() + 8 until HEADER_SIZE.toInt() + 20)
+                payload.sliceArray((HEADER_SIZE + 8u).toInt() .. (HEADER_SIZE + 20u).toInt())
             val rawPredictionLog =
-                payload.sliceArray(HEADER_SIZE.toInt() + 21 until HEADER_SIZE.toInt() + 27)
+                payload.sliceArray((HEADER_SIZE + 21u ).toInt().. (HEADER_SIZE + 27u).toInt())
 
             val temperatures = ProbeTemperatures.fromRawData(rawTemperatures)
             val predictionLog = PredictionLog.fromRawData(rawPredictionLog)
 
             return NodeReadLogsResponse(
+                serialNumber,
                 sequenceNumber,
                 temperatures,
                 predictionLog,
