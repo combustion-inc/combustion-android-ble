@@ -132,7 +132,8 @@ internal open class NodeResponse(
                 }
 
                 NodeMessageType.SET_PREDICTION -> {
-                    return NodeSetPredictionResponse(
+                    return NodeSetPredictionResponse.fromData(
+                        data,
                         success,
                         requestId,
                         responseId,

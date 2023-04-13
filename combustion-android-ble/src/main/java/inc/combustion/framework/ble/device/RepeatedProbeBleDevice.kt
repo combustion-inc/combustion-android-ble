@@ -59,6 +59,11 @@ internal class RepeatedProbeBleDevice (
     private var probeStatusCallback: (suspend (status: ProbeStatus) -> Unit)? = null
     private var logResponseCallback: (suspend (LogResponse) -> Unit)? = null
 
+    private var _deviceInfoSerialNumber: String? = null
+    private var _deviceInfoFirmwareVersion: FirmwareVersion? = null
+    private var _deviceInfoHardwareRevision: String? = null
+    private var _deviceInfoModelInformation: ModelInformation? = null
+
     // activate this monitor whenever the link to the probe is used, except for session info
     private val routeMonitor = IdleMonitor()
 
@@ -101,10 +106,10 @@ internal class RepeatedProbeBleDevice (
         }
 
     // device information service values from the repeated probe's node.
-    override val deviceInfoSerialNumber: String? get() { return uart.serialNumber }
-    override val deviceInfoFirmwareVersion: FirmwareVersion? get() { return uart.firmwareVersion }
-    override val deviceInfoHardwareRevision: String? get() { return uart.hardwareRevision }
-    override val deviceInfoModelInformation: ModelInformation? get() { return uart.modelInformation }
+    override val deviceInfoSerialNumber: String? get() { return _deviceInfoSerialNumber }
+    override val deviceInfoFirmwareVersion: FirmwareVersion? get() { return _deviceInfoFirmwareVersion }
+    override val deviceInfoHardwareRevision: String? get() { return _deviceInfoHardwareRevision }
+    override val deviceInfoModelInformation: ModelInformation? get() { return _deviceInfoModelInformation }
 
     override val productType: CombustionProductType get() { return uart.productType}
 
@@ -180,8 +185,8 @@ internal class RepeatedProbeBleDevice (
         probeFirmwareRevisionHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS) { success, response ->
             if (success) {
                 val resp = response as NodeReadFirmwareRevisionResponse
-                uart.firmwareVersion = FirmwareVersion.fromString(resp.firmwareRevision)
-                Log.d(LOG_TAG, "MeatNet: readProbeFirmwareVersion: ${uart.firmwareVersion}")
+                _deviceInfoFirmwareVersion = FirmwareVersion.fromString(resp.firmwareRevision)
+                Log.d(LOG_TAG, "MeatNet: readProbeFirmwareVersion: $_deviceInfoFirmwareVersion")
             }
             uart.owner.lifecycleScope.launch {
                 channel.send(Unit)
@@ -197,8 +202,8 @@ internal class RepeatedProbeBleDevice (
         probeHardwareRevisionHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS) { success, response ->
             if (success) {
                 val resp = response as NodeReadHardwareRevisionResponse
-                uart.hardwareRevision = resp.hardwareRevision
-                Log.d(LOG_TAG, "MeatNet: readProbeHardwareRevision: ${uart.hardwareRevision}")
+                _deviceInfoHardwareRevision = resp.hardwareRevision
+                Log.d(LOG_TAG, "MeatNet: readProbeHardwareRevision: $_deviceInfoHardwareRevision")
             }
             uart.owner.lifecycleScope.launch {
                 channel.send(Unit)
@@ -214,8 +219,8 @@ internal class RepeatedProbeBleDevice (
         probeModelInfoHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS) { success, response ->
             if (success) {
                 val resp = response as NodeReadModelInfoResponse
-                uart.modelInformation = resp.modelInfo
-                Log.d(LOG_TAG, "MeatNet: readProbeModelInformation: ${uart.modelInformation?.sku} ${uart.modelInformation?.manufacturingLot}")
+                _deviceInfoModelInformation = resp.modelInfo
+                Log.d(LOG_TAG, "MeatNet: readProbeModelInformation: ${resp.modelInfo.sku} ${resp.modelInfo.manufacturingLot}")
             }
             uart.owner.lifecycleScope.launch {
                 channel.send(Unit)
@@ -271,31 +276,24 @@ internal class RepeatedProbeBleDevice (
     }
 
     private suspend fun handleProbeStatusRequest(message: NodeProbeStatusRequest) {
-        // Check that this probe status matches this probe serial number
-        if(message.serialNumberString == probeSerialNumber) {
+        // Save hop count from probeStatus
+        _hopCount = message.hopCount.hopCount
 
-            // Save hop count from probeStatus
-            _hopCount = message.hopCount.hopCount
-
-            probeStatusCallback?.let {
-                it(message.probeStatus)
-            }
+        probeStatusCallback?.let {
+            it(message.probeStatus)
         }
     }
 
     private suspend fun handleLogResponse(message: NodeReadLogsResponse) {
-        // Check that this log response matches this probe serial number
-        if(message.serialNumber == probeSerialNumber) {
-            // Send log response to callback
-            logResponseCallback?.let {
-                it( LogResponse(
-                        message.sequenceNumber,
-                        message.temperatures,
-                        message.predictionLog,
-                        message.success,
-                        message.payloadLength.toUInt())
-                )
-            }
+        // Send log response to callback
+        logResponseCallback?.let {
+            it( LogResponse(
+                message.sequenceNumber,
+                message.temperatures,
+                message.predictionLog,
+                message.success,
+                message.payloadLength.toUInt())
+            )
         }
     }
 
@@ -309,31 +307,49 @@ internal class RepeatedProbeBleDevice (
 
                     // Repeated Responses
                     is NodeReadLogsResponse -> {
-                        routeMonitor.activity()
-                        handleLogResponse(message)
+                        if(message.serialNumber == probeSerialNumber) {
+                            routeMonitor.activity()
+                            handleLogResponse(message)
+                        }
                     }
 
                     // Synchronous Requests that are responded to with a single message
                     is NodeSetPredictionResponse -> {
-                        routeMonitor.activity()
-                        setPredictionHandler.handled(message.success, null)
+                        if(message.serialNumber == probeSerialNumber) {
+                            routeMonitor.activity()
+                            setPredictionHandler.handled(message.success, null)
+                        }
                     }
                     is NodeReadFirmwareRevisionResponse -> {
-                        routeMonitor.activity()
-                        probeFirmwareRevisionHandler.handled(message.success, message)
+                        if(message.serialNumber == probeSerialNumber) {
+                            routeMonitor.activity()
+                            probeFirmwareRevisionHandler.handled(message.success, message)
+                        }
                     }
                     is NodeReadHardwareRevisionResponse -> {
-                        routeMonitor.activity()
-                        probeHardwareRevisionHandler.handled(message.success, message)
+                        if(message.serialNumber == probeSerialNumber) {
+                            routeMonitor.activity()
+                            probeHardwareRevisionHandler.handled(message.success, message)
+                        }
                     }
                     is NodeReadModelInfoResponse -> {
-                        routeMonitor.activity()
-                        probeModelInfoHandler.handled(message.success, message)
+                        if(message.serialNumber == probeSerialNumber) {
+                            routeMonitor.activity()
+                            probeModelInfoHandler.handled(message.success, message)
+                        }
                     }
 
                     /// Async Requests that are Broadcast on certain events from a Node
-                    is NodeProbeStatusRequest -> handleProbeStatusRequest(message)
-                    is NodeReadSessionInfoResponse -> sessionInfoHandler.handled(message.success, message.sessionInformation)
+                    is NodeProbeStatusRequest -> {
+                        if(message.serialNumber == probeSerialNumber) {
+                            handleProbeStatusRequest(message)
+                        }
+                    }
+                    is NodeReadSessionInfoResponse -> {
+                        if(message.serialNumber == probeSerialNumber) {
+                            sessionInfoHandler.handled(message.success, message.sessionInformation)
+                        }
+                    }
                 }
             }
         }
@@ -364,12 +380,16 @@ internal class RepeatedProbeBleDevice (
                     // block this polling coroutine until the response handler is done.
                     channel.receive()
 
-                    // if we aren't able to ping, then event up that there is no route to the probe.
-                    if((state == DeviceConnectionState.NO_ROUTE || connectionState == DeviceConnectionState.NO_ROUTE) && state != connectionState) {
-                        connectionStateCallback?.let {
-                            Log.i(LOG_TAG, "Ping: New State $connectionState ($_connectionState)")
-                            uart.owner.lifecycleScope.launch {
-                                it(connectionState)
+                    // if the link is still idle
+                    if(routeMonitor.isIdle(IDLE_LINK_TIMEOUT)) {
+
+                        // if we aren't able to ping, then event up that there is no route to the probe.
+                        if((state == DeviceConnectionState.NO_ROUTE || connectionState == DeviceConnectionState.NO_ROUTE) && state != connectionState) {
+                            connectionStateCallback?.let {
+                                Log.w(LOG_TAG, "Ping[$probeSerialNumber]: Connection Is $connectionState (Repeater is $_connectionState)")
+                                uart.owner.lifecycleScope.launch {
+                                    it(connectionState)
+                                }
                             }
                         }
                     }
@@ -385,6 +405,6 @@ internal class RepeatedProbeBleDevice (
 
     companion object {
         const val PING_RATE_MS = 1000L
-        const val IDLE_LINK_TIMEOUT = MESSAGE_RESPONSE_TIMEOUT_MS + 500L
+        const val IDLE_LINK_TIMEOUT = MESSAGE_RESPONSE_TIMEOUT_MS + 1000L
     }
 }

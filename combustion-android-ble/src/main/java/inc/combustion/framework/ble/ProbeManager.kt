@@ -71,7 +71,7 @@ internal class ProbeManager(
         private const val PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS = 15000L
         private const val PROBE_STATUS_NOTIFICATIONS_POLL_DELAY_MS = 30000L
         private const val PROBE_INSTANT_READ_IDLE_TIMEOUT_MS = 5000L
-        private const val IGNORE_PROBES = true
+        private const val IGNORE_PROBES = false
         private const val IGNORE_REPEATERS = false
     }
 
@@ -163,6 +163,45 @@ internal class ProbeManager(
             }
 
             return DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE
+        }
+
+   val fwVersion: FirmwareVersion?
+        get() {
+            arbitrator.probeBleDevice?.let {
+                if(it.deviceInfoFirmwareVersion != null) {
+                    return it.deviceInfoFirmwareVersion
+                }
+            }
+
+            return arbitrator.repeatedProbeBleDevices.firstOrNull {
+                it.deviceInfoFirmwareVersion != null
+            }?.deviceInfoFirmwareVersion
+        }
+
+    val hwRevision: String?
+        get() {
+            arbitrator.probeBleDevice?.let {
+                if(it.deviceInfoHardwareRevision != null) {
+                    return it.deviceInfoHardwareRevision
+                }
+            }
+
+            return arbitrator.repeatedProbeBleDevices.firstOrNull {
+                it.deviceInfoHardwareRevision != null
+            }?.deviceInfoHardwareRevision
+        }
+
+    val modelInformation: ModelInformation?
+        get() {
+            arbitrator.probeBleDevice?.let {
+                if(it.deviceInfoModelInformation != null) {
+                    return it.deviceInfoModelInformation
+                }
+            }
+
+            return arbitrator.repeatedProbeBleDevices.firstOrNull {
+                it.deviceInfoModelInformation != null
+            }?.deviceInfoModelInformation
         }
 
     val probe: Probe
@@ -307,8 +346,9 @@ internal class ProbeManager(
     private suspend fun handleProbeStatus(device: ProbeBleDeviceBase, status: ProbeStatus) {
         if(arbitrator.shouldUpdateDataFromProbeStatus(device)) {
             updateDataFromProbeStatus(status)
-            _probeStatusFlow.emit(status)
         }
+
+        _probeStatusFlow.emit(status)
     }
 
     private fun handleAdvertisingPackets(device: ProbeBleDeviceBase, advertisement: CombustionAdvertisingData) {
@@ -348,29 +388,30 @@ internal class ProbeManager(
             // remove this item from the list of firmware details for the network
             dfuDisconnectedNodeCallback(device.id)
 
-            // session info is now invalid
-            sessionInfo = null
-
-            // event out the invalid session info, fw version, and hardware revision.
-            _probe.value = _probe.value.copy(
-                baseDevice = _probe.value.baseDevice.copy(fwVersion = null, hwRevision = null, modelInformation = null),
-                sessionInfo = null,
-            )
+            // event out the invalid session info.
+            _probe.value = _probe.value.copy(sessionInfo = null)
         }
 
         // if don't have a route to send UART messages and we are currently in an active
         // Upload State, coordinate with Log Manager that it can no longer expect log
         // messages, and transition the upload state to Unavailable.  Null SessionInfo
         // so that it can be requested again when a route is established
-        if(!arbitrator.hasUartRoute && uploadState != ProbeUploadState.Unavailable) {
+        if(arbitrator.hasNoUartRoute && uploadState != ProbeUploadState.Unavailable) {
             sessionInfo = null
             uploadState = ProbeUploadState.Unavailable
             logTransferCompleteCallback()
         }
 
-        // use the arbitrated connection state
+        // use the arbitrated connection state, fw version, hw revision, model information
         _probe.value = _probe.value.copy(
-            baseDevice = _probe.value.baseDevice.copy(connectionState = connectionState),
+            baseDevice = _probe.value.baseDevice.copy(
+                connectionState = connectionState,
+                fwVersion = fwVersion,
+                hwRevision = hwRevision,
+                modelInformation = modelInformation
+            ),
+            // event out current session info and the preferred link
+            sessionInfo = sessionInfo,
             preferredLink = arbitrator.preferredMeatNetLink?.mac ?: ""
         )
     }
@@ -429,11 +470,11 @@ internal class ProbeManager(
             // if we read any of the device information characteristics above
             if(didReadDeviceInfo) {
 
-                // if we should update the current external state of the probe base on device info data
+                // event out the arbitrated hw, fw, model details
                 _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(
-                    fwVersion = device.deviceInfoFirmwareVersion,
-                    hwRevision = device.deviceInfoHardwareRevision,
-                    modelInformation = device.deviceInfoModelInformation
+                    fwVersion = fwVersion,
+                    hwRevision = hwRevision,
+                    modelInformation = modelInformation
                 ))
 
                 device.deviceInfoFirmwareVersion?.let {
@@ -460,7 +501,6 @@ internal class ProbeManager(
     private fun updateDataFromAdvertisement(advertisement: CombustionAdvertisingData) {
         _probe.value = _probe.value.copy(
             baseDevice = _probe.value.baseDevice.copy(rssi = advertisement.rssi),
-            hopCount = advertisement.hopCount,
         )
 
         if(advertisement.mode == ProbeMode.INSTANT_READ) {

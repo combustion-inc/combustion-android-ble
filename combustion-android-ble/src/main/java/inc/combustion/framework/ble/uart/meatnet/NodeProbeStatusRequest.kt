@@ -35,15 +35,10 @@ import inc.combustion.framework.service.HopCount
 internal class NodeProbeStatusRequest(
     requestId : UInt,
     payloadLength : UByte,
-    val serialNumber: UInt,
+    val serialNumber: String,
     val hopCount: HopCount,
     val probeStatus: ProbeStatus
 ) : NodeRequest(requestId, payloadLength) {
-
-    val serialNumberString: String
-        get() {
-            return Integer.toHexString(serialNumber.toInt()).uppercase()
-        }
 
     companion object {
         const val PAYLOAD_LENGTH: UByte = 35u
@@ -67,7 +62,7 @@ internal class NodeProbeStatusRequest(
             val serialNumber: UInt = data.getLittleEndianUInt32At(SERIAL_NUMBER_INDEX)
             val hopCount: HopCount = HopCount.fromUByte(data[HOP_COUNT_INDEX])
 
-            return NodeProbeStatusRequest(requestId, payloadLength, serialNumber, hopCount, probeStatus)
+            return NodeProbeStatusRequest(requestId, payloadLength, Integer.toHexString(serialNumber.toInt()).uppercase(), hopCount, probeStatus)
         }
     }
 }

@@ -44,17 +44,18 @@ internal class DataLinkArbitrator(
         private const val USE_STATIC_LINK: Boolean = false
     }
 
-    // direct ble link to probe
-    private var probeBleDevice: ProbeBleDevice? = null
-
-    // meatnet links to probe
-    private val repeatedProbeBleDevices = mutableListOf<RepeatedProbeBleDevice>()
-
     // meatnet network nodes
     private val networkNodes = hashMapOf<DeviceID, DeviceInformationBleDevice>()
 
     // advertising data arbitration
     private val advertisingArbitrator = AdvertisingArbitrator()
+
+    // direct ble link to probe
+    var probeBleDevice: ProbeBleDevice? = null
+        private set
+
+    // meatnet links to probe
+    val repeatedProbeBleDevices = mutableListOf<RepeatedProbeBleDevice>()
 
     val directLink: ProbeBleDevice?
         get() {
@@ -82,17 +83,6 @@ internal class DataLinkArbitrator(
             ).firstOrNull {
                 it.isConnected && it.connectionState != DeviceConnectionState.NO_ROUTE
             }
-        }
-
-    val hasUartRoute: Boolean
-        get() {
-            if(directLink?.isConnected == true) {
-                return true
-            }
-
-            return repeatedProbeBleDevices.firstOrNull {
-                it.isConnected && it.connectionState != DeviceConnectionState.NO_ROUTE
-            } != null
         }
 
     val hasNoUartRoute: Boolean

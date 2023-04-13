@@ -86,7 +86,7 @@ internal class LogManager {
                             Log.d(LOG_TAG, "Probe Status Flow Complete")
                         }
                         .catch {
-                            Log.i(LOG_TAG, "Probde Status Flow Catch: $it")
+                            Log.i(LOG_TAG, "Probe Status Flow Catch: $it")
                         }
                         .collect { deviceStatus ->
                             when(probeManager.uploadState) {
@@ -252,7 +252,7 @@ internal class LogManager {
         // update the probe's upload state with the progress.
         probeManager.uploadState = progress.toProbeUploadState()
 
-        Log.i(LOG_TAG, "Requesting Logs: ${range.minSeq} to ${range.maxSeq} (${log.currentSessionId})")
+        Log.i(LOG_TAG, "Requesting Logs[$serialNumber]: ${range.minSeq} to ${range.maxSeq} (${log.currentSessionId})")
 
         // send the request to the device to start the upload
         probeManager.sendLogRequest(range.minSeq, range.maxSeq)
@@ -352,7 +352,7 @@ internal class LogManager {
         // update the legacyProbeManager's upload state with the progress.
         probeManager.uploadState = progress.toProbeUploadState()
 
-        Log.i(LOG_TAG, "Requesting Logs for Backfill: ${range.minSeq} to ${range.maxSeq} (${log.currentSessionId})")
+        Log.i(LOG_TAG, "Requesting Logs for Backfill[${probeManager.serialNumber}]: ${range.minSeq} to ${range.maxSeq} (${log.currentSessionId})")
 
         // send the request to the device to start the upload
         probeManager.sendLogRequest(range.minSeq, range.maxSeq)
