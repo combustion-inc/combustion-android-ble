@@ -160,7 +160,7 @@ open class BaseAdvertisingData(
         get() = mac
 }
 
-private inline fun ScanResult.getIsConnectable(): Boolean {
+private fun ScanResult.getIsConnectable(): Boolean {
     // API level 26 (Android 8) and Higher
     return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         isConnectable

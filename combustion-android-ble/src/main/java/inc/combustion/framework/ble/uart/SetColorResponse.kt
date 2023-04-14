@@ -27,9 +27,6 @@
  */
 package inc.combustion.framework.ble.uart
 
-import inc.combustion.framework.ble.getLittleEndianUInt32At
-import inc.combustion.framework.service.ProbeTemperatures
-
 internal class SetColorResponse (
     success: Boolean,
     payLoadLength: UInt
@@ -38,7 +35,7 @@ internal class SetColorResponse (
     companion object {
         const val PAYLOAD_LENGTH: UInt = 0u
 
-        fun fromData(data: UByteArray, success: Boolean, payloadLength: UInt): SetColorResponse? {
+        fun fromData(success: Boolean, payloadLength: UInt): SetColorResponse? {
             return SetColorResponse(success, payloadLength)
         }
     }

@@ -33,6 +33,7 @@ import android.app.NotificationManager
 import android.bluetooth.BluetoothManager
 import android.content.*
 import android.os.Binder
+import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.lifecycle.LifecycleService
@@ -114,7 +115,7 @@ class CombustionService : LifecycleService() {
         serviceNotification?.let {
             val service = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             service.cancel(notificationId)
-            stopForeground(true)
+            stopForeground(STOP_FOREGROUND_REMOVE)
         }
     }
 

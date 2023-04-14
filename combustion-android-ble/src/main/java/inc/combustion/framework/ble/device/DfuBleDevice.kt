@@ -147,6 +147,7 @@ internal class DfuBleDevice(
                     )
                 }
             }
+            DeviceConnectionState.NO_ROUTE,
             DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE,
             DeviceConnectionState.OUT_OF_RANGE -> {
                 _state.value = DfuState.NotReady(

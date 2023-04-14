@@ -39,7 +39,43 @@ import kotlin.random.Random
 data class ProbeTemperatures(
     val values: List<Double>
 ) {
+    internal val overheatingSensors: List<Int>
+        get() {
+            val overheatingSensors = mutableListOf<Int>()
+
+            for (i in 0..1) {
+                if (this.values[i] >= OVERHEATING_T1_T2_THRESHOLD) {
+                    overheatingSensors.add(i)
+                }
+            }
+
+            if (this.values[2] >= OVERHEATING_T3_THRESHOLD) {
+                overheatingSensors.add(2)
+            }
+
+            if (this.values[3] >= OVERHEATING_T4_THRESHOLD) {
+                overheatingSensors.add(3)
+            }
+
+            for (i in 4..7) {
+                if (this.values[i] >= OVERHEATING_T5_T8_THRESHOLD) {
+                    overheatingSensors.add(i)
+                }
+            }
+
+            return overheatingSensors.toList()
+        }
+
     companion object {
+        /// Overheating thresholds (in degrees C) for T1 and T2
+        private const val OVERHEATING_T1_T2_THRESHOLD = 105.0
+        /// Overheating thresholds (in degrees C) for T3
+        private const val OVERHEATING_T3_THRESHOLD = 115.0
+        /// Overheating thresholds (in degrees C) for T4
+        private const val OVERHEATING_T4_THRESHOLD = 125.0
+        /// Overheating thresholds (in degrees C) for T5-T8
+        private const val OVERHEATING_T5_T8_THRESHOLD = 300.0
+
         // deserializes temperature data from reversed set of bytes
         private fun fromReversed(bytes: UByteArray): ProbeTemperatures {
             var rawCounts = mutableListOf<UShort>();

@@ -1,11 +1,11 @@
 /*
- * Project: Combustion Inc. Android Example
- * File: NodeSetPredictionResponse.kt
- * Author: https://github.com/jmaha
+ * Project: Combustion Inc. Android Framework
+ * File: NodeReadHardwareRevisionResponse.kt
+ * Author: https://github.com/angrygorilla
  *
  * MIT License
  *
- * Copyright (c) 2022. Combustion Inc.
+ * Copyright (c) 2023. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -30,34 +30,45 @@ package inc.combustion.framework.ble.uart.meatnet
 
 import inc.combustion.framework.ble.getLittleEndianUInt32At
 
-internal class NodeSetPredictionResponse (
+internal class NodeReadHardwareRevisionResponse (
     val serialNumber: String,
+    val hardwareRevision: String,
     success: Boolean,
     requestId: UInt,
-    responseId: UInt,
+    response: UInt,
     payloadLength: UByte
-) : NodeResponse(success, requestId, responseId, payloadLength) {
-
+) : NodeResponse(
+    success,
+    requestId,
+    response,
+    payloadLength
+) {
     companion object {
-        // payload is 4 bytes = serial number (4 bytes)
-        const val PAYLOAD_LENGTH: UByte = 4u
 
+        // payload is 20 bytes = 4 bytes for serial number + 16 bytes for hardware revision
+        const val PAYLOAD_LENGTH: UByte = 20u
+
+        /**
+         * Helper function that builds up payload of response.
+         */
         fun fromData(
             payload: UByteArray,
             success: Boolean,
             requestId: UInt,
             responseId: UInt,
-            payloadLength: UByte
-        ) : NodeSetPredictionResponse? {
+            payloadLength: UByte) : NodeReadHardwareRevisionResponse? {
 
             if (payloadLength < PAYLOAD_LENGTH) {
                 return null
             }
 
-            val serial = payload.getLittleEndianUInt32At(HEADER_SIZE.toInt()).toString(radix = 16).uppercase()
+            val serialNumber = payload.getLittleEndianUInt32At(HEADER_SIZE.toInt()).toString(radix = 16).uppercase()
+            val hardwareRevisionRaw = payload.copyOfRange(HEADER_SIZE.toInt() + 4, HEADER_SIZE.toInt() + 20)
+            val hardwareRevision = String(hardwareRevisionRaw.toByteArray(), Charsets.UTF_8).trim('\u0000')
 
-            return NodeSetPredictionResponse(
-                serial,
+            return NodeReadHardwareRevisionResponse(
+                serialNumber,
+                hardwareRevision,
                 success,
                 requestId,
                 responseId,

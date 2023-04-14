@@ -92,6 +92,7 @@ internal class ProbeBleDevice (
     override val deviceInfoSerialNumber: String? get() { return uart.serialNumber }
     override val deviceInfoFirmwareVersion: FirmwareVersion? get() { return uart.firmwareVersion }
     override val deviceInfoHardwareRevision: String? get() { return uart.hardwareRevision }
+    override val deviceInfoModelInformation: ModelInformation? get() { return uart.modelInformation }
 
     override val productType: CombustionProductType get() { return uart.productType}
 
@@ -147,6 +148,7 @@ internal class ProbeBleDevice (
     override suspend fun readSerialNumber() = uart.readSerialNumber()
     override suspend fun readFirmwareVersion() = uart.readFirmwareVersion()
     override suspend fun readHardwareRevision() = uart.readHardwareRevision()
+    override suspend fun readModelInformation() = uart.readModelInformation()
 
     override fun observeAdvertisingPackets(serialNumberFilter: String, macFilter: String, callback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)?) {
         uart.observeAdvertisingPackets(

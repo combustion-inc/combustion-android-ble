@@ -59,5 +59,22 @@ enum class DeviceConnectionState {
      * Device is currently disconnected.  Have not yet received an advertising packet
      * or determined that the device is out of range.
      */
-    DISCONNECTED
+    DISCONNECTED,
+    /**
+     * Connected to a repeater device, but not able to find a route to the destination endpoint.
+     */
+    NO_ROUTE;
+
+    override fun toString(): String {
+        return when(this) {
+            OUT_OF_RANGE -> "Out of Range"
+            ADVERTISING_CONNECTABLE -> "Connectable"
+            ADVERTISING_NOT_CONNECTABLE -> "Not Connectable"
+            CONNECTING -> "Connecting"
+            CONNECTED -> "Connected"
+            DISCONNECTING -> "Disconnecting"
+            DISCONNECTED -> "Disconnected"
+            NO_ROUTE -> "No Route"
+        }
+    }
 }

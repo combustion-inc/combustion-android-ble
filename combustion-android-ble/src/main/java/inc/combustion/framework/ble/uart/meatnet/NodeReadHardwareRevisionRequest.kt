@@ -1,7 +1,7 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: Device.kt
- * Author: https://github.com/nick-sasquatch
+ * File: NodeReadHardwareRevisionRequest.kt
+ * Author: https://github.com/angrygorilla
  *
  * MIT License
  *
@@ -26,31 +26,33 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.service
+package inc.combustion.framework.ble.uart.meatnet
 
-import inc.combustion.framework.ble.device.DeviceID
+import inc.combustion.framework.ble.putLittleEndianUInt32At
 
-/**
- * Representation of a Combustion device.
- *
- * @property serialNumber The device serial number.
- * @property mac The device's MAC address.
- * @property fwVersion The device's firmware version.
- * @property hwRevision The device's hardware revision.
- * @property modelInformation The device's model information which contains the SKU and manufacturing lot #.
- * @property rssi The BLE RSSI value.
- * @property productType The device product type.
- * @property connectionState The device's current BLE connection state.
- */
-data class Device(
-    val serialNumber: String = "",
-    val mac: String,
-    val fwVersion: FirmwareVersion? = null,
-    val hwRevision: String? = null,
-    val modelInformation: ModelInformation? = null,
-    val rssi: Int = 0,
-    val productType: CombustionProductType? = null,
-    val connectionState: DeviceConnectionState = DeviceConnectionState.DISCONNECTED,
+internal class NodeReadHardwareRevisionRequest (
+    serialNumber: String,
+) : NodeRequest(
+    populatePayload(serialNumber),
+    NodeMessageType.PROBE_HARDWARE_REVISION
 ) {
-    val id: DeviceID = mac
+
+    companion object {
+        const val PAYLOAD_LENGTH: UByte = 4u
+
+        /**
+         * Helper function that builds up payload of request.
+         */
+        fun populatePayload(
+            serialNumber: String
+        ) : UByteArray {
+
+            val payload = UByteArray(PAYLOAD_LENGTH.toInt()) { 0u }
+
+            // Add serial number to payload
+            payload.putLittleEndianUInt32At(0, serialNumber.toLong(radix = 16).toUInt())
+
+            return payload
+        }
+    }
 }

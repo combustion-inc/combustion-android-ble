@@ -40,7 +40,9 @@ internal data class RecordRange(val minSeq: UInt, val maxSeq: UInt) {
         val NULL_RECORD_RANGE = RecordRange(0u, 0u)
     }
 
-    val size: UInt get() { return maxSeq - minSeq + 1u }
+    val size: UInt get() {
+        return if(minSeq == maxSeq) 0u else maxSeq - minSeq + 1u
+    }
 }
 
 /**

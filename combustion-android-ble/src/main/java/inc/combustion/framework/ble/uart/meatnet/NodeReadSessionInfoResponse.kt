@@ -1,11 +1,11 @@
 /*
- * Project: Combustion Inc. Android Example
- * File: NodeSetPredictionResponse.kt
- * Author: https://github.com/jmaha
+ * Project: Combustion Inc. Android Framework
+ * File: NodeReadSessionInfoResponse.kt
+ * Author: https://github.com/angrygorilla
  *
  * MIT License
  *
- * Copyright (c) 2022. Combustion Inc.
+ * Copyright (c) 2023. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -28,19 +28,27 @@
 
 package inc.combustion.framework.ble.uart.meatnet
 
+import inc.combustion.framework.ble.getLittleEndianUInt16At
 import inc.combustion.framework.ble.getLittleEndianUInt32At
+import inc.combustion.framework.service.SessionInformation
 
-internal class NodeSetPredictionResponse (
+internal class NodeReadSessionInfoResponse (
     val serialNumber: String,
+    val sessionInformation: SessionInformation,
     success: Boolean,
     requestId: UInt,
     responseId: UInt,
-    payloadLength: UByte
-) : NodeResponse(success, requestId, responseId, payloadLength) {
-
+    payloadLength: UByte,
+) : NodeResponse(
+    success,
+    requestId,
+    responseId,
+    payloadLength
+) {
     companion object {
-        // payload is 4 bytes = serial number (4 bytes)
-        const val PAYLOAD_LENGTH: UByte = 4u
+
+        /// payload length 10 = serial number (4 bytes) + session id (4 bytes) + sample period (s bytes)
+        const val PAYLOAD_LENGTH: UByte = 10u
 
         fun fromData(
             payload: UByteArray,
@@ -48,16 +56,19 @@ internal class NodeSetPredictionResponse (
             requestId: UInt,
             responseId: UInt,
             payloadLength: UByte
-        ) : NodeSetPredictionResponse? {
-
+        ) : NodeReadSessionInfoResponse? {
             if (payloadLength < PAYLOAD_LENGTH) {
                 return null
             }
 
             val serial = payload.getLittleEndianUInt32At(HEADER_SIZE.toInt()).toString(radix = 16).uppercase()
+            val sessionID: UInt = payload.getLittleEndianUInt32At(HEADER_SIZE.toInt() + 4)
+            val samplePeriod: UInt = payload.getLittleEndianUInt16At(HEADER_SIZE.toInt() + 8)
+            val sessionInfo = SessionInformation(sessionID, samplePeriod)
 
-            return NodeSetPredictionResponse(
+            return NodeReadSessionInfoResponse(
                 serial,
+                sessionInfo,
                 success,
                 requestId,
                 responseId,

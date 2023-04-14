@@ -1,7 +1,7 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: Device.kt
- * Author: https://github.com/nick-sasquatch
+ * File: ModelInformation.kt
+ * Author: https://github.com/angrygorilla
  *
  * MIT License
  *
@@ -28,29 +28,27 @@
 
 package inc.combustion.framework.service
 
-import inc.combustion.framework.ble.device.DeviceID
-
-/**
- * Representation of a Combustion device.
- *
- * @property serialNumber The device serial number.
- * @property mac The device's MAC address.
- * @property fwVersion The device's firmware version.
- * @property hwRevision The device's hardware revision.
- * @property modelInformation The device's model information which contains the SKU and manufacturing lot #.
- * @property rssi The BLE RSSI value.
- * @property productType The device product type.
- * @property connectionState The device's current BLE connection state.
- */
-data class Device(
-    val serialNumber: String = "",
-    val mac: String,
-    val fwVersion: FirmwareVersion? = null,
-    val hwRevision: String? = null,
-    val modelInformation: ModelInformation? = null,
-    val rssi: Int = 0,
-    val productType: CombustionProductType? = null,
-    val connectionState: DeviceConnectionState = DeviceConnectionState.DISCONNECTED,
+data class ModelInformation(
+    val sku: String,
+    val manufacturingLot: String
 ) {
-    val id: DeviceID = mac
+
+    companion object {
+        /**
+         * Converts this model information string into a [ModelInformation] object, which includes the
+         * SKU and manufacturing lot.
+         */
+        fun fromString(modelInformationString: String?): ModelInformation {
+            return if(modelInformationString == null) {
+                ModelInformation("", "")
+            } else {
+                val split = modelInformationString.split(":")
+                if(split.size == 2) {
+                    ModelInformation(split[0], split[1])
+                } else {
+                    ModelInformation("", "")
+                }
+            }
+        }
+    }
 }

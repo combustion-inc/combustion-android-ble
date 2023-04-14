@@ -1,7 +1,7 @@
 /*
- * Project: Combustion Inc. Android Example
- * File: NodeSetPredictionResponse.kt
- * Author: https://github.com/jmaha
+ * Project: Combustion Inc. Android Framework
+ * File: NodeReadFirmwareRevisionResponse.kt
+ * Author: https://github.com/angrygorilla
  *
  * MIT License
  *
@@ -30,17 +30,23 @@ package inc.combustion.framework.ble.uart.meatnet
 
 import inc.combustion.framework.ble.getLittleEndianUInt32At
 
-internal class NodeSetPredictionResponse (
+internal class NodeReadFirmwareRevisionResponse (
     val serialNumber: String,
+    val firmwareRevision: String,
     success: Boolean,
     requestId: UInt,
     responseId: UInt,
     payloadLength: UByte
-) : NodeResponse(success, requestId, responseId, payloadLength) {
-
+) : NodeResponse(
+    success,
+    requestId,
+    responseId,
+    payloadLength
+) {
     companion object {
-        // payload is 4 bytes = serial number (4 bytes)
-        const val PAYLOAD_LENGTH: UByte = 4u
+
+        // payload is 24 bytes = serial number (4 bytes) + firmware revision (20 bytes)
+        const val PAYLOAD_LENGTH: UByte = 24u
 
         fun fromData(
             payload: UByteArray,
@@ -48,16 +54,19 @@ internal class NodeSetPredictionResponse (
             requestId: UInt,
             responseId: UInt,
             payloadLength: UByte
-        ) : NodeSetPredictionResponse? {
+        ) : NodeReadFirmwareRevisionResponse? {
 
             if (payloadLength < PAYLOAD_LENGTH) {
                 return null
             }
 
-            val serial = payload.getLittleEndianUInt32At(HEADER_SIZE.toInt()).toString(radix = 16).uppercase()
+            val serialNumber = payload.getLittleEndianUInt32At(HEADER_SIZE.toInt()).toString(radix = 16).uppercase()
+            val firmwareRevisionRaw = payload.copyOfRange(HEADER_SIZE.toInt() + 4, HEADER_SIZE.toInt() + 24)
+            val firmwareRevision = String(firmwareRevisionRaw.toByteArray(), Charsets.UTF_8).trim('\u0000')
 
-            return NodeSetPredictionResponse(
-                serial,
+            return NodeReadFirmwareRevisionResponse(
+                serialNumber,
+                firmwareRevision,
                 success,
                 requestId,
                 responseId,

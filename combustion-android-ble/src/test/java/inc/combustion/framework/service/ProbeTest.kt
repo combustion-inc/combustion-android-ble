@@ -1,7 +1,7 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: Device.kt
- * Author: https://github.com/nick-sasquatch
+ * File: ProbeTest.kt
+ * Author:
  *
  * MIT License
  *
@@ -28,29 +28,28 @@
 
 package inc.combustion.framework.service
 
-import inc.combustion.framework.ble.device.DeviceID
+import org.junit.Assert.*
 
-/**
- * Representation of a Combustion device.
- *
- * @property serialNumber The device serial number.
- * @property mac The device's MAC address.
- * @property fwVersion The device's firmware version.
- * @property hwRevision The device's hardware revision.
- * @property modelInformation The device's model information which contains the SKU and manufacturing lot #.
- * @property rssi The BLE RSSI value.
- * @property productType The device product type.
- * @property connectionState The device's current BLE connection state.
- */
-data class Device(
-    val serialNumber: String = "",
-    val mac: String,
-    val fwVersion: FirmwareVersion? = null,
-    val hwRevision: String? = null,
-    val modelInformation: ModelInformation? = null,
-    val rssi: Int = 0,
-    val productType: CombustionProductType? = null,
-    val connectionState: DeviceConnectionState = DeviceConnectionState.DISCONNECTED,
-) {
-    val id: DeviceID = mac
+import org.junit.Test
+
+class ProbeTest {
+    @Test
+    fun `Probe is not overheating when no sensors are overheating` () {
+        val probe = Probe(
+            baseDevice = Device(mac = "12:34:56:78:90:11"),
+            overheatingSensors = listOf(),
+        )
+
+        assertFalse(probe.isOverheating)
+    }
+
+    @Test
+    fun `Probe is overheating when sensors are overheating` () {
+        val probe = Probe(
+            baseDevice = Device(mac = "12:34:56:78:90:11"),
+            overheatingSensors = listOf(1, 3, 5),
+        )
+
+        assertTrue(probe.isOverheating)
+    }
 }

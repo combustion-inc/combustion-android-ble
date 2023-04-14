@@ -359,7 +359,7 @@ class DeviceManager(
      * @see probeFlow
      */
     fun startRecordTransfer(serialNumber: String) {
-        LogManager.instance.requestLogsFromDevice(service, serialNumber)
+        LogManager.instance.requestLogsFromDevice(serialNumber)
     }
 
     /**
@@ -418,12 +418,13 @@ class DeviceManager(
      * the probe.
      *
      * @param serialNumber the serial number of the probe.
+     * @param includeHistory emits out the entire log history before starting updates in real-time.
      * @return Kotlin flow of LoggedProbeDataPoint for the probe.
      *
      * @see LoggedProbeDataPoint
      */
-    fun createLogFlowForDevice(serialNumber: String): Flow<LoggedProbeDataPoint> {
-        return LogManager.instance.createLogFlowForDevice(serialNumber)
+    fun createLogFlowForDevice(serialNumber: String, includeHistory: Boolean = true): Flow<LoggedProbeDataPoint> {
+        return LogManager.instance.createLogFlowForDevice(serialNumber, includeHistory)
     }
 
     /**

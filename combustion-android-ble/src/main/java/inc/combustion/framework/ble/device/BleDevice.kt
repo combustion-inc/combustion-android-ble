@@ -27,6 +27,7 @@
  */
 package inc.combustion.framework.ble.device
 
+import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.util.Log
 import androidx.lifecycle.Lifecycle
@@ -83,6 +84,10 @@ internal open class BleDevice (
         private val HW_REVISION_CHARACTERISTIC = characteristicOf(
             service = DEV_INFO_SERVICE_UUID_STRING,
             characteristic = "00002A27-0000-1000-8000-00805F9B34FB"
+        )
+        private val MODEL_INFO_CHARACTERISTIC = characteristicOf(
+            service = DEV_INFO_SERVICE_UUID_STRING,
+            characteristic = "00002A24-0000-1000-8000-00805F9B34FB"
         )
     }
 
@@ -201,7 +206,7 @@ internal open class BleDevice (
                     isDisconnected.set(state is State.Disconnected)
                 }
 
-                callback?.let {it
+                callback?.let {
                     // already being dispatched on default
                     it(connectionState)
                 }
@@ -225,7 +230,6 @@ internal open class BleDevice (
                         }
                         isInRange.set(false)
                         isConnectable.set(false)
-                        isDisconnected.set(true)
                     }
 
                     callback?.let {
@@ -238,7 +242,7 @@ internal open class BleDevice (
         })
     }
 
-    fun observeRemoteRssi(callback: (suspend (rssi: Int) -> Unit)? = null) {
+    fun observeRemoteRssi(@Suppress("UNUSED_PARAMETER") callback: (suspend (rssi: Int) -> Unit)? = null) {
         /*
         // maintain a list of objects that are observing RSSI updates for this device.
         callback?.let {
@@ -315,6 +319,9 @@ internal open class BleDevice (
     protected suspend fun readHardwareRevisionCharacteristic(): String? =
         readCharacteristic(HW_REVISION_CHARACTERISTIC, "remote hardware revision")?.toString(Charsets.UTF_8)
 
+    protected suspend fun readModelNumberCharacteristic(): String? =
+        readCharacteristic(MODEL_INFO_CHARACTERISTIC, "remote model info")?.toString(Charsets.UTF_8)
+
     private suspend fun readCharacteristic(
         characteristic: Characteristic,
         description: String? = null): ByteArray?
@@ -345,7 +352,7 @@ internal open class BleDevice (
 
         // if the device is advertising as connectable, advertising as non-connectable,
         // currently disconnected, or currently out of range then it's new state is the
-        // advertising state determined above. otherwise, (connected, connected or
+        // advertising state determined above. otherwise, (connected, connecting or
         // disconnecting) the state is unchanged by the advertising packet.
         connectionState = when(connectionState) {
             DeviceConnectionState.ADVERTISING_CONNECTABLE -> advertisingState

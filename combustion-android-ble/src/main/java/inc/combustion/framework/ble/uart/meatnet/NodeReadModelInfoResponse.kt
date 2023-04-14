@@ -1,11 +1,11 @@
 /*
- * Project: Combustion Inc. Android Example
- * File: NodeSetPredictionResponse.kt
- * Author: https://github.com/jmaha
+ * Project: Combustion Inc. Android Framework
+ * File: NodeReadModelInfoResponse.kt
+ * Author: https://github.com/angrygorilla
  *
  * MIT License
  *
- * Copyright (c) 2022. Combustion Inc.
+ * Copyright (c) 2023. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -29,18 +29,26 @@
 package inc.combustion.framework.ble.uart.meatnet
 
 import inc.combustion.framework.ble.getLittleEndianUInt32At
+import inc.combustion.framework.service.ModelInformation
 
-internal class NodeSetPredictionResponse (
+internal class NodeReadModelInfoResponse (
     val serialNumber: String,
+    val modelInfo: ModelInformation,
     success: Boolean,
     requestId: UInt,
     responseId: UInt,
     payloadLength: UByte
-) : NodeResponse(success, requestId, responseId, payloadLength) {
+) : NodeResponse(
+    success,
+    requestId,
+    responseId,
+    payloadLength
+) {
 
     companion object {
-        // payload is 4 bytes = serial number (4 bytes)
-        const val PAYLOAD_LENGTH: UByte = 4u
+
+        // payload is 54 bytes = serial number (4 bytes) + model info (50 bytes)
+        const val PAYLOAD_LENGTH: UByte = 54u
 
         fun fromData(
             payload: UByteArray,
@@ -48,16 +56,18 @@ internal class NodeSetPredictionResponse (
             requestId: UInt,
             responseId: UInt,
             payloadLength: UByte
-        ) : NodeSetPredictionResponse? {
-
+        ): NodeReadModelInfoResponse? {
             if (payloadLength < PAYLOAD_LENGTH) {
                 return null
             }
 
-            val serial = payload.getLittleEndianUInt32At(HEADER_SIZE.toInt()).toString(radix = 16).uppercase()
+            val serialNumber = payload.getLittleEndianUInt32At(PAYLOAD_LENGTH.toInt()).toString(radix = 16).uppercase()
+            val modelInformationString = String(payload.copyOfRange(HEADER_SIZE.toInt() + 4, HEADER_SIZE.toInt() + 54).toByteArray(), Charsets.UTF_8).trim('\u0000')
+            val modelInfo = ModelInformation.fromString(modelInformationString)
 
-            return NodeSetPredictionResponse(
-                serial,
+            return NodeReadModelInfoResponse(
+                serialNumber,
+                modelInfo,
                 success,
                 requestId,
                 responseId,
