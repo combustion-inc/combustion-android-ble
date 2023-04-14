@@ -27,6 +27,7 @@
  */
 package inc.combustion.framework.ble.device
 
+import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.util.Log
 import androidx.lifecycle.Lifecycle
@@ -205,7 +206,7 @@ internal open class BleDevice (
                     isDisconnected.set(state is State.Disconnected)
                 }
 
-                callback?.let {it
+                callback?.let {
                     // already being dispatched on default
                     it(connectionState)
                 }
@@ -241,7 +242,7 @@ internal open class BleDevice (
         })
     }
 
-    fun observeRemoteRssi(callback: (suspend (rssi: Int) -> Unit)? = null) {
+    fun observeRemoteRssi(@Suppress("UNUSED_PARAMETER") callback: (suspend (rssi: Int) -> Unit)? = null) {
         /*
         // maintain a list of objects that are observing RSSI updates for this device.
         callback?.let {

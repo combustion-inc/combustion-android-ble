@@ -134,6 +134,11 @@ internal class ProbeManager(
 
     val connectionState: DeviceConnectionState
         get() {
+            // if not using meatnet, then we use the direct link
+            if(!settings.meatNetEnabled) {
+                return arbitrator.probeBleDevice?.connectionState ?: DeviceConnectionState.OUT_OF_RANGE
+            }
+
             // if all devices are out of range, then connection state is Out of Range
             if(arbitrator.meatNetIsOutOfRange) {
                 return DeviceConnectionState.OUT_OF_RANGE
@@ -165,7 +170,7 @@ internal class ProbeManager(
             return DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE
         }
 
-   val fwVersion: FirmwareVersion?
+   private val fwVersion: FirmwareVersion?
         get() {
             arbitrator.probeBleDevice?.let {
                 if(it.deviceInfoFirmwareVersion != null) {
@@ -178,7 +183,7 @@ internal class ProbeManager(
             }?.deviceInfoFirmwareVersion
         }
 
-    val hwRevision: String?
+    private val hwRevision: String?
         get() {
             arbitrator.probeBleDevice?.let {
                 if(it.deviceInfoHardwareRevision != null) {
@@ -191,7 +196,7 @@ internal class ProbeManager(
             }?.deviceInfoHardwareRevision
         }
 
-    val modelInformation: ModelInformation?
+    private val modelInformation: ModelInformation?
         get() {
             arbitrator.probeBleDevice?.let {
                 if(it.deviceInfoModelInformation != null) {
@@ -318,7 +323,7 @@ internal class ProbeManager(
 
         base.observeAdvertisingPackets(serialNumber, base.mac) { advertisement -> handleAdvertisingPackets(base, advertisement) }
         base.observeConnectionState { state -> handleConnectionState(base, state) }
-        base.observeOutOfRange(OUT_OF_RANGE_TIMEOUT){ handleOutOfRange(base) }
+        base.observeOutOfRange(OUT_OF_RANGE_TIMEOUT){ handleOutOfRange() }
         base.observeProbeStatusUpdates { status -> handleProbeStatus(base, status) }
         base.observeRemoteRssi { rssi ->  handleRemoteRssi(base, rssi) }
     }
@@ -356,6 +361,7 @@ internal class ProbeManager(
         val networkIsOnlyAdvertising =
             (state == DeviceConnectionState.ADVERTISING_CONNECTABLE || state == DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE)
 
+        Log.e("MATT", "Advertsing: $state")
         if(networkIsOnlyAdvertising) {
             if(arbitrator.shouldUpdateDataFromAdvertisingPacket(device, advertisement)) {
                 updateDataFromAdvertisement(advertisement)
@@ -416,7 +422,7 @@ internal class ProbeManager(
         )
     }
 
-    private fun handleOutOfRange(device: ProbeBleDeviceBase) {
+    private fun handleOutOfRange() {
         // if the arbitrated connection state is out of range, then update.
         if(connectionState == DeviceConnectionState.OUT_OF_RANGE) {
             _probe.value = _probe.value.copy(
@@ -428,7 +434,7 @@ internal class ProbeManager(
     }
 
     private fun handleRemoteRssi(device: ProbeBleDeviceBase, rssi: Int) {
-        if(arbitrator.shouldUpdateOnRemoteRssi(device, rssi)) {
+        if(arbitrator.shouldUpdateOnRemoteRssi(device)) {
             _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(rssi = rssi))
         }
     }
