@@ -78,7 +78,6 @@ internal class AdvertisingArbitrator {
         if(preferred.device == null) {
             preferred.device = device
             preferred.monitor.activity()
-            logNewPreferred(device, idleTimeout)
             return true
         }
 
@@ -87,7 +86,6 @@ internal class AdvertisingArbitrator {
         if(device.hopCount < preferred.hopCount) {
             preferred.device = device
             preferred.monitor.activity()
-            logNewPreferred(device, idleTimeout)
             return true
         }
 
@@ -106,7 +104,6 @@ internal class AdvertisingArbitrator {
         if(preferred.monitor.isIdle(idleTimeout)) {
             preferred.device = device
             preferred.monitor.activity()
-            logNewPreferred(device, idleTimeout)
             return true
         }
 
@@ -114,12 +111,5 @@ internal class AdvertisingArbitrator {
         // or equal to the preferred advertiser and the preferred advertiser is active,
         // so stick with the preferred and return false so that we don't update.
         return false
-    }
-
-    private fun logNewPreferred(device: ProbeBleDeviceBase, timeout: Long) {
-        /*
-        val mode = if(timeout == INSTANT_READ_IDLE_TIMEOUT) ProbeMode.INSTANT_READ else ProbeMode.NORMAL
-        Log.w(LOG_TAG, "$mode Preferred Advertiser is ${device.id} with hop count: ${device.hopCount}")
-         */
     }
 }

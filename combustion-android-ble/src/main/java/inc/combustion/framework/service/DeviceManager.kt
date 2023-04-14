@@ -359,7 +359,7 @@ class DeviceManager(
      * @see probeFlow
      */
     fun startRecordTransfer(serialNumber: String) {
-        LogManager.instance.requestLogsFromDevice(service, serialNumber)
+        LogManager.instance.requestLogsFromDevice(serialNumber)
     }
 
     /**

@@ -49,34 +49,30 @@ data class ProbeScanResult(
         fun fromAdvertisement(advertisement: Advertisement) : ProbeScanResult? {
             val data = BaseAdvertisingData.create(advertisement)
 
-            data?.let {
-                if(it !is CombustionAdvertisingData)
-                    return null
+            if(data !is CombustionAdvertisingData)
+                return null
 
-                val serialNumber = it.probeSerialNumber
-                val address = it.mac
-                val rssi = it.rssi
+            val serialNumber = data.probeSerialNumber
+            val address = data.mac
+            val rssi = data.rssi
 
-                val temperatures = if (it.mode == ProbeMode.NORMAL)
-                    it.probeTemperatures
-                else
-                    null
+            val temperatures = if (data.mode == ProbeMode.NORMAL)
+                data.probeTemperatures
+            else
+                null
 
-                val instantReadTemperature = if (it.mode == ProbeMode.INSTANT_READ)
-                    it.probeTemperatures.values[0]
-                else
-                    null
+            val instantReadTemperature = if (data.mode == ProbeMode.INSTANT_READ)
+                data.probeTemperatures.values[0]
+            else
+                null
 
-                return ProbeScanResult(
-                    serialNumber,
-                    address,
-                    rssi,
-                    temperatures ,
-                    instantReadTemperature
-                )
-            }
-
-            return null
+            return ProbeScanResult(
+                serialNumber,
+                address,
+                rssi,
+                temperatures ,
+                instantReadTemperature
+            )
         }
     }
 }

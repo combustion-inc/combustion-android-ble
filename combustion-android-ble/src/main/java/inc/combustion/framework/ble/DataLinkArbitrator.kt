@@ -87,6 +87,11 @@ internal class DataLinkArbitrator(
 
     val hasNoUartRoute: Boolean
         get() {
+            // only applies when using MeatNet
+            if(!settings.meatNetEnabled) {
+                return false
+            }
+
             val noDirectRoute = directLink?.isConnected ?: true
             var noRepeatedRoute = true
 
@@ -246,7 +251,7 @@ internal class DataLinkArbitrator(
         return arbitrateConnected(device)
     }
 
-    fun shouldUpdateOnRemoteRssi(device: ProbeBleDeviceBase, rssi: Int): Boolean {
+    fun shouldUpdateOnRemoteRssi(device: ProbeBleDeviceBase): Boolean {
         return arbitrateConnected(device)
     }
 

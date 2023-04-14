@@ -28,6 +28,7 @@
 
 package inc.combustion.framework.ble
 
+import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -320,6 +321,7 @@ internal class NetworkManager(
 
     fun finish() {
         DeviceScanner.stop()
+        @Suppress("OPT_IN_USAGE")
         clearDevices()
         jobManager.cancelJobs()
     }
