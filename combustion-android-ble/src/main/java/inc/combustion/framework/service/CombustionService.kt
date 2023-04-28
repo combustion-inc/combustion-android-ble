@@ -33,7 +33,6 @@ import android.app.NotificationManager
 import android.bluetooth.BluetoothManager
 import android.content.*
 import android.os.Binder
-import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.lifecycle.LifecycleService
@@ -42,8 +41,6 @@ import inc.combustion.framework.ble.*
 import inc.combustion.framework.ble.dfu.DfuManager
 import inc.combustion.framework.log.LogManager
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.*
-import java.util.*
 import java.util.concurrent.ThreadLocalRandom
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.random.asKotlinRandom
@@ -172,16 +169,21 @@ class CombustionService : LifecycleService() {
         stopForeground()
         serviceNotification = null
 
-        // always try to unregister, even if the previous register didn't complete.
         try {
-            unregisterReceiver(NetworkManager.instance.bluetoothAdapterStateReceiver)
+            // in some situations we've seen onDestroy being called before NetworkManager
+            // is initialized.  In that case, this line will throw.  We do our best effort
+            // here to cleanup.  If we aren't able to get the instance, then there isn't
+            // anything to cleanup so, just catch the exception.
+            val manager = NetworkManager.instance
+
+            manager.clearDevices()
+            manager.finish()
+            unregisterReceiver(manager.bluetoothAdapterStateReceiver)
         } catch (e: Exception) {
-            Log.e(LOG_TAG, "Unable to unregister NetworkManager Bluetooth Intent Receiver")
+            Log.w(LOG_TAG, "Unable to cleanup NetworkManager ${e.stackTrace}")
         }
 
         LogManager.instance.clear()
-        NetworkManager.instance.clearDevices()
-        NetworkManager.instance.finish()
 
         serviceIsStarted.set(false)
         serviceIsStopping.set(false)
