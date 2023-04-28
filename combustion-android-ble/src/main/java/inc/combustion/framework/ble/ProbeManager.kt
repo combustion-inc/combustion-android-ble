@@ -361,7 +361,6 @@ internal class ProbeManager(
         val networkIsOnlyAdvertising =
             (state == DeviceConnectionState.ADVERTISING_CONNECTABLE || state == DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE)
 
-        Log.e("MATT", "Advertsing: $state")
         if(networkIsOnlyAdvertising) {
             if(arbitrator.shouldUpdateDataFromAdvertisingPacket(device, advertisement)) {
                 updateDataFromAdvertisement(advertisement)

@@ -33,6 +33,7 @@ import android.app.NotificationManager
 import android.bluetooth.BluetoothManager
 import android.content.*
 import android.os.Binder
+import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.lifecycle.LifecycleService
@@ -75,7 +76,11 @@ class CombustionService : LifecycleService() {
                 this.dfuNotificationTarget = dfuNotificationTarget
                 notificationId = ThreadLocalRandom.current().asKotlinRandom().nextInt()
                 Intent(context, CombustionService::class.java).also { intent ->
-                    context.startService(intent)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        context.startForegroundService(intent)
+                    } else {
+                        context.startService(intent)
+                    }
                 }
                 serviceIsStopping.set(false)
             }
