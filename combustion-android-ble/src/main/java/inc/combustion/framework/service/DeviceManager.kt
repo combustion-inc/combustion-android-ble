@@ -173,12 +173,23 @@ class DeviceManager(
          * Stops the Combustion Android Service
          */
         fun stopCombustionService() {
-            if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
+            if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE) {
                 Log.d(LOG_TAG, "Unbinding & Stopping Service")
+            }
 
             bindingCount.set(0)
             app.unbindService(connection)
-            CombustionService.stop(app.applicationContext)
+
+            // we might run into situations where the service isn't fully started
+            // by the time we reach this call since the operation is asynchronous.
+            // do our best effort to stop the service, and log a message if we fall
+            // into this occasional situation.
+            try {
+                CombustionService.stop(app.applicationContext)
+            } catch (e: Exception) {
+                Log.w(LOG_TAG, "Exception stopping service ${e.stackTrace}")
+            }
+
             connected.set(false)
         }
     }
