@@ -41,10 +41,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -83,6 +80,8 @@ internal class DeviceScanner private constructor() {
                         // filter and collect on incoming BLE advertisements
                         allMatchesScanner
                             .advertisements
+                            .buffer(capacity = 5, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+                            .flowOn(Dispatchers.IO)
                             .catch { cause ->
                                 stop()
                                 atomicIsScanning.set(false)
