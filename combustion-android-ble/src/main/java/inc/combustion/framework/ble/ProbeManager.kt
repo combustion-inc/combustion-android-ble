@@ -134,6 +134,11 @@ internal class ProbeManager(
 
     val connectionState: DeviceConnectionState
         get() {
+            // if this is a simulated probe, no need to arbitrate
+            simulatedProbe?.let {
+                return it.connectionState
+            }
+
             // if not using meatnet, then we use the direct link
             if(!settings.meatNetEnabled) {
                 return arbitrator.probeBleDevice?.connectionState ?: DeviceConnectionState.OUT_OF_RANGE
@@ -172,6 +177,8 @@ internal class ProbeManager(
 
    private val fwVersion: FirmwareVersion?
         get() {
+            simulatedProbe?.let { return it.deviceInfoFirmwareVersion }
+
             arbitrator.probeBleDevice?.let {
                 if(it.deviceInfoFirmwareVersion != null) {
                     return it.deviceInfoFirmwareVersion
@@ -185,6 +192,8 @@ internal class ProbeManager(
 
     private val hwRevision: String?
         get() {
+            simulatedProbe?.let { return it.deviceInfoHardwareRevision }
+
             arbitrator.probeBleDevice?.let {
                 if(it.deviceInfoHardwareRevision != null) {
                     return it.deviceInfoHardwareRevision
@@ -198,6 +207,8 @@ internal class ProbeManager(
 
     private val modelInformation: ModelInformation?
         get() {
+            simulatedProbe?.let { return it.deviceInfoModelInformation }
+
             arbitrator.probeBleDevice?.let {
                 if(it.deviceInfoModelInformation != null) {
                     return it.deviceInfoModelInformation
@@ -267,47 +278,109 @@ internal class ProbeManager(
         }
     }
 
+    private var simulatedProbe: SimulatedProbeBleDevice? = null
+
+    fun addSimulatedProbe(simProbe: SimulatedProbeBleDevice) {
+        simulatedProbe ?: run {
+
+            // process simulated device status notifications
+            simProbe.observeProbeStatusUpdates { status ->
+                updateDataFromProbeStatus(status)
+                _probeStatusFlow.emit(status)
+            }
+
+            // process simulated connection state changes
+            simProbe.observeConnectionState { state ->
+                handleConnectionState(simProbe, state)
+            }
+
+            // process simulated out of range
+            simProbe.observeOutOfRange(OUT_OF_RANGE_TIMEOUT){
+                handleOutOfRange()
+            }
+
+            // process simulated advertising packets
+            simProbe.observeAdvertisingPackets(serialNumber, simProbe.mac) { advertisement ->
+                updateDataFromAdvertisement(advertisement)
+                if(settings.autoReconnect && simProbe.shouldConnect) {
+                    simProbe.connect()
+                }
+            }
+
+            // process simulated rssi
+            simProbe.observeRemoteRssi { rssi ->
+                _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(rssi = rssi))
+            }
+
+            simulatedProbe = simProbe
+
+            _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(mac = simProbe.mac))
+        }
+    }
+
     fun connect() {
         arbitrator.getNodesNeedingConnection(true).forEach { node ->
             node.connect()
         }
+
+        simulatedProbe?.shouldConnect = true
+        simulatedProbe?.connect()
     }
 
     fun disconnect() {
         arbitrator.getNodesNeedingDisconnect(true).forEach {node ->
             node.disconnect()
         }
+
+        simulatedProbe?.shouldConnect = false
+        simulatedProbe?.disconnect()
     }
 
     fun setProbeColor(color: ProbeColor, completionHandler: (Boolean) -> Unit) {
-        // Note: not supported by MeatNet
-        arbitrator.directLink?.sendSetProbeColor(color) { status, _ ->
+        simulatedProbe?.sendSetProbeColor(color) { status, _ ->
             completionHandler(status)
         } ?: run {
-            completionHandler(false)
+            // Note: not supported by MeatNet
+            arbitrator.directLink?.sendSetProbeColor(color) { status, _ ->
+                completionHandler(status)
+            } ?: run {
+                completionHandler(false)
+            }
         }
     }
 
     fun setProbeID(id: ProbeID, completionHandler: (Boolean) -> Unit) {
-        // Note: not supported by MeatNet
-        arbitrator.directLink?.sendSetProbeID(id) { status, _ ->
+        simulatedProbe?.sendSetProbeID(id) { status, _ ->
             completionHandler(status)
         } ?: run {
-            completionHandler(false)
+            // Note: not supported by MeatNet
+            arbitrator.directLink?.sendSetProbeID(id) { status, _ ->
+                completionHandler(status)
+            } ?: run {
+                completionHandler(false)
+            }
         }
     }
 
     fun setPrediction(removalTemperatureC: Double, mode: ProbePredictionMode, completionHandler: (Boolean) -> Unit) {
-        arbitrator.preferredMeatNetLink?.sendSetPrediction(removalTemperatureC, mode) { status, _ ->
+        simulatedProbe?.sendSetPrediction(removalTemperatureC, mode) { status, _ ->
             completionHandler(status)
         } ?: run {
-            completionHandler(false)
+            arbitrator.preferredMeatNetLink?.sendSetPrediction(removalTemperatureC, mode) { status, _ ->
+                completionHandler(status)
+            } ?: run {
+                completionHandler(false)
+            }
         }
     }
 
     fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt) {
-        arbitrator.preferredMeatNetLink?.sendLogRequest(startSequenceNumber, endSequenceNumber) {
+        simulatedProbe?.sendLogRequest(startSequenceNumber, endSequenceNumber) {
             _logResponseFlow.emit(it)
+        } ?: run {
+            arbitrator.preferredMeatNetLink?.sendLogRequest(startSequenceNumber, endSequenceNumber) {
+                _logResponseFlow.emit(it)
+            }
         }
     }
 
@@ -361,7 +434,6 @@ internal class ProbeManager(
         val networkIsOnlyAdvertising =
             (state == DeviceConnectionState.ADVERTISING_CONNECTABLE || state == DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE)
 
-        Log.e("MATT", "Advertsing: $state")
         if(networkIsOnlyAdvertising) {
             if(arbitrator.shouldUpdateDataFromAdvertisingPacket(device, advertisement)) {
                 updateDataFromAdvertisement(advertisement)
@@ -493,11 +565,21 @@ internal class ProbeManager(
             }
         }
 
-        arbitrator.preferredMeatNetLink?.let {
+        simulatedProbe?.let {
             if(sessionInfo == null) {
                 it.sendSessionInformationRequest { status, info ->
                     if(status && info is SessionInformation) {
                         updateSessionInfo(info)
+                    }
+                }
+            }
+        } ?: run {
+            arbitrator.preferredMeatNetLink?.let {
+                if(sessionInfo == null) {
+                    it.sendSessionInformationRequest { status, info ->
+                        if(status && info is SessionInformation) {
+                            updateSessionInfo(info)
+                        }
                     }
                 }
             }

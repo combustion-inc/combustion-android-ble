@@ -42,8 +42,6 @@ import inc.combustion.framework.ble.*
 import inc.combustion.framework.ble.dfu.DfuManager
 import inc.combustion.framework.log.LogManager
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.*
-import java.util.*
 import java.util.concurrent.ThreadLocalRandom
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.random.asKotlinRandom
@@ -78,7 +76,11 @@ class CombustionService : LifecycleService() {
                 this.dfuNotificationTarget = dfuNotificationTarget
                 notificationId = ThreadLocalRandom.current().asKotlinRandom().nextInt()
                 Intent(context, CombustionService::class.java).also { intent ->
-                    context.startService(intent)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        context.startForegroundService(intent)
+                    } else {
+                        context.startService(intent)
+                    }
                 }
                 serviceIsStopping.set(false)
             }
@@ -172,45 +174,27 @@ class CombustionService : LifecycleService() {
         stopForeground()
         serviceNotification = null
 
-        // always try to unregister, even if the previous register didn't complete.
         try {
-            unregisterReceiver(NetworkManager.instance.bluetoothAdapterStateReceiver)
+            // in some situations we've seen onDestroy being called before NetworkManager
+            // is initialized.  In that case, this line will throw.  We do our best effort
+            // here to cleanup.  If we aren't able to get the instance, then there isn't
+            // anything to cleanup so, just catch the exception.
+            val manager = NetworkManager.instance
+
+            manager.clearDevices()
+            manager.finish()
+            unregisterReceiver(manager.bluetoothAdapterStateReceiver)
         } catch (e: Exception) {
-            Log.e(LOG_TAG, "Unable to unregister NetworkManager Bluetooth Intent Receiver")
+            Log.w(LOG_TAG, "Unable to cleanup NetworkManager ${e.stackTrace}")
         }
 
         LogManager.instance.clear()
-        NetworkManager.instance.clearDevices()
-        NetworkManager.instance.finish()
 
         serviceIsStarted.set(false)
         serviceIsStopping.set(false)
 
         Log.d(LOG_TAG, "Combustion Android Service Destroyed...")
         super.onDestroy()
-    }
-
-    internal fun addSimulatedProbe() {
-        /*
-        // Create SimulatedLegacyProbeManager
-        val simulatedProbeManager = SimulatedLegacyProbeManager.create(this@CombustionService,
-            (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter)
-
-        // Add to probe list
-        _probes[simulatedProbeManager.probe.serialNumber] = simulatedProbeManager
-
-        // Add it to the LogManager
-        LogManager.instance.manage(this@CombustionService, simulatedProbeManager)
-
-        // emit into the discovered probes flow
-        lifecycleScope.launch {
-            _discoveredProbesFlow.emit(
-                ProbeDiscoveredEvent.ProbeDiscovered(simulatedProbeManager.probe.serialNumber)
-            )
-        }
-         */
-        NetworkManager.instance.addSimulatedProbe()
-        TODO()
     }
 
     internal fun startDfuMode() {
