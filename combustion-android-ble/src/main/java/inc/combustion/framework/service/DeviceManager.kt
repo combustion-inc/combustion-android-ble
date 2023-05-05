@@ -456,7 +456,9 @@ class DeviceManager(
      * @see discoveredProbesFlow
      * @see probeFlow
      */
-    fun addSimulatedProbe() = service.addSimulatedProbe()
+    fun addSimulatedProbe() {
+        NetworkManager.instance.addSimulatedProbe()
+    }
 
     /**
      * Sends a request to the device to the set the probe color. The completion handler will

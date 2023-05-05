@@ -79,7 +79,7 @@ data class PredictionStatus(
         }
 
         internal fun withRandomData() : PredictionStatus {
-            val prediction = Random.nextUInt(65u, 45u)
+            val prediction = Random.nextUInt(25u, 45u)
             val estimatedCore = Random.nextDouble(60.0, 63.0)
             return PredictionStatus(
                 ProbePredictionState.PREDICTING,

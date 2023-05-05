@@ -259,7 +259,25 @@ internal class NetworkManager(
     }
 
     fun addSimulatedProbe() {
-        TODO("Need to implement simulated probes")
+        val probe = SimulatedProbeBleDevice(owner)
+        val manager = ProbeManager(
+            serialNumber = probe.probeSerialNumber,
+            owner = owner,
+            settings = settings,
+            dfuConnectedNodeCallback = { },
+            dfuDisconnectedNodeCallback = { }
+        )
+
+        probeManagers[manager.serialNumber] = manager
+        LogManager.instance.manage(owner, manager)
+
+        manager.addSimulatedProbe(probe)
+
+        owner.lifecycleScope.launch {
+            flowHolder.mutableDiscoveredProbesFlow.emit(
+                ProbeDiscoveredEvent.ProbeDiscovered(probe.probeSerialNumber)
+            )
+        }
     }
 
     internal fun probeFlow(serialNumber: String): StateFlow<Probe>? {

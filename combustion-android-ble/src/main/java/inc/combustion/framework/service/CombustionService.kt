@@ -197,29 +197,6 @@ class CombustionService : LifecycleService() {
         super.onDestroy()
     }
 
-    internal fun addSimulatedProbe() {
-        /*
-        // Create SimulatedLegacyProbeManager
-        val simulatedProbeManager = SimulatedLegacyProbeManager.create(this@CombustionService,
-            (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter)
-
-        // Add to probe list
-        _probes[simulatedProbeManager.probe.serialNumber] = simulatedProbeManager
-
-        // Add it to the LogManager
-        LogManager.instance.manage(this@CombustionService, simulatedProbeManager)
-
-        // emit into the discovered probes flow
-        lifecycleScope.launch {
-            _discoveredProbesFlow.emit(
-                ProbeDiscoveredEvent.ProbeDiscovered(simulatedProbeManager.probe.serialNumber)
-            )
-        }
-         */
-        NetworkManager.instance.addSimulatedProbe()
-        TODO()
-    }
-
     internal fun startDfuMode() {
         NetworkManager.instance.startDfuMode()
         dfuManager?.start()
