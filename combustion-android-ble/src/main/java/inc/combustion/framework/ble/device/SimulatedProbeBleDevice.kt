@@ -28,7 +28,6 @@
 
 package inc.combustion.framework.ble.device
 
-import android.util.Log
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.ble.ProbeStatus
@@ -61,7 +60,9 @@ internal class SimulatedProbeBleDevice(
         mac,
         productType,
         probeSerialNumber,
-        hopCount
+        hopCount,
+        ProbeID.ID1,
+        ProbeColor.COLOR1
     ),
     var shouldConnect: Boolean = false
 ) : ProbeBleDeviceBase() {
@@ -74,7 +75,9 @@ internal class SimulatedProbeBleDevice(
             mac: String,
             productType: CombustionProductType,
             probeSerialNumber: String,
-            hopCount: UInt
+            hopCount: UInt,
+            probeID: ProbeID,
+            probeColor: ProbeColor
         ) : CombustionAdvertisingData {
             return CombustionAdvertisingData(
                 mac,
@@ -84,8 +87,8 @@ internal class SimulatedProbeBleDevice(
                 true,
                 probeSerialNumber,
                 ProbeTemperatures.withRandomData(),
-                ProbeID.ID1,
-                ProbeColor.COLOR1,
+                probeID,
+                probeColor,
                 ProbeMode.NORMAL,
                 ProbeBatteryStatus.OK,
                 ProbeVirtualSensors.DEFAULT,
@@ -133,7 +136,7 @@ internal class SimulatedProbeBleDevice(
             owner.lifecycleScope.launch {
                 observeAdvertisingCallback?.let {
                     if(!isConnected) {
-                        it(randomAdvertisement(mac, productType, probeSerialNumber, hopCount))
+                        it(randomAdvertisement(mac, productType, probeSerialNumber, hopCount, probeID, probeColor))
                     }
                 }
                 observeRemoteRssiCallback?.let {
