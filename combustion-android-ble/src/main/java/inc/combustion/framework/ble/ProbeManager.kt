@@ -69,6 +69,7 @@ internal class ProbeManager(
         const val OUT_OF_RANGE_TIMEOUT = 15000L
         private const val PROBE_STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS = 1000L
         private const val PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS = 15000L
+        private const val PREDICTION_IDLE_TIMEOUT_MS = 60000L
         private const val PROBE_STATUS_NOTIFICATIONS_POLL_DELAY_MS = 30000L
         private const val PROBE_INSTANT_READ_IDLE_TIMEOUT_MS = 5000L
         private const val IGNORE_PROBES = false
@@ -84,6 +85,7 @@ internal class ProbeManager(
     // idle monitors
     private val instantReadMonitor = IdleMonitor()
     private val statusNotificationsMonitor = IdleMonitor()
+    private val predictionMonitor = IdleMonitor()
 
     // holds the current state and data for this probe
     private var _probe = MutableStateFlow(Probe.create(serialNumber = serialNumber))
@@ -410,15 +412,19 @@ internal class ProbeManager(
             while(isActive) {
                 delay(PROBE_STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS)
 
-                publishStatusNotificationsStale(statusNotificationsMonitor.isIdle(PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS))
+                val statusNotificationsStale = statusNotificationsMonitor.isIdle(PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS)
+                val predictionStale = predictionMonitor.isIdle(PREDICTION_IDLE_TIMEOUT_MS) && _probe.value.isPredicting
+                val shouldUpdate = statusNotificationsStale != _probe.value.statusNotificationsStale ||
+                        predictionStale != _probe.value.predictionStale
+
+                if(shouldUpdate) {
+                    _probe.value = _probe.value.copy(
+                        statusNotificationsStale = statusNotificationsStale,
+                        predictionStale = predictionStale
+                    )
+                }
             }
         })
-    }
-
-    private fun publishStatusNotificationsStale(predictionStale: Boolean) {
-        if(predictionStale != _probe.value.statusNotificationsStale) {
-            _probe.value = _probe.value.copy(statusNotificationsStale = predictionStale)
-        }
     }
 
     private suspend fun handleProbeStatus(device: ProbeBleDeviceBase, status: ProbeStatus) {
@@ -605,6 +611,7 @@ internal class ProbeManager(
             updateInstantRead(status.temperatures.values[0])
         } else if(status.mode == ProbeMode.NORMAL) {
             statusNotificationsMonitor.activity()
+            predictionMonitor.activity()
 
             updateTemperatures(status.temperatures, status.virtualSensors)
             predictionManager.updatePredictionStatus(status.predictionStatus, status.maxSequenceNumber)
