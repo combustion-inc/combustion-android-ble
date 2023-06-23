@@ -350,6 +350,9 @@ internal class RepeatedProbeBleDevice (
                             sessionInfoHandler.handled(message.success, message.sessionInformation)
                         }
                     }
+                    is NodeHeartbeatRequest -> {
+                        Log.i(LOG_TAG, "Heartbeat message: $message")
+                    }
                 }
             }
         }

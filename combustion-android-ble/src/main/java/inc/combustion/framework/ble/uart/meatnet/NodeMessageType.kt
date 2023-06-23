@@ -49,7 +49,8 @@ internal enum class NodeMessageType(val value: UByte) {
     PROBE_STATUS(0X45u),
     PROBE_FIRMWARE_REVISION(0X46u),
     PROBE_HARDWARE_REVISION(0X47u),
-    PROBE_MODEL_INFORMATION(0X48u);
+    PROBE_MODEL_INFORMATION(0X48u),
+    HEARTBEAT(0X49u);
 
     companion object {
         fun fromUByte(value: UByte) = values().firstOrNull { it.value == value }
