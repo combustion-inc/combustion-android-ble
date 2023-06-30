@@ -43,6 +43,19 @@ enum class CombustionProductType(val type: UByte) {
                 else -> UNKNOWN
             }
         }
+
+        /**
+         * Returns the [CombustionProductType] according to the string in the DIS Model Number
+         * characteristic.
+         */
+        fun fromModelString(model: String) : CombustionProductType {
+            return when(model) {
+                "Timer" -> DISPLAY
+                "Charger" -> CHARGER
+                "" -> PROBE
+                else -> UNKNOWN
+            }
+        }
     }
 
     val isRepeater: Boolean get() = this != PROBE
