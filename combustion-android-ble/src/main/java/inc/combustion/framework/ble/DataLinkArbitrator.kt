@@ -105,15 +105,6 @@ internal class DataLinkArbitrator(
             return noDirectRoute && noRepeatedRoute
         }
 
-    val meatNetIsAdvertisingConnectable: Boolean
-        get() {
-            if(directLink?.isConnectable == true) {
-                return true
-            }
-
-            return repeatedProbeBleDevices.firstOrNull { it.isConnectable } != null
-        }
-
     val meatNetIsOutOfRange: Boolean
         get() {
             val directInRange = directLink?.isInRange ?: true
@@ -146,6 +137,34 @@ internal class DataLinkArbitrator(
             networkNodes[repeater.id] = repeater
         }
         return true
+    }
+
+    fun getPreferredLinkForConnectionState(state: DeviceConnectionState): ProbeBleDeviceBase? {
+        // if not using MeatNet, then use direct link
+        if(!settings.meatNetEnabled) {
+            directLink?.let {
+                if(it.connectionState == state) {
+                    return it
+                }
+
+                return null
+            }
+        }
+
+        // if using MeatNet, prefer direct link if state matches.
+        directLink?.let {
+            if(it.connectionState == state) {
+                return it
+            }
+        }
+
+        // otherwise (and using MeatNet), prefer the MeatNet link with the lowest hop count, that
+        // matches the state.
+        return repeatedProbeBleDevices.sortedWith(
+            compareBy(RepeatedProbeBleDevice::hopCount, RepeatedProbeBleDevice::id)
+        ).firstOrNull {
+            it.connectionState != state
+        }
     }
 
     fun getNodesNeedingConnection(fromApiCall: Boolean = false): List<DeviceInformationBleDevice> {

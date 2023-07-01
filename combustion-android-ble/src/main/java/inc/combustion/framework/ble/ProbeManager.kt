@@ -161,20 +161,28 @@ internal class ProbeManager(
                 return it.connectionState
             }
 
-            // else, if all of the MeatNet devices are connected with no route, then the state is no route
-            if(arbitrator.hasNoUartRoute) {
-                return DeviceConnectionState.NO_ROUTE
-            }
-
-            // if fallen through to this point, then there has to be at least one device that
-            // is in range that we are not connected to (i.e hearing adv packets).
-
-            // else, if there is any device that is advertising connectable, then Connectable
-            if(arbitrator.meatNetIsAdvertisingConnectable) {
+            // else, if there is any device that is advertising connectable.
+            arbitrator.getPreferredLinkForConnectionState(DeviceConnectionState.ADVERTISING_CONNECTABLE)?.let {
                 return DeviceConnectionState.ADVERTISING_CONNECTABLE
             }
 
-            return DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE
+            // else, if there is any device that is advertising not connectable
+            arbitrator.getPreferredLinkForConnectionState(DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE)?.let {
+                return DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE
+            }
+
+            // else, if there is any device that is connecting
+            arbitrator.getPreferredLinkForConnectionState(DeviceConnectionState.CONNECTING)?.let {
+                return DeviceConnectionState.CONNECTING
+            }
+
+            // else, if there is any device that is connecting
+            arbitrator.getPreferredLinkForConnectionState(DeviceConnectionState.CONNECTING)?.let {
+                return DeviceConnectionState.DISCONNECTING
+            }
+
+            // else, all MeatNet devices are connected with no route, then the state is no route
+            return DeviceConnectionState.NO_ROUTE
         }
 
    private val fwVersion: FirmwareVersion?
@@ -437,10 +445,11 @@ internal class ProbeManager(
 
     private fun handleAdvertisingPackets(device: ProbeBleDeviceBase, advertisement: CombustionAdvertisingData) {
         val state = connectionState
-        val networkIsOnlyAdvertising =
-            (state == DeviceConnectionState.ADVERTISING_CONNECTABLE || state == DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE)
+        val networkIsAdvertisingAndNotConnected =
+            (state == DeviceConnectionState.ADVERTISING_CONNECTABLE || state == DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE ||
+                    state == DeviceConnectionState.CONNECTING)
 
-        if(networkIsOnlyAdvertising) {
+        if(networkIsAdvertisingAndNotConnected) {
             if(arbitrator.shouldUpdateDataFromAdvertisingPacket(device, advertisement)) {
                 updateDataFromAdvertisement(advertisement)
             }
