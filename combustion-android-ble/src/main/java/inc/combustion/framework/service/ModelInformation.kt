@@ -29,26 +29,54 @@
 package inc.combustion.framework.service
 
 data class ModelInformation(
+    val productType: CombustionProductType,
     val sku: String,
     val manufacturingLot: String
 ) {
 
     companion object {
         /**
-         * Converts this model information string into a [ModelInformation] object, which includes the
-         * SKU and manufacturing lot.
+         * Converts [modelInformationString], which is the contents of the DIS Model String
+         * characteristic into a [ModelInformation] object.
+         *
+         * The model information string is different depending on the device type:
+         * - Probes are of the form "<SKU>:<manufacturing lot>".
+         * - Repeater Nodes are of the form "<Device Type> <SKU>-<manufacturing lot>" where 'Device
+         *   Type' is the plain-text name of the device ("Timer", "Charger", etc.).
          */
         fun fromString(modelInformationString: String?): ModelInformation {
-            return if(modelInformationString == null) {
-                ModelInformation("", "")
-            } else {
-                val split = modelInformationString.split(":")
-                if(split.size == 2) {
-                    ModelInformation(split[0], split[1])
+            modelInformationString?.let {
+                // If the string has a colon in it, it's a probe.
+                if (it.contains(":")) {
+                    val split = it.split(":")
+
+                    return ModelInformation(
+                        productType = CombustionProductType.PROBE,
+                        sku = split[0],
+                        manufacturingLot = split[1]
+                    )
                 } else {
-                    ModelInformation("", "")
+                    val split = it.split(" ")
+
+                    if (split.size == 2) {
+                        val skuLot = split[1].split("-")
+
+                        if (skuLot.size == 2) {
+                            return ModelInformation(
+                                productType = CombustionProductType.fromModelString(split[0]),
+                                sku = skuLot[0],
+                                manufacturingLot = skuLot[1]
+                            )
+                        }
+                    }
                 }
             }
+
+            return ModelInformation(
+                productType = CombustionProductType.UNKNOWN,
+                sku = "",
+                manufacturingLot = ""
+            )
         }
     }
 }

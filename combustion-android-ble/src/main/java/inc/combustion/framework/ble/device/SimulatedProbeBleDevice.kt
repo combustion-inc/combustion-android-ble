@@ -176,7 +176,11 @@ internal class SimulatedProbeBleDevice(
         deviceInfoSerialNumber = probeSerialNumber
         deviceInfoFirmwareVersion = FirmwareVersion(1, 2, 3, null, null)
         deviceInfoHardwareRevision = "v2.3.4"
-        deviceInfoModelInformation = ModelInformation("ABCDEF", "98765")
+        deviceInfoModelInformation = ModelInformation(
+            productType = CombustionProductType.PROBE,
+            sku = "ABCDEF",
+            manufacturingLot = "98765"
+        )
         observeConnectionStateCallback?.let {
             owner.lifecycleScope.launch {
                 it(connectionState)
