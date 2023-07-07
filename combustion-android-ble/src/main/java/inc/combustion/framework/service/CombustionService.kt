@@ -77,7 +77,11 @@ class CombustionService : LifecycleService() {
                 notificationId = ThreadLocalRandom.current().asKotlinRandom().nextInt()
                 Intent(context, CombustionService::class.java).also { intent ->
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        context.startForegroundService(intent)
+                        serviceNotification?.let {
+                            context.startForegroundService(intent)
+                        } ?: run {
+                            context.startService(intent)
+                        }
                     } else {
                         context.startService(intent)
                     }
