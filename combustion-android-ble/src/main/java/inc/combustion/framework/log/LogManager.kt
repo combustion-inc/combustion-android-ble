@@ -97,8 +97,13 @@ internal class LogManager {
                                 // the record transfer when they are ready.
                                 ProbeUploadState.Unavailable -> {
                                     if(DeviceManager.instance.settings.autoLogTransfer) {
-                                        // note, this will transfer to ProbeUploadInProgress
-                                        requestLogsFromDevice(probeManager.serialNumber)
+                                        if(probeManager.sessionInfo == null) {
+                                            probeManager.fetchSessionInfo()
+                                        }
+                                        else {
+                                            // note, this will transfer to ProbeUploadInProgress
+                                            requestLogsFromDevice(probeManager.serialNumber)
+                                        }
                                     }
                                     else {
                                         probeManager.uploadState = ProbeUploadState.ProbeUploadNeeded
@@ -145,29 +150,16 @@ internal class LogManager {
                                     // update the count of records downloaded
                                     probeManager.recordsDownloaded = temperatureLog.dataPointCount
 
+                                    // not receiving expected log responses, then complete the log
+                                    // request and transition state.
+                                    if(temperatureLog.logRequestIsStalled) {
+                                        val sessionStatus = temperatureLog.completeLogRequest()
+                                        probeManager.uploadState = sessionStatus.toProbeUploadState()
+                                    }
                                     // if we have any dropped records then initiate a log request to
                                     // backfill from the missing records.
-                                    if(sessionStatus.droppedRecords.isNotEmpty()) {
-
-                                        // find the first set of consecutive sequence numbers and
-                                        // request that range to backfill.
-                                        val (first, last) = if(sessionStatus.droppedRecords.size <= 1) {
-                                            Pair(sessionStatus.droppedRecords[0], sessionStatus.droppedRecords[0])
-                                        } else {
-                                            val first = sessionStatus.droppedRecords[0]
-                                            var last = first
-                                            for(i in 1 until sessionStatus.droppedRecords.size) {
-                                                if(last + 1u == sessionStatus.droppedRecords[i]) {
-                                                    last++
-                                                }
-                                                else {
-                                                    break
-                                                }
-                                            }
-                                            Pair(first, last)
-                                        }
-
-                                        val range = RecordRange(first, last)
+                                    else if(sessionStatus.droppedRecords.isNotEmpty()) {
+                                        val range = RecordRange(sessionStatus.droppedRecords.first(), sessionStatus.droppedRecords.last() + 1u)
                                         startBackfillLogRequest(temperatureLog, probeManager, range, deviceStatus.maxSequenceNumber)
                                     }
                                     // we've synchronized the log on the device here, now maintain

@@ -55,7 +55,7 @@ internal class Session(
          * If > than this threshold of device status packets are received, then
          * consider the log request stalled.
          */
-        const val STALE_LOG_REQUEST_PACKET_COUNT = 3u
+        const val STALE_LOG_REQUEST_PACKET_COUNT = 6u
         const val MAX_DROPPED_PACKET_HANDLING = 5000
     }
 
@@ -205,6 +205,9 @@ internal class Session(
     fun addFromDeviceStatus(probeStatus: ProbeStatus) : SessionStatus {
         val loggedProbeDataPoint = LoggedProbeDataPoint.fromDeviceStatus(id, probeStatus, startTime, sessionInfo.samplePeriod)
 
+        // remove records from the drop list that are no longer available on the probe
+        droppedRecords.removeIf { it < probeStatus.minSequenceNumber }
+
         // decrement the stale log request counter
         staleLogRequestCount--
 
@@ -231,7 +234,7 @@ internal class Session(
 
             // log a warning message
             Log.w(LOG_TAG, "Detected device status data drop ($serialNumber). " +
-                "Drop range ${nextExpectedDeviceStatus}..${probeStatus.maxSequenceNumber-1u}")
+                "Drop range ${nextExpectedDeviceStatus}..${probeStatus.maxSequenceNumber-1u} (${droppedRecords.count()})")
 
             // but still add this data and resync.
             _logs[loggedProbeDataPoint.sequenceNumber] = loggedProbeDataPoint
