@@ -28,7 +28,6 @@
 
 package inc.combustion.framework.ble
 
-import android.util.Log
 import inc.combustion.framework.ble.device.*
 import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.device.ProbeBleDeviceBase
@@ -43,7 +42,7 @@ internal class DataLinkArbitrator(
     companion object {
         private const val USE_STATIC_LINK: Boolean = false
         private const val USE_SIMPLE_MEATNET_CONNECTION_SCHEME = false
-        private const val MULTINODE_PROBE_SETTLING_TIMEOUT_MS = 3000L
+        private const val MULTINODE_PROBE_SETTLING_TIMEOUT_MS = 5000L
     }
 
     // meatnet network nodes
@@ -129,7 +128,7 @@ internal class DataLinkArbitrator(
 
     val meatNetIsOutOfRange: Boolean
         get() {
-            val directInRange = directLink?.isInRange ?: true
+            val directInRange = probeBleDevice?.isInRange ?: true
 
             return repeatedProbeBleDevices.firstOrNull {
                 it.isInRange
@@ -161,10 +160,10 @@ internal class DataLinkArbitrator(
         return true
     }
 
-    fun getPreferredLinkForConnectionState(state: DeviceConnectionState): ProbeBleDeviceBase? {
-        // if not using MeatNet, then use direct link
+    fun getPreferredConnectionState(state: DeviceConnectionState): ProbeBleDeviceBase? {
+        // if not using MeatNet, then use the probe.
         if(!settings.meatNetEnabled) {
-            directLink?.let {
+            probeBleDevice?.let {
                 if(it.connectionState == state) {
                     return it
                 }
@@ -173,8 +172,8 @@ internal class DataLinkArbitrator(
             }
         }
 
-        // if using MeatNet, prefer direct link if state matches.
-        directLink?.let {
+        // if using MeatNet, prefer probe if state matches.
+        probeBleDevice?.let {
             if(it.connectionState == state) {
                 return it
             }
@@ -185,7 +184,7 @@ internal class DataLinkArbitrator(
         return repeatedProbeBleDevices.sortedWith(
             compareBy(RepeatedProbeBleDevice::hopCount, RepeatedProbeBleDevice::id)
         ).firstOrNull {
-            it.connectionState != state
+            it.connectionState == state
         }
     }
 
