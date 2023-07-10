@@ -359,6 +359,10 @@ internal class RepeatedProbeBleDevice (
         uart.jobManager.addJob(uart.owner.lifecycleScope.launch {
             val channel = Channel<Unit>(0)
 
+            // settling time until we start pinging the route
+            delay(PING_RATE_MS * 10)
+            routeMonitor.activity()
+
             // until this coroutine is cancelled
             while(isActive) {
                 // delay to poll again on next period

@@ -55,7 +55,7 @@ internal class Session(
          * If > than this threshold of device status packets are received, then
          * consider the log request stalled.
          */
-        const val STALE_LOG_REQUEST_PACKET_COUNT = 6u
+        const val STALE_LOG_REQUEST_PACKET_COUNT = 3u
         const val MAX_DROPPED_PACKET_HANDLING = 5000
     }
 
@@ -75,25 +75,6 @@ internal class Session(
     val isEmpty get() = _logs.isEmpty()
     val startTime: Date
     val droppedRecords = mutableListOf<UInt>()
-
-    val maxSequentialSequenceNumber: UInt get() {
-        val iterator = _logs.keys.sorted().iterator()
-
-        if(!iterator.hasNext())
-            return 0u
-
-        var lastKey = iterator.next()
-        while(iterator.hasNext()) {
-            val key = iterator.next()
-            if (lastKey >= key - 1u) {
-                lastKey = key
-            } else {
-                break
-            }
-        }
-
-        return lastKey
-    }
 
     init {
         val milliSinceStart = (sessionInfo.samplePeriod * deviceStatusMaxSequence).toLong()
@@ -117,6 +98,33 @@ internal class Session(
             return _logs.values.size
         }
 
+    fun logRequestStartSequence(deviceMinSequence: UInt): UInt {
+        if(deviceMinSequence < minSequenceNumber) {
+            return deviceMinSequence
+        }
+
+        val iterator = _logs.keys.sorted().iterator()
+
+        if(!iterator.hasNext())
+            return deviceMinSequence
+
+        var lastKey = iterator.next()
+        while(iterator.hasNext()) {
+            val key = iterator.next()
+            if (lastKey >= key - 1u) {
+                lastKey = key
+            } else {
+                break
+            }
+        }
+
+        if(lastKey < deviceMinSequence) {
+            return deviceMinSequence
+        }
+
+        return lastKey + 1u
+    }
+
     fun startLogRequest(range: RecordRange) : UploadProgress {
         // initialize tracking variables for pending record transfer
         nextExpectedRecord = range.minSeq
@@ -124,6 +132,8 @@ internal class Session(
         totalExpected = range.maxSeq - range.minSeq + 1u
         transferCount = 0u
         staleLogRequestCount = STALE_LOG_REQUEST_PACKET_COUNT
+
+        droppedRecords.clear()
 
         return UploadProgress(transferCount, logResponseDropCount, totalExpected)
     }

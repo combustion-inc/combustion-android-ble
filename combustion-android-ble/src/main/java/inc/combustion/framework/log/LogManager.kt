@@ -34,6 +34,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.ProbeManager
+import inc.combustion.framework.ble.ProbeStatus
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -128,8 +129,7 @@ internal class LogManager {
                                     // not receiving expected log responses, then complete the log
                                     // request and transition state.
                                     if(temperatureLog.logRequestIsStalled) {
-                                        val sessionStatus = temperatureLog.completeLogRequest()
-                                        probeManager.uploadState = sessionStatus.toProbeUploadState()
+                                        handleStalledLogRequest(temperatureLog, probeManager)
                                     }
                                 }
                                 is ProbeUploadState.ProbeUploadComplete -> {
@@ -153,8 +153,7 @@ internal class LogManager {
                                     // not receiving expected log responses, then complete the log
                                     // request and transition state.
                                     if(temperatureLog.logRequestIsStalled) {
-                                        val sessionStatus = temperatureLog.completeLogRequest()
-                                        probeManager.uploadState = sessionStatus.toProbeUploadState()
+                                        handleStalledLogRequest(temperatureLog, probeManager)
                                     }
                                     // if we have any dropped records then initiate a log request to
                                     // backfill from the missing records.
@@ -239,7 +238,6 @@ internal class LogManager {
         // initialize the start of the log request with the temperature log
         val progress = log.startLogRequest(range)
 
-
         // update the probe's upload state with the progress.
         probeManager.uploadState = progress.toProbeUploadState()
 
@@ -316,6 +314,18 @@ internal class LogManager {
                 }
             }
         }
+    }
+
+
+    private fun handleStalledLogRequest(
+        log: ProbeTemperatureLog,
+        probeManager: ProbeManager,
+    ) {
+        log.completeLogRequest()
+
+        // transition to Unavailable, the next device status will
+        // trigger a log transfer and change state back to in progress.
+        probeManager.uploadState = ProbeUploadState.Unavailable
     }
 
     private fun startBackfillLogRequest(
