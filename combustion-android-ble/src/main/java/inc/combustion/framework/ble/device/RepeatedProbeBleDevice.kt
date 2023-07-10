@@ -359,6 +359,10 @@ internal class RepeatedProbeBleDevice (
         uart.jobManager.addJob(uart.owner.lifecycleScope.launch {
             val channel = Channel<Unit>(0)
 
+            // settling time until we start pinging the route
+            delay(PING_SETTLING_MS)
+            routeMonitor.activity()
+
             // until this coroutine is cancelled
             while(isActive) {
                 // delay to poll again on next period
@@ -405,6 +409,7 @@ internal class RepeatedProbeBleDevice (
 
     companion object {
         const val PING_RATE_MS = 1000L
+        const val PING_SETTLING_MS = 10000L
         const val IDLE_LINK_TIMEOUT = MESSAGE_RESPONSE_TIMEOUT_MS + 1000L
     }
 }

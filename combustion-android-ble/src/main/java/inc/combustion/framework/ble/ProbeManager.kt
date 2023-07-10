@@ -104,6 +104,9 @@ internal class ProbeManager(
     private val _logResponseFlow = MutableSharedFlow<LogResponse>(
         replay = 0, extraBufferCapacity = 50, BufferOverflow.SUSPEND)
 
+    // tracks the link that is processing the most recent log transfer
+    private var logTransferLink: ProbeBleDeviceBase? = null
+
     // the flow that is consumed to get LogResponses from MeatNet
     val logResponseFlow = _logResponseFlow.asSharedFlow()
 
@@ -161,20 +164,28 @@ internal class ProbeManager(
                 return it.connectionState
             }
 
-            // else, if all of the MeatNet devices are connected with no route, then the state is no route
-            if(arbitrator.hasNoUartRoute) {
-                return DeviceConnectionState.NO_ROUTE
-            }
-
-            // if fallen through to this point, then there has to be at least one device that
-            // is in range that we are not connected to (i.e hearing adv packets).
-
-            // else, if there is any device that is advertising connectable, then Connectable
-            if(arbitrator.meatNetIsAdvertisingConnectable) {
+            // else, if there is any device that is advertising connectable.
+            arbitrator.getPreferredLinkForConnectionState(DeviceConnectionState.ADVERTISING_CONNECTABLE)?.let {
                 return DeviceConnectionState.ADVERTISING_CONNECTABLE
             }
 
-            return DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE
+            // else, if there is any device that is advertising not connectable
+            arbitrator.getPreferredLinkForConnectionState(DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE)?.let {
+                return DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE
+            }
+
+            // else, if there is any device that is connecting
+            arbitrator.getPreferredLinkForConnectionState(DeviceConnectionState.CONNECTING)?.let {
+                return DeviceConnectionState.CONNECTING
+            }
+
+            // else, if there is any device that is connecting
+            arbitrator.getPreferredLinkForConnectionState(DeviceConnectionState.CONNECTING)?.let {
+                return DeviceConnectionState.DISCONNECTING
+            }
+
+            // else, all MeatNet devices are connected with no route, then the state is no route
+            return DeviceConnectionState.NO_ROUTE
         }
 
    private val fwVersion: FirmwareVersion?
@@ -334,6 +345,8 @@ internal class ProbeManager(
             node.disconnect()
         }
 
+        arbitrator.directLinkDiscoverTimestamp = null
+
         simulatedProbe?.shouldConnect = false
         simulatedProbe?.disconnect()
     }
@@ -380,7 +393,8 @@ internal class ProbeManager(
         simulatedProbe?.sendLogRequest(startSequenceNumber, endSequenceNumber) {
             _logResponseFlow.emit(it)
         } ?: run {
-            arbitrator.preferredMeatNetLink?.sendLogRequest(startSequenceNumber, endSequenceNumber) {
+            logTransferLink = arbitrator.preferredMeatNetLink
+            logTransferLink?.sendLogRequest(startSequenceNumber, endSequenceNumber) {
                 _logResponseFlow.emit(it)
             }
         }
@@ -430,6 +444,21 @@ internal class ProbeManager(
     private suspend fun handleProbeStatus(device: ProbeBleDeviceBase, status: ProbeStatus) {
         if(arbitrator.shouldUpdateDataFromProbeStatus(device)) {
             updateDataFromProbeStatus(status)
+
+            // redundantly check for device information, if we don't have that data, then we
+            // want to keep requesting it until it makes it across the network.
+            fetchDeviceInfo(device)
+        }
+
+        // optimize MeatNet connection resources.  if we have a direct link to a probe we want to
+        // free the resource if we can reach the probe through MeatNet.  we avoid doing that
+        // during a log record transfer because there is a fair amount of setup cost for that operation
+        // so just let it run to completion before changing topology.
+        arbitrator.directLink?.let { directLink ->
+            if(uploadState !is ProbeUploadState.ProbeUploadInProgress && arbitrator.hasMeatNetRoute) {
+                Log.i(LOG_TAG, "PM($serialNumber): disconnecting from ${directLink.productType}[${directLink.mac}] in favor of MeatNet connection(s).")
+                directLink.disconnect()
+            }
         }
 
         _probeStatusFlow.emit(status)
@@ -437,10 +466,11 @@ internal class ProbeManager(
 
     private fun handleAdvertisingPackets(device: ProbeBleDeviceBase, advertisement: CombustionAdvertisingData) {
         val state = connectionState
-        val networkIsOnlyAdvertising =
-            (state == DeviceConnectionState.ADVERTISING_CONNECTABLE || state == DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE)
+        val networkIsAdvertisingAndNotConnected =
+            (state == DeviceConnectionState.ADVERTISING_CONNECTABLE || state == DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE ||
+                    state == DeviceConnectionState.CONNECTING)
 
-        if(networkIsOnlyAdvertising) {
+        if(networkIsAdvertisingAndNotConnected) {
             if(arbitrator.shouldUpdateDataFromAdvertisingPacket(device, advertisement)) {
                 updateDataFromAdvertisement(advertisement)
             }
@@ -466,24 +496,37 @@ internal class ProbeManager(
         }
 
         if(isDisconnected) {
+            Log.i(LOG_TAG, "PM($serialNumber): ${device.productType}[${device.id}] is disconnected.")
+
             // perform any cleanup
             device.disconnect()
 
+            // if a probe, then reset the discover timestamp upon disconnection
+            if(device is ProbeBleDevice) {
+                arbitrator.directLinkDiscoverTimestamp = null
+            }
+
+            if(device == logTransferLink) {
+                finishLogTransfer()
+            }
+
             // remove this item from the list of firmware details for the network
             dfuDisconnectedNodeCallback(device.id)
-
-            // event out the invalid session info.
-            _probe.value = _probe.value.copy(sessionInfo = null)
         }
 
-        // if don't have a route to send UART messages and we are currently in an active
-        // Upload State, coordinate with Log Manager that it can no longer expect log
-        // messages, and transition the upload state to Unavailable.  Null SessionInfo
-        // so that it can be requested again when a route is established
-        if(arbitrator.hasNoUartRoute && uploadState != ProbeUploadState.Unavailable) {
-            logTransferCompleteCallback()
-            sessionInfo = null
-            uploadState = ProbeUploadState.Unavailable
+        // if we no longer have a UART route to the probe, then null SessionInfo so that it can
+        // be requested/refreshed when a route is established.  We also no longer have a downstream
+        // link to the probe, so finish of the log transfer.
+        if(state == DeviceConnectionState.NO_ROUTE) {
+            if(arbitrator.hasNoUartRoute) {
+                Log.i(LOG_TAG, "PM($serialNumber): No UART route to probe.  Clearing session info.")
+
+                sessionInfo = null
+
+                if(uploadState != ProbeUploadState.Unavailable) {
+                    finishLogTransfer()
+                }
+            }
         }
 
         // use the arbitrated connection state, fw version, hw revision, model information
@@ -498,6 +541,16 @@ internal class ProbeManager(
             sessionInfo = sessionInfo,
             preferredLink = arbitrator.preferredMeatNetLink?.mac ?: ""
         )
+    }
+
+    private fun finishLogTransfer() {
+        logTransferCompleteCallback()
+
+        logTransferLink = null
+
+        uploadState = ProbeUploadState.Unavailable
+
+        Log.i(LOG_TAG, "PM($serialNumber): finished log transfer.")
     }
 
     private fun handleOutOfRange() {
@@ -518,6 +571,18 @@ internal class ProbeManager(
     }
 
     private fun handleConnectedState(device: ProbeBleDeviceBase) {
+        fetchDeviceInfo(device)
+        fetchSessionInfo()
+    }
+
+    private fun fetchDeviceInfo(device: ProbeBleDeviceBase) {
+        fetchFirmwareVersion(device)
+        fetchSerialNumber(device)
+        fetchHardwareRevision(device)
+        fetchModelInformation(device)
+    }
+
+    private fun fetchFirmwareVersion(device: ProbeBleDeviceBase) {
         var didReadDeviceInfo = false
         owner.lifecycleScope.launch {
             device.deviceInfoFirmwareVersion ?: run {
@@ -527,38 +592,10 @@ internal class ProbeManager(
                     is RepeatedProbeBleDevice -> device.readProbeFirmwareVersion()
                 }
             }
-
-            device.deviceInfoSerialNumber ?: run {
-                didReadDeviceInfo = true
-                when (device) {
-                    is ProbeBleDevice -> device.readSerialNumber()
-                }
-            }
-
-            device.deviceInfoHardwareRevision ?: run {
-                didReadDeviceInfo = true
-                when (device) {
-                    is ProbeBleDevice -> device.readHardwareRevision()
-                    is RepeatedProbeBleDevice -> device.readProbeHardwareRevision()
-                }
-            }
-
-            device.deviceInfoModelInformation ?: run {
-                didReadDeviceInfo = true
-                when (device) {
-                    is ProbeBleDevice -> device.readModelInformation()
-                    is RepeatedProbeBleDevice -> device.readProbeModelInformation()
-                }
-            }
         }.invokeOnCompletion {
-            // if we read any of the device information characteristics above
             if(didReadDeviceInfo) {
-
-                // event out the arbitrated hw, fw, model details
                 _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(
                     fwVersion = fwVersion,
-                    hwRevision = hwRevision,
-                    modelInformation = modelInformation
                 ))
 
                 device.deviceInfoFirmwareVersion?.let {
@@ -570,7 +607,57 @@ internal class ProbeManager(
                 }
             }
         }
+    }
 
+    private fun fetchSerialNumber(device: ProbeBleDeviceBase) {
+        owner.lifecycleScope.launch {
+            device.deviceInfoSerialNumber ?: run {
+                when (device) {
+                    is ProbeBleDevice -> device.readSerialNumber()
+                }
+            }
+        }
+    }
+
+    private fun fetchHardwareRevision(device: ProbeBleDeviceBase) {
+        var didReadDeviceInfo = false
+        owner.lifecycleScope.launch {
+            device.deviceInfoHardwareRevision ?: run {
+                didReadDeviceInfo = true
+                when (device) {
+                    is ProbeBleDevice -> device.readHardwareRevision()
+                    is RepeatedProbeBleDevice -> device.readProbeHardwareRevision()
+                }
+            }
+        }.invokeOnCompletion {
+            if(didReadDeviceInfo) {
+                _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(
+                    hwRevision = hwRevision,
+                ))
+            }
+        }
+    }
+
+    private fun fetchModelInformation(device: ProbeBleDeviceBase) {
+        var didReadDeviceInfo = false
+        owner.lifecycleScope.launch {
+            device.deviceInfoModelInformation ?: run {
+                didReadDeviceInfo = true
+                when (device) {
+                    is ProbeBleDevice -> device.readModelInformation()
+                    is RepeatedProbeBleDevice -> device.readProbeModelInformation()
+                }
+            }
+        }.invokeOnCompletion {
+            if(didReadDeviceInfo) {
+                _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(
+                    modelInformation = modelInformation
+                ))
+            }
+        }
+    }
+
+    fun fetchSessionInfo() {
         simulatedProbe?.let {
             if(sessionInfo == null) {
                 it.sendSessionInformationRequest { status, info ->
