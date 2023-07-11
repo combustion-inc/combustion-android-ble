@@ -154,34 +154,29 @@ internal class ProbeManager(
                 return DeviceConnectionState.OUT_OF_RANGE
             }
 
-            // if there is direct (connected) link to probe, then use that link's connection state
-            arbitrator.directLink?.let {
-                return it.connectionState
-            }
-
             // else, if have a preferred meatnet link (connected with route), then use that connection state
             arbitrator.preferredMeatNetLink?.let {
                 return it.connectionState
             }
 
-            // else, if there is any device that is advertising connectable.
-            arbitrator.getPreferredLinkForConnectionState(DeviceConnectionState.ADVERTISING_CONNECTABLE)?.let {
-                return DeviceConnectionState.ADVERTISING_CONNECTABLE
-            }
-
-            // else, if there is any device that is advertising not connectable
-            arbitrator.getPreferredLinkForConnectionState(DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE)?.let {
-                return DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE
-            }
-
             // else, if there is any device that is connecting
-            arbitrator.getPreferredLinkForConnectionState(DeviceConnectionState.CONNECTING)?.let {
+            arbitrator.getPreferredConnectionState(DeviceConnectionState.CONNECTING)?.let {
                 return DeviceConnectionState.CONNECTING
             }
 
             // else, if there is any device that is connecting
-            arbitrator.getPreferredLinkForConnectionState(DeviceConnectionState.CONNECTING)?.let {
+            arbitrator.getPreferredConnectionState(DeviceConnectionState.DISCONNECTING)?.let {
                 return DeviceConnectionState.DISCONNECTING
+            }
+
+            // else, if there is any device that is advertising connectable.
+            arbitrator.getPreferredConnectionState(DeviceConnectionState.ADVERTISING_CONNECTABLE)?.let {
+                return DeviceConnectionState.ADVERTISING_CONNECTABLE
+            }
+
+            // else, if there is any device that is advertising not connectable
+            arbitrator.getPreferredConnectionState(DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE)?.let {
+                return DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE
             }
 
             // else, all MeatNet devices are connected with no route, then the state is no route
