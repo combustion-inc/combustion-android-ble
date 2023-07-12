@@ -64,7 +64,7 @@ internal open class NodeUARTMessage {
                     } ?: run {
 
                         // drop data here, and return out what we have parsed so far
-                        Log.w(LOG_TAG, "MeatNet: Parsed invalid or unknown data! Dropping bytes $numberBytesRead to ${data.size}")
+                        // Log.w(LOG_TAG, "MeatNet: Parsed invalid or unknown data! Dropping bytes $numberBytesRead to ${data.size}")
                         return messages
                     }
                 }
