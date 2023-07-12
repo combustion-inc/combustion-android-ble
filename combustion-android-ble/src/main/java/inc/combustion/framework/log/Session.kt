@@ -76,25 +76,6 @@ internal class Session(
     val startTime: Date
     val droppedRecords = mutableListOf<UInt>()
 
-    val maxSequentialSequenceNumber: UInt get() {
-        val iterator = _logs.keys.sorted().iterator()
-
-        if(!iterator.hasNext())
-            return 0u
-
-        var lastKey = iterator.next()
-        while(iterator.hasNext()) {
-            val key = iterator.next()
-            if (lastKey >= key - 1u) {
-                lastKey = key
-            } else {
-                break
-            }
-        }
-
-        return lastKey
-    }
-
     init {
         val milliSinceStart = (sessionInfo.samplePeriod * deviceStatusMaxSequence).toLong()
         startTime = Date(System.currentTimeMillis() - milliSinceStart)
@@ -117,6 +98,33 @@ internal class Session(
             return _logs.values.size
         }
 
+    fun logRequestStartSequence(deviceMinSequence: UInt): UInt {
+        if(deviceMinSequence < minSequenceNumber) {
+            return deviceMinSequence
+        }
+
+        val iterator = _logs.keys.sorted().iterator()
+
+        if(!iterator.hasNext())
+            return deviceMinSequence
+
+        var lastKey = iterator.next()
+        while(iterator.hasNext()) {
+            val key = iterator.next()
+            if (lastKey >= key - 1u) {
+                lastKey = key
+            } else {
+                break
+            }
+        }
+
+        if(lastKey < deviceMinSequence) {
+            return deviceMinSequence
+        }
+
+        return lastKey + 1u
+    }
+
     fun startLogRequest(range: RecordRange) : UploadProgress {
         // initialize tracking variables for pending record transfer
         nextExpectedRecord = range.minSeq
@@ -124,6 +132,8 @@ internal class Session(
         totalExpected = range.maxSeq - range.minSeq + 1u
         transferCount = 0u
         staleLogRequestCount = STALE_LOG_REQUEST_PACKET_COUNT
+
+        droppedRecords.clear()
 
         return UploadProgress(transferCount, logResponseDropCount, totalExpected)
     }
@@ -205,6 +215,9 @@ internal class Session(
     fun addFromDeviceStatus(probeStatus: ProbeStatus) : SessionStatus {
         val loggedProbeDataPoint = LoggedProbeDataPoint.fromDeviceStatus(id, probeStatus, startTime, sessionInfo.samplePeriod)
 
+        // remove records from the drop list that are no longer available on the probe
+        droppedRecords.removeIf { it < probeStatus.minSequenceNumber }
+
         // decrement the stale log request counter
         staleLogRequestCount--
 
@@ -231,7 +244,7 @@ internal class Session(
 
             // log a warning message
             Log.w(LOG_TAG, "Detected device status data drop ($serialNumber). " +
-                "Drop range ${nextExpectedDeviceStatus}..${probeStatus.maxSequenceNumber-1u}")
+                "Drop range ${nextExpectedDeviceStatus}..${probeStatus.maxSequenceNumber-1u} (${droppedRecords.count()})")
 
             // but still add this data and resync.
             _logs[loggedProbeDataPoint.sequenceNumber] = loggedProbeDataPoint

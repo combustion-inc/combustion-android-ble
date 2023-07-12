@@ -35,6 +35,10 @@ data class FirmwareVersion(
     val commit: Int?,
     val sha: String? = null
 ) : Comparable<FirmwareVersion> {
+    override fun equals(other: Any?): Boolean {
+        return other is FirmwareVersion && compareTo(other) == 0
+    }
+
     override fun compareTo(other: FirmwareVersion): Int {
         if (major > other.major) return 1
         if (major < other.major) return -1
@@ -64,6 +68,14 @@ data class FirmwareVersion(
         return "v$major.$minor.$patch$c$sha"
     }
 
+    override fun hashCode(): Int {
+        var result = major
+        result = 31 * result + minor
+        result = 31 * result + patch
+        result = 31 * result + (commit ?: 0)
+        return result
+    }
+
     companion object {
         /**
          * Signifies an invalid or unset firmware version. It's always out of date, the git SHA
@@ -82,9 +94,11 @@ data class FirmwareVersion(
                 throw IllegalArgumentException("Versions must start with 'v'")
             }
 
+            // Remove leading 'v'
             val s = versionString.drop(1)
 
-            val versionAndSha = s.split('-')
+            // Ignore everything before the '_', which indicates the build configuration variant
+            val versionAndSha = s.substringBefore("_").split('-')
 
             val versionIds = versionAndSha[0].split('.')
             if (versionIds.size != 3) {

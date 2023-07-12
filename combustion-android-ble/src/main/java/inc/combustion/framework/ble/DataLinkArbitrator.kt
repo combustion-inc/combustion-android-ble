@@ -28,7 +28,6 @@
 
 package inc.combustion.framework.ble
 
-import android.util.Log
 import inc.combustion.framework.ble.device.*
 import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.device.ProbeBleDeviceBase
@@ -42,6 +41,8 @@ internal class DataLinkArbitrator(
 ) {
     companion object {
         private const val USE_STATIC_LINK: Boolean = false
+        private const val USE_SIMPLE_MEATNET_CONNECTION_SCHEME = false
+        private const val MULTINODE_PROBE_SETTLING_TIMEOUT_MS = 5000L
     }
 
     // meatnet network nodes
@@ -56,6 +57,9 @@ internal class DataLinkArbitrator(
 
     // meatnet links to probe
     val repeatedProbeBleDevices = mutableListOf<RepeatedProbeBleDevice>()
+
+    // probe discovery timestamp
+    var directLinkDiscoverTimestamp: Long? = null
 
     val directLink: ProbeBleDevice?
         get() {
@@ -85,6 +89,23 @@ internal class DataLinkArbitrator(
             }
         }
 
+    val hasMeatNetRoute: Boolean
+        get() {
+            // only applies when using MeatNet
+            if(!settings.meatNetEnabled) {
+                return false
+            }
+
+            for(probe in repeatedProbeBleDevices)  {
+                if(probe.isConnected && probe.connectionState != DeviceConnectionState.NO_ROUTE) {
+                    return true
+                }
+            }
+
+            return false
+        }
+
+
     val hasNoUartRoute: Boolean
         get() {
             // only applies when using MeatNet
@@ -105,18 +126,9 @@ internal class DataLinkArbitrator(
             return noDirectRoute && noRepeatedRoute
         }
 
-    val meatNetIsAdvertisingConnectable: Boolean
-        get() {
-            if(directLink?.isConnectable == true) {
-                return true
-            }
-
-            return repeatedProbeBleDevices.firstOrNull { it.isConnectable } != null
-        }
-
     val meatNetIsOutOfRange: Boolean
         get() {
-            val directInRange = directLink?.isInRange ?: true
+            val directInRange = probeBleDevice?.isInRange ?: true
 
             return repeatedProbeBleDevices.firstOrNull {
                 it.isInRange
@@ -146,6 +158,34 @@ internal class DataLinkArbitrator(
             networkNodes[repeater.id] = repeater
         }
         return true
+    }
+
+    fun getPreferredConnectionState(state: DeviceConnectionState): ProbeBleDeviceBase? {
+        // if not using MeatNet, then use the probe.
+        if(!settings.meatNetEnabled) {
+            probeBleDevice?.let {
+                if(it.connectionState == state) {
+                    return it
+                }
+
+                return null
+            }
+        }
+
+        // if using MeatNet, prefer probe if state matches.
+        probeBleDevice?.let {
+            if(it.connectionState == state) {
+                return it
+            }
+        }
+
+        // otherwise (and using MeatNet), prefer the MeatNet link with the lowest hop count, that
+        // matches the state.
+        return repeatedProbeBleDevices.sortedWith(
+            compareBy(RepeatedProbeBleDevice::hopCount, RepeatedProbeBleDevice::id)
+        ).firstOrNull {
+            it.connectionState == state
+        }
     }
 
     fun getNodesNeedingConnection(fromApiCall: Boolean = false): List<DeviceInformationBleDevice> {
@@ -204,7 +244,11 @@ internal class DataLinkArbitrator(
         val canConnect = device.isDisconnected && device.isConnectable && !device.isInDfuMode
         if(settings.meatNetEnabled) {
             // connect to every connectable device when using meatnet
-            return canConnect
+            if(USE_SIMPLE_MEATNET_CONNECTION_SCHEME) {
+                return canConnect
+            }
+
+            return shouldMultiNodeMeatNetConnect(device)
         }
         else if(device is ProbeBleDevice) {
             // if not using meatnet, and the client app is asking us to connect
@@ -219,6 +263,41 @@ internal class DataLinkArbitrator(
         }
 
         // if not meatnet and not a probe
+        return false
+    }
+
+
+    private fun shouldMultiNodeMeatNetConnect(device: ProbeBleDeviceBase): Boolean {
+        val canConnect = device.isDisconnected && device.isConnectable && !device.isInDfuMode
+
+        // if this is from the network, then return if we can connect
+        if(device is RepeatedProbeBleDevice) {
+            return canConnect
+        }
+
+        // if we can connect to this direct probe
+        if(canConnect) {
+
+            // if we have a discovery timestamp
+            directLinkDiscoverTimestamp?.let { timestamp ->
+
+                // if the settling timeout has elapsed
+                if(timestamp + MULTINODE_PROBE_SETTLING_TIMEOUT_MS < System.currentTimeMillis()) {
+
+                    // check if we have a MeatNet link
+                    val hasMeatNetLink = repeatedProbeBleDevices.firstOrNull {
+                            it.isConnected && it.connectionState != DeviceConnectionState.NO_ROUTE
+                        } != null
+
+                    // connect only if we don't have a MeatNet link.
+                    return !hasMeatNetLink
+                }
+            // otherwise, record the discovery timestamp and return false to wait for settling timeout.
+            } ?: run {
+                directLinkDiscoverTimestamp = System.currentTimeMillis()
+            }
+        }
+
         return false
     }
 

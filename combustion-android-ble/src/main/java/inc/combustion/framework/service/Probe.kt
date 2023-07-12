@@ -100,6 +100,7 @@ data class Probe(
     val estimatedCoreCelsius: Double? = null,
     val hopCount: UInt? = null,
     val statusNotificationsStale: Boolean = false,
+    val predictionStale: Boolean = false,
     val overheatingSensors: List<Int> = listOf(),
     val recordsDownloaded: Int = 0,
     val preferredLink: String = ""
@@ -138,6 +139,9 @@ data class Probe(
 
     val isOverheating: Boolean
         get() = overheatingSensors.isNotEmpty()
+
+    val isPredicting: Boolean
+        get() = (predictionMode != ProbePredictionMode.NONE && predictionMode != ProbePredictionMode.RESERVED)
 
     companion object {
         fun create(serialNumber: String = "", mac: String = "") : Probe {

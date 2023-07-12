@@ -105,6 +105,7 @@ internal class DfuBleDevice(
                     readSerialNumber()
                     readFirmwareVersion()
                     readHardwareRevision()
+                    readModelInformation()
 
                     Log.i(LOG_TAG, "DFU read device service: ${state.value}")
                 }.invokeOnCompletion {
@@ -113,6 +114,7 @@ internal class DfuBleDevice(
                             serialNumber = serialNumber ?: "",
                             fwVersion = firmwareVersion,
                             hwRevision = hardwareRevision,
+                            modelInformation = modelInformation,
                             connectionState = connectionState,
                         )
                     )

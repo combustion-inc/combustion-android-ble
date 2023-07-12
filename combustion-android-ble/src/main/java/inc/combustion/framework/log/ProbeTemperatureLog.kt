@@ -98,7 +98,7 @@ internal class ProbeTemperatureLog(private val serialNumber: String) {
             }
             // otherwise, request everything not yet uploaded to phone
             else {
-                minSeq = session.maxSequentialSequenceNumber + 1u
+                minSeq = session.logRequestStartSequence(deviceMinSequence)
                 maxSeq = deviceMaxSequence
             }
         }

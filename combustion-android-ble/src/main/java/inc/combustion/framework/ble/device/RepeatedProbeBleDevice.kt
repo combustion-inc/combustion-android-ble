@@ -357,7 +357,12 @@ internal class RepeatedProbeBleDevice (
 
     private fun monitorMeatNetRoute() {
         uart.jobManager.addJob(uart.owner.lifecycleScope.launch {
+            var pingTimeoutCount = 0
             val channel = Channel<Unit>(0)
+
+            // settling time until we start pinging the route
+            delay(PING_SETTLING_MS)
+            routeMonitor.activity()
 
             // until this coroutine is cancelled
             while(isActive) {
@@ -370,8 +375,11 @@ internal class RepeatedProbeBleDevice (
 
                     // send session information request to ping the endpoint and determine if there is a route
                     sendSessionInformationRequest { status, _ ->
+                        // count consecutive ping timeouts
+                        pingTimeoutCount = if(status) 0 else pingTimeoutCount + 1
+
                         // keep track of the status of the ping
-                        routeIsAvailable = status
+                        routeIsAvailable = pingTimeoutCount <= PING_TIMEOUT_COUNT
 
                         // use channel to signal that this response handler block is done
                         uart.owner.lifecycleScope.launch { channel.send(Unit) }
@@ -385,6 +393,7 @@ internal class RepeatedProbeBleDevice (
 
                         // if we aren't able to ping, then event up that there is no route to the probe.
                         if((state == DeviceConnectionState.NO_ROUTE || connectionState == DeviceConnectionState.NO_ROUTE) && state != connectionState) {
+
                             connectionStateCallback?.let {
                                 Log.w(LOG_TAG, "Ping[$probeSerialNumber]: Connection Is $connectionState (Repeater is $_connectionState)")
                                 uart.owner.lifecycleScope.launch {
@@ -405,6 +414,8 @@ internal class RepeatedProbeBleDevice (
 
     companion object {
         const val PING_RATE_MS = 1000L
-        const val IDLE_LINK_TIMEOUT = MESSAGE_RESPONSE_TIMEOUT_MS + 1000L
+        const val PING_SETTLING_MS = 10000L
+        const val IDLE_LINK_TIMEOUT = MESSAGE_RESPONSE_TIMEOUT_MS + 3000L
+        const val PING_TIMEOUT_COUNT = 3
     }
 }

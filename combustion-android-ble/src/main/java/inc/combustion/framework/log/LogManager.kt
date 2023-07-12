@@ -34,6 +34,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.ProbeManager
+import inc.combustion.framework.ble.ProbeStatus
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -97,8 +98,13 @@ internal class LogManager {
                                 // the record transfer when they are ready.
                                 ProbeUploadState.Unavailable -> {
                                     if(DeviceManager.instance.settings.autoLogTransfer) {
-                                        // note, this will transfer to ProbeUploadInProgress
-                                        requestLogsFromDevice(probeManager.serialNumber)
+                                        if(probeManager.sessionInfo == null) {
+                                            probeManager.fetchSessionInfo()
+                                        }
+                                        else {
+                                            // note, this will transfer to ProbeUploadInProgress
+                                            requestLogsFromDevice(probeManager.serialNumber)
+                                        }
                                     }
                                     else {
                                         probeManager.uploadState = ProbeUploadState.ProbeUploadNeeded
@@ -123,8 +129,7 @@ internal class LogManager {
                                     // not receiving expected log responses, then complete the log
                                     // request and transition state.
                                     if(temperatureLog.logRequestIsStalled) {
-                                        val sessionStatus = temperatureLog.completeLogRequest()
-                                        probeManager.uploadState = sessionStatus.toProbeUploadState()
+                                        handleStalledLogRequest(temperatureLog, probeManager)
                                     }
                                 }
                                 is ProbeUploadState.ProbeUploadComplete -> {
@@ -145,29 +150,15 @@ internal class LogManager {
                                     // update the count of records downloaded
                                     probeManager.recordsDownloaded = temperatureLog.dataPointCount
 
+                                    // not receiving expected log responses, then complete the log
+                                    // request and transition state.
+                                    if(temperatureLog.logRequestIsStalled) {
+                                        handleStalledLogRequest(temperatureLog, probeManager)
+                                    }
                                     // if we have any dropped records then initiate a log request to
                                     // backfill from the missing records.
-                                    if(sessionStatus.droppedRecords.isNotEmpty()) {
-
-                                        // find the first set of consecutive sequence numbers and
-                                        // request that range to backfill.
-                                        val (first, last) = if(sessionStatus.droppedRecords.size <= 1) {
-                                            Pair(sessionStatus.droppedRecords[0], sessionStatus.droppedRecords[0])
-                                        } else {
-                                            val first = sessionStatus.droppedRecords[0]
-                                            var last = first
-                                            for(i in 1 until sessionStatus.droppedRecords.size) {
-                                                if(last + 1u == sessionStatus.droppedRecords[i]) {
-                                                    last++
-                                                }
-                                                else {
-                                                    break
-                                                }
-                                            }
-                                            Pair(first, last)
-                                        }
-
-                                        val range = RecordRange(first, last)
+                                    else if(sessionStatus.droppedRecords.isNotEmpty()) {
+                                        val range = RecordRange(sessionStatus.droppedRecords.first(), sessionStatus.droppedRecords.last() + 1u)
                                         startBackfillLogRequest(temperatureLog, probeManager, range, deviceStatus.maxSequenceNumber)
                                     }
                                     // we've synchronized the log on the device here, now maintain
@@ -247,7 +238,6 @@ internal class LogManager {
         // initialize the start of the log request with the temperature log
         val progress = log.startLogRequest(range)
 
-
         // update the probe's upload state with the progress.
         probeManager.uploadState = progress.toProbeUploadState()
 
@@ -324,6 +314,18 @@ internal class LogManager {
                 }
             }
         }
+    }
+
+
+    private fun handleStalledLogRequest(
+        log: ProbeTemperatureLog,
+        probeManager: ProbeManager,
+    ) {
+        log.completeLogRequest()
+
+        // transition to Unavailable, the next device status will
+        // trigger a log transfer and change state back to in progress.
+        probeManager.uploadState = ProbeUploadState.Unavailable
     }
 
     private fun startBackfillLogRequest(
