@@ -12,7 +12,7 @@ Our Predictive Thermometer's eight temperature sensors measure the temp outside 
 
 Or you can create your own mobile app to work with the Predictive Thermometer using this and our [iOS](https://github.com/combustion-inc/combustion-ios-ble) open source libraries.
 
-Visit [www.combustion.inc](https://www.combustion.inc) to sign up to be notified when they're available to order in early 2022.
+Visit [www.combustion.inc](https://www.combustion.inc) to purchase or learn more about the Predictive Thermometer.
 
 Head on over to our [FAQ](https://combustion.inc/pages/faq) for more product details.
 
