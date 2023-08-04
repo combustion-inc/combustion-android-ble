@@ -69,11 +69,10 @@ open class BaseAdvertisingData(
          * @return
          */
         fun create(advertisement: Advertisement): BaseAdvertisingData {
-            val scanResult = advertisement.getPrivateProperty<Advertisement, ScanResult>("scanResult")
-            val address = advertisement.address
+            val address = advertisement.identifier
             val name = advertisement.name ?: ""
             val rssi = advertisement.rssi
-            val isConnectable = scanResult?.getIsConnectable() ?: false
+            val isConnectable = advertisement.isConnectable ?: false
             val base = BaseAdvertisingData(
                     mac = address,
                     name = name,
@@ -159,20 +158,3 @@ open class BaseAdvertisingData(
     val id: DeviceID
         get() = mac
 }
-
-private fun ScanResult.getIsConnectable(): Boolean {
-    // API level 26 (Android 8) and Higher
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        isConnectable
-    } else {
-        true
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-private inline fun <reified T : Any, R> T.getPrivateProperty(name: String): R? =
-    T::class
-        .memberProperties
-        .firstOrNull { it.name == name }
-        ?.apply { isAccessible = true }
-        ?.get(this) as? R
