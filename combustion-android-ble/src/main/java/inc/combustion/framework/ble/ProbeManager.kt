@@ -501,8 +501,14 @@ internal class ProbeManager(
                 arbitrator.directLinkDiscoverTimestamp = null
             }
 
-            if(device == logTransferLink) {
-                finishLogTransfer()
+            if(connectionState != DeviceConnectionState.CONNECTED) {
+                Log.i(LOG_TAG, "PM($serialNumber): ${device.productType}[${device.id}] No longer connected!  Clearing session info!")
+
+                sessionInfo = null
+
+                if(uploadState != ProbeUploadState.Unavailable) {
+                    finishLogTransfer()
+                }
             }
 
             // remove this item from the list of firmware details for the network

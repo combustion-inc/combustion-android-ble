@@ -75,6 +75,9 @@ internal class ProbeTemperatureLog(private val serialNumber: String) {
         var minSeq = 0u
         var maxSeq = 0u
 
+        if(DebugSettings.DEBUG_LOG_SESSION_STATUS) {
+            Log.d(LOG_TAG, "Session list size: ${sessions.size}, IDs: ${sessions.map { it.id }}")
+        }
         // handle initial condition
         if(sessions.isEmpty()) {
             startNewSession(sessionInfo, deviceMaxSequence)
