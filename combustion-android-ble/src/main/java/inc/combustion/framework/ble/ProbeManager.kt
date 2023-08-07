@@ -502,7 +502,7 @@ internal class ProbeManager(
             }
 
             if(connectionState != DeviceConnectionState.CONNECTED) {
-                Log.d(LOG_TAG, "PM($serialNumber): ${device.productType}[${device.id}] No longer connected!  Clearing session info!")
+                Log.i(LOG_TAG, "PM($serialNumber): ${device.productType}[${device.id}] No longer connected!  Clearing session info!")
 
                 sessionInfo = null
 
