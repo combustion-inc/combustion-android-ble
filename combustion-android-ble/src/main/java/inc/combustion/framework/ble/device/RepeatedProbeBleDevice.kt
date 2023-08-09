@@ -351,7 +351,7 @@ internal class RepeatedProbeBleDevice (
                         }
                     }
                     is NodeHeartbeatRequest -> {
-                        Log.i(LOG_TAG, "Heartbeat message: $message")
+                        // Heartbeat message not processed
                     }
                 }
             }
