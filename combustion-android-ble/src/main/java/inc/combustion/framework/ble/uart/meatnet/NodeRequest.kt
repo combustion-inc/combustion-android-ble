@@ -101,6 +101,14 @@ internal open class NodeRequest() : NodeUARTMessage() {
                     )
                 }
 
+                NodeMessageType.HEARTBEAT -> {
+                    return NodeHeartbeatRequest.fromRaw(
+                        data,
+                        requestId,
+                        payloadLength
+                    )
+                }
+
                 else -> {
                     if ( DebugSettings.DEBUG_LOG_MESSAGE_REQUESTS ) {
                         Log.d(LOG_TAG, "NodeRequest: Unknown message type: $messageType")
