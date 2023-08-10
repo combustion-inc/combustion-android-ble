@@ -41,8 +41,14 @@ internal open class NodeResponse(
     val success: Boolean,
     val requestId: UInt,
     val responseId: UInt,
-    val payloadLength: UByte
-) : NodeUARTMessage() {
+    val payloadLength: UByte,
+    messageId: NodeMessageType
+) : NodeUARTMessage(
+    messageId
+) {
+    override fun toString(): String {
+        return "RESP $messageId (REQID: ${String.format("%08x",requestId.toInt())} RSPID: ${String.format("%08x",responseId.toInt())})"
+    }
 
     companion object {
         const val HEADER_SIZE : UByte = 15u
@@ -57,7 +63,6 @@ internal open class NodeResponse(
          * @return Instant of request if found or null if one could not be parsed from the data
          */
         fun responseFromData(data : UByteArray) : NodeResponse? {
-
             // Sync bytes
             val syncBytes = data.slice(0..1)
             val expectedSync = listOf<UByte>(202u, 254u) // 0xCA, 0xFE
@@ -110,9 +115,9 @@ internal open class NodeResponse(
                 return null
             }
 
-            when(messageType) {
+            return when(messageType) {
                 NodeMessageType.LOG -> {
-                    return NodeReadLogsResponse.fromData(
+                    NodeReadLogsResponse.fromData(
                         data,
                         success,
                         requestId,
@@ -120,9 +125,8 @@ internal open class NodeResponse(
                         payloadLength
                     )
                 }
-
                 NodeMessageType.SESSION_INFO -> {
-                    return NodeReadSessionInfoResponse.fromData(
+                    NodeReadSessionInfoResponse.fromData(
                         data,
                         success,
                         requestId,
@@ -130,9 +134,8 @@ internal open class NodeResponse(
                         payloadLength
                     )
                 }
-
                 NodeMessageType.SET_PREDICTION -> {
-                    return NodeSetPredictionResponse.fromData(
+                    NodeSetPredictionResponse.fromData(
                         data,
                         success,
                         requestId,
@@ -140,9 +143,8 @@ internal open class NodeResponse(
                         payloadLength
                     )
                 }
-
                 NodeMessageType.PROBE_FIRMWARE_REVISION -> {
-                    return NodeReadFirmwareRevisionResponse.fromData(
+                    NodeReadFirmwareRevisionResponse.fromData(
                         data,
                         success,
                         requestId,
@@ -150,9 +152,8 @@ internal open class NodeResponse(
                         payloadLength
                     )
                 }
-
                 NodeMessageType.PROBE_HARDWARE_REVISION -> {
-                    return NodeReadHardwareRevisionResponse.fromData(
+                    NodeReadHardwareRevisionResponse.fromData(
                         data,
                         success,
                         requestId,
@@ -160,9 +161,8 @@ internal open class NodeResponse(
                         payloadLength
                     )
                 }
-
                 NodeMessageType.PROBE_MODEL_INFORMATION -> {
-                    return NodeReadModelInfoResponse.fromData(
+                    NodeReadModelInfoResponse.fromData(
                         data,
                         success,
                         requestId,
@@ -170,36 +170,8 @@ internal open class NodeResponse(
                         payloadLength
                     )
                 }
-
-// TODO: The messages types below are not currently implemented
-
-//                NodeMessageType.SET_ID -> {
-//                    return NodeSetIDResponse(success, payloadLength.toInt())
-//                }
-
-//                NodeMessageType.SET_COLOR -> {
-//                    return NodeSetColorResponse(
-//                        success,
-//                        payloadLength
-//                    )
-//                }
-
-//                NodeMessageType.READ_OVER_TEMPERATURE -> {
-//                    return NodeReadOverTemperatureResponse(
-//                        data,
-//                        success,
-//                        payloadLength
-//                    )
-//                }
-
-                else -> {
-                    if ( DebugSettings.DEBUG_LOG_MESSAGE_RESPONSES ) {
-                        Log.d(LOG_TAG, "NodeResponse: responseFromData: Unknown message type: $messageType")
-                    }
-                    return null
-                }
+                else -> null
             }
         }
     }
-
 }

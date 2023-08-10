@@ -148,7 +148,7 @@ internal class RepeatedProbeBleDevice (
     override fun disconnect() = uart.disconnect()
 
     override fun sendSessionInformationRequest(callback: ((Boolean, Any?) -> Unit)?)  {
-        sessionInfoHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS, callback)
+        sessionInfoHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
         sendUartRequest(NodeReadSessionInfoRequest(probeSerialNumber))
     }
 
@@ -164,7 +164,7 @@ internal class RepeatedProbeBleDevice (
 
     override fun sendSetPrediction(setPointTemperatureC: Double, mode: ProbePredictionMode, callback: ((Boolean, Any?) -> Unit)?) {
         routeMonitor.activity()
-        setPredictionHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS, callback)
+        setPredictionHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
         sendUartRequest(NodeSetPredictionRequest(probeSerialNumber, setPointTemperatureC, mode))
     }
 
@@ -271,7 +271,9 @@ internal class RepeatedProbeBleDevice (
             }
             Log.d(LOG_TAG, "UART-TX: $packet")
         }
-
+        if (DebugSettings.INFO_LOG_MEATNET_TRACE) {
+            Log.i(LOG_TAG + "_MEATNET", "$probeSerialNumber: TX Node $id $request" )
+        }
         uart.writeUartCharacteristic(request.sData)
     }
 
@@ -300,11 +302,14 @@ internal class RepeatedProbeBleDevice (
     private fun processUartMessages() {
         observeUartMessages { messages ->
             for (message in messages) {
-                when (message) {
-                    // Unsupported Messages
-                    // is NodeSetColorResponse -> setColorHandler.handled(response.success, null)
-                    // is NodeSetIDResponse -> setIdHandler.handled(response.success, null)
+                if (DebugSettings.INFO_LOG_MEATNET_TRACE) {
+                    when(message) {
+                        is NodeRequest -> Log.i(LOG_TAG + "_MEATNET", "$probeSerialNumber: RX Node $id $message")
+                        is NodeResponse -> Log.i(LOG_TAG + "_MEATNET", "$probeSerialNumber: RX Node $id $message")
+                    }
+                }
 
+                when (message) {
                     // Repeated Responses
                     is NodeReadLogsResponse -> {
                         if(message.serialNumber == probeSerialNumber) {
@@ -315,10 +320,8 @@ internal class RepeatedProbeBleDevice (
 
                     // Synchronous Requests that are responded to with a single message
                     is NodeSetPredictionResponse -> {
-                        if(message.serialNumber == probeSerialNumber) {
-                            routeMonitor.activity()
-                            setPredictionHandler.handled(message.success, null)
-                        }
+                        routeMonitor.activity()
+                        setPredictionHandler.handled(message.success, null)
                     }
                     is NodeReadFirmwareRevisionResponse -> {
                         if(message.serialNumber == probeSerialNumber) {

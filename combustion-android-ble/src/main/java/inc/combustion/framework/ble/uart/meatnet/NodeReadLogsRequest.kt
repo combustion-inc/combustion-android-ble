@@ -34,13 +34,15 @@ internal class NodeReadLogsRequest(
     serialNumber: String,
     minSequence: UInt,
     maxSequence: UInt,
+    requestId: UInt? = null
 ) : NodeRequest(
     populatePayload(
         serialNumber,
         minSequence,
         maxSequence
     ),
-    NodeMessageType.LOG
+    NodeMessageType.LOG,
+    requestId
 ) {
     companion object {
         /// payload length 12 = serial number (4 bytes) + min sequence (4 bytes) + max sequence (4 bytes)

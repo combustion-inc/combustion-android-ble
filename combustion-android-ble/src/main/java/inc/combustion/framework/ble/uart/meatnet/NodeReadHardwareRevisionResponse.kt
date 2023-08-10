@@ -41,7 +41,8 @@ internal class NodeReadHardwareRevisionResponse (
     success,
     requestId,
     response,
-    payloadLength
+    payloadLength,
+    NodeMessageType.PROBE_HARDWARE_REVISION
 ) {
     companion object {
 

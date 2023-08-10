@@ -41,7 +41,8 @@ internal class NodeReadFirmwareRevisionResponse (
     success,
     requestId,
     responseId,
-    payloadLength
+    payloadLength,
+    NodeMessageType.PROBE_FIRMWARE_REVISION
 ) {
     companion object {
 
