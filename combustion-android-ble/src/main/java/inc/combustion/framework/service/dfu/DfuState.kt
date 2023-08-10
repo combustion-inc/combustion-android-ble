@@ -44,6 +44,7 @@ sealed class DfuState {
             OUT_OF_RANGE,
             CONNECTING,
             READING_DEVICE_INFORMATION,
+            BLOCKED,
         }
         override fun copy(device: Device): DfuState = copy(device = device, status = status)
     }
