@@ -28,21 +28,17 @@
 package inc.combustion.framework.ble.device
 
 import inc.combustion.framework.ble.ProbeStatus
-import inc.combustion.framework.ble.scanning.BaseAdvertisingData
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.uart.LogResponse
 import inc.combustion.framework.service.*
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import java.util.concurrent.atomic.AtomicBoolean
 
 typealias LinkID = String
 
 internal abstract class ProbeBleDeviceBase() {
 
     companion object {
-        const val MESSAGE_RESPONSE_TIMEOUT_MS = 5000L
+        const val PROBE_MESSAGE_RESPONSE_TIMEOUT_MS = 5000L
+        const val MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS = 30000L
 
         fun makeLinkId(advertisement: CombustionAdvertisingData?): LinkID {
             return "${advertisement?.id}_${advertisement?.probeSerialNumber}"

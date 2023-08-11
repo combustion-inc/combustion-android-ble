@@ -148,7 +148,7 @@ internal class RepeatedProbeBleDevice (
     override fun disconnect() = uart.disconnect()
 
     override fun sendSessionInformationRequest(callback: ((Boolean, Any?) -> Unit)?)  {
-        sessionInfoHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
+        sessionInfoHandler.wait(uart.owner, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
         sendUartRequest(NodeReadSessionInfoRequest(probeSerialNumber))
     }
 
@@ -164,7 +164,7 @@ internal class RepeatedProbeBleDevice (
 
     override fun sendSetPrediction(setPointTemperatureC: Double, mode: ProbePredictionMode, reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
         routeMonitor.activity()
-        setPredictionHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
+        setPredictionHandler.wait(uart.owner, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
         sendUartRequest(NodeSetPredictionRequest(probeSerialNumber, setPointTemperatureC, mode, reqId))
     }
 
@@ -182,7 +182,7 @@ internal class RepeatedProbeBleDevice (
     suspend fun readProbeFirmwareVersion() {
         val channel = Channel<Unit>(0)
         routeMonitor.activity()
-        probeFirmwareRevisionHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS) { success, response ->
+        probeFirmwareRevisionHandler.wait(uart.owner, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS) { success, response ->
             if (success) {
                 val resp = response as NodeReadFirmwareRevisionResponse
                 _deviceInfoFirmwareVersion = FirmwareVersion.fromString(resp.firmwareRevision)
@@ -199,7 +199,7 @@ internal class RepeatedProbeBleDevice (
     suspend fun readProbeHardwareRevision() {
         val channel = Channel<Unit>(0)
         routeMonitor.activity()
-        probeHardwareRevisionHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS) { success, response ->
+        probeHardwareRevisionHandler.wait(uart.owner, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS) { success, response ->
             if (success) {
                 val resp = response as NodeReadHardwareRevisionResponse
                 _deviceInfoHardwareRevision = resp.hardwareRevision
@@ -216,7 +216,7 @@ internal class RepeatedProbeBleDevice (
     suspend fun readProbeModelInformation() {
         val channel = Channel<Unit>(0)
         routeMonitor.activity()
-        probeModelInfoHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS) { success, response ->
+        probeModelInfoHandler.wait(uart.owner, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS) { success, response ->
             if (success) {
                 val resp = response as NodeReadModelInfoResponse
                 _deviceInfoModelInformation = resp.modelInfo
@@ -426,7 +426,7 @@ internal class RepeatedProbeBleDevice (
     companion object {
         const val PING_RATE_MS = 1000L
         const val PING_SETTLING_MS = 10000L
-        const val IDLE_LINK_TIMEOUT = MESSAGE_RESPONSE_TIMEOUT_MS + 3000L
+        const val IDLE_LINK_TIMEOUT = PROBE_MESSAGE_RESPONSE_TIMEOUT_MS + 3000L
         const val PING_TIMEOUT_COUNT = 3
 
         const val INFO_LOG_MEATNET_TRACE = true
