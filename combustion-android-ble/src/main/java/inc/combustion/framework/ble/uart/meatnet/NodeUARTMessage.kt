@@ -36,7 +36,9 @@ import inc.combustion.framework.service.DebugSettings
  * is useful for decoding multiple UART messages from a single notification that can
  * be both NodeRequest and NodeResponse types.
  */
-internal open class NodeUARTMessage {
+internal open class NodeUARTMessage(
+    val messageId: NodeMessageType
+) {
     companion object {
         /**
          * Returns an array of NodeUARTMessage objects (both responses and requests)
@@ -54,15 +56,12 @@ internal open class NodeUARTMessage {
                 NodeResponse.responseFromData(bytesToDecode)?.let {
                     messages.add(it)
                     numberBytesRead += (it.payloadLength + NodeResponse.HEADER_SIZE).toInt()
-
                 } ?: run {
-
                     // If NodeResponse parsing failed, try to decode a NodeRequest.
                     NodeRequest.requestFromData(bytesToDecode)?.let {
                         messages.add(it)
                         numberBytesRead += (it.payloadLength + NodeRequest.HEADER_SIZE).toInt()
                     } ?: run {
-
                         // drop data here, and return out what we have parsed so far
                         // Log.w(LOG_TAG, "MeatNet: Parsed invalid or unknown data! Dropping bytes $numberBytesRead to ${data.size}")
                         return messages

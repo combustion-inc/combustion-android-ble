@@ -42,7 +42,7 @@ internal class NodeHeartbeatRequest (
     val connectionDetails: List<ConnectionDetail>,
     requestId: UInt,
     payloadLength: UByte
-) : NodeRequest(requestId, payloadLength) {
+) : NodeRequest(requestId, payloadLength, NodeMessageType.HEARTBEAT) {
     class ConnectionDetail(
         val present: Boolean,
         val serialNumber: String = "",
@@ -156,7 +156,7 @@ internal class NodeHeartbeatRequest (
 
     override fun toString(): String {
         val inboundString = if (inbound) "ib" else "ob"
-        return "$macAddress ($serialNumber | $productType): $inboundString $hopCount; ${connectionDetails.joinToString()}"
+        return "${super.toString()} $inboundString $hopCount; ${connectionDetails.joinToString()}"
     }
 }
 

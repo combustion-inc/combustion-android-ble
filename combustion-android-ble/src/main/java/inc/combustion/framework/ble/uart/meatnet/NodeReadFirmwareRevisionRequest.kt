@@ -31,12 +31,13 @@
 
 
 internal class NodeReadFirmwareRevisionRequest(
-    serialNumber: String
+    serialNumber: String,
+    requestId: UInt? = null
 ) : NodeRequest(
     populatePayload(serialNumber),
-    NodeMessageType.PROBE_FIRMWARE_REVISION
+    NodeMessageType.PROBE_FIRMWARE_REVISION,
+    requestId
 ) {
-
     companion object {
         const val PAYLOAD_LENGTH: UByte = 4u
 

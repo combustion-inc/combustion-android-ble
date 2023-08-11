@@ -121,22 +121,22 @@ internal class ProbeBleDevice (
     override fun disconnect() = uart.disconnect()
 
     override fun sendSessionInformationRequest(callback: ((Boolean, Any?) -> Unit)?)  {
-        sessionInfoHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS, callback)
+        sessionInfoHandler.wait(uart.owner, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
         sendUartRequest(SessionInfoRequest())
     }
 
     override fun sendSetProbeColor(color: ProbeColor, callback: ((Boolean, Any?) -> Unit)?) {
-        setColorHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS, callback)
+        setColorHandler.wait(uart.owner, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
         sendUartRequest(SetColorRequest(color))
     }
 
     override fun sendSetProbeID(id: ProbeID, callback: ((Boolean, Any?) -> Unit)?) {
-        setIdHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS, callback)
+        setIdHandler.wait(uart.owner, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
         sendUartRequest(SetIDRequest(id))
     }
 
-    override fun sendSetPrediction(setPointTemperatureC: Double, mode: ProbePredictionMode, callback: ((Boolean, Any?) -> Unit)?) {
-        setPredictionHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS, callback)
+    override fun sendSetPrediction(setPointTemperatureC: Double, mode: ProbePredictionMode, reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
+        setPredictionHandler.wait(uart.owner, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
         sendUartRequest(SetPredictionRequest(setPointTemperatureC, mode))
     }
 

@@ -38,7 +38,7 @@ internal class NodeProbeStatusRequest(
     val serialNumber: String,
     val hopCount: HopCount,
     val probeStatus: ProbeStatus
-) : NodeRequest(requestId, payloadLength) {
+) : NodeRequest(requestId, payloadLength, NodeMessageType.PROBE_STATUS) {
 
     companion object {
         const val PAYLOAD_LENGTH: UByte = 35u

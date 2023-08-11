@@ -148,7 +148,7 @@ internal class RepeatedProbeBleDevice (
     override fun disconnect() = uart.disconnect()
 
     override fun sendSessionInformationRequest(callback: ((Boolean, Any?) -> Unit)?)  {
-        sessionInfoHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS, callback)
+        sessionInfoHandler.wait(uart.owner, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
         sendUartRequest(NodeReadSessionInfoRequest(probeSerialNumber))
     }
 
@@ -162,10 +162,10 @@ internal class RepeatedProbeBleDevice (
         NOT_IMPLEMENTED("Not able to set probe ID over MeatNet")
     }
 
-    override fun sendSetPrediction(setPointTemperatureC: Double, mode: ProbePredictionMode, callback: ((Boolean, Any?) -> Unit)?) {
+    override fun sendSetPrediction(setPointTemperatureC: Double, mode: ProbePredictionMode, reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
         routeMonitor.activity()
-        setPredictionHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS, callback)
-        sendUartRequest(NodeSetPredictionRequest(probeSerialNumber, setPointTemperatureC, mode))
+        setPredictionHandler.wait(uart.owner, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
+        sendUartRequest(NodeSetPredictionRequest(probeSerialNumber, setPointTemperatureC, mode, reqId))
     }
 
     override fun sendLogRequest(minSequence: UInt, maxSequence: UInt, callback: (suspend (LogResponse) -> Unit)?) {
@@ -182,7 +182,7 @@ internal class RepeatedProbeBleDevice (
     suspend fun readProbeFirmwareVersion() {
         val channel = Channel<Unit>(0)
         routeMonitor.activity()
-        probeFirmwareRevisionHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS) { success, response ->
+        probeFirmwareRevisionHandler.wait(uart.owner, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS) { success, response ->
             if (success) {
                 val resp = response as NodeReadFirmwareRevisionResponse
                 _deviceInfoFirmwareVersion = FirmwareVersion.fromString(resp.firmwareRevision)
@@ -199,7 +199,7 @@ internal class RepeatedProbeBleDevice (
     suspend fun readProbeHardwareRevision() {
         val channel = Channel<Unit>(0)
         routeMonitor.activity()
-        probeHardwareRevisionHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS) { success, response ->
+        probeHardwareRevisionHandler.wait(uart.owner, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS) { success, response ->
             if (success) {
                 val resp = response as NodeReadHardwareRevisionResponse
                 _deviceInfoHardwareRevision = resp.hardwareRevision
@@ -216,7 +216,7 @@ internal class RepeatedProbeBleDevice (
     suspend fun readProbeModelInformation() {
         val channel = Channel<Unit>(0)
         routeMonitor.activity()
-        probeModelInfoHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS) { success, response ->
+        probeModelInfoHandler.wait(uart.owner, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS) { success, response ->
             if (success) {
                 val resp = response as NodeReadModelInfoResponse
                 _deviceInfoModelInformation = resp.modelInfo
@@ -271,7 +271,11 @@ internal class RepeatedProbeBleDevice (
             }
             Log.d(LOG_TAG, "UART-TX: $packet")
         }
-
+        if (INFO_LOG_MEATNET_TRACE) {
+            MEATNET_TRACE_INCLUSION_FILTER.firstOrNull{it == request.messageId}?.let {
+                Log.i(LOG_TAG + "_MEATNET", "$probeSerialNumber: TX Node $id $request" )
+            }
+        }
         uart.writeUartCharacteristic(request.sData)
     }
 
@@ -300,11 +304,17 @@ internal class RepeatedProbeBleDevice (
     private fun processUartMessages() {
         observeUartMessages { messages ->
             for (message in messages) {
-                when (message) {
-                    // Unsupported Messages
-                    // is NodeSetColorResponse -> setColorHandler.handled(response.success, null)
-                    // is NodeSetIDResponse -> setIdHandler.handled(response.success, null)
+                if (INFO_LOG_MEATNET_TRACE) {
+                    MEATNET_TRACE_INCLUSION_FILTER.firstOrNull{it == message.messageId}?.let {
+                        when(message) {
+                            is NodeRequest -> Log.i(LOG_TAG + "_MEATNET", "$probeSerialNumber: RX Node $id $message")
+                            is NodeResponse -> Log.i(LOG_TAG + "_MEATNET", "$probeSerialNumber: RX Node $id $message")
+                            else -> { }
+                        }
+                    }
+                }
 
+                when (message) {
                     // Repeated Responses
                     is NodeReadLogsResponse -> {
                         if(message.serialNumber == probeSerialNumber) {
@@ -315,10 +325,8 @@ internal class RepeatedProbeBleDevice (
 
                     // Synchronous Requests that are responded to with a single message
                     is NodeSetPredictionResponse -> {
-                        if(message.serialNumber == probeSerialNumber) {
-                            routeMonitor.activity()
-                            setPredictionHandler.handled(message.success, null)
-                        }
+                        routeMonitor.activity()
+                        setPredictionHandler.handled(message.success, null, message.requestId)
                     }
                     is NodeReadFirmwareRevisionResponse -> {
                         if(message.serialNumber == probeSerialNumber) {
@@ -418,7 +426,27 @@ internal class RepeatedProbeBleDevice (
     companion object {
         const val PING_RATE_MS = 1000L
         const val PING_SETTLING_MS = 10000L
-        const val IDLE_LINK_TIMEOUT = MESSAGE_RESPONSE_TIMEOUT_MS + 3000L
+        const val IDLE_LINK_TIMEOUT = PROBE_MESSAGE_RESPONSE_TIMEOUT_MS + 3000L
         const val PING_TIMEOUT_COUNT = 3
+
+        const val INFO_LOG_MEATNET_TRACE = true
+        val MEATNET_TRACE_INCLUSION_FILTER = listOf<NodeMessageType>(
+            // NodeMessageType.SET_ID,
+            // NodeMessageType.SET_COLOR,
+            // NodeMessageType.SESSION_INFO,
+            // NodeMessageType.LOG,
+            NodeMessageType.SET_PREDICTION,
+            // NodeMessageType.READ_OVER_TEMPERATURE,
+            // NodeMessageType.CONNECTED,
+            // NodeMessageType.DISCONNECTED,
+            // NodeMessageType.READ_NODE_LIST,
+            // NodeMessageType.READ_NETWORK_TOPOLOGY,
+            // NodeMessageType.PROBE_SESSION_CHANGED,
+            NodeMessageType.PROBE_STATUS,
+            // NodeMessageType.PROBE_FIRMWARE_REVISION,
+            // NodeMessageType.PROBE_HARDWARE_REVISION,
+            // NodeMessageType.PROBE_MODEL_INFORMATION,
+            // NodeMessageType.HEARTBEAT
+        )
     }
 }

@@ -42,11 +42,14 @@ internal class NodeReadModelInfoResponse (
     success,
     requestId,
     responseId,
-    payloadLength
+    payloadLength,
+    NodeMessageType.PROBE_MODEL_INFORMATION
 ) {
+    override fun toString(): String {
+        return "${super.toString()} $serialNumber ${modelInfo.productType} ${modelInfo.sku} ${modelInfo.manufacturingLot}"
+    }
 
     companion object {
-
         // payload is 54 bytes = serial number (4 bytes) + model info (50 bytes)
         const val PAYLOAD_LENGTH: UByte = 54u
 

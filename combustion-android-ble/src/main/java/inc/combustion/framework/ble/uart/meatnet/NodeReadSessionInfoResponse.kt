@@ -43,7 +43,8 @@ internal class NodeReadSessionInfoResponse (
     success,
     requestId,
     responseId,
-    payloadLength
+    payloadLength,
+    NodeMessageType.SESSION_INFO
 ) {
     companion object {
 
