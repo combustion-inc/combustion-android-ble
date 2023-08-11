@@ -135,7 +135,7 @@ internal class ProbeBleDevice (
         sendUartRequest(SetIDRequest(id))
     }
 
-    override fun sendSetPrediction(setPointTemperatureC: Double, mode: ProbePredictionMode, callback: ((Boolean, Any?) -> Unit)?) {
+    override fun sendSetPrediction(setPointTemperatureC: Double, mode: ProbePredictionMode, reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
         setPredictionHandler.wait(uart.owner, MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
         sendUartRequest(SetPredictionRequest(setPointTemperatureC, mode))
     }

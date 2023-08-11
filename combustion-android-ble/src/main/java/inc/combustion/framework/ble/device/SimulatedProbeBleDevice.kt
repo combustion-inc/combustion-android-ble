@@ -259,6 +259,7 @@ internal class SimulatedProbeBleDevice(
     override fun sendSetPrediction(
         setPointTemperatureC: Double,
         mode: ProbePredictionMode,
+        reqId: UInt?,
         callback: ((Boolean, Any?) -> Unit)?
     ) {
         callback?.let { it(true, null) }

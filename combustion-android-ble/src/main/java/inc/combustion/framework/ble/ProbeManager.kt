@@ -376,10 +376,25 @@ internal class ProbeManager(
         simulatedProbe?.sendSetPrediction(removalTemperatureC, mode) { status, _ ->
             completionHandler(status)
         } ?: run {
-            arbitrator.preferredMeatNetLink?.sendSetPrediction(removalTemperatureC, mode) { status, _ ->
+            // if there is a direct link to the probe, then use that
+            arbitrator.directLink?.sendSetPrediction(removalTemperatureC, mode) { status, _ ->
                 completionHandler(status)
             } ?: run {
-                completionHandler(false)
+                val nodeLinks = arbitrator.connectedNodeLinks
+                if(nodeLinks.isNotEmpty()) {
+                    var handled = false
+                    nodeLinks.forEach {
+                        it.sendSetPrediction(removalTemperatureC, mode, makeRequestId()) {status, _ ->
+                            if(!handled) {
+                                handled = true
+                                completionHandler(status)
+                            }
+                        }
+                    }
+
+                } else {
+                    completionHandler(false)
+                }
             }
         }
     }
@@ -794,5 +809,9 @@ internal class ProbeManager(
         _probe.value = _probe.value.copy(
             sessionInfo = info
         )
+    }
+
+    private fun makeRequestId(): UInt {
+        return (0u..UInt.MAX_VALUE).random()
     }
 }

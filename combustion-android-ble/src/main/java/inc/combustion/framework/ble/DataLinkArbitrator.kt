@@ -66,6 +66,11 @@ internal class DataLinkArbitrator(
             return if(probeBleDevice?.isConnected == true) probeBleDevice else null
         }
 
+    val connectedNodeLinks: List<RepeatedProbeBleDevice>
+        get() {
+            return repeatedProbeBleDevices.filter { it.isConnected }
+        }
+
     val preferredMeatNetLink: ProbeBleDeviceBase?
         get() {
             // If meatnet is not enabled, then return the probe connection

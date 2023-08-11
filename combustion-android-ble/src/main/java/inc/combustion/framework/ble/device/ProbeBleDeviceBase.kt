@@ -112,6 +112,6 @@ internal abstract class ProbeBleDeviceBase() {
     abstract fun sendSessionInformationRequest(callback: ((Boolean, Any?) -> Unit)? = null)
     abstract fun sendSetProbeColor(color: ProbeColor, callback: ((Boolean, Any?) -> Unit)? = null)
     abstract fun sendSetProbeID(id: ProbeID, callback: ((Boolean, Any?) -> Unit)? = null)
-    abstract fun sendSetPrediction(setPointTemperatureC: Double, mode: ProbePredictionMode, callback: ((Boolean, Any?) -> Unit)? = null)
+    abstract fun sendSetPrediction(setPointTemperatureC: Double, mode: ProbePredictionMode, reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)? = null)
     abstract fun sendLogRequest(minSequence: UInt, maxSequence: UInt, callback: (suspend (LogResponse) -> Unit)? = null)
 }
