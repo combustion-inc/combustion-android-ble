@@ -46,12 +46,10 @@ sealed class ProbeUploadState {
      * Upload is in progress.
      *
      * @property recordsTransferred Number of records transferred statistic
-     * @property logResponseDropCount Total number of dropped record transfer logs statistic
      * @property recordsRequested Number of records requested for transfer statistic
      */
     data class ProbeUploadInProgress(
         val recordsTransferred: UInt,
-        val logResponseDropCount: UInt,
         val recordsRequested: UInt
     ) : ProbeUploadState()
 
@@ -61,14 +59,10 @@ sealed class ProbeUploadState {
      * @property sessionMinSequence Min sequence number on phone for current session.
      * @property sessionMaxSequence Max sequence number on phone for current session.
      * @property totalRecords Total number of records on the phone for current session.
-     * @property logResponseDropCount Total number of dropped record transfer logs statistic
-     * @property deviceStatusDropCount Total number of dropped device status records statistic
      */
     data class ProbeUploadComplete(
         val sessionMinSequence: UInt,
         val sessionMaxSequence: UInt,
         val totalRecords: UInt,
-        val logResponseDropCount: UInt,
-        val deviceStatusDropCount: UInt
     ) : ProbeUploadState()
 }

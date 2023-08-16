@@ -28,6 +28,7 @@
 
 package inc.combustion.framework.ble
 
+import android.se.omapi.Session
 import inc.combustion.framework.ble.device.*
 import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.device.ProbeBleDeviceBase
@@ -35,6 +36,7 @@ import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.service.DeviceManager
+import inc.combustion.framework.service.SessionInformation
 
 internal class DataLinkArbitrator(
     private val settings: DeviceManager.Settings
@@ -108,27 +110,6 @@ internal class DataLinkArbitrator(
             }
 
             return false
-        }
-
-
-    val hasNoUartRoute: Boolean
-        get() {
-            // only applies when using MeatNet
-            if(!settings.meatNetEnabled) {
-                return false
-            }
-
-            val noDirectRoute = directLink?.isConnected ?: true
-            var noRepeatedRoute = true
-
-            for(probe in repeatedProbeBleDevices)  {
-                if(!(probe.isConnected && probe.connectionState == DeviceConnectionState.NO_ROUTE)) {
-                    noRepeatedRoute = false
-                    break
-                }
-            }
-
-            return noDirectRoute && noRepeatedRoute
         }
 
     val meatNetIsOutOfRange: Boolean
@@ -331,15 +312,30 @@ internal class DataLinkArbitrator(
         return if(!USE_STATIC_LINK) advertisingArbitrator.shouldUpdate(device, advertisement) else debuggingWithStaticLink(device)
     }
 
-    fun shouldUpdateDataFromProbeStatus(device: ProbeBleDeviceBase): Boolean {
-        return arbitrateConnected(device)
+    private var currentStatus: ProbeStatus? = null
+    private var currentSessionInfo: SessionInformation? = null
+
+    fun shouldUpdateDataFromProbeStatus(status: ProbeStatus, sessionInfo: SessionInformation?): Boolean {
+        currentSessionInfo?.let {
+            if(it != sessionInfo) {
+                currentSessionInfo = sessionInfo
+                currentStatus = status
+                return true
+            }
+
+            // if status.max > current.max, then we want to update
+            val shouldUpdate = status.maxSequenceNumber > (currentStatus?.maxSequenceNumber ?: UInt.MAX_VALUE)
+
+            currentStatus = status
+
+            return shouldUpdate
+        }
+
+        // don't yet have a session info, so want to update data
+        return true
     }
 
     fun shouldUpdateOnRemoteRssi(device: ProbeBleDeviceBase): Boolean {
-        return arbitrateConnected(device)
-    }
-
-    private fun arbitrateConnected(device: ProbeBleDeviceBase): Boolean {
         return if(!USE_STATIC_LINK) (device == preferredMeatNetLink) else debuggingWithStaticLink(device)
     }
 

@@ -49,6 +49,10 @@ internal class NodeReadLogsResponse(
     payLoadLength,
     NodeMessageType.LOG
 ) {
+    override fun toString(): String {
+        return "${super.toString()} $success $serialNumber $sequenceNumber"
+    }
+
     companion object {
         private const val MIN_PAYLOAD_LENGTH: UByte = 28u
 

@@ -55,7 +55,7 @@ internal class Session(
          * If > than this threshold of device status packets are received, then
          * consider the log request stalled.
          */
-        const val STALE_LOG_REQUEST_PACKET_COUNT = 3u
+        const val STALE_LOG_REQUEST_PACKET_COUNT = 2u
         const val MAX_DROPPED_PACKET_HANDLING = 5000
     }
 
@@ -64,8 +64,6 @@ internal class Session(
     private var nextExpectedDeviceStatus = UInt.MAX_VALUE
     private var totalExpected = 0u
     private var transferCount = 0u
-    private var logResponseDropCount = 0u
-    private var deviceStatusDropCount = 0u
     private var staleLogRequestCount = STALE_LOG_REQUEST_PACKET_COUNT
     private val minSequenceNumber: UInt get() = if(isEmpty) 0u else _logs.firstKey()
     private val maxSequenceNumber: UInt get() = if(isEmpty) 0u else _logs.lastKey()
@@ -74,7 +72,6 @@ internal class Session(
     val samplePeriod = sessionInfo.samplePeriod
     val isEmpty get() = _logs.isEmpty()
     val startTime: Date
-    val droppedRecords = mutableListOf<UInt>()
 
     init {
         val milliSinceStart = (sessionInfo.samplePeriod * deviceStatusMaxSequence).toLong()
@@ -83,8 +80,7 @@ internal class Session(
 
     val logRequestIsStalled: Boolean
         get() {
-            val progress = UploadProgress(transferCount, logResponseDropCount, totalExpected)
-            return !progress.isComplete && (staleLogRequestCount == 0u)
+            return staleLogRequestCount == 0u
         }
 
     val dataPoints: List<LoggedProbeDataPoint>
@@ -97,6 +93,37 @@ internal class Session(
         get() {
             return _logs.values.size
         }
+
+    fun missingRecordRange(start: UInt, end: UInt): RecordRange? {
+        var lowerBound: UInt? = null
+
+        for (sequence in start..end) {
+            if(!_logs.containsKey(sequence)) {
+                lowerBound = sequence
+                break
+            }
+        }
+
+        lowerBound?.let {lower ->
+            var upper: UInt? = null
+
+            if (lower < end) {
+                for(sequence in ((lower + 1u)..end).reversed()) {
+                    if(!_logs.containsKey(sequence)) {
+                        upper = sequence
+                        break
+                    }
+                }
+            }
+
+            val upperBound = upper ?: lower
+
+            return RecordRange(lower, upperBound)
+        }
+
+        // no lower bound implies no missing records
+        return null
+    }
 
     fun logRequestStartSequence(deviceMinSequence: UInt): UInt {
         if(deviceMinSequence < minSequenceNumber) {
@@ -133,9 +160,7 @@ internal class Session(
         transferCount = 0u
         staleLogRequestCount = STALE_LOG_REQUEST_PACKET_COUNT
 
-        droppedRecords.clear()
-
-        return UploadProgress(transferCount, logResponseDropCount, totalExpected)
+        return UploadProgress(transferCount, totalExpected)
     }
 
     fun startLogBackfillRequest(range: RecordRange, currentDeviceStatusSequence: UInt) : UploadProgress {
@@ -146,77 +171,51 @@ internal class Session(
         transferCount = 0u
         staleLogRequestCount = STALE_LOG_REQUEST_PACKET_COUNT
 
-        return UploadProgress(transferCount, logResponseDropCount, totalExpected)
+        return UploadProgress(transferCount, totalExpected)
     }
 
     fun addFromLogResponse(logResponse: LogResponse) : UploadProgress {
         val loggedProbeDataPoint = LoggedProbeDataPoint.fromLogResponse(id, logResponse, startTime, sessionInfo.samplePeriod)
 
-        // response received, reset the stalled counter.
-        staleLogRequestCount = STALE_LOG_REQUEST_PACKET_COUNT
-
         // check to see if we dropped data
         if(logResponse.sequenceNumber > nextExpectedRecord) {
-            logResponseDropCount += (logResponse.sequenceNumber - nextExpectedRecord)
-
-            // log a warning
-            Log.w(LOG_TAG, "Detected log response data drop ($serialNumber). " +
+            Log.d(LOG_TAG, "Detected log response data drop ($serialNumber). " +
                     "Drop range ${nextExpectedRecord}..${logResponse.sequenceNumber-1u}")
-
-            // track and log the dropped packet
-            for(sequence in nextExpectedRecord until logResponse.sequenceNumber) {
-                droppedRecords.add(sequence)
-                if(droppedRecords.size > MAX_DROPPED_PACKET_HANDLING) {
-                    break
-                }
-            }
 
             // but still add this data and resync.  and remove any drops.
             _logs[loggedProbeDataPoint.sequenceNumber] = loggedProbeDataPoint
             nextExpectedRecord = loggedProbeDataPoint.sequenceNumber + 1u
             transferCount++
-            droppedRecords.removeIf { dropped ->  dropped == loggedProbeDataPoint.sequenceNumber}
         }
         // check to see if we received duplicate data
         else if(logResponse.sequenceNumber < nextExpectedRecord) {
-            if(_logs.containsKey(logResponse.sequenceNumber)) {
-                Log.w(LOG_TAG,
-                    "Received duplicate record? " +
-                            "$serialNumber.${logResponse.sequenceNumber} ($nextExpectedRecord)")
-
-                _logs.remove(logResponse.sequenceNumber)
-                _logs[loggedProbeDataPoint.sequenceNumber] = loggedProbeDataPoint
-
-                // don't change the next expected
-            }
-            else {
-                // the following can occur when re-requesting records to handle gaps in the
-                // record log.
-                if(DebugSettings.DEBUG_LOG_TRANSFER) {
-                    Log.d(
-                        LOG_TAG,
-                        "Received duplicate record " +
-                                "$serialNumber.${logResponse.sequenceNumber} ($nextExpectedRecord)"
-                    )
-                }
+            // the following can occur when re-requesting records to handle gaps in the record log.
+            if(DebugSettings.DEBUG_LOG_TRANSFER) {
+                Log.d(
+                    LOG_TAG,
+                    "Received duplicate record " +
+                            "$serialNumber.${logResponse.sequenceNumber} ($nextExpectedRecord)"
+                )
             }
         }
         // happy path, add the record, update the next expected.
         else {
+            // new log response received, reset the stalled counter.
+            staleLogRequestCount = STALE_LOG_REQUEST_PACKET_COUNT
+
+            // store the log
             _logs[loggedProbeDataPoint.sequenceNumber] = loggedProbeDataPoint
+
+            // update debug stats
             nextExpectedRecord = loggedProbeDataPoint.sequenceNumber + 1u
             transferCount++
-            droppedRecords.removeIf { dropped ->  dropped == loggedProbeDataPoint.sequenceNumber}
         }
 
-        return UploadProgress(transferCount, logResponseDropCount, totalExpected)
+        return UploadProgress(transferCount, totalExpected)
     }
 
     fun addFromDeviceStatus(probeStatus: ProbeStatus) : SessionStatus {
         val loggedProbeDataPoint = LoggedProbeDataPoint.fromDeviceStatus(id, probeStatus, startTime, sessionInfo.samplePeriod)
-
-        // remove records from the drop list that are no longer available on the probe
-        droppedRecords.removeIf { it < probeStatus.minSequenceNumber }
 
         // decrement the stale log request counter
         staleLogRequestCount--
@@ -232,19 +231,9 @@ internal class Session(
 
         // check to see if we dropped data
         if(probeStatus.maxSequenceNumber > nextExpectedDeviceStatus) {
-            deviceStatusDropCount += (probeStatus.maxSequenceNumber - nextExpectedDeviceStatus)
-
-            // track and log the dropped packet
-            for(sequence in nextExpectedDeviceStatus until probeStatus.maxSequenceNumber) {
-                droppedRecords.add(sequence)
-                if(droppedRecords.size > MAX_DROPPED_PACKET_HANDLING) {
-                    break
-                }
-            }
-
             // log a warning message
             Log.w(LOG_TAG, "Detected device status data drop ($serialNumber). " +
-                "Drop range ${nextExpectedDeviceStatus}..${probeStatus.maxSequenceNumber-1u} (${droppedRecords.count()})")
+                "Drop range ${nextExpectedDeviceStatus}..${probeStatus.maxSequenceNumber-1u}")
 
             // but still add this data and resync.
             _logs[loggedProbeDataPoint.sequenceNumber] = loggedProbeDataPoint
@@ -276,9 +265,6 @@ internal class Session(
             minSequenceNumber,
             maxSequenceNumber,
             _logs.size.toUInt(),
-            logResponseDropCount,
-            deviceStatusDropCount,
-            droppedRecords
         )
 
         if(DebugSettings.DEBUG_LOG_SESSION_STATUS) {
@@ -301,9 +287,6 @@ internal class Session(
             minSequenceNumber,
             maxSequenceNumber,
             _logs.size.toUInt(),
-            logResponseDropCount,
-            deviceStatusDropCount,
-            droppedRecords
         )
     }
 

@@ -105,7 +105,7 @@ internal abstract class ProbeBleDeviceBase() {
     abstract fun observeProbeStatusUpdates(callback: (suspend (status: ProbeStatus) -> Unit)? = null)
 
     // Probe UART Command APIs
-    abstract fun sendSessionInformationRequest(callback: ((Boolean, Any?) -> Unit)? = null)
+    abstract fun sendSessionInformationRequest(reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)? = null)
     abstract fun sendSetProbeColor(color: ProbeColor, callback: ((Boolean, Any?) -> Unit)? = null)
     abstract fun sendSetProbeID(id: ProbeID, callback: ((Boolean, Any?) -> Unit)? = null)
     abstract fun sendSetPrediction(setPointTemperatureC: Double, mode: ProbePredictionMode, reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)? = null)

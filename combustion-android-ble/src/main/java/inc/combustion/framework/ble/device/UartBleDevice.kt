@@ -53,8 +53,15 @@ internal open class UartBleDevice(
     class MessageCompletionHandler {
         private val waiting = AtomicBoolean(false)
         private var completionCallback: ((Boolean, Any?) -> Unit)? = null
-        private var requestId: UInt? = null
         private var job: Job? = null
+
+        var requestId: UInt? = null
+            private set
+
+        val isWaiting: Boolean
+            get() {
+                return waiting.get()
+            }
 
         fun handled(result: Boolean, data: Any?, reqId: UInt? = null) {
             // if we are waiting for a specific request id
@@ -96,6 +103,12 @@ internal open class UartBleDevice(
                     cleanup()
                 }
             }
+        }
+
+        fun cancel() {
+            job?.cancel()
+            waiting.set(false)
+            cleanup()
         }
 
         private fun cleanup() {
