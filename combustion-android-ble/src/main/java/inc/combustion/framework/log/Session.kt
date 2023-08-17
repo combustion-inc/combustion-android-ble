@@ -113,7 +113,7 @@ internal class Session(
                 }
             }
 
-            val upperBound = upper ?: lower
+            val upperBound = upper ?: (lower + 1u)
 
             return RecordRange(lower, upperBound)
         }
