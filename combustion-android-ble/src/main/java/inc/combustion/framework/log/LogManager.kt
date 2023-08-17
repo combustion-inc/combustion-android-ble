@@ -40,6 +40,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.ceil
 
 /**
  * Singleton class for manage the service log buffer and record upload from probes.
@@ -159,7 +160,26 @@ internal class LogManager {
                                     }
                                 }
                             }
-                    }
+
+                            // calculate the percent of the logs on the probe that have made it
+                            // over to the app.
+                            temperatureLog.missingRecordsForRange(
+                                deviceStatus.minSequenceNumber, deviceStatus.maxSequenceNumber
+                            )?.let {
+                                if(deviceStatus.maxSequenceNumber > deviceStatus.minSequenceNumber) {
+                                    val total = (deviceStatus.maxSequenceNumber - deviceStatus.minSequenceNumber + 1u).toDouble()
+                                    val have = total - it.toDouble()
+                                    probeManager.logUploadPercent = ceil((have / total) * 100).toUInt()
+                                }
+                            } ?: run {
+                                temperatureLog.currentSessionStartTime?.let {
+                                    probeManager.logUploadPercent = 100u
+                                } ?: {
+                                    probeManager.logUploadPercent = 0u
+                                }
+                            }
+
+                        }
                 }
             })
             // monitor this probes log response flow
@@ -173,6 +193,7 @@ internal class LogManager {
                             Log.i(LOG_TAG, "Log Response Flow Catch: $it")
                         }
                         .collect { response ->
+
                             // debug log BLE IO if enabled.
                             if(DebugSettings.DEBUG_LOG_LOG_MANAGER_IO) {
                                 Log.d(LOG_TAG, "LOG-RX    : ${response.sequenceNumber}")

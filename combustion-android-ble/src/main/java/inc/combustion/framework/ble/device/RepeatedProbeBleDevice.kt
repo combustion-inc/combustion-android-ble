@@ -65,9 +65,6 @@ internal class RepeatedProbeBleDevice (
     private var _deviceInfoHardwareRevision: String? = null
     private var _deviceInfoModelInformation: ModelInformation? = null
 
-    // activate this monitor whenever the link to the probe is used, except for session info
-    private val routeMonitor = IdleMonitor()
-
     override val advertisement: CombustionAdvertisingData?
         get() {
             return advertisementForProbe[probeSerialNumber]
@@ -146,12 +143,10 @@ internal class RepeatedProbeBleDevice (
     override fun disconnect() = uart.disconnect()
 
     override fun sendSetProbeColor(color: ProbeColor, callback: ((Boolean, Any?) -> Unit)?) {
-        routeMonitor.activity()
         NOT_IMPLEMENTED("Not able to set probe color over MeatNet")
     }
 
     override fun sendSetProbeID(id: ProbeID, callback: ((Boolean, Any?) -> Unit)?) {
-        routeMonitor.activity()
         NOT_IMPLEMENTED("Not able to set probe ID over MeatNet")
     }
 
@@ -173,13 +168,11 @@ internal class RepeatedProbeBleDevice (
     }
 
     override fun sendSetPrediction(setPointTemperatureC: Double, mode: ProbePredictionMode, reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
-        routeMonitor.activity()
         setPredictionHandler.wait(uart.owner, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
         sendUartRequest(NodeSetPredictionRequest(probeSerialNumber, setPointTemperatureC, mode, reqId))
     }
 
     override fun sendLogRequest(minSequence: UInt, maxSequence: UInt, callback: (suspend (LogResponse) -> Unit)?) {
-        routeMonitor.activity()
         logResponseCallback = callback
         sendUartRequest(NodeReadLogsRequest(probeSerialNumber, minSequence, maxSequence))
     }
@@ -334,26 +327,21 @@ internal class RepeatedProbeBleDevice (
                     // Repeated Responses
                     is NodeReadLogsResponse -> {
                         if(message.serialNumber == probeSerialNumber) {
-                            routeMonitor.activity()
                             handleLogResponse(message)
                         }
                     }
 
                     // Synchronous Requests that are responded to with a single message
                     is NodeSetPredictionResponse -> {
-                        routeMonitor.activity()
                         setPredictionHandler.handled(message.success, null, message.requestId)
                     }
                     is NodeReadFirmwareRevisionResponse -> {
-                        routeMonitor.activity()
                         probeFirmwareRevisionHandler.handled(message.success, message, message.requestId)
                     }
                     is NodeReadHardwareRevisionResponse -> {
-                        routeMonitor.activity()
                         probeHardwareRevisionHandler.handled(message.success, message, message.requestId)
                     }
                     is NodeReadModelInfoResponse -> {
-                        routeMonitor.activity()
                         probeModelInfoHandler.handled(message.success, message, message.requestId)
                     }
                     is NodeReadSessionInfoResponse -> {
@@ -380,12 +368,6 @@ internal class RepeatedProbeBleDevice (
     }
 
     companion object {
-        const val PING_RATE_MS = 1000L
-        const val PING_SETTLING_MS = 10000L
-        const val IDLE_LINK_TIMEOUT = PROBE_MESSAGE_RESPONSE_TIMEOUT_MS + 3000L
-        const val PING_TIMEOUT_COUNT = 3
-
-        const val INFO_LOG_MEATNET_TRACE = false
         const val INFO_LOG_MEATNET_UART_TRACE = false
         val MEATNET_TRACE_INCLUSION_FILTER = listOf<NodeMessageType>(
             // NodeMessageType.SET_ID,
@@ -399,11 +381,12 @@ internal class RepeatedProbeBleDevice (
             // NodeMessageType.READ_NODE_LIST,
             // NodeMessageType.READ_NETWORK_TOPOLOGY,
             // NodeMessageType.PROBE_SESSION_CHANGED,
-            NodeMessageType.PROBE_STATUS,
+            // NodeMessageType.PROBE_STATUS,
             // NodeMessageType.PROBE_FIRMWARE_REVISION,
             // NodeMessageType.PROBE_HARDWARE_REVISION,
             // NodeMessageType.PROBE_MODEL_INFORMATION,
             // NodeMessageType.HEARTBEAT
         )
+        val INFO_LOG_MEATNET_TRACE = MEATNET_TRACE_INCLUSION_FILTER.isNotEmpty()
     }
 }

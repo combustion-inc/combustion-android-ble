@@ -69,6 +69,10 @@ internal class ProbeTemperatureLog(private val serialNumber: String) {
             return count
         }
 
+    fun missingRecordsForRange(start: UInt, end: UInt): UInt? {
+        return sessions.lastOrNull()?.missingRecordsForRange(start, end)
+    }
+
     fun missingRecordRange(start: UInt, end: UInt): RecordRange? {
         return sessions.lastOrNull()?.missingRecordRange(start, end)
     }

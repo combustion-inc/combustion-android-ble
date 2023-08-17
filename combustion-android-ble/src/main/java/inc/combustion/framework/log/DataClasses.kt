@@ -51,16 +51,14 @@ internal data class RecordRange(val minSeq: UInt, val maxSeq: UInt) {
  * @property transferred number of records received
  * @property expected number of records expected
  */
-internal data class UploadProgress(val transferred: UInt, val expected: UInt) {
+internal data class UploadProgress(val transferred: UInt, val expected: UInt, val requested: UInt) {
     companion object {
-        val NULL_UPLOAD_PROGRESS = UploadProgress(0u, 0u)
+        val NULL_UPLOAD_PROGRESS = UploadProgress(0u, 0u, 0u)
     }
-
-    // val isComplete: Boolean get() { return (transferred + drops) == expected }
 
     fun toProbeUploadState() : ProbeUploadState {
         return ProbeUploadState.ProbeUploadInProgress(
-            transferred, expected
+            transferred, expected, requested
         )
     }
 }

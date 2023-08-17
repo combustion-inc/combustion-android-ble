@@ -50,6 +50,7 @@ sealed class ProbeUploadState {
      */
     data class ProbeUploadInProgress(
         val recordsTransferred: UInt,
+        val recordsExpected: UInt,
         val recordsRequested: UInt
     ) : ProbeUploadState()
 

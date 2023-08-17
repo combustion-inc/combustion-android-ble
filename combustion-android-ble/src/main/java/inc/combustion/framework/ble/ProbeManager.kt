@@ -141,6 +141,16 @@ internal class ProbeManager(
             }
         }
 
+    var logUploadPercent: UInt
+        get() {
+            return _probe.value.logUploadPercent
+        }
+        set(value) {
+            if(value != _probe.value.logUploadPercent) {
+                _probe.value = _probe.value.copy(logUploadPercent = value)
+            }
+        }
+
     val connectionState: DeviceConnectionState
         get() {
             // if this is a simulated probe, no need to arbitrate
@@ -731,6 +741,7 @@ internal class ProbeManager(
             return
         }
 
+        sessionInfoTimeout = false
         val info = any as SessionInformation
 
         // if the session information has changed, then we need to finish the previous log session.

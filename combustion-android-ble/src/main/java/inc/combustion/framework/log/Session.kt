@@ -51,12 +51,8 @@ internal class Session(
 ) {
 
     companion object {
-        /**
-         * If > than this threshold of device status packets are received, then
-         * consider the log request stalled.
-         */
-        const val STALE_LOG_REQUEST_PACKET_COUNT = 2u
-        const val MAX_DROPPED_PACKET_HANDLING = 5000
+        const val STALE_LOG_REQUEST_PACKET_COUNT = 2
+        const val PRINT_LOG_SEQUENCE_GAPS = false
     }
 
     private val _logs: SortedMap<UInt, LoggedProbeDataPoint> = sortedMapOf()
@@ -64,6 +60,7 @@ internal class Session(
     private var nextExpectedDeviceStatus = UInt.MAX_VALUE
     private var totalExpected = 0u
     private var transferCount = 0u
+    private var totalRequested = 0u
     private var staleLogRequestCount = STALE_LOG_REQUEST_PACKET_COUNT
     private val minSequenceNumber: UInt get() = if(isEmpty) 0u else _logs.firstKey()
     private val maxSequenceNumber: UInt get() = if(isEmpty) 0u else _logs.lastKey()
@@ -80,7 +77,7 @@ internal class Session(
 
     val logRequestIsStalled: Boolean
         get() {
-            return staleLogRequestCount == 0u
+            return staleLogRequestCount <= 0
         }
 
     val dataPoints: List<LoggedProbeDataPoint>
@@ -156,53 +153,35 @@ internal class Session(
         // initialize tracking variables for pending record transfer
         nextExpectedRecord = range.minSeq
         nextExpectedDeviceStatus = range.maxSeq + 1u
-        totalExpected = range.maxSeq - range.minSeq + 1u
+        totalExpected = missingRecordsForRange(range.minSeq, range.maxSeq)
+        totalRequested = range.maxSeq - range.minSeq + 1u
         transferCount = 0u
         staleLogRequestCount = STALE_LOG_REQUEST_PACKET_COUNT
 
-        return UploadProgress(transferCount, totalExpected)
+        return UploadProgress(transferCount, totalExpected, totalRequested)
     }
 
     fun startLogBackfillRequest(range: RecordRange, currentDeviceStatusSequence: UInt) : UploadProgress {
         // initialize tracking variables for pending record transfer
         nextExpectedRecord = range.minSeq
         nextExpectedDeviceStatus = currentDeviceStatusSequence + 1u
-        totalExpected = range.maxSeq - range.minSeq + 1u
+        totalExpected = missingRecordsForRange(range.minSeq, range.maxSeq)
+        totalRequested = range.maxSeq - range.minSeq + 1u
         transferCount = 0u
         staleLogRequestCount = STALE_LOG_REQUEST_PACKET_COUNT
 
-        return UploadProgress(transferCount, totalExpected)
+        return UploadProgress(transferCount, totalExpected, totalRequested)
     }
 
     fun addFromLogResponse(logResponse: LogResponse) : UploadProgress {
         val loggedProbeDataPoint = LoggedProbeDataPoint.fromLogResponse(id, logResponse, startTime, sessionInfo.samplePeriod)
 
-        // check to see if we dropped data
-        if(logResponse.sequenceNumber > nextExpectedRecord) {
-            Log.d(LOG_TAG, "Detected log response data drop ($serialNumber). " +
-                    "Drop range ${nextExpectedRecord}..${logResponse.sequenceNumber-1u}")
+        // new log response received, reset the stalled counter.
+        staleLogRequestCount = STALE_LOG_REQUEST_PACKET_COUNT
 
-            // but still add this data and resync.  and remove any drops.
-            _logs[loggedProbeDataPoint.sequenceNumber] = loggedProbeDataPoint
-            nextExpectedRecord = loggedProbeDataPoint.sequenceNumber + 1u
-            transferCount++
-        }
-        // check to see if we received duplicate data
-        else if(logResponse.sequenceNumber < nextExpectedRecord) {
-            // the following can occur when re-requesting records to handle gaps in the record log.
-            if(DebugSettings.DEBUG_LOG_TRANSFER) {
-                Log.d(
-                    LOG_TAG,
-                    "Received duplicate record " +
-                            "$serialNumber.${logResponse.sequenceNumber} ($nextExpectedRecord)"
-                )
-            }
-        }
-        // happy path, add the record, update the next expected.
-        else {
-            // new log response received, reset the stalled counter.
-            staleLogRequestCount = STALE_LOG_REQUEST_PACKET_COUNT
-
+        // if the record isn't in the log, then add it -- we don't care about order because
+        // log records can come in out of order as they are broadcase through MeatNet
+        if(!_logs.containsKey(logResponse.sequenceNumber)) {
             // store the log
             _logs[loggedProbeDataPoint.sequenceNumber] = loggedProbeDataPoint
 
@@ -211,7 +190,23 @@ internal class Session(
             transferCount++
         }
 
-        return UploadProgress(transferCount, totalExpected)
+        if(PRINT_LOG_SEQUENCE_GAPS) {
+            // check to see if we dropped data
+            if(logResponse.sequenceNumber > nextExpectedRecord) {
+                Log.d(LOG_TAG, "Detected log response data drop ($serialNumber). " +
+                        "Drop range ${nextExpectedRecord}..${logResponse.sequenceNumber-1u}")
+            }
+            else if(logResponse.sequenceNumber < nextExpectedRecord) {
+                // the following can occur when re-requesting records to handle gaps in the record log.
+                Log.d(LOG_TAG,
+                    "Received duplicate record $serialNumber.${logResponse.sequenceNumber} ($nextExpectedRecord)"
+                )
+            }
+        }
+
+        nextExpectedRecord = _logs.lastKey() + 1u
+
+        return UploadProgress(transferCount, totalExpected, totalRequested)
     }
 
     fun addFromDeviceStatus(probeStatus: ProbeStatus) : SessionStatus {
@@ -293,4 +288,15 @@ internal class Session(
     fun expectFutureLogRequest() {
         nextExpectedDeviceStatus = UInt.MAX_VALUE
     }
+
+    fun missingRecordsForRange(start: UInt, end: UInt): UInt {
+        var count = 0u
+        for (sequence in start..end) {
+            if(!_logs.containsKey(sequence)) {
+                count++
+            }
+        }
+        return count
+    }
+
 }
