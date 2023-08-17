@@ -109,7 +109,11 @@ internal class LogManager {
                                     if(DeviceManager.instance.settings.autoLogTransfer) {
                                         probeManager.sessionInfo?.let {
                                             // note, this will transfer to ProbeUploadInProgress
-                                            requestLogsFromDevice(probeManager.serialNumber)
+                                            requestLogsFromDevice(
+                                                serialNumber = probeManager.serialNumber,
+                                                minSequenceNumber = deviceStatus.minSequenceNumber,
+                                                maxSequenceNumber = deviceStatus.maxSequenceNumber,
+                                            )
                                         }
                                     }
                                     else {
@@ -218,15 +222,24 @@ internal class LogManager {
         temperatureLogs.clear()
     }
 
-    fun requestLogsFromDevice(serialNumber: String) {
+    /**
+     * Starts a log request for [serialNumber]. If [minSequenceNumber] or [maxSequenceNumber] are
+     * non-null, they will be used to set up the initial internal session parameters. If they're
+     * null, cached sequence numbers are used.
+     */
+    fun requestLogsFromDevice(
+        serialNumber: String,
+        minSequenceNumber: UInt? = null,
+        maxSequenceNumber: UInt? = null
+    ) {
         val probeManager = probes[serialNumber] ?: return
         val log = temperatureLogs[serialNumber] ?: return
         val sessionInfo = probeManager.sessionInfo ?: return
 
         // prepare log for the request and determine the needed range
         val range =  log.prepareForLogRequest(
-            probeManager.minSequenceNumber,
-            probeManager.maxSequenceNumber,
+            minSequenceNumber ?: probeManager.minSequenceNumber,
+            maxSequenceNumber ?: probeManager.maxSequenceNumber,
             sessionInfo
         )
 

@@ -487,6 +487,10 @@ internal class ProbeManager(
 
     private suspend fun handleProbeStatus(device: ProbeBleDeviceBase, status: ProbeStatus) {
         if(arbitrator.shouldUpdateDataFromProbeStatus(status, sessionInfo)) {
+            updateLink()
+            updateBatteryIdColor(status.batteryStatus, status.id, status.color)
+            updateSequenceNumbers(status.minSequenceNumber, status.maxSequenceNumber)
+
             if(status.mode == ProbeMode.NORMAL) {
                 updateNormalMode(status)
 
@@ -498,10 +502,6 @@ internal class ProbeManager(
             else if(status.mode == ProbeMode.INSTANT_READ) {
                 updateInstantRead(status)
             }
-
-            updateLink()
-            updateBatteryIdColor(status.batteryStatus, status.id, status.color)
-            updateSequenceNumbers(status.minSequenceNumber, status.maxSequenceNumber)
         }
 
         // optimize MeatNet connection resources.  if we have a direct link to a probe we want to
