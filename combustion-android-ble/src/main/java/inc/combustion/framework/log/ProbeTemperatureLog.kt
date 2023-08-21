@@ -55,12 +55,10 @@ internal class ProbeTemperatureLog(private val serialNumber: String) {
             return _dataPoints
         }
 
-    val logRequestIsStalled: Boolean get() = sessions.lastOrNull()?.logRequestIsStalled ?: false
     val currentSessionId: UInt get() = sessions.lastOrNull()?.id ?: 0u
     val currentSessionSamplePeriod: UInt get() = sessions.lastOrNull()?.samplePeriod ?: 0u
     val currentSessionStartTime: Date? get() = sessions.lastOrNull()?.startTime
     val logStartTime: Date? get() = sessions.firstOrNull()?.startTime
-    val droppedRecords: List<UInt>? get() = sessions.firstOrNull()?.droppedRecords
 
     val dataPointCount: Int
         get() {
@@ -70,6 +68,19 @@ internal class ProbeTemperatureLog(private val serialNumber: String) {
             }
             return count
         }
+
+    fun missingRecordsForRange(start: UInt, end: UInt): UInt? {
+        return sessions.lastOrNull()?.missingRecordsForRange(start, end)
+    }
+
+    fun missingRecordRange(start: UInt, end: UInt): RecordRange? {
+        return sessions.lastOrNull()?.missingRecordRange(start, end)
+    }
+
+    private val logRequestIsStalled: Boolean get() = sessions.lastOrNull()?.logRequestIsStalled ?: false
+    fun logRequestIsComplete(): Boolean {
+        return logRequestIsStalled
+    }
 
     fun prepareForLogRequest(deviceMinSequence: UInt, deviceMaxSequence: UInt, sessionInfo: SessionInformation) : RecordRange {
         var minSeq = 0u

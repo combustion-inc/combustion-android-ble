@@ -45,7 +45,6 @@ internal open class DeviceInformationBleDevice(
     var hardwareRevision: String? = null
     var modelInformation: ModelInformation? = null
 
-
     override fun disconnect() {
         serialNumber = null
         firmwareVersion = null

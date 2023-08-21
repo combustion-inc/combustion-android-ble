@@ -120,7 +120,7 @@ internal class ProbeBleDevice (
     override fun connect() = uart.connect()
     override fun disconnect() = uart.disconnect()
 
-    override fun sendSessionInformationRequest(callback: ((Boolean, Any?) -> Unit)?)  {
+    override fun sendSessionInformationRequest(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?)  {
         sessionInfoHandler.wait(uart.owner, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
         sendUartRequest(SessionInfoRequest())
     }
@@ -146,9 +146,39 @@ internal class ProbeBleDevice (
     }
 
     override suspend fun readSerialNumber() = uart.readSerialNumber()
+
     override suspend fun readFirmwareVersion() = uart.readFirmwareVersion()
+    fun readProbeFirmwareVersion(callback: (FirmwareVersion) -> Unit) {
+        uart.owner.lifecycleScope.launch {
+            readFirmwareVersion()
+        }.invokeOnCompletion {
+            deviceInfoFirmwareVersion?.let {
+                callback(it)
+            }
+        }
+    }
+
     override suspend fun readHardwareRevision() = uart.readHardwareRevision()
+    fun readProbeHardwareRevision(callback: (String) -> Unit) {
+        uart.owner.lifecycleScope.launch {
+            readHardwareRevision()
+        }.invokeOnCompletion {
+            deviceInfoHardwareRevision?.let {
+                callback(it)
+            }
+        }
+    }
+
     override suspend fun readModelInformation() = uart.readModelInformation()
+    fun readProbeModelInformation(callback: (ModelInformation) -> Unit) {
+        uart.owner.lifecycleScope.launch {
+            readModelInformation()
+        }.invokeOnCompletion {
+            deviceInfoModelInformation?.let {
+                callback(it)
+            }
+        }
+    }
 
     override fun observeAdvertisingPackets(serialNumberFilter: String, macFilter: String, callback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)?) {
         uart.observeAdvertisingPackets(
