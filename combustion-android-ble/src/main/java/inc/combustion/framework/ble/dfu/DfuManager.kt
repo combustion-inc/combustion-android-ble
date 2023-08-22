@@ -58,6 +58,9 @@ internal class DfuManager(
     private val _initialized = AtomicBoolean(false)
     private val _enabled = AtomicBoolean(false)
 
+    // tracks when a dfu is in progress or not
+    private var _dfuInProgress = false
+
     val enabled: Boolean
         get() = _enabled.get()
 
@@ -70,6 +73,9 @@ internal class DfuManager(
         devices.values.forEach {
             it.finish()
         }
+
+        // reset _dfuInProgress
+        _dfuInProgress = false
 
         devices.clear()
         _systemState.tryEmit(DfuSystemState.DevicesCleared)
@@ -137,16 +143,34 @@ internal class DfuManager(
             return null
         }
 
-        devices[id]?.let {
-            it.performDfu(file)
-            return it.state
+        devices[id]?.let { currentDevice ->
+
+            // set dfu in progress to true
+            _dfuInProgress = true
+
+            currentDevice.performDfu(file) {
+                // Re-enable all devices when DFU is complete
+                devices.forEach { (_, device) ->
+                    device.setEnabled(true)
+                }
+
+                // set dfu in progress to false
+                _dfuInProgress = false
+            }
+
+            // Disable all other devices while DFU is in progress
+            devices.filter { it.key != id }.forEach { (_, device) ->
+                device.setEnabled(false)
+            }
+
+            return currentDevice.state
         }
 
         return null
     }
 
     private fun collectAdvertisingData() {
-        scanningJob = owner.lifecycleScope.let {
+        scanningJob = owner.lifecycleScope.let { it ->
             DeviceScanner.advertisements
                 .onEach { advertisingData ->
                     if (enabled) {
@@ -158,6 +182,12 @@ internal class DfuManager(
 
                             // This needs to happen before the DeviceDiscovered event is emitted.
                             devices[id] = DfuBleDevice(context, owner, adapter, advertisingData)
+
+                            // If a DFU is in progress, disable the device.
+                            if (_dfuInProgress) {
+                                Log.i(LOG_TAG, "DFU in progress, disabling device $id")
+                                devices[id]?.setEnabled(false)
+                            }
 
                             // Tell clients that the device was discovered.
                             _systemState.tryEmit(DfuSystemState.DeviceDiscovered(id))

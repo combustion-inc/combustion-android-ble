@@ -32,9 +32,11 @@ import inc.combustion.framework.ble.putLittleEndianUInt32At
 
 internal class NodeReadSessionInfoRequest (
     serialNumber: String,
+    requestId: UInt? = null
 ) : NodeRequest(
     populatePayload(serialNumber),
-    NodeMessageType.SESSION_INFO
+    NodeMessageType.SESSION_INFO,
+    requestId
 ) {
 
         companion object {

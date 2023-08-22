@@ -103,7 +103,8 @@ data class Probe(
     val predictionStale: Boolean = false,
     val overheatingSensors: List<Int> = listOf(),
     val recordsDownloaded: Int = 0,
-    val preferredLink: String = ""
+    val preferredLink: String = "",
+    val logUploadPercent: UInt = 0u
 ) {
     val serialNumber = baseDevice.serialNumber
     val mac = baseDevice.mac

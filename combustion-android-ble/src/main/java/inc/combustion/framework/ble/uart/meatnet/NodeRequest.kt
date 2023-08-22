@@ -34,12 +34,20 @@ import inc.combustion.framework.ble.getCRC16CCITT
 import inc.combustion.framework.ble.getLittleEndianUInt32At
 import inc.combustion.framework.ble.putLittleEndianUInt32At
 import inc.combustion.framework.ble.putLittleEndianUShortAt
-import inc.combustion.framework.service.DebugSettings
+import inc.combustion.framework.ble.uart.MessageType
 
 /**
  * Baseclass for UART request messages
  */
-internal open class NodeRequest() : NodeUARTMessage() {
+internal open class NodeRequest(
+    messageId: NodeMessageType
+) : NodeUARTMessage(
+    messageId
+) {
+    override fun toString(): String {
+        return "REQ  $messageId (REQID: ${String.format("%08x", requestId.toInt())})"
+    }
+
     companion object {
         const val HEADER_SIZE: UByte = 10u
 
@@ -92,7 +100,6 @@ internal open class NodeRequest() : NodeUARTMessage() {
             }
 
             return when(messageType) {
-
                 NodeMessageType.PROBE_STATUS -> {
                     NodeProbeStatusRequest.fromRaw(
                         data,
@@ -100,14 +107,14 @@ internal open class NodeRequest() : NodeUARTMessage() {
                         payloadLength
                     )
                 }
-
-                else -> {
-                    if ( DebugSettings.DEBUG_LOG_MESSAGE_REQUESTS ) {
-                        Log.d(LOG_TAG, "NodeRequest: Unknown message type: $messageType")
-                    }
-
-                    null
+                NodeMessageType.HEARTBEAT -> {
+                    NodeHeartbeatRequest.fromRaw(
+                        data,
+                        requestId,
+                        payloadLength
+                    )
                 }
+                else -> null
             }
         }
 
@@ -129,23 +136,28 @@ internal open class NodeRequest() : NodeUARTMessage() {
      *
      * @param outgoingPayload data containing outgoing payload
      * @param type type of request message
+     * @param requestId optional request id
      */
     constructor(
         outgoingPayload: UByteArray,
-        type: NodeMessageType
-    ) : this() {
+        messageType: NodeMessageType,
+        requestId: UInt? = null
+    ) : this(
+        messageType
+    ) {
         // Sync Bytes { 0xCA, 0xFE }
-        this.data += 0xCAu
-        this.data += 0xFEu
+        data += 0xCAu
+        data += 0xFEu
 
         // Calculate CRC over Message Type, request ID, payload length, payload
         var crcData = UByteArray(0)
 
         // Message type
-        crcData += type.value
+        crcData += messageType.value
 
         // Request ID
-        this.requestId = (0u..UInt.MAX_VALUE).random()
+        this.requestId = requestId ?: (0u..UInt.MAX_VALUE).random()
+
         crcData += UByteArray(4)
         crcData.putLittleEndianUInt32At(1, this.requestId)
 
@@ -165,7 +177,6 @@ internal open class NodeRequest() : NodeUARTMessage() {
         this.payloadLength = outgoingPayload.size.toUByte()
     }
 
-
     /**
      * Constructor for an incoming Request object (from MeatNet).
      *
@@ -174,12 +185,14 @@ internal open class NodeRequest() : NodeUARTMessage() {
      */
     constructor(
         requestId: UInt,
-        payloadLength: UByte
-    ) : this() {
+        payloadLength: UByte,
+        messageId: NodeMessageType
+    ) : this(
+        messageId
+    ) {
         this.requestId = requestId
         this.payloadLength = payloadLength
     }
-
 
     /**
      * Calculates the CRC16 over the message type, payload length, and payload and inserts the

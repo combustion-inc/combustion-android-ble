@@ -55,16 +55,33 @@ internal open class UartBleDevice(
         private var completionCallback: ((Boolean, Any?) -> Unit)? = null
         private var job: Job? = null
 
-        fun handled(result: Boolean, data: Any?) {
+        var requestId: UInt? = null
+            private set
+
+        val isWaiting: Boolean
+            get() {
+                return waiting.get()
+            }
+
+        fun handled(result: Boolean, data: Any?, reqId: UInt? = null) {
+            // if we are waiting for a specific request id
+            requestId?.let {
+                // and we weren't called with the request id we are looking for
+                if(it != reqId) {
+                    // then return
+                    return
+                }
+            }
+
             job?.cancel()
             waiting.set(false)
             completionCallback?.let {
                 it(result, data)
             }
-            completionCallback = null
+            cleanup()
         }
 
-        fun wait(owner: LifecycleOwner, duration: Long, callback: ((Boolean, Any?) -> Unit)?) {
+        fun wait(owner: LifecycleOwner, duration: Long, reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)?) {
             completionCallback?.let {
                 callback?.let { it(false, null) }
                 return
@@ -77,14 +94,26 @@ internal open class UartBleDevice(
 
             waiting.set(true)
             completionCallback = callback
+            requestId = reqId
 
             job = owner.lifecycleScope.launch {
                 delay(duration)
                 if(waiting.getAndSet(false)) {
                     callback?.let { it(false, null) }
-                    completionCallback = null
+                    cleanup()
                 }
             }
+        }
+
+        fun cancel() {
+            job?.cancel()
+            waiting.set(false)
+            cleanup()
+        }
+
+        private fun cleanup() {
+            completionCallback = null
+            requestId = null
         }
     }
 

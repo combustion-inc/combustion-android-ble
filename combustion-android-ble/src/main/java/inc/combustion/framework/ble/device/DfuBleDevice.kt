@@ -70,6 +70,10 @@ internal class DfuBleDevice(
     )
     val state = _state.asStateFlow()
 
+    // Flag to indicate whether we should transition to a blocked state after connecting
+    // Needed to handle new connections after a successful DFU and the device is rebooted
+    private var blockAfterConnect: Boolean = false
+
     /**
      * Holds bookkeeping state internal to the device. [status] indicates where we are in the DFU
      * process. [disconnectingEventCount] keeps track of the number of times [onDeviceDisconnecting]
@@ -92,6 +96,9 @@ internal class DfuBleDevice(
 
     private var dfuServiceController: DfuServiceController? = null
 
+    // callback used to signal that a DFU is complete (can be success, error) and other devices can be DFU'd.
+    private var dfuCompleteCallback: (() -> Unit)? = null
+
     private fun onConnectionStateChange(connectionState: DeviceConnectionState) {
         when (connectionState) {
             DeviceConnectionState.ADVERTISING_CONNECTABLE, DeviceConnectionState.CONNECTING -> {
@@ -109,15 +116,31 @@ internal class DfuBleDevice(
 
                     Log.i(LOG_TAG, "DFU read device service: ${state.value}")
                 }.invokeOnCompletion {
-                    _state.value = DfuState.Idle(
-                        state.value.device.copy(
-                            serialNumber = serialNumber ?: "",
-                            fwVersion = firmwareVersion,
-                            hwRevision = hardwareRevision,
-                            modelInformation = modelInformation,
-                            connectionState = connectionState,
+
+                    // If we're blocked, we don't want to transition to idle.
+
+                    if (blockAfterConnect) {
+                        _state.value = DfuState.NotReady(
+                            state.value.device.copy(
+                                serialNumber = serialNumber ?: "",
+                                fwVersion = firmwareVersion,
+                                hwRevision = hardwareRevision,
+                                modelInformation = modelInformation,
+                                connectionState = connectionState,
+                            ),
+                            DfuState.NotReady.Status.BLOCKED
                         )
-                    )
+                    } else {
+                        _state.value = DfuState.Idle(
+                            state.value.device.copy(
+                                serialNumber = serialNumber ?: "",
+                                fwVersion = firmwareVersion,
+                                hwRevision = hardwareRevision,
+                                modelInformation = modelInformation,
+                                connectionState = connectionState,
+                            )
+                        )
+                    }
 
                     Log.i(LOG_TAG, "Connected DFU handler finished (state: ${_state.value})")
                 }
@@ -231,8 +254,11 @@ internal class DfuBleDevice(
         super.finish(internalDfuState.status == InternalDfuState.Status.IDLE)
     }
 
-    fun performDfu(file: Uri) {
+    fun performDfu(file: Uri, completionHandler: () -> Unit) {
         Log.i(LOG_TAG, "Performing DFU for device ${_state.value.device} with file $file")
+
+        // Save off the completion handler so we can call it when the DFU process is complete.
+        dfuCompleteCallback = completionHandler
 
         // Reset our internal state.
         internalDfuState = InternalDfuState(status = InternalDfuState.Status.IN_PROGRESS)
@@ -268,6 +294,9 @@ internal class DfuBleDevice(
 
     fun abortDfu() {
         dfuServiceController?.abort() ?: Log.e(LOG_TAG, "Unable to abort DFU process.")
+
+        // Call DFU completed callback
+        dfuCompleteCallback?.invoke()
     }
 
     override fun onDeviceConnecting(deviceAddress: String) {
@@ -380,12 +409,18 @@ internal class DfuBleDevice(
         Log.i(LOG_TAG, "[onDfuCompleted] $deviceAddress ${_state.value}")
 
         internalDfuState.status = InternalDfuState.Status.COMPLETE
+
+        // Call DFU completed callback
+        dfuCompleteCallback?.invoke()
     }
 
     override fun onDfuAborted(deviceAddress: String) {
         _state.value = DfuState.InProgress(_state.value.device, DfuProgress.Aborted)
 
         Log.i(LOG_TAG, "[onDfuAborted] $deviceAddress ${_state.value}")
+
+        // Call DFU completed callback
+        dfuCompleteCallback?.invoke()
     }
 
     override fun onError(
@@ -427,6 +462,9 @@ internal class DfuBleDevice(
         )
 
         Log.e(LOG_TAG, "[onError] $error (type: $errorType, message: $message ${_state.value}")
+
+        // Call DFU complete callback
+        dfuCompleteCallback?.invoke()
     }
 
     override fun onLogEvent(deviceAddress: String?, level: Int, message: String?) {
@@ -453,5 +491,25 @@ internal class DfuBleDevice(
                 }
             }
         }
+    }
+
+    fun setEnabled(enabled: Boolean) {
+        if (enabled) {
+            _state.value = DfuState.Idle(
+                state.value.device.copy(
+                    serialNumber = serialNumber ?: "",
+                    fwVersion = firmwareVersion,
+                    hwRevision = hardwareRevision,
+                    modelInformation = modelInformation,
+                    connectionState = connectionState,
+                )
+            )
+        } else {
+            _state.value = DfuState.NotReady(_state.value.device, DfuState.NotReady.Status.BLOCKED)
+        }
+
+        // Blocking after connect is the inverse of the enabled state
+        // (i.e. if we're enabled, we don't want to block after connect)
+        blockAfterConnect = !enabled
     }
 }

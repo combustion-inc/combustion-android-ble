@@ -43,10 +43,14 @@ internal class NodeReadSessionInfoResponse (
     success,
     requestId,
     responseId,
-    payloadLength
+    payloadLength,
+    NodeMessageType.SESSION_INFO
 ) {
-    companion object {
+    override fun toString(): String {
+        return "${super.toString()} $success ${sessionInformation.sessionID} ${sessionInformation.samplePeriod}"
+    }
 
+    companion object {
         /// payload length 10 = serial number (4 bytes) + session id (4 bytes) + sample period (s bytes)
         const val PAYLOAD_LENGTH: UByte = 10u
 

@@ -29,6 +29,7 @@
 package inc.combustion.framework.ble.uart.meatnet
 
 import inc.combustion.framework.ble.getLittleEndianUInt32At
+import inc.combustion.framework.ble.uart.MessageType
 import inc.combustion.framework.service.PredictionLog
 import inc.combustion.framework.service.ProbeTemperatures
 
@@ -45,8 +46,13 @@ internal class NodeReadLogsResponse(
     success,
     requestId,
     responseId,
-    payLoadLength
+    payLoadLength,
+    NodeMessageType.LOG
 ) {
+    override fun toString(): String {
+        return "${super.toString()} $success $serialNumber $sequenceNumber"
+    }
+
     companion object {
         private const val MIN_PAYLOAD_LENGTH: UByte = 28u
 

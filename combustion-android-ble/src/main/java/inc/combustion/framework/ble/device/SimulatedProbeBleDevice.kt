@@ -241,7 +241,7 @@ internal class SimulatedProbeBleDevice(
         observeStatusUpdatesCallback = callback
     }
 
-    override fun sendSessionInformationRequest(callback: ((Boolean, Any?) -> Unit)?) {
+    override fun sendSessionInformationRequest(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
         val sessionInformation = SessionInformation(0x12345678u, 5000u)
         callback?.let { it(true, sessionInformation) }
     }
@@ -259,6 +259,7 @@ internal class SimulatedProbeBleDevice(
     override fun sendSetPrediction(
         setPointTemperatureC: Double,
         mode: ProbePredictionMode,
+        reqId: UInt?,
         callback: ((Boolean, Any?) -> Unit)?
     ) {
         callback?.let { it(true, null) }
