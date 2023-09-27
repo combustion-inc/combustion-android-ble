@@ -82,6 +82,20 @@ internal open class UartBleDevice(
         }
 
         fun wait(owner: LifecycleOwner, duration: Long, reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)?) {
+            requestId?.let {
+                // if we are waiting for a specific request id and asked to wait again, then
+                // we callback to the caller with an error (the current wait has not completed).
+                if(it == reqId) {
+                    callback?.let { it(false, null) }
+                    return
+                }
+
+                // otherwise, cancel the current wait and start a new wait with the new request.
+                cancel()
+            }
+
+            // if we are already waiting for a completion callback, then we callback to the
+            // caller with an error (the current wait has not completed).
             completionCallback?.let {
                 callback?.let { it(false, null) }
                 return
