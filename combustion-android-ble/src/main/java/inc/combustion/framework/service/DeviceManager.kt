@@ -387,6 +387,19 @@ class DeviceManager(
     }
 
     /**
+     * Retrieves the current temperature log as a list of [LoggedProbeDataPoint]s, organized by
+     * session, for the specified serial number.
+     *
+     * @param serialNumber the serial number of the probe.
+     * @return list of list of LoggedProbeDataPoints.
+     *
+     * @see LoggedProbeDataPoint
+     */
+    fun exportLogsForDeviceBySession(serialNumber: String): List<List<LoggedProbeDataPoint>>? {
+        return LogManager.instance.exportLogsForDeviceBySession(serialNumber)
+    }
+
+    /**
      * Retrieves the current temperature log as a comma separate value string with header.
      *
      * @param serialNumber Serial number to export
