@@ -589,7 +589,7 @@ class DeviceManager(
             val timestamp = dataPoint.timestamp.time
             val elapsed = (timestamp - startTime) / 1000.0f
             sb.appendLine(
-                String.format(
+                String.format(locale = Locale.US,
                     "%.3f,%s,%s,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%s,%s,%s,%s,%s,%s,%d",
                     elapsed,
                     dataPoint.sessionId.toString(),
