@@ -172,6 +172,16 @@ internal class RepeatedProbeBleDevice (
         sendUartRequest(NodeSetPredictionRequest(probeSerialNumber, setPointTemperatureC, mode, reqId))
     }
 
+    override fun sendConfigureFoodSafe(foodSafeData: FoodSafeData, reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
+        configureFoodSafeHandler.wait(uart.owner, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
+        sendUartRequest(NodeConfigureFoodSafeRequest(probeSerialNumber, foodSafeData, reqId))
+    }
+
+    override fun sendResetFoodSafe(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
+        resetFoodSafeHandler.wait(uart.owner, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
+        sendUartRequest(NodeResetFoodSafeRequest(probeSerialNumber, reqId))
+    }
+
     override fun sendLogRequest(minSequence: UInt, maxSequence: UInt, callback: (suspend (LogResponse) -> Unit)?) {
         logResponseCallback = callback
         sendUartRequest(NodeReadLogsRequest(probeSerialNumber, minSequence, maxSequence))
@@ -335,6 +345,13 @@ internal class RepeatedProbeBleDevice (
                     is NodeSetPredictionResponse -> {
                         setPredictionHandler.handled(message.success, null, message.requestId)
                     }
+                    is NodeConfigureFoodSafeResponse -> {
+                        configureFoodSafeHandler.handled(message.success, null, message.requestId)
+                    }
+                    is NodeResetFoodSafeResponse -> {
+                        resetFoodSafeHandler.handled(message.success, null, message.requestId)
+                    }
+
                     is NodeReadFirmwareRevisionResponse -> {
                         probeFirmwareRevisionHandler.handled(message.success, message, message.requestId)
                     }

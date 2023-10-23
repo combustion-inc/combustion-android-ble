@@ -320,6 +320,18 @@ internal class NetworkManager(
         }
     }
 
+    internal fun configureFoodSafe(serialNumber: String, foodSafeData: FoodSafeData, completionHandler: (Boolean) -> Unit) {
+        probeManagers[serialNumber]?.configureFoodSafe(foodSafeData, completionHandler) ?: run {
+            completionHandler(false)
+        }
+    }
+
+    internal fun resetFoodSafe(serialNumber: String, completionHandler: (Boolean) -> Unit) {
+        probeManagers[serialNumber]?.resetFoodSafe(completionHandler) ?: run {
+            completionHandler(false)
+        }
+    }
+
     @ExperimentalCoroutinesApi
     fun clearDevices() {
         probeManagers.forEach { (_, probe) -> probe.finish() }

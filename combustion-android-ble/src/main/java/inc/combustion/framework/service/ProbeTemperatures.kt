@@ -105,5 +105,13 @@ data class ProbeTemperatures(
             }
             return ProbeTemperatures(temperatures)
         }
+
+        /**
+         * Extension function that takes a 13-bit packed temperature and converts it to a
+         * floating-point value according to the Combustion BLE specification.
+         */
+        internal fun UShort.fromRawCount(): Double {
+            return ((this.toDouble() * 0.05) - 20.0)
+        }
     }
 }

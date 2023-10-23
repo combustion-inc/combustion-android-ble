@@ -40,6 +40,8 @@ internal enum class NodeMessageType(val value: UByte) {
     LOG(0x4u),
     SET_PREDICTION(0x5u),
     READ_OVER_TEMPERATURE(0x6u),
+    CONFIGURE_FOOD_SAFE(0x7u),
+    RESET_FOOD_SAFE(0x8u),
 
     CONNECTED(0x40u),
     DISCONNECTED(0x41u),

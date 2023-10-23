@@ -140,6 +140,16 @@ internal class ProbeBleDevice (
         sendUartRequest(SetPredictionRequest(setPointTemperatureC, mode))
     }
 
+    override fun sendConfigureFoodSafe(foodSafeData: FoodSafeData, reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
+        configureFoodSafeHandler.wait(uart.owner, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
+        sendUartRequest(ConfigureFoodSafeRequest(foodSafeData = foodSafeData))
+    }
+
+    override fun sendResetFoodSafe(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
+        resetFoodSafeHandler.wait(uart.owner, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
+        sendUartRequest(ResetFoodSafeRequest())
+    }
+
     override fun sendLogRequest(minSequence: UInt, maxSequence: UInt, callback: (suspend (LogResponse) -> Unit)?) {
         logResponseCallback = callback
         sendUartRequest(LogRequest(minSequence, maxSequence))
@@ -249,6 +259,8 @@ internal class ProbeBleDevice (
                     is SetColorResponse -> setColorHandler.handled(response.success, null)
                     is SetIDResponse -> setIdHandler.handled(response.success, null)
                     is SetPredictionResponse -> setPredictionHandler.handled(response.success, null)
+                    is ConfigureFoodSafeResponse -> configureFoodSafeHandler.handled(response.success, null)
+                    is ResetFoodSafeResponse -> resetFoodSafeHandler.handled(response.success, null)
                 }
             }
         }
