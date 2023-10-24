@@ -387,6 +387,19 @@ class DeviceManager(
     }
 
     /**
+     * Retrieves the current temperature log as a list of [LoggedProbeDataPoint]s, organized by
+     * session, for the specified serial number.
+     *
+     * @param serialNumber the serial number of the probe.
+     * @return list of list of LoggedProbeDataPoints.
+     *
+     * @see LoggedProbeDataPoint
+     */
+    fun exportLogsForDeviceBySession(serialNumber: String): List<List<LoggedProbeDataPoint>>? {
+        return LogManager.instance.exportLogsForDeviceBySession(serialNumber)
+    }
+
+    /**
      * Retrieves the current temperature log as a comma separate value string with header.
      *
      * @param serialNumber Serial number to export
@@ -589,7 +602,7 @@ class DeviceManager(
             val timestamp = dataPoint.timestamp.time
             val elapsed = (timestamp - startTime) / 1000.0f
             sb.appendLine(
-                String.format(
+                String.format(locale = Locale.US,
                     "%.3f,%s,%s,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%s,%s,%s,%s,%s,%s,%d",
                     elapsed,
                     dataPoint.sessionId.toString(),

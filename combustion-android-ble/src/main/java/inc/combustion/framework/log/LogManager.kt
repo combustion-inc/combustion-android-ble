@@ -278,6 +278,10 @@ internal class LogManager {
         return temperatureLogs[serialNumber]?.dataPoints
     }
 
+    fun exportLogsForDeviceBySession(serialNumber: String): List<List<LoggedProbeDataPoint>>? {
+        return temperatureLogs[serialNumber]?.dataPointsBySession
+    }
+
     fun createLogFlowForDevice(serialNumber: String, includeHistory: Boolean = true): Flow<LoggedProbeDataPoint> {
         return flow {
             probes[serialNumber]?.let { probeManager ->
