@@ -32,10 +32,12 @@ import android.app.Notification
 import android.app.NotificationManager
 import android.bluetooth.BluetoothManager
 import android.content.*
+import android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import androidx.annotation.RequiresApi
 import androidx.lifecycle.LifecycleService
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.*
@@ -113,7 +115,11 @@ class CombustionService : LifecycleService() {
 
     private fun startForeground() {
         serviceNotification?.let {
-            startForeground(notificationId, serviceNotification)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(notificationId, it, FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+            } else {
+                startForeground(notificationId, it)
+            }
         }
     }
 
