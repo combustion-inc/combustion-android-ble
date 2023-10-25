@@ -68,7 +68,7 @@ internal open class BleDevice (
     val productType: CombustionProductType = advertisement.productType,
 ) {
     companion object {
-        private const val REMOTE_RSSI_POLL_RATE_MS = 2000L
+        private const val REMOTE_RSSI_POLL_RATE_MS = 500L
         private const val IDLE_TIMEOUT_POLL_RATE_MS = 1000L
         const val DISCONNECT_TIMEOUT_MS = 500L
 
@@ -242,8 +242,7 @@ internal open class BleDevice (
         })
     }
 
-    fun observeRemoteRssi(@Suppress("UNUSED_PARAMETER") callback: (suspend (rssi: Int) -> Unit)? = null) {
-        /*
+    fun observeRemoteRssi(callback: (suspend (rssi: Int) -> Unit)? = null) {
         // maintain a list of objects that are observing RSSI updates for this device.
         callback?.let {
             rssiCallbacks.add(it)
@@ -256,8 +255,6 @@ internal open class BleDevice (
                 while(isActive) {
                     if(isConnected.get()) {
                         try {
-                            // TODO: DROID-106
-                            //
                             remoteRssi.set(peripheral.rssi())
                             exceptionCount = 0;
                         } catch (e: Exception) {
@@ -284,7 +281,6 @@ internal open class BleDevice (
             remoteRssiJob = job
             jobManager.addJob(job)
         }
-         */
     }
 
     fun observeAdvertisingPackets(filter: (advertisement: CombustionAdvertisingData) -> Boolean, callback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)? = null) {
