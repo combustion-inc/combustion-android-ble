@@ -19,6 +19,7 @@ def getVersionName = { ->
 }
 
 android {
+    namespace 'inc.combustion.framework'
     compileSdk 33
 
     defaultConfig {
@@ -69,14 +70,12 @@ android {
         checkDependencies true
     }
 
-    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).all {
-        kotlinOptions {
-            freeCompilerArgs += [
-                    '-Xopt-in=kotlin.ExperimentalUnsignedTypes',
-                    '-Xopt-in=com.juul.kable.ObsoleteKableApi',
-                    '-Xjvm-default=compatibility'
-            ]
-        }
+    tasks.withType(KotlinCompile).configureEach {
+        kotlinOptions.freeCompilerArgs += [
+            '-opt-in=kotlin.ExperimentalUnsignedTypes',
+            '-opt-in=com.juul.kable.ObsoleteKableApi',
+            '-Xjvm-default=all-compatibility'
+        ]
     }
 }
 
