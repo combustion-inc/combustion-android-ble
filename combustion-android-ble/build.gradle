@@ -16,7 +16,7 @@ def getVersionName = { ->
         return stdout.toString().trim()
     }
     catch (ignored) {
-        return null;
+        return null
     }
 }
 
@@ -78,6 +78,10 @@ android {
             '-opt-in=com.juul.kable.ObsoleteKableApi',
             '-Xjvm-default=all-compatibility'
         ]
+    }
+
+    tasks.withType(KotlinCompile).configureEach {
+        kotlinOptions.allWarningsAsErrors = it.name.contains("Release")
     }
 }
 
