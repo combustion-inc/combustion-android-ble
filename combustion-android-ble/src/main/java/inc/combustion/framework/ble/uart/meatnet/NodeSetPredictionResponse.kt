@@ -51,7 +51,7 @@ internal class NodeSetPredictionResponse (
         const val PAYLOAD_LENGTH: UByte = 0u
 
         fun fromData(
-            payload: UByteArray,
+            @Suppress("UNUSED_PARAMETER") payload: UByteArray,
             success: Boolean,
             requestId: UInt,
             responseId: UInt,

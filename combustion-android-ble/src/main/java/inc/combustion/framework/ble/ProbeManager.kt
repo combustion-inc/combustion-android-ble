@@ -457,7 +457,7 @@ internal class ProbeManager(
         base.observeAdvertisingPackets(serialNumber, base.mac) { advertisement -> handleAdvertisingPackets(base, advertisement) }
         base.observeConnectionState { state -> handleConnectionState(base, state) }
         base.observeOutOfRange(OUT_OF_RANGE_TIMEOUT){ handleOutOfRange() }
-        base.observeProbeStatusUpdates { status -> handleProbeStatus(base, status) }
+        base.observeProbeStatusUpdates { status -> handleProbeStatus(status) }
         base.observeRemoteRssi { rssi ->  handleRemoteRssi(base, rssi) }
     }
 
@@ -485,7 +485,7 @@ internal class ProbeManager(
         })
     }
 
-    private suspend fun handleProbeStatus(device: ProbeBleDeviceBase, status: ProbeStatus) {
+    private suspend fun handleProbeStatus(status: ProbeStatus) {
         if(arbitrator.shouldUpdateDataFromProbeStatus(status, sessionInfo)) {
             updateLink()
             updateBatteryIdColor(status.batteryStatus, status.id, status.color)
