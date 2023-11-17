@@ -28,7 +28,6 @@
 
 package inc.combustion.framework.ble
 
-import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -63,10 +62,11 @@ internal class NetworkManager(
         data class RepeatedProbeHolder(val repeatedProbe: RepeatedProbeBleDevice) : LinkHolder()
     }
 
-    internal data class FlowHowHolder(
+    internal data class FlowHolder(
         var mutableDiscoveredProbesFlow: MutableSharedFlow<ProbeDiscoveredEvent>,
         var mutableNetworkState: MutableStateFlow<NetworkState>,
         var mutableFirmwareUpdateState: MutableStateFlow<FirmwareState>,
+        var mutableDeviceProximityFlow: MutableSharedFlow<DeviceDiscoveredEvent>,
     )
 
     companion object {
@@ -79,10 +79,15 @@ internal class NetworkManager(
         private lateinit var INSTANCE: NetworkManager
         private val initialized = AtomicBoolean(false)
 
-        internal var flowHolder = FlowHowHolder(
-            MutableSharedFlow(FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.SUSPEND),
-            MutableStateFlow(NetworkState()),
-            MutableStateFlow(FirmwareState(listOf()))
+        internal var flowHolder = FlowHolder(
+            mutableDiscoveredProbesFlow = MutableSharedFlow(
+                FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.SUSPEND
+            ),
+            mutableNetworkState = MutableStateFlow(NetworkState()),
+            mutableFirmwareUpdateState = MutableStateFlow(FirmwareState(listOf())),
+            mutableDeviceProximityFlow = MutableSharedFlow(
+                FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.SUSPEND
+            ),
         )
 
         fun initialize(owner: LifecycleOwner, adapter: BluetoothAdapter, settings: DeviceManager.Settings)  {
@@ -123,6 +128,11 @@ internal class NetworkManager(
             get() {
                 return flowHolder.mutableFirmwareUpdateState.asStateFlow()
             }
+
+        val deviceProximityFlow: SharedFlow<DeviceDiscoveredEvent>
+            get() {
+                return flowHolder.mutableDeviceProximityFlow.asSharedFlow()
+            }
     }
 
     private val jobManager = JobManager()
@@ -130,6 +140,7 @@ internal class NetworkManager(
     private val meatNetLinks = hashMapOf<LinkID, LinkHolder>()
     private val probeManagers = hashMapOf<String, ProbeManager>()
     private val deviceInformationDevices = hashMapOf<DeviceID, DeviceInformationBleDevice>()
+    private val probeProximityDevices = mutableSetOf<String>()
 
     internal val bluetoothAdapterStateIntentFilter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
     internal val bluetoothAdapterStateReceiver: BroadcastReceiver = object : BroadcastReceiver() {
@@ -276,6 +287,10 @@ internal class NetworkManager(
             flowHolder.mutableDiscoveredProbesFlow.emit(
                 ProbeDiscoveredEvent.ProbeDiscovered(probe.probeSerialNumber)
             )
+
+            flowHolder.mutableDeviceProximityFlow.emit(
+                DeviceDiscoveredEvent.ProbeDiscovered(probe.probeSerialNumber)
+            )
         }
     }
 
@@ -285,6 +300,10 @@ internal class NetworkManager(
 
     internal fun probeState(serialNumber: String): Probe? {
         return probeManagers[serialNumber]?.probe
+    }
+
+    internal fun deviceSmoothedRssiFlow(serialNumber: String): StateFlow<Double?>? {
+        return probeManagers[serialNumber]?.probeSmoothedRssiFlow
     }
 
     internal fun connect(serialNumber: String) {
@@ -339,10 +358,15 @@ internal class NetworkManager(
         probeManagers.clear()
         devices.clear()
         meatNetLinks.clear()
+        probeProximityDevices.clear()
 
         // clear the discovered probes flow
         flowHolder.mutableDiscoveredProbesFlow.resetReplayCache()
         flowHolder.mutableDiscoveredProbesFlow.tryEmit(ProbeDiscoveredEvent.DevicesCleared)
+
+        // and the proximity flow
+        flowHolder.mutableDeviceProximityFlow.resetReplayCache()
+        flowHolder.mutableDeviceProximityFlow.tryEmit(DeviceDiscoveredEvent.DevicesCleared)
 
         flowHolder.mutableNetworkState.value = NetworkState()
         flowHolder.mutableFirmwareUpdateState.value = FirmwareState(listOf())
@@ -438,6 +462,13 @@ internal class NetworkManager(
                     if(manageMeatNetDevice(advertisingData)) {
                         flowHolder.mutableDiscoveredProbesFlow.emit(
                             ProbeDiscoveredEvent.ProbeDiscovered(advertisingData.probeSerialNumber)
+                        )
+                    }
+
+                    if (!probeProximityDevices.contains(advertisingData.probeSerialNumber)) {
+                        probeProximityDevices.plus(advertisingData.probeSerialNumber)
+                        flowHolder.mutableDeviceProximityFlow.emit(
+                            DeviceDiscoveredEvent.ProbeDiscovered(advertisingData.probeSerialNumber)
                         )
                     }
                 }

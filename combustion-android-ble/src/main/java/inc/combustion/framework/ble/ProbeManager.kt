@@ -51,7 +51,7 @@ import kotlinx.coroutines.flow.*
  * manages only direct links to temperature probes.  The class is responsible for presenting
  * a common interface over both scenarios.
  *
- * @property owner LifecycleOnwer for coroutine scope.
+ * @property owner LifecycleOwner for coroutine scope.
  * @property settings Service settings.
  * @constructor
  * Constructs a probe manager
@@ -73,6 +73,8 @@ internal class ProbeManager(
         private const val PROBE_INSTANT_READ_IDLE_TIMEOUT_MS = 5000L
         private const val IGNORE_PROBES = false
         private const val IGNORE_REPEATERS = false
+
+        private const val MIN_RSSI = -128.0
     }
 
     // encapsulates logic for managing network data links
@@ -91,6 +93,12 @@ internal class ProbeManager(
 
     // the flow that is consumed to get state and date updates
     val probeFlow = _probe.asStateFlow()
+
+    // holds the current smoothed RSSI value for this probe
+    private var _probeSmoothedRssi = MutableStateFlow<Double?>(null)
+
+    // the flow that is consumed to get smoothed RSSI updates
+    val probeSmoothedRssiFlow = _probeSmoothedRssi.asStateFlow()
 
     // the flow that produces ProbeStatus updates from MeatNet
     private val _normalModeProbeStatusFlow = MutableSharedFlow<ProbeStatus>(
@@ -592,6 +600,11 @@ internal class ProbeManager(
             )
         }
 
+        if (device.productType == CombustionProductType.PROBE) {
+            // Update smoothed rssi flow
+            _probeSmoothedRssi.value = getSmoothedRssi(advertisement.rssi)
+        }
+
         if(arbitrator.shouldConnect(device)) {
             Log.i(LOG_TAG, "PM($serialNumber) automatically connecting to ${device.id} (${device.productType}) on link ${device.linkId}")
             device.connect()
@@ -652,6 +665,11 @@ internal class ProbeManager(
     }
 
     private fun handleRemoteRssi(device: ProbeBleDeviceBase, rssi: Int) {
+        arbitrator.directLink?.let {
+            // Update rssi flow for this directly connected probe
+            _probeSmoothedRssi.value = getSmoothedRssi(rssi)
+        }
+
         if(arbitrator.shouldUpdateOnRemoteRssi(device)) {
             _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(rssi = rssi))
         }
@@ -947,5 +965,22 @@ internal class ProbeManager(
 
     private fun makeRequestId(): UInt {
         return (0u..UInt.MAX_VALUE).random()
+    }
+
+    private val rssiEwma = Ewma(span = 6u)
+
+    private fun getSmoothedRssi(rssi: Int): Double? {
+        // Ignore unreasonable values
+        if (rssi > 0) {
+            return rssiEwma.value
+        }
+
+        if (rssi <= MIN_RSSI) {
+            rssiEwma.reset()
+        } else {
+            rssiEwma.put(rssi.toDouble())
+        }
+
+        return rssiEwma.value
     }
 }
