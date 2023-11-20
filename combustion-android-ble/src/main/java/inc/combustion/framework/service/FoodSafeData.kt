@@ -1,7 +1,7 @@
 /*
  * Project: Combustion Inc. Android Framework
  * File: FoodSafeData.kt
- * Author:
+ * Author: Nick Helseth <nick@sasq.io>
  *
  * MIT License
  *
@@ -28,7 +28,6 @@
 
 package inc.combustion.framework.service
 
-import android.util.Log
 import inc.combustion.framework.ble.shl
 import inc.combustion.framework.ble.shr
 import kotlin.random.Random
@@ -43,7 +42,7 @@ sealed class FoodSafeData {
         Integrated,
         ;
 
-        val toRaw: UByte
+        internal val toRaw: UByte
             get() {
                 return when (this) {
                     Simplified -> 0u
@@ -56,7 +55,7 @@ sealed class FoodSafeData {
         }
 
         companion object {
-            fun fromRaw(raw: UInt): Mode {
+            internal fun fromRaw(raw: UInt): Mode {
                 return when (raw) {
                     0u -> Simplified
                     1u -> Integrated
@@ -78,7 +77,7 @@ sealed class FoodSafeData {
             }
         }
 
-        val toRaw: UByte
+        internal val toRaw: UByte
             get() {
                 return when (this) {
                     Immediately -> 0u
@@ -87,7 +86,7 @@ sealed class FoodSafeData {
             }
 
         companion object {
-            fun fromRaw(raw: UInt): Serving {
+            internal fun fromRaw(raw: UInt): Serving {
                 return when (raw) {
                     0u -> Immediately
                     1u -> CookAndChill
@@ -135,7 +134,7 @@ sealed class FoodSafeData {
                 }
             }
 
-            val toRaw: UShort
+            internal val toRaw: UShort
                 get() {
                     return when (this) {
                         Default -> 0u
@@ -155,7 +154,7 @@ sealed class FoodSafeData {
                 }
 
             companion object {
-                fun fromRaw(raw: UInt): Product {
+                internal fun fromRaw(raw: UInt): Product {
                     return when (raw) {
                         0u -> Default
                         1u -> AnyPoultry
@@ -219,7 +218,7 @@ sealed class FoodSafeData {
                 }
             }
 
-            val toRaw: UShort
+            internal val toRaw: UShort
                 get() {
                     return when (this) {
                         Default -> 0u
@@ -243,7 +242,7 @@ sealed class FoodSafeData {
                 }
 
             companion object {
-                fun fromRaw(raw: UInt): Product {
+                internal fun fromRaw(raw: UInt): Product {
                     return when (raw) {
                         0u -> Default
                         1u -> Beef
@@ -277,7 +276,7 @@ sealed class FoodSafeData {
         )
     }
 
-    val toRaw: UByteArray
+    internal val toRaw: UByteArray
         get() {
             val data = UByteArray(SIZE_BYTES)
 
@@ -293,10 +292,10 @@ sealed class FoodSafeData {
 
             data[0] =
                 rawMode or
-                (rawProduct.toUShort() shl 3).toUByte()
+                (rawProduct shl 3).toUByte()
 
             data[1] =
-                (rawProduct.toUShort() shr 5).toUByte() or
+                (rawProduct shr 5).toUByte() or
                 (serving.toRaw.toUShort() shl 5).toUByte()
 
             val toPacked: (Double) -> UInt = { value -> (value / 0.05).toUInt() and 0x1FFFu }
@@ -354,9 +353,9 @@ sealed class FoodSafeData {
         }
 
     companion object {
-        const val SIZE_BYTES = 10
+        internal const val SIZE_BYTES = 10
 
-        fun fromRawData(data: UByteArray): FoodSafeData? {
+        internal fun fromRawData(data: UByteArray): FoodSafeData? {
             if (data.size < SIZE_BYTES) {
                 throw IllegalArgumentException("Invalid buffer")
             }

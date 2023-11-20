@@ -1,7 +1,7 @@
 /*
  * Project: Combustion Inc. Android Framework
  * File: FoodSafeStatus.kt
- * Author:
+ * Author: Nick Helseth <nick@sasq.io>
  *
  * MIT License
  *
@@ -53,7 +53,7 @@ data class FoodSafeStatus(
         }
 
         companion object {
-            fun fromRaw(raw: UInt): State {
+            internal fun fromRaw(raw: UInt): State {
                 return when(raw) {
                     0u -> NotSafe
                     1u -> Safe
@@ -65,8 +65,8 @@ data class FoodSafeStatus(
     }
 
     companion object {
-        const val SIZE_BYTES = 4
-        fun fromRawData(data: UByteArray): FoodSafeStatus? {
+        internal const val SIZE_BYTES = 4
+        internal fun fromRawData(data: UByteArray): FoodSafeStatus? {
             if (data.size < SIZE_BYTES) {
                 throw IllegalArgumentException("Invalid buffer")
             }

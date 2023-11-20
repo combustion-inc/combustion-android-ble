@@ -1,7 +1,7 @@
 /*
  * Project: Combustion Inc. Android Framework
  * File: FoodSafeDataTest.kt
- * Author:
+ * Author: Nick Helseth <nick@sasq.io>
  *
  * MIT License
  *
@@ -112,22 +112,43 @@ class FoodSafeDataTest {
         assertEquals(FoodSafeData.Integrated.Product.Beef, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
+        assertEquals(FoodSafeData.Integrated.Product.BeefGround, toProduct(raw))
+        productValue += 1u
+        raw[0] = (0x01u or (productValue shl 3)).toUByte()
         assertEquals(FoodSafeData.Integrated.Product.Chicken, toProduct(raw))
+        productValue += 1u
+        raw[0] = (0x01u or (productValue shl 3)).toUByte()
+        assertEquals(FoodSafeData.Integrated.Product.ChickenGround, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
         assertEquals(FoodSafeData.Integrated.Product.Pork, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
+        assertEquals(FoodSafeData.Integrated.Product.PorkGround, toProduct(raw))
+        productValue += 1u
+        raw[0] = (0x01u or (productValue shl 3)).toUByte()
         assertEquals(FoodSafeData.Integrated.Product.Ham, toProduct(raw))
+        productValue += 1u
+        raw[0] = (0x01u or (productValue shl 3)).toUByte()
+        assertEquals(FoodSafeData.Integrated.Product.HamGround, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
         assertEquals(FoodSafeData.Integrated.Product.Turkey, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
+        assertEquals(FoodSafeData.Integrated.Product.TurkeyGround, toProduct(raw))
+        productValue += 1u
+        raw[0] = (0x01u or (productValue shl 3)).toUByte()
         assertEquals(FoodSafeData.Integrated.Product.Lamb, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
+        assertEquals(FoodSafeData.Integrated.Product.LambGround, toProduct(raw))
+        productValue += 1u
+        raw[0] = (0x01u or (productValue shl 3)).toUByte()
         assertEquals(FoodSafeData.Integrated.Product.Fish, toProduct(raw))
+        productValue += 1u
+        raw[0] = (0x01u or (productValue shl 3)).toUByte()
+        assertEquals(FoodSafeData.Integrated.Product.FishGround, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
         assertEquals(FoodSafeData.Integrated.Product.DairyMilkLessThan10PercentFat, toProduct(raw))

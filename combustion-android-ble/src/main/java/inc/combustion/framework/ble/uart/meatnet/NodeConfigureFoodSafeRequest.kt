@@ -1,7 +1,7 @@
 /*
  * Project: Combustion Inc. Android Framework
  * File: NodeConfigureFoodSafeRequest.kt
- * Author:
+ * Author: Nick Helseth <nick@sasq.io>
  *
  * MIT License
  *
