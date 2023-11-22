@@ -28,8 +28,10 @@
 
 package inc.combustion.framework.service
 
+import inc.combustion.framework.ble.equalsDelta
 import inc.combustion.framework.ble.shl
 import inc.combustion.framework.ble.shr
+import kotlin.math.roundToInt
 import kotlin.random.Random
 import kotlin.random.nextUInt
 
@@ -273,7 +275,19 @@ sealed class FoodSafeData {
             val referenceTemperature: Double = 0.0,
             val dValueAtRt: Double = 0.0,
             val targetLogReduction: Double = 0.0,
-        )
+        ) {
+            override fun equals(other: Any?): Boolean {
+                if (other !is CompletionCriteria) {
+                    return false
+                }
+
+                return selectedThresholdReferenceTemperature.equalsDelta(other.selectedThresholdReferenceTemperature) &&
+                        zValue.equalsDelta(other.zValue) &&
+                        referenceTemperature.equalsDelta(other.referenceTemperature) &&
+                        dValueAtRt.equalsDelta(other.dValueAtRt) &&
+                        targetLogReduction.equalsDelta(other.targetLogReduction)
+            }
+        }
     }
 
     internal val toRaw: UByteArray
@@ -298,7 +312,9 @@ sealed class FoodSafeData {
                 (rawProduct shr 5).toUByte() or
                 (serving.toRaw.toUShort() shl 5).toUByte()
 
-            val toPacked: (Double) -> UInt = { value -> (value / 0.05).toUInt() and 0x1FFFu }
+            val toPacked: (Double) -> UInt = {
+                value -> (value / 0.05).roundToInt().toUInt() and 0x1FFFu
+            }
 
             val rawSelectedThreshold = toPacked(when (this) {
                 is Simplified -> 0.0

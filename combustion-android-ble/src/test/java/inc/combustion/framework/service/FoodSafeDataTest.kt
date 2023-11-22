@@ -308,7 +308,7 @@ class FoodSafeDataTest {
                 selectedThresholdReferenceTemperature = 273.05,
                 zValue = 136.5,
                 referenceTemperature = 273.05,
-                dValueAtRt = 136.5,
+                dValueAtRt = 229.7,
                 targetLogReduction = 17.0,
             )
         )
