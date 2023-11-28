@@ -238,8 +238,8 @@ internal class LogManager {
 
         // prepare log for the request and determine the needed range
         val range =  log.prepareForLogRequest(
-            minSequenceNumber ?: probeManager.minSequenceNumber,
-            maxSequenceNumber ?: probeManager.maxSequenceNumber,
+            minSequenceNumber ?: probeManager.minSequenceNumber ?: 0u,
+            maxSequenceNumber ?: probeManager.maxSequenceNumber ?: 0u,
             sessionInfo
         )
 
