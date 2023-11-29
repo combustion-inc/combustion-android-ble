@@ -45,7 +45,9 @@ internal data class ProbeStatus(
     val mode: ProbeMode,
     val batteryStatus: ProbeBatteryStatus,
     val virtualSensors: ProbeVirtualSensors,
-    val predictionStatus: PredictionStatus
+    val predictionStatus: PredictionStatus,
+    val foodSafeData: FoodSafeData?,
+    val foodSafeStatus: FoodSafeStatus?,
 ) {
     val virtualCoreTemperature: Double
         get() {
@@ -63,15 +65,20 @@ internal data class ProbeStatus(
         }
 
     companion object {
+        const val MIN_RAW_SIZE = 30
+        const val RAW_SIZE_INCLUDING_FOOD_SAFE = MIN_RAW_SIZE + FoodSafeData.SIZE_BYTES + FoodSafeStatus.SIZE_BYTES
+
         private const val MIN_SEQ_INDEX = 0
         private const val MAX_SEQ_INDEX = 4
         private val TEMPERATURE_RANGE = 8..20
         private val MODE_COLOR_ID_RANGE = 21..21
         private val STATUS_RANGE = 22..22
         private val PREDICTION_STATUS_RANGE = 23 until 23 + PredictionStatus.SIZE_BYTES
+        private val FOOD_SAFE_DATA_RANGE = 30 until 30 + FoodSafeData.SIZE_BYTES
+        private val FOOD_SAFE_STATUS_RANGE = 39 until 39 + FoodSafeStatus.SIZE_BYTES
 
         fun fromRawData(data: UByteArray): ProbeStatus? {
-            if (data.size < 30) return null
+            if (data.size < MIN_RAW_SIZE) return null
 
             val minSequenceNumber = data.getLittleEndianUInt32At(MIN_SEQ_INDEX)
             val maxSequenceNumber = data.getLittleEndianUInt32At(MAX_SEQ_INDEX)
@@ -85,16 +92,30 @@ internal data class ProbeStatus(
             val batteryStatus = ProbeBatteryStatus.fromUByte(deviceStatus)
             val virtualSensors = ProbeVirtualSensors.fromDeviceStatus(deviceStatus)
 
+            val dataIncludesFoodSafe = data.size > MIN_RAW_SIZE
+            val foodSafeData = if (dataIncludesFoodSafe) {
+                    FoodSafeData.fromRawData(data.sliceArray(FOOD_SAFE_DATA_RANGE))
+                } else {
+                    null
+                }
+            val foodSafeStatus = if (dataIncludesFoodSafe) {
+                    FoodSafeStatus.fromRawData(data.sliceArray(FOOD_SAFE_STATUS_RANGE))
+                } else {
+                    null
+                }
+
             return ProbeStatus(
-                minSequenceNumber,
-                maxSequenceNumber,
-                temperatures,
-                probeID,
-                probeColor,
-                probeMode,
-                batteryStatus,
-                virtualSensors,
-                predictionStatus
+                minSequenceNumber = minSequenceNumber,
+                maxSequenceNumber = maxSequenceNumber,
+                temperatures = temperatures,
+                id = probeID,
+                color = probeColor,
+                mode = probeMode,
+                batteryStatus = batteryStatus,
+                virtualSensors = virtualSensors,
+                predictionStatus = predictionStatus,
+                foodSafeData = foodSafeData,
+                foodSafeStatus = foodSafeStatus,
             )
         }
     }

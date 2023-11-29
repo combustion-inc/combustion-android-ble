@@ -433,6 +433,62 @@ internal class ProbeManager(
         }
     }
 
+    fun configureFoodSafe(foodSafeData: FoodSafeData, completionHandler: (Boolean) -> Unit) {
+        simulatedProbe?.sendConfigureFoodSafe(foodSafeData) { status, _ ->
+            completionHandler(status)
+        } ?: run {
+            // if there is a direct link to the probe, then use that
+            arbitrator.directLink?.sendConfigureFoodSafe(foodSafeData) { status, _ ->
+                completionHandler(status)
+            } ?: run {
+                val nodeLinks = arbitrator.connectedNodeLinks
+                if(nodeLinks.isNotEmpty()) {
+                    var handled = false
+                    val requestId = makeRequestId()
+                    nodeLinks.forEach {
+                        it.sendConfigureFoodSafe(foodSafeData, requestId) {status, _ ->
+                            if(!handled) {
+                                handled = true
+                                completionHandler(status)
+                            }
+                        }
+                    }
+
+                } else {
+                    completionHandler(false)
+                }
+            }
+        }
+    }
+
+    fun resetFoodSafe(completionHandler: (Boolean) -> Unit) {
+        simulatedProbe?.sendResetFoodSafe() { status, _ ->
+            completionHandler(status)
+        } ?: run {
+            // if there is a direct link to the probe, then use that
+            arbitrator.directLink?.sendResetFoodSafe() { status, _ ->
+                completionHandler(status)
+            } ?: run {
+                val nodeLinks = arbitrator.connectedNodeLinks
+                if(nodeLinks.isNotEmpty()) {
+                    var handled = false
+                    val requestId = makeRequestId()
+                    nodeLinks.forEach {
+                        it.sendResetFoodSafe(requestId) {status, _ ->
+                            if(!handled) {
+                                handled = true
+                                completionHandler(status)
+                            }
+                        }
+                    }
+
+                } else {
+                    completionHandler(false)
+                }
+            }
+        }
+    }
+
     fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt) {
         simulatedProbe?.sendLogRequest(startSequenceNumber, endSequenceNumber) {
             _logResponseFlow.emit(it)
@@ -776,6 +832,7 @@ internal class ProbeManager(
 
         updateTemperatures(status.temperatures, status.virtualSensors)
         predictionManager.updatePredictionStatus(status.predictionStatus, status.maxSequenceNumber)
+        updateFoodSafe(status.foodSafeData, status.foodSafeStatus)
     }
 
     private fun updateInstantRead(value: Double?) {
@@ -838,6 +895,13 @@ internal class ProbeManager(
                 instantReadRawCelsius = null,
             )
         }
+    }
+
+    private fun updateFoodSafe(foodSafeData: FoodSafeData?, foodSafeStatus: FoodSafeStatus?) {
+        _probe.value = _probe.value.copy(
+            foodSafeData = foodSafeData,
+            foodSafeStatus = foodSafeStatus,
+        )
     }
 
     private fun updateLink() {

@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: MessageType.kt
- * Author: https://github.com/miwright2
+ * File: NodeConfigureFoodSafeRequest.kt
+ * Author: Nick Helseth <nick@sasq.io>
  *
  * MIT License
  *
- * Copyright (c) 2022. Combustion Inc.
+ * Copyright (c) 2023. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,24 +25,34 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package inc.combustion.framework.ble.uart
 
-/**
- * Enumerates message types in Combustion's UART protocol.
- *
- * @property value byte value for message type.
- */
-internal enum class MessageType(val value: UByte) {
-    SET_PROBE_ID(0x01u),
-    SET_PROBE_COLOR(0x02u),
-    READ_SESSION_INFO(0x03u),
-    LOG(0x04u),
-    SET_PREDICTION(0x05u),
-    CONFIGURE_FOOD_SAFE(0x07u),
-    RESET_FOOD_SAFE(0x08u),
-    ;
+package inc.combustion.framework.ble.uart.meatnet
 
+import inc.combustion.framework.ble.putLittleEndianUInt32At
+import inc.combustion.framework.service.FoodSafeData
+
+internal class NodeConfigureFoodSafeRequest(
+    val serialNumber: String,
+    foodSafeData: FoodSafeData,
+    requestId: UInt? = null,
+) : NodeRequest(
+    outgoingPayload = populatePayload(serialNumber = serialNumber, foodSafeData = foodSafeData),
+    messageType = NodeMessageType.CONFIGURE_FOOD_SAFE,
+    requestId = requestId,
+) {
     companion object {
-        fun fromUByte(value: UByte) = values().firstOrNull { it.value == value }
+        val PAYLOAD_LENGTH: UByte = (4 + FoodSafeData.SIZE_BYTES).toUByte()
+
+        fun populatePayload(
+            serialNumber: String,
+            foodSafeData: FoodSafeData,
+        ) : UByteArray {
+            val payload = UByteArray(PAYLOAD_LENGTH.toInt())
+
+            payload.putLittleEndianUInt32At(0, serialNumber.toLong(radix = 16).toUInt())
+            foodSafeData.toRaw.copyInto(payload, 4)
+
+            return payload
+        }
     }
 }

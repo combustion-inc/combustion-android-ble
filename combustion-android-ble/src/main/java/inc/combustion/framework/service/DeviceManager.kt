@@ -528,6 +528,24 @@ class DeviceManager(
     }
 
     /**
+     * Set the food safety configuration on the probe with the serial number [serialNumber] to
+     * [foodSafeData], calling [completionHandler] with the success value on completion.
+     */
+    fun configureFoodSafe(serialNumber: String, foodSafeData: FoodSafeData, completionHandler: (Boolean) -> Unit) {
+        Log.i(LOG_TAG, "Setting food safe configuration: $foodSafeData")
+        NetworkManager.instance.configureFoodSafe(serialNumber, foodSafeData, completionHandler)
+    }
+
+    /**
+     * Reset the food safety configuration on the probe with the serial number [serialNumber],
+     * calling [completionHandler] with the success value on completion.
+     */
+    fun resetFoodSafe(serialNumber: String, completionHandler: (Boolean) -> Unit) {
+        Log.i(LOG_TAG, "Resetting food safe configuration")
+        NetworkManager.instance.resetFoodSafe(serialNumber, completionHandler)
+    }
+
+    /**
      * State flow containing the firmware details for all nodes on the network.
      */
     fun getNetworkFirmwareState(): StateFlow<FirmwareState> {
