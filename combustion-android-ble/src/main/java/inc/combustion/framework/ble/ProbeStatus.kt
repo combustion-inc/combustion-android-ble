@@ -66,7 +66,7 @@ internal data class ProbeStatus(
 
     companion object {
         const val MIN_RAW_SIZE = 30
-        const val RAW_SIZE_INCLUDING_FOOD_SAFE = 44
+        const val RAW_SIZE_INCLUDING_FOOD_SAFE = MIN_RAW_SIZE + FoodSafeData.SIZE_BYTES + FoodSafeStatus.SIZE_BYTES
 
         private const val MIN_SEQ_INDEX = 0
         private const val MAX_SEQ_INDEX = 4

@@ -33,10 +33,14 @@ import inc.combustion.framework.ble.shr
 import kotlin.random.Random
 import kotlin.random.nextUInt
 
+/**
+ * See BLE spec definition here: https://github.com/combustion-inc/combustion-documentation/blob/main/probe_ble_specification.rst#food-safe-status.
+ */
 data class FoodSafeStatus(
     val state: State,
     val logReduction: Double,
     val secondsAboveThreshold: UInt,
+    val sequenceNumber: UInt,
 ) {
     enum class State {
         NotSafe,
@@ -65,7 +69,7 @@ data class FoodSafeStatus(
     }
 
     companion object {
-        internal const val SIZE_BYTES = 4
+        internal const val SIZE_BYTES = 8
         internal fun fromRawData(data: UByteArray): FoodSafeStatus? {
             if (data.size < SIZE_BYTES) {
                 throw IllegalArgumentException("Invalid buffer")
@@ -79,12 +83,19 @@ data class FoodSafeStatus(
                 ((data[1].toUShort() and 0b1111_1000u) shr 3) or
                 ((data[2].toUShort() and 0b1111_1111u) shl 5) or
                 ((data[3].toUShort() and 0b0000_0111u) shl 13)
+            val sequenceNumber =
+                ((data[3].toUInt() and 0b1111_1000u) shr 3) or
+                ((data[4].toUInt() and 0xFFu) shl 5) or
+                ((data[5].toUInt() and 0xFFu) shl 13) or
+                ((data[6].toUInt() and 0xFFu) shl 21) or
+                ((data[7].toUInt() and 0b0000_0111u) shl 29)
 
             return try {
                 FoodSafeStatus(
                     state = State.fromRaw(rawState.toUInt()),
                     logReduction = rawLogReduction.toDouble() * 0.1,
                     secondsAboveThreshold = secondsAboveThreshold.toUInt(),
+                    sequenceNumber = sequenceNumber.toUInt(),
                 )
             } catch (e: Exception) {
                 null
@@ -95,12 +106,14 @@ data class FoodSafeStatus(
             state = State.NotSafe,
             logReduction = 0.0,
             secondsAboveThreshold = 0u,
+            sequenceNumber = 0u,
         )
 
         val RANDOM = FoodSafeStatus(
             state = State.fromRaw(Random.nextUInt(until = 3u)),
             logReduction = Random.nextDouble(until = 150.0),
-            secondsAboveThreshold = Random.nextUInt(until = 7u * 60u * 60u)
+            secondsAboveThreshold = Random.nextUInt(until = 7u * 60u * 60u),
+            sequenceNumber = Random.nextUInt(),
         )
     }
 }

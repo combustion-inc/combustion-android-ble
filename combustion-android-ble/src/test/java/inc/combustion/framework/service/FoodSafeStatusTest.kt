@@ -39,7 +39,7 @@ class FoodSafeStatusTest {
             foodSafeStatus!!.state
         }
 
-        val raw = ubyteArrayOf(0x00u, 0x00u, 0x00u, 0x00u)
+        val raw = ubyteArrayOf(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u)
 
         raw[0] = 0b1111_1000u
         assertEquals(FoodSafeStatus.State.NotSafe, toState(raw))
@@ -56,7 +56,7 @@ class FoodSafeStatusTest {
 
     @Test
     fun `fromRaw Log Reduction`() {
-        val raw = ubyteArrayOf(0x00u, 0x00u, 0x00u, 0x00u)
+        val raw = ubyteArrayOf(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u)
 
         raw[0] = 0b1010_1000u
         raw[1] = 0b1111_1010u
@@ -69,27 +69,56 @@ class FoodSafeStatusTest {
 
     @Test
     fun `fromRaw Seconds Above Threshold`() {
-        val raw = ubyteArrayOf(0x00u, 0x00u, 0x00u, 0x00u)
+        val raw = ubyteArrayOf(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u)
 
         raw[1] = 0b1_0101_111u
         raw[2] = 0b1_0101_010u
-        raw[3] = 0b1_0101_010u
+        raw[3] = 0b1_1111_010u
         assertEquals(21845u, FoodSafeStatus.fromRawData(raw)!!.secondsAboveThreshold)
 
         raw[1] = 0b0_1010_111u
         raw[2] = 0b0_1010_101u
-        raw[3] = 0b0_1010_101u
+        raw[3] = 0b1_1111_101u
         assertEquals(43690u, FoodSafeStatus.fromRawData(raw)!!.secondsAboveThreshold)
     }
 
     @Test
+    fun `fromRaw Sequence Number`() {
+        val raw = ubyteArrayOf(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u)
+
+        raw[3] = 0b1_0101_111u
+        raw[4] = 0b1_0101_010u
+        raw[5] = 0b1_0101_010u
+        raw[6] = 0b1_0101_010u
+        raw[7] = 0b1_1111_010u
+        assertEquals(0x55555555u, FoodSafeStatus.fromRawData(raw)!!.sequenceNumber)
+
+        raw[3] = 0b0_1010_111u
+        raw[4] = 0b0_1010_101u
+        raw[5] = 0b0_1010_101u
+        raw[6] = 0b0_1010_101u
+        raw[7] = 0b1_1111_101u
+        assertEquals(0xAAAAAAAAu, FoodSafeStatus.fromRawData(raw)!!.sequenceNumber)
+    }
+
+    @Test
     fun `toRaw and fromRaw translate`() {
-        val raw = ubyteArrayOf(0b1010_1010u, 0b0101_0010u, 0b0101_0101u, 0b0101_0101u)
+        val raw = ubyteArrayOf(
+            0b1010_1010u,
+            0b0101_0010u,
+            0b0101_0101u,
+            0b0101_0101u,
+            0b0101_0101u,
+            0b0101_0101u,
+            0b0101_0101u,
+            0b0101_0101u,
+        )
 
         val foodSafeStatus = FoodSafeStatus(
             state = FoodSafeStatus.State.SafetyImpossible,
             logReduction = 8.5,
             secondsAboveThreshold = 43690u,
+            sequenceNumber = 0xAAAAAAAAu,
         )
 
         assertEquals(FoodSafeStatus.fromRawData(raw), foodSafeStatus)
