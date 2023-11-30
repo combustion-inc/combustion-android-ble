@@ -264,7 +264,6 @@ internal class NetworkManager(
             serialNumber = probe.probeSerialNumber,
             owner = owner,
             settings = settings,
-            dfuConnectedNodeCallback = { },
             dfuDisconnectedNodeCallback = { }
         )
 
@@ -393,20 +392,6 @@ internal class NetworkManager(
                 serialNumber = serialNumber,
                 owner = owner,
                 settings = settings,
-                // called by the ProbeManager whenever it connects to a new meatnet node,
-                // providing it's firmware details
-                dfuConnectedNodeCallback = {
-                    // keep track of each nodes firmware details
-                    if(!firmwareStateOfNetwork.containsKey(it.id)) {
-                        // Add the node to the list and...
-                        firmwareStateOfNetwork[it.id] = it
-
-                        // publish the list of firmware details for the network
-                        flowHolder.mutableFirmwareUpdateState.value = FirmwareState(
-                            nodes = firmwareStateOfNetwork.values.toList()
-                        )
-                    }
-                },
                 // called by the ProbeManager whenever a meatnet node is disconnected
                 dfuDisconnectedNodeCallback = {
                     firmwareStateOfNetwork.remove(it)
@@ -481,6 +466,11 @@ internal class NetworkManager(
                             // Add to firmware state map
                             val node = FirmwareState.Node(device.id, device.productType, firmwareVersion)
                             firmwareStateOfNetwork[device.id] = node
+
+                            // publish the list of firmware details for the network
+                            flowHolder.mutableFirmwareUpdateState.value = FirmwareState(
+                                nodes = firmwareStateOfNetwork.values.toList()
+                            )
                         }
                     }
 
