@@ -507,7 +507,12 @@ internal class ProbeManager(
 
     private fun observe(base: ProbeBleDeviceBase) {
         if(base is ProbeBleDevice) {
-            _probe.value = _probe.value.copy(baseDevice = _probe.value.baseDevice.copy(mac = base.mac))
+            _probe.value = _probe.value.copy(
+                baseDevice = _probe.value.baseDevice.copy(
+                    mac = base.mac,
+                    productType = base.productType,
+                )
+            )
         }
 
         base.observeAdvertisingPackets(serialNumber, base.mac) { advertisement -> handleAdvertisingPackets(base, advertisement) }
@@ -613,6 +618,13 @@ internal class ProbeManager(
             if(device is ProbeBleDevice) {
                 arbitrator.directLinkDiscoverTimestamp = null
             }
+
+            // Invalidate FW version so it's re-read on connection after DFU
+            _probe.value = _probe.value.copy(
+                baseDevice = _probe.value.baseDevice.copy(
+                    fwVersion = null
+                )
+            )
 
             // remove this item from the list of firmware details for the network
             dfuDisconnectedNodeCallback(device.id)
