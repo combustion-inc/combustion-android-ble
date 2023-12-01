@@ -62,7 +62,6 @@ internal class ProbeManager(
     serialNumber: String,
     private val owner: LifecycleOwner,
     private val settings: DeviceManager.Settings,
-    private val dfuConnectedNodeCallback: (FirmwareState.Node) -> Unit,
     private val dfuDisconnectedNodeCallback: (DeviceID) -> Unit
 ) {
     companion object {
@@ -634,6 +633,7 @@ internal class ProbeManager(
         _probe.value = _probe.value.copy(
             baseDevice = _probe.value.baseDevice.copy(
                 connectionState = connectionState,
+                fwVersion = fwVersion,
                 hwRevision = hwRevision,
                 modelInformation = modelInformation
             )
@@ -763,7 +763,7 @@ internal class ProbeManager(
         }
     }
 
-    fun fetchSessionInfo() {
+    private fun fetchSessionInfo() {
         simulatedProbe?.let {
             if(sessionInfo == null) {
                 it.sendSessionInformationRequest { status, info ->
