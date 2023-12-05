@@ -74,8 +74,12 @@ internal data class ProbeStatus(
         private val MODE_COLOR_ID_RANGE = 21..21
         private val STATUS_RANGE = 22..22
         private val PREDICTION_STATUS_RANGE = 23 until 23 + PredictionStatus.SIZE_BYTES
-        private val FOOD_SAFE_DATA_RANGE = 30 until 30 + FoodSafeData.SIZE_BYTES
-        private val FOOD_SAFE_STATUS_RANGE = 39 until 39 + FoodSafeStatus.SIZE_BYTES
+
+        private val FOOD_SAFE_DATA_START_INDEX = PREDICTION_STATUS_RANGE.last + 1
+        private val FOOD_SAFE_DATA_RANGE = FOOD_SAFE_DATA_START_INDEX until FOOD_SAFE_DATA_START_INDEX + FoodSafeData.SIZE_BYTES
+
+        private val FOOD_SAFE_STATUS_START_INDEX = FOOD_SAFE_DATA_RANGE.last + 1
+        private val FOOD_SAFE_STATUS_RANGE = FOOD_SAFE_STATUS_START_INDEX until FOOD_SAFE_STATUS_START_INDEX + FoodSafeStatus.SIZE_BYTES
 
         fun fromRawData(data: UByteArray): ProbeStatus? {
             if (data.size < MIN_RAW_SIZE) return null
