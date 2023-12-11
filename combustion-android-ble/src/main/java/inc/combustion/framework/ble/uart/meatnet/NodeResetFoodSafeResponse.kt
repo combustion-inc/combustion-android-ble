@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: MessageType.kt
- * Author: https://github.com/miwright2
+ * File: NodeResetFoodSafeResponse.kt
+ * Author: Nick Helseth <nick@sasq.io>
  *
  * MIT License
  *
- * Copyright (c) 2022. Combustion Inc.
+ * Copyright (c) 2023. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,24 +25,45 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package inc.combustion.framework.ble.uart
 
-/**
- * Enumerates message types in Combustion's UART protocol.
- *
- * @property value byte value for message type.
- */
-internal enum class MessageType(val value: UByte) {
-    SET_PROBE_ID(0x01u),
-    SET_PROBE_COLOR(0x02u),
-    READ_SESSION_INFO(0x03u),
-    LOG(0x04u),
-    SET_PREDICTION(0x05u),
-    CONFIGURE_FOOD_SAFE(0x07u),
-    RESET_FOOD_SAFE(0x08u),
-    ;
+package inc.combustion.framework.ble.uart.meatnet
+
+internal class NodeResetFoodSafeResponse(
+    success: Boolean,
+    requestId: UInt,
+    responseId: UInt,
+    payloadLength: UByte
+) : NodeResponse(
+    success,
+    requestId,
+    responseId,
+    payloadLength,
+    NodeMessageType.RESET_FOOD_SAFE
+) {
+    override fun toString(): String {
+        return "${super.toString()} $success"
+    }
 
     companion object {
-        fun fromUByte(value: UByte) = values().firstOrNull { it.value == value }
+        const val PAYLOAD_LENGTH: UByte = 0u
+
+        fun fromData(
+            success: Boolean,
+            requestId: UInt,
+            responseId: UInt,
+            payloadLength: UByte
+        ) : NodeResetFoodSafeResponse? {
+
+            if (payloadLength < PAYLOAD_LENGTH) {
+                return null
+            }
+
+            return NodeResetFoodSafeResponse(
+                success,
+                requestId,
+                responseId,
+                payloadLength
+            )
+        }
     }
 }

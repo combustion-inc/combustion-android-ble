@@ -143,6 +143,22 @@ internal open class NodeResponse(
                         payloadLength
                     )
                 }
+                NodeMessageType.CONFIGURE_FOOD_SAFE -> {
+                    NodeConfigureFoodSafeResponse.fromData(
+                        success,
+                        requestId,
+                        responseId,
+                        payloadLength,
+                    )
+                }
+                NodeMessageType.RESET_FOOD_SAFE -> {
+                    NodeResetFoodSafeResponse.fromData(
+                        success,
+                        requestId,
+                        responseId,
+                        payloadLength,
+                    )
+                }
                 NodeMessageType.PROBE_FIRMWARE_REVISION -> {
                     NodeReadFirmwareRevisionResponse.fromData(
                         data,
