@@ -145,10 +145,10 @@ class FoodSafeDataTest {
         assertEquals(FoodSafeData.Integrated.Product.LambGround, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
-        assertEquals(FoodSafeData.Integrated.Product.Fish, toProduct(raw))
+        assertEquals(FoodSafeData.Integrated.Product.FishAndShellfish, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
-        assertEquals(FoodSafeData.Integrated.Product.FishGround, toProduct(raw))
+        assertEquals(FoodSafeData.Integrated.Product.FishAndShellfishGround, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
         assertEquals(FoodSafeData.Integrated.Product.DairyMilkLessThan10PercentFat, toProduct(raw))

@@ -199,8 +199,8 @@ sealed class FoodSafeData {
             TurkeyGround,
             Lamb,
             LambGround,
-            Fish,
-            FishGround,
+            FishAndShellfish,
+            FishAndShellfishGround,
             DairyMilkLessThan10PercentFat,
             Custom,
             ;
@@ -214,7 +214,8 @@ sealed class FoodSafeData {
                     HamGround -> "Ham (Ground)"
                     TurkeyGround -> "Turkey (Ground)"
                     LambGround -> "Lamb (Ground)"
-                    FishGround -> "Fish (Ground)"
+                    FishAndShellfish -> "Fish and Shellfish"
+                    FishAndShellfishGround -> "Fish and Shellfish (Ground)"
                     DairyMilkLessThan10PercentFat -> "Dairy - Milk (<10% fat)"
                     else -> this.name
                 }
@@ -236,8 +237,8 @@ sealed class FoodSafeData {
                         TurkeyGround -> 10u
                         Lamb -> 11u
                         LambGround -> 12u
-                        Fish -> 13u
-                        FishGround -> 14u
+                        FishAndShellfish -> 13u
+                        FishAndShellfishGround -> 14u
                         DairyMilkLessThan10PercentFat -> 15u
                         Custom -> 1023u
                     }
@@ -259,8 +260,8 @@ sealed class FoodSafeData {
                         10u -> TurkeyGround
                         11u -> Lamb
                         12u -> LambGround
-                        13u -> Fish
-                        14u -> FishGround
+                        13u -> FishAndShellfish
+                        14u -> FishAndShellfishGround
                         15u -> DairyMilkLessThan10PercentFat
                         1023u -> Custom
                         else -> throw IllegalArgumentException("Invalid integrated product value $raw")
