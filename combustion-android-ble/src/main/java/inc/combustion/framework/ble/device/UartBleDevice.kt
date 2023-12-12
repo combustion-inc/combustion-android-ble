@@ -148,9 +148,11 @@ internal open class UartBleDevice(
         if(isConnected.get()) {
             owner.lifecycleScope.launch(Dispatchers.IO) {
                 try {
+                    Log.i("$LOG_TAG.Kable", "${peripheral}: About to write")
                     peripheral.write(UART_RX_CHARACTERISTIC, data, WriteType.WithoutResponse)
+                    Log.i("$LOG_TAG.Kable", "${peripheral}: Finished write")
                 } catch(e: Exception)  {
-                    Log.w(LOG_TAG, "UART-TX: Unable to write to RX characteristic.")
+                    Log.w("$LOG_TAG.Kable", "UART-TX: Unable to write to RX characteristic.")
                 }
             }
         }
