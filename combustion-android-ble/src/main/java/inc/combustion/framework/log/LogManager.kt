@@ -203,15 +203,22 @@ internal class LogManager {
                                 Log.d(LOG_TAG, "LOG-RX    : ${response.sequenceNumber}")
                             }
 
-                            // add the response to the temperature log and handle upload progress
-                            val uploadProgress = temperatureLog.addFromLogResponse(response)
+                            // Do not store the data point if its sequence number is greater than
+                            // the probe's max sequence number. This is a safety check for the
+                            // probe/node sending a record with an invalid sequence number.
+                            if (response.sequenceNumber <= probeManager.maxSequenceNumber) {
+                                // add the response to the temperature log and set upload progress
+                                val uploadProgress = temperatureLog.addFromLogResponse(response)
 
-                            // update the count of records downloaded
-                            probeManager.recordsDownloaded = temperatureLog.dataPointCount
+                                // update the count of records downloaded
+                                probeManager.recordsDownloaded = temperatureLog.dataPointCount
 
-                            // update ProbeManager state
-                            probeManager.uploadState = uploadProgress.toProbeUploadState()
-                    }
+                                // update ProbeManager state
+                                probeManager.uploadState = uploadProgress.toProbeUploadState()
+                            } else {
+                                Log.e(LOG_TAG, "Discarding invalid log response: ${response.sequenceNumber}")
+                            }
+                        }
                 }
             })
         }
