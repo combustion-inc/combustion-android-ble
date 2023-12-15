@@ -7,4 +7,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "Combustion Inc. Android Framework"
-include ':combustion-android-ble'
+include(":combustion-android-ble")
