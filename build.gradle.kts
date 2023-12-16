@@ -2,7 +2,7 @@
 buildscript {
     extra.apply {
         set("kotlin_version", "1.8.10")
-        set("android_gradle_version", "8.1.2")
+        set("android_gradle_version", "8.2.0")
         set("appcompat_version", "1.5.1")
         set("lifecycle_runtime_ktx_version", "2.5.1")
         set("kable_core_version", "0.20.1")
