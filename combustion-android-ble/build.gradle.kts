@@ -1,10 +1,11 @@
 import java.io.ByteArrayOutputStream
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
+@Suppress("DSL_SCOPE_VIOLATION") // TODO: Remove once KTIJ-19369 is fixed--this is boilerplate.
 plugins {
-    id("com.android.library")
-    id("kotlin-android")
-    id("maven-publish")
+    alias(frameworkLibs.plugins.android.library)
+    alias(frameworkLibs.plugins.kotlin.android)
+    alias(frameworkLibs.plugins.maven.publish)
 }
 
 fun String.runCommand(currentWorkingDir: File = file("./")): String {
@@ -75,6 +76,9 @@ android {
         // projects consisting of an app with library dependencies.
         checkDependencies = true
     }
+    buildFeatures {
+        buildConfig = true
+    }
 
     tasks.withType<KotlinCompile>().configureEach {
         kotlinOptions.freeCompilerArgs += listOf(
@@ -90,18 +94,17 @@ android {
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.12.0")
-    implementation("androidx.appcompat:appcompat:1.6.1")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")
-    implementation("com.juul.kable:core:0.25.1")
-    implementation("androidx.lifecycle:lifecycle-service:2.6.2")
-    implementation("org.jetbrains.kotlin:kotlin-reflect:1.8.0")
-    implementation("no.nordicsemi.android:dfu:2.3.2")
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
-    androidTestImplementation("androidx.test.ext:junit:1.1.5")
-    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
-    testImplementation("junit:junit:4.13.2")
-    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:1.8.10")
+    implementation(frameworkLibs.core.ktx)
+    implementation(frameworkLibs.appcompat)
+    implementation(frameworkLibs.lifecycle.runtime)
+    implementation(frameworkLibs.kable.core)
+    implementation(frameworkLibs.lifecycle.service)
+    implementation(frameworkLibs.nordicsemi.dfu)
+    coreLibraryDesugaring(frameworkLibs.android.desugarJdkLibs)
+    androidTestImplementation(frameworkLibs.androidx.test.ext)
+    androidTestImplementation(frameworkLibs.androidx.test.espresso)
+    testImplementation(frameworkLibs.junit)
+    testImplementation(frameworkLibs.kotlin.test.junit)
 }
 
 afterEvaluate {
