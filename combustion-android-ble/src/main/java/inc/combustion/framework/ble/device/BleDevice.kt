@@ -250,7 +250,7 @@ internal open class BleDevice (
 
         // but only need one long running thread for this device to read the RSSI while connected.
         if(remoteRssiJob == null) {
-            val job = owner.lifecycleScope.launch(Dispatchers.IO) {
+            val job = owner.lifecycleScope.launch {
                 var exceptionCount = 0;
                 while(isActive) {
                     if(isConnected.get()) {
