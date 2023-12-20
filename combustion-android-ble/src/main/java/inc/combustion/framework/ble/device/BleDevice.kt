@@ -249,6 +249,7 @@ internal open class BleDevice (
         }
 
         // but only need one long running thread for this device to read the RSSI while connected.
+        /* TODO: See DROID-319
         if(remoteRssiJob == null) {
             val job = owner.lifecycleScope.launch(Dispatchers.IO) {
                 var exceptionCount = 0;
@@ -281,6 +282,7 @@ internal open class BleDevice (
             remoteRssiJob = job
             jobManager.addJob(job)
         }
+        */
     }
 
     fun observeAdvertisingPackets(filter: (advertisement: CombustionAdvertisingData) -> Boolean, callback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)? = null) {
