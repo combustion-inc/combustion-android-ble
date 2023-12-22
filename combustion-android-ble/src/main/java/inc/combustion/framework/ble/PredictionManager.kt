@@ -52,7 +52,7 @@ class PredictionManager {
         private const val PREDICTION_STALE_TIMEOUT = 15000L // 15 seconds in ms
 
         /// Cap the prediction to 4 hours
-        private const val MAX_PREDICTION_TIME : UInt = 14400u // 4 hours
+        private const val MAX_PREDICTION_TIME : UInt = 21600u // 4 hours
 
         /// Number of samples to wait between updates to prediction 'seconds remaining',
         /// for syncing time remaining across apps, Displays etc.
