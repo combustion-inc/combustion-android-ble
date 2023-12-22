@@ -39,6 +39,7 @@ import inc.combustion.framework.ble.device.ProbeBleDeviceBase
 import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.uart.LogResponse
+import inc.combustion.framework.log.UploadProgress
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
@@ -177,8 +178,9 @@ internal class ProbeManager(
             // else, if there is any device that is connected
             arbitrator.getPreferredConnectionState(DeviceConnectionState.CONNECTED)?.let {
                 // and we have run into a session info message timeout condition, then we are
-                // in a NO_ROUTE scenario.
-                if(sessionInfoTimeout) {
+                // in a NO_ROUTE scenario.  exclude when we are actively uploading, because we know that
+                // can saturate the network and responses might be dropped.
+                if(sessionInfoTimeout && (uploadState !is ProbeUploadState.ProbeUploadInProgress)) {
                     return DeviceConnectionState.NO_ROUTE
                 }
 
@@ -630,14 +632,7 @@ internal class ProbeManager(
         }
 
         // use the arbitrated connection state, fw version, hw revision, model information
-        _probe.value = _probe.value.copy(
-            baseDevice = _probe.value.baseDevice.copy(
-                connectionState = connectionState,
-                fwVersion = fwVersion,
-                hwRevision = hwRevision,
-                modelInformation = modelInformation
-            )
-        )
+        updateConnectionState()
     }
 
     private fun handleOutOfRange() {
@@ -842,9 +837,21 @@ internal class ProbeManager(
         statusNotificationsMonitor.activity()
         predictionMonitor.activity()
 
+        updateConnectionState()
         updateTemperatures(status.temperatures, status.virtualSensors)
         predictionManager.updatePredictionStatus(status.predictionStatus, status.maxSequenceNumber)
         updateFoodSafe(status.foodSafeData, status.foodSafeStatus)
+    }
+
+    private fun updateConnectionState() {
+        _probe.value = _probe.value.copy(
+            baseDevice = _probe.value.baseDevice.copy(
+                connectionState = connectionState,
+                fwVersion = fwVersion,
+                hwRevision = hwRevision,
+                modelInformation = modelInformation
+            )
+        )
     }
 
     private fun updateInstantRead(value: Double?) {
