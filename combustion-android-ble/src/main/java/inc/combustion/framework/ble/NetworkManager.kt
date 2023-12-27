@@ -92,7 +92,11 @@ internal class NetworkManager(
             ),
         )
 
-        fun initialize(owner: LifecycleOwner, adapter: BluetoothAdapter, settings: DeviceManager.Settings)  {
+        fun initialize(
+            owner: LifecycleOwner,
+            adapter: BluetoothAdapter,
+            settings: DeviceManager.Settings,
+        ) {
             if(!initialized.getAndSet(true)) {
                 INSTANCE = NetworkManager(owner, adapter, settings)
             }
@@ -143,6 +147,7 @@ internal class NetworkManager(
     private val probeManagers = hashMapOf<String, ProbeManager>()
     private val deviceInformationDevices = hashMapOf<DeviceID, DeviceInformationBleDevice>()
     private var proximityDevices = hashMapOf<String, ProximityDevice>()
+    private var probeWhitelist: Set<String>? = settings.probeWhitelist
 
     internal val bluetoothAdapterStateIntentFilter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
     internal val bluetoothAdapterStateReceiver: BroadcastReceiver = object : BroadcastReceiver() {
@@ -190,6 +195,10 @@ internal class NetworkManager(
         get() {
             return  probeManagers.keys.toList()
         }
+
+    fun setProbeWhitelist(whitelist: Set<String>?) {
+        probeWhitelist = whitelist
+    }
 
     fun startScanForProbes(): Boolean {
         if(bluetoothIsEnabled) {
@@ -385,6 +394,13 @@ internal class NetworkManager(
             return false
         }
 
+        // If the advertised probe isn't in the subscriber list, don't bother connecting
+        probeWhitelist?.let {
+            if (!it.contains(serialNumber)) {
+                return false
+            }
+        }
+
         // if we have not seen this device by its uid, then track in the device map.
         if(!devices.containsKey(deviceId)) {
             val deviceHolder = when(advertisement.productType) {
@@ -475,7 +491,9 @@ internal class NetworkManager(
                         // Update the smoothed RSSI value for this device
                         proximityDevices[serialNumber]?.handleRssiUpdate(advertisingData.rssi)
                     }
-                } else {
+                } else if (probeWhitelist == null) {
+                    // Only connect to a node that doesn't have any connected probes if the
+                    // whitelist is unset.
                     if(!firmwareStateOfNetwork.containsKey(advertisingData.id)) {
                         handleMeatNetLinkWithoutProbe(advertisingData)
                     }

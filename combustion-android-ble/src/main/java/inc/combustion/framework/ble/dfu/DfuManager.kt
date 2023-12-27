@@ -61,7 +61,7 @@ internal class DfuManager(
     // tracks when a dfu is in progress or not
     private var _dfuInProgress = false
 
-    val enabled: Boolean
+    private val enabled: Boolean
         get() = _enabled.get()
 
     val availableDevices = devices.keys
@@ -88,7 +88,7 @@ internal class DfuManager(
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun start(): Boolean {
+    fun start(probeWhitelist: Set<String>?): Boolean {
         Log.i(LOG_TAG, "Starting DFU manager")
 
         if (!_initialized.get()) {
@@ -102,7 +102,7 @@ internal class DfuManager(
         // Ensure that we're enabled so that discovery events are produced
         _enabled.set(true)
 
-        collectAdvertisingData()
+        collectAdvertisingData(probeWhitelist)
 
         return true
     }
@@ -169,29 +169,31 @@ internal class DfuManager(
         return null
     }
 
-    private fun collectAdvertisingData() {
-        scanningJob = owner.lifecycleScope.let { it ->
+    private fun collectAdvertisingData(probeWhitelist: Set<String>?) {
+        scanningJob = owner.lifecycleScope.let {
             DeviceScanner.advertisements
                 .onEach { advertisingData ->
-                    if (enabled) {
-                        val id = advertisingData.id
+                    val id = advertisingData.id
 
+                    if (
+                        enabled
+                        && probeWhitelist?.contains(advertisingData.probeSerialNumber) != false
+                        && !devices.containsKey(id)
+                    ) {
                         // Add the device to our list of devices if it doesn't exist yet.
-                        if (!devices.containsKey(id)) {
-                            Log.i(LOG_TAG, "DFU manager encountered new device $id")
+                        Log.i(LOG_TAG, "DFU manager encountered new device $id")
 
-                            // This needs to happen before the DeviceDiscovered event is emitted.
-                            devices[id] = DfuBleDevice(context, owner, adapter, advertisingData)
+                        // This needs to happen before the DeviceDiscovered event is emitted.
+                        devices[id] = DfuBleDevice(context, owner, adapter, advertisingData)
 
-                            // If a DFU is in progress, disable the device.
-                            if (_dfuInProgress) {
-                                Log.i(LOG_TAG, "DFU in progress, disabling device $id")
-                                devices[id]?.setEnabled(false)
-                            }
-
-                            // Tell clients that the device was discovered.
-                            _systemState.tryEmit(DfuSystemState.DeviceDiscovered(id))
+                        // If a DFU is in progress, disable the device.
+                        if (_dfuInProgress) {
+                            Log.i(LOG_TAG, "DFU in progress, disabling device $id")
+                            devices[id]?.setEnabled(false)
                         }
+
+                        // Tell clients that the device was discovered.
+                        _systemState.tryEmit(DfuSystemState.DeviceDiscovered(id))
                     }
                 }
                 .launchIn(it)

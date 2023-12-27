@@ -62,10 +62,16 @@ class DeviceManager(
     private val onBoundInitList = mutableListOf<() -> Unit>()
     private lateinit var service: CombustionService
 
+    /**
+     * [probeWhitelist] specifies a set of thermometers that will be used to filter devices
+     * flowed to the application. Set to null to disable filtering. This can also be set by calling
+     * [setProbeWhitelist].
+     */
     data class Settings(
         val autoReconnect: Boolean = false,
         val autoLogTransfer: Boolean = false,
-        val meatNetEnabled: Boolean = false
+        val meatNetEnabled: Boolean = false,
+        val probeWhitelist: Set<String>? = null,
     )
 
     companion object {
@@ -286,10 +292,20 @@ class DeviceManager(
      *
      * @see discoveredProbesFlow
      * @see ProbeDiscoveredEvent
-     * @see ProbeDiscoveredEvent.ScanningOn
      */
     fun startScanningForProbes(): Boolean {
         return NetworkManager.instance.startScanForProbes()
+    }
+
+    /**
+     * Sets the list of probes that the framework will publish data for to [whitelist]. A
+     * discovery event will be emitted to [discoveredProbesFlow] for every probe in the list that
+     * isn't currently in the internal list maintained by the framework.
+     *
+     * Passing null for [whitelist] will cause all probes to be published.
+     */
+    fun setProbeWhitelist(whitelist: Set<String>?) {
+        NetworkManager.instance.setProbeWhitelist(whitelist)
     }
 
     /**
@@ -300,7 +316,6 @@ class DeviceManager(
      *
      * @see discoveredProbesFlow
      * @see ProbeDiscoveredEvent
-     * @see ProbeDiscoveredEvent.ScanningOff
      */
     fun stopScanningForProbes(): Boolean {
         return NetworkManager.instance.stopScanForProbes()
@@ -583,7 +598,13 @@ class DeviceManager(
     /**
      * Transitions the framework into DFU mode.
      */
-    fun startDfuMode() = service.startDfuMode()
+    fun startDfuMode() = service.startDfuMode(null)
+
+    /**
+     * Transitions the framework into DFU mode, only allowing DFU operations on probes and MeatNet
+     * nodes that have a connection to a serial number contained in [probeWhitelist].
+     */
+    fun startDfuMode(probeWhitelist: Set<String>?) = service.startDfuMode(probeWhitelist)
 
     /**
      * Transitions the framework out of DFU mode and back into 'normal' mode.

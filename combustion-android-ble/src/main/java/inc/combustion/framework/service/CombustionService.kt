@@ -207,9 +207,9 @@ class CombustionService : LifecycleService() {
         super.onDestroy()
     }
 
-    internal fun startDfuMode() {
+    internal fun startDfuMode(probeWhitelist: Set<String>?) {
         NetworkManager.instance.startDfuMode()
-        dfuManager?.start()
+        dfuManager?.start(probeWhitelist)
     }
 
     internal fun stopDfuMode() {
