@@ -15,6 +15,7 @@ fun String.runCommand(currentWorkingDir: File = file("./")): String {
         workingDir = currentWorkingDir
         commandLine = this@runCommand.split("\\s".toRegex())
         standardOutput = byteOut
+        isIgnoreExitValue = true
     }
 
     return String(byteOut.toByteArray()).trim()
