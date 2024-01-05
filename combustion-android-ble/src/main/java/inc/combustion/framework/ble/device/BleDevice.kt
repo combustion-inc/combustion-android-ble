@@ -27,17 +27,13 @@
  */
 package inc.combustion.framework.ble.device
 
-import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.util.Log
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import com.juul.kable.*
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.*
-import inc.combustion.framework.ble.scanning.*
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.scanning.DeviceScanner
 import inc.combustion.framework.service.CombustionProductType
@@ -68,7 +64,6 @@ internal open class BleDevice (
     val productType: CombustionProductType = advertisement.productType,
 ) {
     companion object {
-        private const val REMOTE_RSSI_POLL_RATE_MS = 500L
         private const val IDLE_TIMEOUT_POLL_RATE_MS = 1000L
         const val DISCONNECT_TIMEOUT_MS = 500L
 
@@ -100,8 +95,7 @@ internal open class BleDevice (
         get() = mac
 
     val jobManager = JobManager()
-    var remoteRssiJob: Job? = null
-    val rssiCallbacks = mutableListOf<(suspend (rssi: Int) -> Unit)>()
+    private val rssiCallbacks = mutableListOf<(suspend (rssi: Int) -> Unit)>()
     var peripheral: Peripheral =
         owner.lifecycleScope.peripheral(adapter.getRemoteDevice(mac)) {
             logging {
@@ -171,12 +165,11 @@ internal open class BleDevice (
             disconnect()
         }
 
-        remoteRssiJob = null
         jobManager.cancelJobs()
         rssiCallbacks.clear()
     }
 
-    fun dispatchOnDefault(callback: (suspend () -> Unit)) {
+    private fun dispatchOnDefault(callback: (suspend () -> Unit)) {
         // run the code on the default coroutine scope
         owner.lifecycleScope.launch {
             callback()
@@ -243,46 +236,11 @@ internal open class BleDevice (
     }
 
     fun observeRemoteRssi(callback: (suspend (rssi: Int) -> Unit)? = null) {
-        // maintain a list of objects that are observing RSSI updates for this device.
+        // Maintain a list of objects that are observing RSSI updates for this device. They'll be
+        // called back when the RSSI is updated in advertising data.
         callback?.let {
             rssiCallbacks.add(it)
         }
-
-        // but only need one long running thread for this device to read the RSSI while connected.
-        /* TODO: See DROID-319
-        if(remoteRssiJob == null) {
-            val job = owner.lifecycleScope.launch(Dispatchers.IO) {
-                var exceptionCount = 0;
-                while(isActive) {
-                    if(isConnected.get()) {
-                        try {
-                            remoteRssi.set(peripheral.rssi())
-                            exceptionCount = 0;
-                        } catch (e: Exception) {
-                            exceptionCount++
-                            Log.w(LOG_TAG, "Exception while reading remote RSSI: $exceptionCount\n${e.stackTrace}")
-                        }
-
-                        when {
-                            exceptionCount < 5 -> {
-                                rssiCallbacks.forEach {
-                                    dispatchOnDefault {
-                                        it(remoteRssi.get())
-                                    }
-                                }
-                            }
-                            else -> {
-                                peripheral.disconnect()
-                            }
-                        }
-                    }
-                    delay(REMOTE_RSSI_POLL_RATE_MS)
-                }
-            }
-            remoteRssiJob = job
-            jobManager.addJob(job)
-        }
-        */
     }
 
     fun observeAdvertisingPackets(filter: (advertisement: CombustionAdvertisingData) -> Boolean, callback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)? = null) {
@@ -346,6 +304,12 @@ internal open class BleDevice (
         val advertisingState = when(advertisement.isConnectable) {
             true -> DeviceConnectionState.ADVERTISING_CONNECTABLE
             else -> DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE
+        }
+
+        rssiCallbacks.forEach {
+            dispatchOnDefault {
+                it(remoteRssi.get())
+            }
         }
 
         // if the device is advertising as connectable, advertising as non-connectable,
