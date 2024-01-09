@@ -50,6 +50,8 @@ internal abstract class ProbeBleDeviceBase() {
     protected val setColorHandler = UartBleDevice.MessageCompletionHandler()
     protected val setIdHandler = UartBleDevice.MessageCompletionHandler()
     protected val setPredictionHandler = UartBleDevice.MessageCompletionHandler()
+    protected val configureFoodSafeHandler = UartBleDevice.MessageCompletionHandler()
+    protected val resetFoodSafeHandler = UartBleDevice.MessageCompletionHandler()
 
     // mac
     abstract val mac: String
@@ -109,5 +111,7 @@ internal abstract class ProbeBleDeviceBase() {
     abstract fun sendSetProbeColor(color: ProbeColor, callback: ((Boolean, Any?) -> Unit)? = null)
     abstract fun sendSetProbeID(id: ProbeID, callback: ((Boolean, Any?) -> Unit)? = null)
     abstract fun sendSetPrediction(setPointTemperatureC: Double, mode: ProbePredictionMode, reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)? = null)
+    abstract fun sendConfigureFoodSafe(foodSafeData: FoodSafeData, reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)? = null)
+    abstract fun sendResetFoodSafe(reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)? = null)
     abstract fun sendLogRequest(minSequence: UInt, maxSequence: UInt, callback: (suspend (LogResponse) -> Unit)? = null)
 }

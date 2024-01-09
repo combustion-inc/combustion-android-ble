@@ -152,15 +152,17 @@ internal class SimulatedProbeBleDevice(
                     if(isConnected) {
                         it(
                             ProbeStatus(
-                                0u,
-                                maxSequence,
-                                ProbeTemperatures.withRandomData(),
-                                probeID,
-                                probeColor,
-                                ProbeMode.NORMAL,
-                                ProbeBatteryStatus.OK,
-                                ProbeVirtualSensors.DEFAULT,
-                                PredictionStatus.withRandomData()
+                                minSequenceNumber = 0u,
+                                maxSequenceNumber = maxSequence,
+                                temperatures = ProbeTemperatures.withRandomData(),
+                                id = probeID,
+                                color = probeColor,
+                                mode = ProbeMode.NORMAL,
+                                batteryStatus = ProbeBatteryStatus.OK,
+                                virtualSensors = ProbeVirtualSensors.DEFAULT,
+                                predictionStatus = PredictionStatus.withRandomData(),
+                                foodSafeData = FoodSafeData.RANDOM,
+                                foodSafeStatus = FoodSafeStatus.RANDOM,
                             )
                         )
                     }
@@ -262,6 +264,18 @@ internal class SimulatedProbeBleDevice(
         reqId: UInt?,
         callback: ((Boolean, Any?) -> Unit)?
     ) {
+        callback?.let { it(true, null) }
+    }
+
+    override fun sendConfigureFoodSafe(
+        foodSafeData: FoodSafeData,
+        reqId: UInt?,
+        callback: ((Boolean, Any?) -> Unit)?
+    ) {
+        callback?.let { it(true, null) }
+    }
+
+    override fun sendResetFoodSafe(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
         callback?.let { it(true, null) }
     }
 

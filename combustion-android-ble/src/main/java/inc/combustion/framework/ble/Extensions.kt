@@ -27,6 +27,8 @@
  */
 package inc.combustion.framework.ble
 
+import kotlin.math.abs
+
 internal fun NOT_IMPLEMENTED(reason: String = ""): Nothing = TODO(reason)
 
 /**
@@ -119,3 +121,5 @@ infix fun UByte.shr(shift: Int) = ((this.toInt() shr shift) and (0x0000FFFF)).to
 
 infix fun UShort.shl(shift: Int) = ((this.toInt() shl shift) and (0x0000FFFF)).toUShort()
 infix fun UShort.shr(shift: Int) = ((this.toInt() shr shift) and (0x0000FFFF)).toUShort()
+
+fun Double.equalsDelta(other: Double, delta: Double = 0.01) = abs(this - other) < delta

@@ -104,6 +104,8 @@ internal open class Response(
                 MessageType.SET_PROBE_ID -> createGenericResponse(success, SetIDResponse.PAYLOAD_LENGTH, length.toUInt(), ::SetIDResponse)
                 MessageType.READ_SESSION_INFO -> SessionInfoResponse.fromData(data, success, length.toUInt())
                 MessageType.SET_PREDICTION -> createGenericResponse(success, SetPredictionResponse.PAYLOAD_LENGTH, length.toUInt(), ::SetPredictionResponse)
+                MessageType.CONFIGURE_FOOD_SAFE -> createGenericResponse(success, ConfigureFoodSafeResponse.PAYLOAD_LENGTH, length.toUInt(), ::ConfigureFoodSafeResponse)
+                MessageType.RESET_FOOD_SAFE -> createGenericResponse(success, ResetFoodSafeResponse.PAYLOAD_LENGTH, length.toUInt(), ::ResetFoodSafeResponse)
             }
         }
 
