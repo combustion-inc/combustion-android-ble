@@ -230,6 +230,19 @@ class DeviceManager(
         }
 
     /**
+     * Kotlin flow for collecting [DeviceDiscoveredEvent]s that occur when the service encounters a
+     * device that is in proximity. To receive updates to the proximity value, collect on the
+     * [deviceSmoothedRssiFlow]. This is a hot flow.
+     *
+     * Note that this flow will emit events for all devices in proximity, disregarding any whitelist
+     * information.
+     */
+    val deviceProximityFlow : SharedFlow<DeviceDiscoveredEvent>
+        get() {
+            return NetworkManager.deviceProximityFlow
+        }
+
+    /**
      * Kotlin flow for collecting NetworkState
      *
      * @see NetworkEvent
@@ -316,6 +329,21 @@ class DeviceManager(
      */
     fun probe(serialNumber: String): Probe? {
         return NetworkManager.instance.probeState(serialNumber)
+    }
+
+    /**
+     * Retrieves the Kotlin flow for collecting current smoothed RSSI value updates for the device
+     * with serial number [serialNumber]. Note that the value retrieved from this flow disregards
+     * MeatNet connections--you may have a MeatNet connection to this device, but if the device
+     * itself is nearly out of range, this flow may have a very low value, may not be updating at
+     * all, or may emit null to indicate that the device is out of range.
+     *
+     * The rate that this flow updates is dependent on the frequency with which we receive
+     * advertising data, which can come in more or less frequently if the probe is in instant read
+     * mode or not.
+     */
+    fun deviceSmoothedRssiFlow(serialNumber: String): StateFlow<Double?>? {
+        return NetworkManager.instance.deviceSmoothedRssiFlow(serialNumber)
     }
 
     /**

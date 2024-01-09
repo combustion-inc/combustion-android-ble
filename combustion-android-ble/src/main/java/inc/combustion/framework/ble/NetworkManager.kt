@@ -28,14 +28,15 @@
 
 package inc.combustion.framework.ble
 
-import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.util.Log
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.device.*
 import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
@@ -63,10 +64,11 @@ internal class NetworkManager(
         data class RepeatedProbeHolder(val repeatedProbe: RepeatedProbeBleDevice) : LinkHolder()
     }
 
-    internal data class FlowHowHolder(
+    internal data class FlowHolder(
         var mutableDiscoveredProbesFlow: MutableSharedFlow<ProbeDiscoveredEvent>,
         var mutableNetworkState: MutableStateFlow<NetworkState>,
         var mutableFirmwareUpdateState: MutableStateFlow<FirmwareState>,
+        var mutableDeviceProximityFlow: MutableSharedFlow<DeviceDiscoveredEvent>,
     )
 
     companion object {
@@ -79,10 +81,15 @@ internal class NetworkManager(
         private lateinit var INSTANCE: NetworkManager
         private val initialized = AtomicBoolean(false)
 
-        internal var flowHolder = FlowHowHolder(
-            MutableSharedFlow(FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.SUSPEND),
-            MutableStateFlow(NetworkState()),
-            MutableStateFlow(FirmwareState(listOf()))
+        internal var flowHolder = FlowHolder(
+            mutableDiscoveredProbesFlow = MutableSharedFlow(
+                FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.SUSPEND
+            ),
+            mutableNetworkState = MutableStateFlow(NetworkState()),
+            mutableFirmwareUpdateState = MutableStateFlow(FirmwareState(listOf())),
+            mutableDeviceProximityFlow = MutableSharedFlow(
+                FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.SUSPEND
+            ),
         )
 
         fun initialize(owner: LifecycleOwner, adapter: BluetoothAdapter, settings: DeviceManager.Settings)  {
@@ -123,6 +130,11 @@ internal class NetworkManager(
             get() {
                 return flowHolder.mutableFirmwareUpdateState.asStateFlow()
             }
+
+        val deviceProximityFlow: SharedFlow<DeviceDiscoveredEvent>
+            get() {
+                return flowHolder.mutableDeviceProximityFlow.asSharedFlow()
+            }
     }
 
     private val jobManager = JobManager()
@@ -130,6 +142,7 @@ internal class NetworkManager(
     private val meatNetLinks = hashMapOf<LinkID, LinkHolder>()
     private val probeManagers = hashMapOf<String, ProbeManager>()
     private val deviceInformationDevices = hashMapOf<DeviceID, DeviceInformationBleDevice>()
+    private var proximityDevices = hashMapOf<String, ProximityDevice>()
 
     internal val bluetoothAdapterStateIntentFilter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
     internal val bluetoothAdapterStateReceiver: BroadcastReceiver = object : BroadcastReceiver() {
@@ -287,6 +300,10 @@ internal class NetworkManager(
         return probeManagers[serialNumber]?.probe
     }
 
+    internal fun deviceSmoothedRssiFlow(serialNumber: String): StateFlow<Double?>? {
+        return proximityDevices[serialNumber]?.probeSmoothedRssiFlow
+    }
+
     internal fun connect(serialNumber: String) {
         probeManagers[serialNumber]?.connect()
     }
@@ -339,6 +356,7 @@ internal class NetworkManager(
         probeManagers.clear()
         devices.clear()
         meatNetLinks.clear()
+        proximityDevices.clear()
 
         // clear the discovered probes flow
         flowHolder.mutableDiscoveredProbesFlow.resetReplayCache()
@@ -434,14 +452,30 @@ internal class NetworkManager(
     private suspend fun collectAdvertisingData() {
         DeviceScanner.advertisements.collect {advertisingData ->
             if(scanningForProbes) {
-                if(advertisingData.probeSerialNumber != REPEATER_NO_PROBES_SERIAL_NUMBER) {
+                val serialNumber = advertisingData.probeSerialNumber
+                if(serialNumber != REPEATER_NO_PROBES_SERIAL_NUMBER) {
                     if(manageMeatNetDevice(advertisingData)) {
                         flowHolder.mutableDiscoveredProbesFlow.emit(
-                            ProbeDiscoveredEvent.ProbeDiscovered(advertisingData.probeSerialNumber)
+                            ProbeDiscoveredEvent.ProbeDiscovered(serialNumber)
                         )
                     }
-                }
-                else {
+
+                    // Publish this device to the proximity flow if it's a probe.
+                    if (advertisingData.productType == CombustionProductType.PROBE) {
+                        // If we haven't seen this probe before, then add it to our list of devices
+                        // that we track proximity for and publish the addition.
+                        if (!proximityDevices.contains(serialNumber)) {
+                            Log.i(LOG_TAG, "Adding $serialNumber to probes in proximity")
+                            proximityDevices[serialNumber] = ProximityDevice()
+                            flowHolder.mutableDeviceProximityFlow.emit(
+                                DeviceDiscoveredEvent.ProbeDiscovered(serialNumber)
+                            )
+                        }
+
+                        // Update the smoothed RSSI value for this device
+                        proximityDevices[serialNumber]?.handleRssiUpdate(advertisingData.rssi)
+                    }
+                } else {
                     if(!firmwareStateOfNetwork.containsKey(advertisingData.id)) {
                         handleMeatNetLinkWithoutProbe(advertisingData)
                     }
