@@ -109,6 +109,8 @@ dependencies {
 }
 
 afterEvaluate {
+    // TODO: Determine proper publishing configuration(s).
+    /*
     publishing {
         publications {
             // Creates a Maven publication called "release".
@@ -133,4 +135,6 @@ afterEvaluate {
             }
         }
     }
+
+     */
 }
