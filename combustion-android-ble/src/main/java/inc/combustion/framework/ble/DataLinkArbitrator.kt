@@ -29,6 +29,7 @@
 package inc.combustion.framework.ble
 
 import android.se.omapi.Session
+import android.util.Log
 import inc.combustion.framework.ble.device.*
 import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.device.ProbeBleDeviceBase
@@ -200,12 +201,16 @@ internal class DataLinkArbitrator(
         }.values.toList()
     }
 
-    fun getNodesNeedingDisconnect(fromApiCall: Boolean = false): List<DeviceInformationBleDevice> {
+    fun getNodesNeedingDisconnect(
+        fromApiCall: Boolean = false,
+        canDisconnectFromMeatNetDevices: Boolean = false,
+    ): List<DeviceInformationBleDevice> {
+        /*
         val disconnectable = mutableListOf<DeviceID>()
         // for meatnet links
         repeatedProbeBleDevices.forEach {
             // should disconnect from this repeated probe
-            if(shouldDisconnect(it, fromApiCall)) {
+            if(shouldDisconnect(it, fromApiCall, canDisconnectFromMeatNetDevices)) {
                 // if don't already plan to disconnect from the repeater for the repeated probe
                 if(!disconnectable.contains(it.id)) {
                     // add to the list of meatnet devices we need to disconnect from
@@ -214,7 +219,14 @@ internal class DataLinkArbitrator(
             }
         }
 
-        // should disconnect form a direct connect to the probe
+         */
+        val disconnectable = repeatedProbeBleDevices.filter {
+            shouldDisconnect(it, fromApiCall, canDisconnectFromMeatNetDevices)
+        }.map {
+            it.id
+        }.toMutableSet()
+
+        // Should disconnect from a direct connection to the probe
         probeBleDevice?.let {
             if(shouldDisconnect(it, fromApiCall)) {
                 disconnectable.add(it.id)
@@ -287,21 +299,48 @@ internal class DataLinkArbitrator(
         return false
     }
 
-    private fun shouldDisconnect(device: ProbeBleDeviceBase, fromApiCall: Boolean = false): Boolean {
-        val canDisconnect = device.isConnected
-        if(settings.meatNetEnabled) {
-            // don't disconnect from meatnet
+    /**
+     * Returns whether or not we should disconnect from [device].
+     *
+     * By default, this function will return false if [DeviceManager.Settings.meatNetEnabled] is
+     * true--this can be overridden by setting [canDisconnectFromMeatNetDevices] to true.
+     *
+     * Set [fromApiCall] to true to disable the auto-reconnect flag.
+     */
+    private fun shouldDisconnect(
+        device: ProbeBleDeviceBase,
+        fromApiCall: Boolean = false,
+        canDisconnectFromMeatNetDevices: Boolean = false,
+    ): Boolean {
+        // Don't disconnect from meatnet by default
+        if (!canDisconnectFromMeatNetDevices && settings.meatNetEnabled) {
             return false
         }
-        else if(device is ProbeBleDevice) {
-            // if not using meatnet, and the client app is asking us to disconnect,
-            // then turn off the auto-reconnect flag
-            if(fromApiCall) {
-                device.shouldAutoReconnect = false
+
+        when (device) {
+            is ProbeBleDevice -> {
+                // if not using meatnet, and the client app is asking us to disconnect,
+                // then turn off the auto-reconnect flag
+                if (fromApiCall) {
+                    device.shouldAutoReconnect = false
+                }
+
+                // additionally disconnect if we can
+                return device.isConnected
             }
 
-            // additionally disconnect if we can
-            return canDisconnect
+            is RepeatedProbeBleDevice -> {
+                // Only disconnect from a meatnet node if it's only supplying this thermometer.
+                val retval = connectedNodeLinks.singleOrNull {
+                    it.id == device.id
+                } != null
+                Log.e("NICK", "shouldDisconnect: ${device.id} $connectedNodeLinks $retval")
+                return retval
+            }
+
+            is SimulatedProbeBleDevice -> {
+                return true
+            }
         }
 
         // if not meatnet and not a probe

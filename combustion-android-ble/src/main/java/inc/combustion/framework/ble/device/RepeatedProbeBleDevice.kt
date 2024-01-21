@@ -49,6 +49,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+/**
+ * Class representing a probe connected through one or more MeatNet nodes.
+ *
+ * [probeSerialNumber] indicates the serial number of the probe. [advertisement] is the initial
+ * advertisement coming from a node that contains the probe's information. [uart] is the interface
+ * for sending and receiving UART messages to and from the probe.
+ */
 internal class RepeatedProbeBleDevice (
     override val probeSerialNumber: String,
     private val uart: UartBleDevice,

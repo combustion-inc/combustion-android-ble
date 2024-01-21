@@ -63,15 +63,15 @@ class DeviceManager(
     private lateinit var service: CombustionService
 
     /**
-     * [probeWhitelist] specifies a set of thermometers that will be used to filter devices
+     * [thermometerWhitelist] specifies a set of thermometers that will be used to filter devices
      * flowed to the application. Set to null to disable filtering. This can also be set by calling
-     * [setProbeWhitelist].
+     * [setThermometerWhitelist].
      */
     data class Settings(
         val autoReconnect: Boolean = false,
         val autoLogTransfer: Boolean = false,
         val meatNetEnabled: Boolean = false,
-        val probeWhitelist: Set<String>? = null,
+        val thermometerWhitelist: Set<String>? = null,
     )
 
     companion object {
@@ -304,9 +304,17 @@ class DeviceManager(
      *
      * Passing null for [whitelist] will cause all probes to be published.
      */
-    fun setProbeWhitelist(whitelist: Set<String>?) {
-        NetworkManager.instance.setProbeWhitelist(whitelist)
+    fun setThermometerWhitelist(whitelist: Set<String>?) {
+        NetworkManager.instance.setThermometerWhitelist(whitelist)
     }
+
+    /**
+     * Returns the current thermometer whitelist.
+     */
+    val thermometerWhitelist: Set<String>?
+        get() {
+            return NetworkManager.instance.thermometerWhitelist
+        }
 
     /**
      * Stops scanning for temperature probes.  Will generate a ProbeDiscoveredEvent
@@ -356,6 +364,11 @@ class DeviceManager(
      * The rate that this flow updates is dependent on the frequency with which we receive
      * advertising data, which can come in more or less frequently if the probe is in instant read
      * mode or not.
+     *
+     * This flow is guaranteed to exist if a [DeviceDiscoveredEvent.ProbeDiscovered] event is flowed
+     * from [deviceProximityFlow] for [serialNumber].
+     *
+     * TODO: Unit test the guarantee above.
      */
     fun deviceSmoothedRssiFlow(serialNumber: String): StateFlow<Double?>? {
         return NetworkManager.instance.deviceSmoothedRssiFlow(serialNumber)

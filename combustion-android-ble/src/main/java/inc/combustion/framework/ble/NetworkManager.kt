@@ -54,12 +54,12 @@ internal class NetworkManager(
     private var adapter: BluetoothAdapter,
     private var settings: DeviceManager.Settings
 ) {
-    sealed class DeviceHolder {
+    private sealed class DeviceHolder {
         data class ProbeHolder(val probe: ProbeBleDevice) : DeviceHolder()
         data class RepeaterHolder(val repeater: UartBleDevice) : DeviceHolder()
     }
 
-    sealed class LinkHolder {
+    private sealed class LinkHolder {
         data class ProbeHolder(val probe: ProbeBleDevice) : LinkHolder()
         data class RepeatedProbeHolder(val repeatedProbe: RepeatedProbeBleDevice) : LinkHolder()
     }
@@ -147,7 +147,8 @@ internal class NetworkManager(
     private val probeManagers = hashMapOf<String, ProbeManager>()
     private val deviceInformationDevices = hashMapOf<DeviceID, DeviceInformationBleDevice>()
     private var proximityDevices = hashMapOf<String, ProximityDevice>()
-    private var probeWhitelist: Set<String>? = settings.probeWhitelist
+    var thermometerWhitelist: Set<String>? = settings.thermometerWhitelist
+        private set
 
     internal val bluetoothAdapterStateIntentFilter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
     internal val bluetoothAdapterStateReceiver: BroadcastReceiver = object : BroadcastReceiver() {
@@ -193,11 +194,51 @@ internal class NetworkManager(
 
     internal val discoveredProbes: List<String>
         get() {
-            return  probeManagers.keys.toList()
+            return probeManagers.keys.toList()
         }
 
-    fun setProbeWhitelist(whitelist: Set<String>?) {
-        probeWhitelist = whitelist
+    fun setThermometerWhitelist(whitelist: Set<String>?) {
+        // Make sure that the new whitelist is set before we get another advertisement sneak in and
+        // try to kick off a connection to a probe that is no longer in the whitelist.
+        thermometerWhitelist = whitelist
+
+        Log.i(LOG_TAG, "Setting the thermometer whitelist to $thermometerWhitelist")
+
+        // If the whitelist is null, we don't want to remove any probes.
+        if (whitelist == null) {
+            return
+        }
+
+        // We want to remove probes that are in the discoveredProbes list but not the whitelist.
+        discoveredProbes.filterNot {
+            whitelist.contains(it)
+        }.forEach { serialNumber ->
+            Log.i(LOG_TAG, "Unlinking thermometer: $serialNumber")
+
+            // Remove the thermometer from the discoveredProbes list
+            val probeManager = probeManagers.remove(serialNumber)
+
+            // Remove the MeatNet links supporting this probe
+            meatNetLinks.values.removeIf {
+                when (it) {
+                    is LinkHolder.ProbeHolder ->
+                        it.probe.probeSerialNumber == serialNumber
+                    is LinkHolder.RepeatedProbeHolder ->
+                        it.repeatedProbe.probeSerialNumber == serialNumber
+                }
+            }
+
+            // Disconnect the thermometer
+            disconnect(serialNumber, canDisconnectMeatNetDevices = true)
+
+            // Clean up the probe manager's resources.
+            probeManager?.finish()
+
+            // Event out the removal
+            flowHolder.mutableDiscoveredProbesFlow.tryEmit(
+                ProbeDiscoveredEvent.ProbeRemoved(serialNumber)
+            )
+        }
     }
 
     fun startScanForProbes(): Boolean {
@@ -317,8 +358,8 @@ internal class NetworkManager(
         probeManagers[serialNumber]?.connect()
     }
 
-    internal fun disconnect(serialNumber: String) {
-        probeManagers[serialNumber]?.disconnect()
+    internal fun disconnect(serialNumber: String, canDisconnectMeatNetDevices: Boolean = false) {
+        probeManagers[serialNumber]?.disconnect(canDisconnectMeatNetDevices)
     }
 
     internal fun setProbeColor(serialNumber: String, color: ProbeColor, completionHandler: (Boolean) -> Unit) {
@@ -395,7 +436,7 @@ internal class NetworkManager(
         }
 
         // If the advertised probe isn't in the subscriber list, don't bother connecting
-        probeWhitelist?.let {
+        thermometerWhitelist?.let {
             if (!it.contains(serialNumber)) {
                 return false
             }
@@ -482,16 +523,20 @@ internal class NetworkManager(
                         // that we track proximity for and publish the addition.
                         if (!proximityDevices.contains(serialNumber)) {
                             Log.i(LOG_TAG, "Adding $serialNumber to probes in proximity")
+
+                            // Guarantee that the device has a valid RSSI value before flowing out
+                            // the discovery event.
                             proximityDevices[serialNumber] = ProximityDevice()
+                            proximityDevices[serialNumber]?.handleRssiUpdate(advertisingData.rssi)
                             flowHolder.mutableDeviceProximityFlow.emit(
                                 DeviceDiscoveredEvent.ProbeDiscovered(serialNumber)
                             )
+                        } else {
+                            // Update the smoothed RSSI value for this device
+                            proximityDevices[serialNumber]?.handleRssiUpdate(advertisingData.rssi)
                         }
-
-                        // Update the smoothed RSSI value for this device
-                        proximityDevices[serialNumber]?.handleRssiUpdate(advertisingData.rssi)
                     }
-                } else if (probeWhitelist == null) {
+                } else if (thermometerWhitelist == null) {
                     // Only connect to a node that doesn't have any connected probes if the
                     // whitelist is unset.
                     if(!firmwareStateOfNetwork.containsKey(advertisingData.id)) {

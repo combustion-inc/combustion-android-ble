@@ -48,20 +48,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal class DeviceScanner private constructor() {
     companion object {
         private const val NORDIC_DFU_SERVICE_UUID_STRING = "0000FE59-0000-1000-8000-00805F9B34FB"
-        private val NORDIC_DFU_SERVICE_UUID: ParcelUuid = ParcelUuid.fromString(
-            NORDIC_DFU_SERVICE_UUID_STRING
-        )
 
         private var allMatchesScanJob: Job? = null
         private val atomicIsScanning = AtomicBoolean(false)
-        private val allMatchesScanner = Scanner {
-            filters = listOf(Filter.Service(NORDIC_DFU_SERVICE_UUID.uuid))
-            scanSettings = ScanSettings.Builder()
-                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-                .setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
-                .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
-                .build()
-        }
 
         val isScanning: Boolean
             get() = atomicIsScanning.get()
@@ -70,6 +59,19 @@ internal class DeviceScanner private constructor() {
         val advertisements = mutableAdvertisements.asSharedFlow()
 
         fun scan(owner: LifecycleOwner) {
+            val NORDIC_DFU_SERVICE_UUID: ParcelUuid = ParcelUuid.fromString(
+                NORDIC_DFU_SERVICE_UUID_STRING
+            )
+
+            val allMatchesScanner = Scanner {
+                filters = listOf(Filter.Service(NORDIC_DFU_SERVICE_UUID.uuid))
+                scanSettings = ScanSettings.Builder()
+                    .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                    .setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
+                    .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
+                    .build()
+            }
+
             if(!atomicIsScanning.getAndSet(true)) {
                 allMatchesScanJob = owner.lifecycleScope.launch(Dispatchers.IO) {
                     // launches the block in a new coroutine every time the LifecycleOwner is

@@ -369,8 +369,11 @@ internal class ProbeManager(
         simulatedProbe?.connect()
     }
 
-    fun disconnect() {
-        arbitrator.getNodesNeedingDisconnect(true).forEach {node ->
+    fun disconnect(canDisconnectFromMeatNetDevices: Boolean = false) {
+        arbitrator.getNodesNeedingDisconnect(
+            fromApiCall = true,
+            canDisconnectFromMeatNetDevices = canDisconnectFromMeatNetDevices
+        ).forEach {node ->
             node.disconnect()
         }
 
@@ -506,6 +509,10 @@ internal class ProbeManager(
         jobManager.cancelJobs()
     }
 
+    fun unlink() {
+        disconnect()
+    }
+
     private fun observe(base: ProbeBleDeviceBase) {
         if(base is ProbeBleDevice) {
             _probe.value = _probe.value.copy(
@@ -548,7 +555,9 @@ internal class ProbeManager(
     }
 
     private suspend fun handleProbeStatus(status: ProbeStatus) {
+        Log.e("NICK", "should handle probe status? $status")
         if(arbitrator.shouldUpdateDataFromProbeStatus(status, sessionInfo)) {
+            Log.e("NICK", "HANDLING! $status")
             updateLink()
             updateBatteryIdColor(status.batteryStatus, status.id, status.color)
             updateSequenceNumbers(status.minSequenceNumber, status.maxSequenceNumber)
@@ -834,6 +843,7 @@ internal class ProbeManager(
     }
 
     private fun updateNormalMode(status: ProbeStatus) {
+        Log.e("NICK", "update normal mode $status")
         statusNotificationsMonitor.activity()
         predictionMonitor.activity()
 

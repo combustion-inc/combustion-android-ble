@@ -49,6 +49,13 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.launch
 
+/**
+ * Class representing a directly-connected probe.
+ *
+ * [mac] is the MAC address of the probe. [probeAdvertisingData] is the most recent advertising data
+ * obtained for this probe--after construction, this can be obtained from [advertisement]. [uart]
+ * is the interface used for sending and receiving UART messages to and from the probe.
+ */
 internal class ProbeBleDevice (
     mac: String,
     owner: LifecycleOwner,
@@ -206,7 +213,8 @@ internal class ProbeBleDevice (
     override fun observeConnectionState(callback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)?) = uart.observeConnectionState(callback)
 
     override fun observeProbeStatusUpdates(callback: (suspend (status: ProbeStatus) -> Unit)?) {
-        if(probeStatusJob == null) {
+        Log.e("NICK", "observeProbeStatusUpdates: ${probeStatusJob?.isActive}")
+        if (probeStatusJob?.isActive != true) {
             val job = uart.owner.lifecycleScope.launch {
                 uart.peripheral.observe(DEVICE_STATUS_CHARACTERISTIC)
                     .onCompletion {
