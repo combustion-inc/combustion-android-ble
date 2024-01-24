@@ -39,11 +39,11 @@ import inc.combustion.framework.ble.device.ProbeBleDeviceBase
 import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.uart.LogResponse
-import inc.combustion.framework.log.UploadProgress
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
+import kotlin.coroutines.coroutineContext
 
 /**
  * This class is responsible for managing and arbitrating the data links to a temperature
@@ -293,7 +293,7 @@ internal class ProbeManager(
         monitorStatusNotifications()
     }
 
-    fun addJob(job: Job) = jobManager.addJob(job)
+    fun addJob(serialNumber: String, job: Job) = jobManager.addJob(serialNumber, job)
 
     fun addProbe(probe: ProbeBleDevice, baseDevice: DeviceInformationBleDevice, advertisement: CombustionAdvertisingData) {
         if(IGNORE_PROBES) return
@@ -369,8 +369,14 @@ internal class ProbeManager(
         simulatedProbe?.connect()
     }
 
-    fun disconnect() {
-        arbitrator.getNodesNeedingDisconnect(true).forEach {node ->
+    fun disconnect(canDisconnectFromMeatNetDevices: Boolean = false) {
+        arbitrator.getNodesNeedingDisconnect(
+            canDisconnectFromMeatNetDevices = canDisconnectFromMeatNetDevices
+        ).forEach {node ->
+            Log.d(LOG_TAG, "ProbeManager: disconnecting $node")
+
+            // Since this is an explicit disconnect, we want to also disable the auto-reconnect flag
+            arbitrator.setShouldAutoReconnect(false)
             node.disconnect()
         }
 
@@ -501,8 +507,9 @@ internal class ProbeManager(
         }
     }
 
-    fun finish() {
-        arbitrator.finish()
+    fun finish(deviceIdsToDisconnect: Set<DeviceID>? = null) {
+        Log.d(LOG_TAG, "ProbeManager.finish($deviceIdsToDisconnect) for ($serialNumber)")
+        arbitrator.finish(serialNumber, deviceIdsToDisconnect)
         jobManager.cancelJobs()
     }
 
@@ -516,7 +523,9 @@ internal class ProbeManager(
             )
         }
 
-        base.observeAdvertisingPackets(serialNumber, base.mac) { advertisement -> handleAdvertisingPackets(base, advertisement) }
+        base.observeAdvertisingPackets(serialNumber, base.mac) { advertisement ->
+            handleAdvertisingPackets(base, advertisement)
+        }
         base.observeConnectionState { state -> handleConnectionState(base, state) }
         base.observeOutOfRange(OUT_OF_RANGE_TIMEOUT){ handleOutOfRange() }
         base.observeProbeStatusUpdates { status -> handleProbeStatus(status) }
@@ -524,31 +533,38 @@ internal class ProbeManager(
     }
 
     private fun monitorStatusNotifications() {
-        jobManager.addJob(owner.lifecycleScope.launch(Dispatchers.IO) {
-            // Wait before starting to monitor prediction status, this allows for initial
-            // connection time
-            delay(PROBE_STATUS_NOTIFICATIONS_POLL_DELAY_MS)
+        jobManager.addJob(
+            key = serialNumber,
+            job = owner.lifecycleScope.launch(
+                CoroutineName("${serialNumber}.monitorStatusNotifications") + Dispatchers.IO
+            ) {
+                // Wait before starting to monitor prediction status, this allows for initial
+                // connection time
+                delay(PROBE_STATUS_NOTIFICATIONS_POLL_DELAY_MS)
 
-            while(isActive) {
-                delay(PROBE_STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS)
+                while(isActive) {
+                    delay(PROBE_STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS)
 
-                val statusNotificationsStale = statusNotificationsMonitor.isIdle(PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS)
-                val predictionStale = predictionMonitor.isIdle(PREDICTION_IDLE_TIMEOUT_MS) && _probe.value.isPredicting
-                val shouldUpdate = statusNotificationsStale != _probe.value.statusNotificationsStale ||
-                        predictionStale != _probe.value.predictionStale
+                    val statusNotificationsStale = statusNotificationsMonitor.isIdle(PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS)
+                    val predictionStale = predictionMonitor.isIdle(PREDICTION_IDLE_TIMEOUT_MS) && _probe.value.isPredicting
+                    val shouldUpdate = statusNotificationsStale != _probe.value.statusNotificationsStale ||
+                            predictionStale != _probe.value.predictionStale
 
-                if(shouldUpdate) {
-                    _probe.value = _probe.value.copy(
-                        statusNotificationsStale = statusNotificationsStale,
-                        predictionStale = predictionStale
-                    )
+                    if(shouldUpdate) {
+                        _probe.value = _probe.value.copy(
+                            statusNotificationsStale = statusNotificationsStale,
+                            predictionStale = predictionStale
+                        )
+                    }
                 }
             }
-        })
+        )
     }
 
     private suspend fun handleProbeStatus(status: ProbeStatus) {
         if(arbitrator.shouldUpdateDataFromProbeStatus(status, sessionInfo)) {
+            Log.v(LOG_TAG, "ProbeManager.handleProbeStatus: $serialNumber $status")
+
             updateLink()
             updateBatteryIdColor(status.batteryStatus, status.id, status.color)
             updateSequenceNumbers(status.minSequenceNumber, status.maxSequenceNumber)
@@ -579,6 +595,7 @@ internal class ProbeManager(
     }
 
     private fun handleAdvertisingPackets(device: ProbeBleDeviceBase, advertisement: CombustionAdvertisingData) {
+        Log.v(LOG_TAG, "ProbeManager.handleAdvertisingPackets($device, $advertisement)")
         val state = connectionState
         val networkIsAdvertisingAndNotConnected =
             (state == DeviceConnectionState.ADVERTISING_CONNECTABLE || state == DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE ||
