@@ -160,7 +160,8 @@ internal open class BleDevice (
 
     /**
      * Cancels all jobs for [jobKey] and unregisters callbacks. Also optionally disconnects the
-     * device if [disconnect] is true. If [jobKey] is null, all jobs are cancelled.
+     * device if [disconnect] is true. If [jobKey] is null, all jobs are cancelled. This should be
+     * the same job key that was used when calling [observeAdvertisingPackets].
      */
     open fun finish(jobKey: String? = null, disconnect: Boolean = true) {
         Log.d(LOG_TAG, "BleDevice.finish() for $mac; (jobKey=$jobKey, disconnect=$disconnect)")

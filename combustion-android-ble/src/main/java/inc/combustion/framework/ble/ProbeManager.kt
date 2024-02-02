@@ -509,7 +509,29 @@ internal class ProbeManager(
 
     fun finish(deviceIdsToDisconnect: Set<DeviceID>? = null) {
         Log.d(LOG_TAG, "ProbeManager.finish($deviceIdsToDisconnect) for ($serialNumber)")
-        arbitrator.finish(serialNumber, deviceIdsToDisconnect)
+
+        arbitrator.finish(
+            nodeAction = {
+                // There's a couple specific things that come out of unlinking a probe that need to
+                // be addressed here:
+                //
+                // - Jobs are created on repeated probes (nodes) that need to be cancelled so that
+                //   we don't continue to obtain data for probes that we're disconnected from. If
+                //   all jobs on a node are blindly cancelled, then we'll likely cancel jobs that
+                //   are still needed for other probes connected to this node. The [jobKey]
+                //   parameter allows for selective cancellation of jobs.
+                // - On a related note, we need to be able to selectively disconnect from nodes as
+                //   some are still providing data from other probes.
+                it.finish(
+                    jobKey = serialNumber,
+                    disconnect = deviceIdsToDisconnect?.contains(it.id) ?: true
+                )
+            },
+            directConnectionAction = {
+                it.disconnect()
+            }
+        )
+
         jobManager.cancelJobs()
     }
 
