@@ -62,10 +62,16 @@ class DeviceManager(
     private val onBoundInitList = mutableListOf<() -> Unit>()
     private lateinit var service: CombustionService
 
+    /**
+     * [probeAllowlist] specifies a set of thermometers that will be used to filter devices
+     * flowed to the application. Set to null to disable filtering. This can also be set by calling
+     * [setProbeAllowlist].
+     */
     data class Settings(
         val autoReconnect: Boolean = false,
         val autoLogTransfer: Boolean = false,
-        val meatNetEnabled: Boolean = false
+        val meatNetEnabled: Boolean = false,
+        val probeAllowlist: Set<String>? = null,
     )
 
     companion object {
@@ -234,7 +240,7 @@ class DeviceManager(
      * device that is in proximity. To receive updates to the proximity value, collect on the
      * [deviceSmoothedRssiFlow]. This is a hot flow.
      *
-     * Note that this flow will emit events for all devices in proximity, disregarding any whitelist
+     * Note that this flow will emit events for all devices in proximity, disregarding any allowlist
      * information.
      */
     val deviceProximityFlow : SharedFlow<DeviceDiscoveredEvent>
@@ -286,11 +292,29 @@ class DeviceManager(
      *
      * @see discoveredProbesFlow
      * @see ProbeDiscoveredEvent
-     * @see ProbeDiscoveredEvent.ScanningOn
      */
     fun startScanningForProbes(): Boolean {
         return NetworkManager.instance.startScanForProbes()
     }
+
+    /**
+     * Sets the list of probes that the framework will publish data for to [allowlist]. A
+     * discovery event will be emitted to [discoveredProbesFlow] for every probe in the list that
+     * isn't currently in the internal list maintained by the framework.
+     *
+     * Passing null for [allowlist] will cause all probes to be published.
+     */
+    fun setProbeAllowlist(allowlist: Set<String>?) {
+        NetworkManager.instance.setProbeAllowlist(allowlist)
+    }
+
+    /**
+     * Returns the current thermometer allowlist.
+     */
+    val probeAllowlist: Set<String>?
+        get() {
+            return NetworkManager.instance.probeAllowlist
+        }
 
     /**
      * Stops scanning for temperature probes.  Will generate a ProbeDiscoveredEvent
@@ -300,7 +324,6 @@ class DeviceManager(
      *
      * @see discoveredProbesFlow
      * @see ProbeDiscoveredEvent
-     * @see ProbeDiscoveredEvent.ScanningOff
      */
     fun stopScanningForProbes(): Boolean {
         return NetworkManager.instance.stopScanForProbes()
@@ -341,6 +364,9 @@ class DeviceManager(
      * The rate that this flow updates is dependent on the frequency with which we receive
      * advertising data, which can come in more or less frequently if the probe is in instant read
      * mode or not.
+     *
+     * This flow is guaranteed to exist if a [DeviceDiscoveredEvent.ProbeDiscovered] event is flowed
+     * from [deviceProximityFlow] for [serialNumber].
      */
     fun deviceSmoothedRssiFlow(serialNumber: String): StateFlow<Double?>? {
         return NetworkManager.instance.deviceSmoothedRssiFlow(serialNumber)

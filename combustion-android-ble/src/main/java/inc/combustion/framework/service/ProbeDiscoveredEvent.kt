@@ -32,6 +32,8 @@ package inc.combustion.framework.service
  * scanning and producing events to the discovered probes flow.
  *
  * @see DeviceManager.discoveredProbesFlow
+ *
+ * TODO: This should probably have a more accurate name.
  */
 sealed class ProbeDiscoveredEvent {
     /**
@@ -40,6 +42,13 @@ sealed class ProbeDiscoveredEvent {
      * @property serialNumber serial number of the discovered device
      */
     data class ProbeDiscovered(
+        val serialNumber: String
+    ) : ProbeDiscoveredEvent()
+
+    /**
+     * Combustion device with serial number [serialNumber] was removed.
+     */
+    data class ProbeRemoved(
         val serialNumber: String
     ) : ProbeDiscoveredEvent()
 
