@@ -44,17 +44,26 @@ import inc.combustion.framework.ble.uart.meatnet.NodeSetPredictionResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.ble.uart.meatnet.NodeReadSessionInfoRequest
 import inc.combustion.framework.service.*
+import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+/**
+ * Class representing a probe connected through one or more MeatNet nodes.
+ *
+ * [probeSerialNumber] indicates the serial number of the probe. [advertisement] is the initial
+ * advertisement coming from a node that contains the probe's information. [uart] is the interface
+ * for sending and receiving UART messages to and from the probe.
+ */
 internal class RepeatedProbeBleDevice (
     override val probeSerialNumber: String,
     private val uart: UartBleDevice,
     advertisement: CombustionAdvertisingData,
 ) : ProbeBleDeviceBase() {
 
+    // TODO: Why is this a map? I only see probeSerialNumber being set here.
     private val advertisementForProbe = hashMapOf<String, CombustionAdvertisingData>()
 
     private var probeStatusCallback: (suspend (status: ProbeStatus) -> Unit)? = null
@@ -236,7 +245,10 @@ internal class RepeatedProbeBleDevice (
 
     override fun observeAdvertisingPackets(serialNumberFilter: String, macFilter: String, callback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)?) {
         uart.observeAdvertisingPackets(
-            { advertisement ->  macFilter == advertisement.mac && advertisement.probeSerialNumber == serialNumberFilter }
+            jobKey = serialNumberFilter,
+            filter = { advertisement ->
+                macFilter == advertisement.mac && advertisement.probeSerialNumber == serialNumberFilter
+            }
         ) { advertisement ->
             callback?.let {
                 advertisementForProbe[probeSerialNumber] = advertisement
@@ -259,27 +271,32 @@ internal class RepeatedProbeBleDevice (
     }
 
     private fun observeUartMessages(callback: (suspend (responses: List<NodeUARTMessage>) -> Unit)? = null) {
-        uart.jobManager.addJob(uart.owner.lifecycleScope.launch {
-            uart.observeUartCharacteristic { data ->
+        uart.jobManager.addJob(
+            key = probeSerialNumber,
+            job = uart.owner.lifecycleScope.launch(
+                CoroutineName("${probeSerialNumber}.observeUartMessages")
+            ) {
+                uart.observeUartCharacteristic { data ->
 
-                callback?.let {
-                    val message = NodeUARTMessage.fromData(data.toUByteArray())
+                    callback?.let {
+                        val message = NodeUARTMessage.fromData(data.toUByteArray())
 
-                    if (INFO_LOG_MEATNET_TRACE && INFO_LOG_MEATNET_UART_TRACE) {
-                        message.forEach { uartMessage ->
-                            MEATNET_TRACE_INCLUSION_FILTER.firstOrNull{it == uartMessage.messageId}?.let {
-                                val packet = data.joinToString("") {
-                                    it.toString(16).padStart(2, '0').uppercase()
+                        if (INFO_LOG_MEATNET_TRACE && INFO_LOG_MEATNET_UART_TRACE) {
+                            message.forEach { uartMessage ->
+                                MEATNET_TRACE_INCLUSION_FILTER.firstOrNull{it == uartMessage.messageId}?.let {
+                                    val packet = data.joinToString("") {
+                                        it.toString(16).padStart(2, '0').uppercase()
+                                    }
+                                    Log.i(LOG_TAG, "UART-RX: $packet")
                                 }
-                                Log.i(LOG_TAG, "UART-RX: $packet")
                             }
                         }
-                    }
 
-                    it(message)
+                        it(message)
+                    }
                 }
             }
-        })
+        )
     }
 
     private fun sendUartRequest(request: NodeRequest) {

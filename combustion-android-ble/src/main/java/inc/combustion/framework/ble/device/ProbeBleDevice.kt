@@ -43,12 +43,20 @@ import inc.combustion.framework.ble.uart.SetColorRequest
 import inc.combustion.framework.ble.uart.SetIDRequest
 import inc.combustion.framework.ble.uart.SetPredictionRequest
 import inc.combustion.framework.service.*
+import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.launch
 
+/**
+ * Class representing a directly-connected probe.
+ *
+ * [mac] is the MAC address of the probe. [probeAdvertisingData] is the most recent advertising data
+ * obtained for this probe--after construction, this can be obtained from [advertisement]. [uart]
+ * is the interface used for sending and receiving UART messages to and from the probe.
+ */
 internal class ProbeBleDevice (
     mac: String,
     owner: LifecycleOwner,
@@ -192,7 +200,10 @@ internal class ProbeBleDevice (
 
     override fun observeAdvertisingPackets(serialNumberFilter: String, macFilter: String, callback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)?) {
         uart.observeAdvertisingPackets(
-            { advertisement ->  macFilter == advertisement.mac && advertisement.probeSerialNumber == serialNumberFilter }
+            jobKey = serialNumberFilter,
+            filter = { advertisement ->
+                macFilter == advertisement.mac && advertisement.probeSerialNumber == serialNumberFilter
+            }
         ) { advertisement ->
             callback?.let {
                 probeAdvertisingData = advertisement
@@ -206,8 +217,10 @@ internal class ProbeBleDevice (
     override fun observeConnectionState(callback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)?) = uart.observeConnectionState(callback)
 
     override fun observeProbeStatusUpdates(callback: (suspend (status: ProbeStatus) -> Unit)?) {
-        if(probeStatusJob == null) {
-            val job = uart.owner.lifecycleScope.launch {
+        if (probeStatusJob?.isActive != true) {
+            val job = uart.owner.lifecycleScope.launch(
+                CoroutineName("${probeSerialNumber}.observeProbeStatusUpdates")
+            ) {
                 uart.peripheral.observe(DEVICE_STATUS_CHARACTERISTIC)
                     .onCompletion {
                         Log.d(LOG_TAG, "Device Status Characteristic Monitor Complete")
@@ -224,18 +237,23 @@ internal class ProbeBleDevice (
                     }
             }
             probeStatusJob = job
-            uart.jobManager.addJob(job)
+            uart.jobManager.addJob(key = probeSerialNumber, job = job)
         }
     }
 
     private fun observeUartResponses(callback: (suspend (responses: List<Response>) -> Unit)? = null) {
-        uart.jobManager.addJob(uart.owner.lifecycleScope.launch {
-            uart.observeUartCharacteristic { data ->
-                callback?.let {
-                    it(Response.fromData(data.toUByteArray()))
+        uart.jobManager.addJob(
+            key = probeSerialNumber,
+            job = uart.owner.lifecycleScope.launch(
+                CoroutineName("${probeSerialNumber}.observeUartResponses")
+            ){
+                uart.observeUartCharacteristic { data ->
+                    callback?.let {
+                        it(Response.fromData(data.toUByteArray()))
+                    }
                 }
             }
-        })
+        )
     }
 
     private fun sendUartRequest(request: Request) {

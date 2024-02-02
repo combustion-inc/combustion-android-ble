@@ -28,7 +28,8 @@
 
 package inc.combustion.framework.ble
 
-import android.se.omapi.Session
+import android.util.Log
+import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.device.*
 import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.device.ProbeBleDeviceBase
@@ -121,8 +122,28 @@ internal class DataLinkArbitrator(
             } == null && !directInRange
         }
 
-    fun finish() {
-        networkNodes.forEach { it.value.finish() }
+    /**
+     * Cleans up all resources associated with this arbitrator.
+     *
+     * In an effort to decouple BLE connection and disconnection functionality from the arbitrator
+     * class, this method takes two lambdas as parameters: [nodeAction] and
+     * [directConnectionAction]. These lambdas are called for each node and the direct connection,
+     * and are expected to handle the cleanup/disconnection of each device. The caller may want to
+     * consider calling [DeviceInformationBleDevice.finish] on each node, and
+     * [ProbeBleDevice.disconnect] on the direct connection.
+     */
+    fun finish(
+        nodeAction: (DeviceInformationBleDevice) -> Unit,
+        directConnectionAction: (ProbeBleDevice) -> Unit,
+    ) {
+        Log.d(LOG_TAG, "DataLinkArbitrator.finish()")
+        networkNodes.values
+            .forEach { nodeAction(it) }
+
+        directLink?.let {
+            directConnectionAction(it)
+        }
+
         repeatedProbeBleDevices.clear()
         networkNodes.clear()
         probeBleDevice = null
@@ -130,6 +151,7 @@ internal class DataLinkArbitrator(
 
     fun addProbe(probe: ProbeBleDevice, baseDevice: DeviceInformationBleDevice): Boolean {
         if(probeBleDevice == null) {
+            Log.d(LOG_TAG, "DataLinkArbitrator.addProbe(${probe.probeSerialNumber}, ${baseDevice.serialNumber}: ${baseDevice.id})")
             probeBleDevice = probe
             networkNodes[baseDevice.id] = baseDevice
             return true
@@ -139,6 +161,7 @@ internal class DataLinkArbitrator(
     }
 
     fun addRepeatedProbe(repeatedProbe: RepeatedProbeBleDevice, repeater: DeviceInformationBleDevice): Boolean {
+        Log.d(LOG_TAG, "DataLinkArbitrator.addRepeatedProbe(${repeatedProbe.probeSerialNumber}, ${repeater.id})")
         repeatedProbeBleDevices.add(repeatedProbe)
         if(!networkNodes.containsKey(repeater.id)) {
             networkNodes[repeater.id] = repeater
@@ -200,29 +223,25 @@ internal class DataLinkArbitrator(
         }.values.toList()
     }
 
-    fun getNodesNeedingDisconnect(fromApiCall: Boolean = false): List<DeviceInformationBleDevice> {
-        val disconnectable = mutableListOf<DeviceID>()
-        // for meatnet links
-        repeatedProbeBleDevices.forEach {
-            // should disconnect from this repeated probe
-            if(shouldDisconnect(it, fromApiCall)) {
-                // if don't already plan to disconnect from the repeater for the repeated probe
-                if(!disconnectable.contains(it.id)) {
-                    // add to the list of meatnet devices we need to disconnect from
-                    disconnectable.add(it.id)
-                }
+    fun getNodesNeedingDisconnect(
+        canDisconnectFromMeatNetDevices: Boolean = false,
+    ): List<DeviceInformationBleDevice> {
+        val nodesToDisconnect = repeatedProbeBleDevices
+            .filter { shouldDisconnect(it, canDisconnectFromMeatNetDevices) }
+            .map { it.id }
+            .toMutableSet()
+
+        // Should disconnect from a direct connection to the probe
+        probeBleDevice?.let {
+            if(shouldDisconnect(it)) {
+                nodesToDisconnect.add(it.id)
             }
         }
 
-        // should disconnect form a direct connect to the probe
-        probeBleDevice?.let {
-            if(shouldDisconnect(it, fromApiCall)) {
-                disconnectable.add(it.id)
-            }
-        }
+        Log.d(LOG_TAG, "DataLinkArbitrator.getNodesNeedingDisconnect: $nodesToDisconnect")
 
         return networkNodes.filter {
-            entry: Map.Entry<DeviceID, DeviceInformationBleDevice> -> disconnectable.contains(entry.key)
+            entry: Map.Entry<DeviceID, DeviceInformationBleDevice> -> nodesToDisconnect.contains(entry.key)
         }.values.toList()
     }
 
@@ -287,25 +306,44 @@ internal class DataLinkArbitrator(
         return false
     }
 
-    private fun shouldDisconnect(device: ProbeBleDeviceBase, fromApiCall: Boolean = false): Boolean {
-        val canDisconnect = device.isConnected
-        if(settings.meatNetEnabled) {
-            // don't disconnect from meatnet
-            return false
-        }
-        else if(device is ProbeBleDevice) {
-            // if not using meatnet, and the client app is asking us to disconnect,
-            // then turn off the auto-reconnect flag
-            if(fromApiCall) {
-                device.shouldAutoReconnect = false
+    /**
+     * Returns whether or not we should disconnect from [device].
+     *
+     * The conditions for disconnection are different for different types of devices:
+     * - [ProbeBleDevice]s can always be disconnected from and will return true if currently
+     *   connected.
+     * - [SimulatedProbeBleDevice]s can always be disconnected from and will return true.
+     * - A [RepeatedProbeBleDevice], by default, will return false if
+     *   [DeviceManager.Settings.meatNetEnabled] is true--this can be overridden by setting
+     *   [canDisconnectFromMeatNetDevices] to true.
+     */
+    private fun shouldDisconnect(
+        device: ProbeBleDeviceBase,
+        canDisconnectFromMeatNetDevices: Boolean = false,
+    ): Boolean {
+        when (device) {
+            is ProbeBleDevice -> {
+                // We can always disconnect from a directly-connected probe.
+                return device.isConnected
             }
 
-            // additionally disconnect if we can
-            return canDisconnect
+            is RepeatedProbeBleDevice -> {
+                return (canDisconnectFromMeatNetDevices || !settings.meatNetEnabled)
+            }
+
+            is SimulatedProbeBleDevice -> {
+                return true
+            }
         }
 
-        // if not meatnet and not a probe
         return false
+    }
+
+    /**
+     * Sets the auto-reconnect flag for optional directly-connected probe to [shouldAutoReconnect].
+     */
+    fun setShouldAutoReconnect(shouldAutoReconnect: Boolean) {
+        probeBleDevice?.shouldAutoReconnect = shouldAutoReconnect
     }
 
     fun shouldUpdateDataFromAdvertisingPacket(device: ProbeBleDeviceBase, advertisement: CombustionAdvertisingData): Boolean {

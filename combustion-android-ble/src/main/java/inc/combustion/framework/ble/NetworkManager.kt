@@ -28,20 +28,22 @@
 
 package inc.combustion.framework.ble
 
-import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.util.Log
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.device.*
 import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.scanning.DeviceScanner
 import inc.combustion.framework.log.LogManager
 import inc.combustion.framework.service.*
+import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
@@ -53,20 +55,21 @@ internal class NetworkManager(
     private var adapter: BluetoothAdapter,
     private var settings: DeviceManager.Settings
 ) {
-    sealed class DeviceHolder {
+    private sealed class DeviceHolder {
         data class ProbeHolder(val probe: ProbeBleDevice) : DeviceHolder()
         data class RepeaterHolder(val repeater: UartBleDevice) : DeviceHolder()
     }
 
-    sealed class LinkHolder {
+    private sealed class LinkHolder {
         data class ProbeHolder(val probe: ProbeBleDevice) : LinkHolder()
         data class RepeatedProbeHolder(val repeatedProbe: RepeatedProbeBleDevice) : LinkHolder()
     }
 
-    internal data class FlowHowHolder(
+    internal data class FlowHolder(
         var mutableDiscoveredProbesFlow: MutableSharedFlow<ProbeDiscoveredEvent>,
         var mutableNetworkState: MutableStateFlow<NetworkState>,
         var mutableFirmwareUpdateState: MutableStateFlow<FirmwareState>,
+        var mutableDeviceProximityFlow: MutableSharedFlow<DeviceDiscoveredEvent>,
     )
 
     companion object {
@@ -79,13 +82,22 @@ internal class NetworkManager(
         private lateinit var INSTANCE: NetworkManager
         private val initialized = AtomicBoolean(false)
 
-        internal var flowHolder = FlowHowHolder(
-            MutableSharedFlow(FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.SUSPEND),
-            MutableStateFlow(NetworkState()),
-            MutableStateFlow(FirmwareState(listOf()))
+        internal var flowHolder = FlowHolder(
+            mutableDiscoveredProbesFlow = MutableSharedFlow(
+                FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.SUSPEND
+            ),
+            mutableNetworkState = MutableStateFlow(NetworkState()),
+            mutableFirmwareUpdateState = MutableStateFlow(FirmwareState(listOf())),
+            mutableDeviceProximityFlow = MutableSharedFlow(
+                FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.SUSPEND
+            ),
         )
 
-        fun initialize(owner: LifecycleOwner, adapter: BluetoothAdapter, settings: DeviceManager.Settings)  {
+        fun initialize(
+            owner: LifecycleOwner,
+            adapter: BluetoothAdapter,
+            settings: DeviceManager.Settings,
+        ) {
             if(!initialized.getAndSet(true)) {
                 INSTANCE = NetworkManager(owner, adapter, settings)
             }
@@ -123,6 +135,11 @@ internal class NetworkManager(
             get() {
                 return flowHolder.mutableFirmwareUpdateState.asStateFlow()
             }
+
+        val deviceProximityFlow: SharedFlow<DeviceDiscoveredEvent>
+            get() {
+                return flowHolder.mutableDeviceProximityFlow.asSharedFlow()
+            }
     }
 
     private val jobManager = JobManager()
@@ -130,6 +147,9 @@ internal class NetworkManager(
     private val meatNetLinks = hashMapOf<LinkID, LinkHolder>()
     private val probeManagers = hashMapOf<String, ProbeManager>()
     private val deviceInformationDevices = hashMapOf<DeviceID, DeviceInformationBleDevice>()
+    private var proximityDevices = hashMapOf<String, ProximityDevice>()
+    var probeAllowlist: Set<String>? = settings.probeAllowlist
+        private set
 
     internal val bluetoothAdapterStateIntentFilter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
     internal val bluetoothAdapterStateReceiver: BroadcastReceiver = object : BroadcastReceiver() {
@@ -175,8 +195,28 @@ internal class NetworkManager(
 
     internal val discoveredProbes: List<String>
         get() {
-            return  probeManagers.keys.toList()
+            return probeManagers.keys.toList()
         }
+
+    fun setProbeAllowlist(allowlist: Set<String>?) {
+        // Make sure that the new allowlist is set before we get another advertisement sneak in and
+        // try to kick off a connection to a probe that is no longer in the allowlist.
+        probeAllowlist = allowlist
+
+        Log.i(LOG_TAG, "Setting the probe allowlist to $probeAllowlist")
+
+        // If the allowlist is null, we don't want to remove any probes.
+        if (allowlist == null) {
+            return
+        }
+
+        // We want to remove probes that are in the discoveredProbes list but not the allowlist.
+        discoveredProbes.filterNot {
+            allowlist.contains(it)
+        }.forEach { serialNumber ->
+            unlinkProbe(serialNumber)
+        }
+    }
 
     fun startScanForProbes(): Boolean {
         if(bluetoothIsEnabled) {
@@ -287,12 +327,16 @@ internal class NetworkManager(
         return probeManagers[serialNumber]?.probe
     }
 
+    internal fun deviceSmoothedRssiFlow(serialNumber: String): StateFlow<Double?>? {
+        return proximityDevices[serialNumber]?.probeSmoothedRssiFlow
+    }
+
     internal fun connect(serialNumber: String) {
         probeManagers[serialNumber]?.connect()
     }
 
-    internal fun disconnect(serialNumber: String) {
-        probeManagers[serialNumber]?.disconnect()
+    internal fun disconnect(serialNumber: String, canDisconnectMeatNetDevices: Boolean = false) {
+        probeManagers[serialNumber]?.disconnect(canDisconnectMeatNetDevices)
     }
 
     internal fun setProbeColor(serialNumber: String, color: ProbeColor, completionHandler: (Boolean) -> Unit) {
@@ -339,6 +383,7 @@ internal class NetworkManager(
         probeManagers.clear()
         devices.clear()
         meatNetLinks.clear()
+        proximityDevices.clear()
 
         // clear the discovered probes flow
         flowHolder.mutableDiscoveredProbesFlow.resetReplayCache()
@@ -365,6 +410,13 @@ internal class NetworkManager(
         // because that product type isn't supported in this mode.
         if(!settings.meatNetEnabled && advertisement.productType != CombustionProductType.PROBE) {
             return false
+        }
+
+        // If the advertised probe isn't in the subscriber list, don't bother connecting
+        probeAllowlist?.let {
+            if (!it.contains(serialNumber)) {
+                return false
+            }
         }
 
         // if we have not seen this device by its uid, then track in the device map.
@@ -434,14 +486,36 @@ internal class NetworkManager(
     private suspend fun collectAdvertisingData() {
         DeviceScanner.advertisements.collect {advertisingData ->
             if(scanningForProbes) {
-                if(advertisingData.probeSerialNumber != REPEATER_NO_PROBES_SERIAL_NUMBER) {
+                val serialNumber = advertisingData.probeSerialNumber
+                if(serialNumber != REPEATER_NO_PROBES_SERIAL_NUMBER) {
                     if(manageMeatNetDevice(advertisingData)) {
                         flowHolder.mutableDiscoveredProbesFlow.emit(
-                            ProbeDiscoveredEvent.ProbeDiscovered(advertisingData.probeSerialNumber)
+                            ProbeDiscoveredEvent.ProbeDiscovered(serialNumber)
                         )
                     }
-                }
-                else {
+
+                    // Publish this device to the proximity flow if it's a probe.
+                    if (advertisingData.productType == CombustionProductType.PROBE) {
+                        // If we haven't seen this probe before, then add it to our list of devices
+                        // that we track proximity for and publish the addition.
+                        if (!proximityDevices.contains(serialNumber)) {
+                            Log.i(LOG_TAG, "Adding $serialNumber to probes in proximity")
+
+                            // Guarantee that the device has a valid RSSI value before flowing out
+                            // the discovery event.
+                            proximityDevices[serialNumber] = ProximityDevice()
+                            proximityDevices[serialNumber]?.handleRssiUpdate(advertisingData.rssi)
+                            flowHolder.mutableDeviceProximityFlow.emit(
+                                DeviceDiscoveredEvent.ProbeDiscovered(serialNumber)
+                            )
+                        } else {
+                            // Update the smoothed RSSI value for this device
+                            proximityDevices[serialNumber]?.handleRssiUpdate(advertisingData.rssi)
+                        }
+                    }
+                } else if (probeAllowlist == null) {
+                    // Only connect to a node that doesn't have any connected probes if the
+                    // allowlist is unset.
                     if(!firmwareStateOfNetwork.containsKey(advertisingData.id)) {
                         handleMeatNetLinkWithoutProbe(advertisingData)
                     }
@@ -493,28 +567,32 @@ internal class NetworkManager(
     }
 
     private fun initialize() {
-        jobManager.addJob(owner.lifecycleScope.launch {
-            collectAdvertisingData()
-        })
+        jobManager.addJob(
+            owner.lifecycleScope.launch(CoroutineName("collectAdvertisingData")) {
+                collectAdvertisingData()
+            }
+        )
 
         // if MeatNet is enabled,then automatically start and stop scanning state
         // based on current bluetooth state.  this code cannot handle application permissions
         // in that case, the client app needs to start scanning once bluetooth permissions are allowed.
         if(settings.meatNetEnabled) {
-            jobManager.addJob(owner.lifecycleScope.launch{
-                var bluetoothIsOn = false
-                networkStateFlow.collect {
-                    if(!bluetoothIsOn && it.bluetoothOn) {
-                        startScanForProbes()
-                    }
+            jobManager.addJob(
+                owner.lifecycleScope.launch(CoroutineName("networkStateFlow")) {
+                    var bluetoothIsOn = false
+                    networkStateFlow.collect {
+                        if(!bluetoothIsOn && it.bluetoothOn) {
+                            startScanForProbes()
+                        }
 
-                    if(bluetoothIsOn && !it.bluetoothOn) {
-                        stopScanForProbes()
-                    }
+                        if(bluetoothIsOn && !it.bluetoothOn) {
+                            stopScanForProbes()
+                        }
 
-                    bluetoothIsOn = it.bluetoothOn
+                        bluetoothIsOn = it.bluetoothOn
+                    }
                 }
-            })
+            )
         }
 
         if(bluetoothIsEnabled) {
@@ -529,5 +607,87 @@ internal class NetworkManager(
         else {
             flowHolder.mutableNetworkState.value = flowHolder.mutableNetworkState.value.copy(bluetoothOn = false)
         }
+    }
+
+    private fun unlinkProbe(serialNumber: String) {
+        Log.i(LOG_TAG, "Unlinking probe: $serialNumber")
+
+        // Remove the probe from the discoveredProbes list
+        val probeManager = probeManagers.remove(serialNumber)
+
+        val deviceId = probeManager?.probe?.baseDevice?.id
+
+        // We need to figure out which repeated probe devices (nodes, essentially) are solely
+        // repeating the probe that we want to disconnect from. So, for example, from the following
+        // list of link IDs to pseudo-RepeatedProbeHolders:
+        //
+        // "id1_sn1" to RepeatedProbeHolder("id1", "s1"),
+        // "id1_sn2" to RepeatedProbeHolder("id1", "s2"),
+        //
+        // "id2_sn2" to RepeatedProbeHolder("id2", "s2"),
+        //
+        // "id3_sn1" to RepeatedProbeHolder("id3", "s1"),
+        // "id3_sn2" to RepeatedProbeHolder("id3", "s2"),
+        // "id3_sn3" to RepeatedProbeHolder("id3", "s3"),
+        //
+        // We'd want the following list of nodes to disconnect from: [id2]. To do this we get the:
+        //
+        // - Set of all Device IDs of nodes (repeated devices) that do provide this serial number.
+        //   [id1, id2, id3] in this case
+        // - Set of all Device IDs of nodes (repeated devices) that provide other serial numbers as
+        //   well.
+        //   [id1, id3] in this case
+        //
+        // The difference in these sets is the set of repeated devices that only repeat this serial
+        // number.
+
+        // Set of all Device IDs of nodes (repeated devices) that do provide this serial number
+        val providers = meatNetLinks.values
+            .filterIsInstance<LinkHolder.RepeatedProbeHolder>()
+            .filter { it.repeatedProbe.probeSerialNumber == serialNumber }
+            .map { it.repeatedProbe.id }
+            .toSet()
+
+        // Set of all Device IDs of nodes (repeated devices) that provide other serial numbers
+        val nonProviders = meatNetLinks.values
+            .filterIsInstance<LinkHolder.RepeatedProbeHolder>()
+            .filterNot { it.repeatedProbe.probeSerialNumber == serialNumber }
+            .map { it.repeatedProbe.id }
+            .toSet()
+
+        val soleProviders = (providers - nonProviders).mapNotNull { id ->
+            meatNetLinks.values
+                .filterIsInstance<LinkHolder.RepeatedProbeHolder>()
+                .firstOrNull { it.repeatedProbe.id == id }
+        }
+
+        soleProviders.forEach {
+            it.repeatedProbe.disconnect()
+        }
+
+        // Remove the MeatNet links supporting this probe
+        meatNetLinks.values.removeIf {
+            when (it) {
+                is LinkHolder.ProbeHolder ->
+                    it.probe.probeSerialNumber == serialNumber
+                is LinkHolder.RepeatedProbeHolder ->
+                    it.repeatedProbe.probeSerialNumber == serialNumber
+            }
+        }
+
+        // Clean up the probe manager's resources, disconnecting only those nodes that are sole
+        // providers.
+        probeManager?.finish(soleProviders.map { it.repeatedProbe.id }.toSet())
+
+        // Remove the probe from the device list--this should be the last reference to the held
+        // device.
+        deviceId?.let {
+            devices.remove(it)
+        }
+
+        // Event out the removal
+        flowHolder.mutableDiscoveredProbesFlow.tryEmit(
+            ProbeDiscoveredEvent.ProbeRemoved(serialNumber)
+        )
     }
 }

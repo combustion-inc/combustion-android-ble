@@ -149,6 +149,8 @@ internal open class BleDevice (
     }
 
     open fun disconnect() {
+        Log.d(LOG_TAG, "BleDevice.disconnect($mac)")
+
         owner.lifecycleScope.launch {
             withTimeoutOrNull(DISCONNECT_TIMEOUT_MS) {
                 peripheral.disconnect()
@@ -157,15 +159,19 @@ internal open class BleDevice (
     }
 
     /**
-     * Cancels all jobs and unregisters callbacks. Also optionally disconnects the device if
-     * [disconnect] is true.
+     * Cancels all jobs for [jobKey] and unregisters callbacks. Also optionally disconnects the
+     * device if [disconnect] is true. If [jobKey] is null, all jobs are cancelled. This should be
+     * the same job key that was used when calling [observeAdvertisingPackets].
      */
-    open fun finish(disconnect: Boolean = true) {
+    open fun finish(jobKey: String? = null, disconnect: Boolean = true) {
+        Log.d(LOG_TAG, "BleDevice.finish() for $mac; (jobKey=$jobKey, disconnect=$disconnect)")
         if (disconnect) {
             disconnect()
         }
 
-        jobManager.cancelJobs()
+        jobKey?.let {
+            jobManager.cancelJobs(it)
+        } ?: jobManager.cancelJobs()
         rssiCallbacks.clear()
     }
 
@@ -243,27 +249,36 @@ internal open class BleDevice (
         }
     }
 
-    fun observeAdvertisingPackets(filter: (advertisement: CombustionAdvertisingData) -> Boolean, callback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)? = null) {
-        jobManager.addJob(owner.lifecycleScope.launch(Dispatchers.IO) {
-            DeviceScanner.advertisements.filter {
+    fun observeAdvertisingPackets(jobKey: String?, filter: (advertisement: CombustionAdvertisingData) -> Boolean, callback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)? = null) {
+        jobManager.addJob(
+            key = jobKey,
+            job = owner.lifecycleScope.launch(
+                CoroutineName("${jobKey}.observeAdvertisingPackets") + Dispatchers.IO
+            ) {
+                DeviceScanner.advertisements.filter {
 
-                // call the passed in filter condition to determine if the packet should be filtered or passed along.
-                filter(it)
+                    // call the passed in filter condition to determine if the packet should be filtered or passed along.
+                    filter(it)
 
-            }.collect {
-                mutex.withLock {
-                    handleAdvertisement(it)
-                }
+                }.collect {
+                    mutex.withLock {
+                        handleAdvertisement(it)
+                    }
 
-                connectionMonitor.activity()
+                    connectionMonitor.activity()
 
-                callback?.let { clientCallback ->
-                    dispatchOnDefault {
-                        clientCallback(it)
+                    callback?.let { clientCallback ->
+                        dispatchOnDefault {
+                            clientCallback(it)
+                        }
                     }
                 }
+            }.also { job ->
+                job.invokeOnCompletion {
+                    Log.d(LOG_TAG, "observeAdvertisingPackets() for $jobKey complete ($it)")
+                }
             }
-        })
+        )
     }
 
     protected suspend fun readSerialNumberCharacteristic(): String? =
