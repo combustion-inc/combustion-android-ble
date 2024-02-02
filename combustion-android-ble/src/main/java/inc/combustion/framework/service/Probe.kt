@@ -73,7 +73,8 @@ package inc.combustion.framework.service
  * @see ProbeColor
  * @see ProbeMode
  */
-data class Probe(
+data class Probe
+constructor(
     val baseDevice: Device,
     val sessionInfo: SessionInformation? = null,
     val temperaturesCelsius: ProbeTemperatures? = null,
@@ -83,8 +84,18 @@ data class Probe(
     val coreTemperatureCelsius: Double? = null,
     val surfaceTemperatureCelsius: Double? = null,
     val ambientTemperatureCelsius: Double? = null,
-    val minSequenceNumber: UInt = 0u,
-    val maxSequenceNumber: UInt = 0u,
+    val minSequence: UInt? = null,
+    val maxSequence: UInt? = null,
+    @Deprecated(
+      message = "This field will be removed in a future release",
+      level = DeprecationLevel.WARNING
+    )
+    val minSequenceNumber: UInt = minSequence ?: 0u,
+    @Deprecated(
+        message = "This field will be removed in a future release",
+        level = DeprecationLevel.WARNING
+    )
+    val maxSequenceNumber: UInt = maxSequence ?: 0u,
     val uploadState: ProbeUploadState = ProbeUploadState.Unavailable,
     val id: ProbeID = ProbeID.ID1,
     val color: ProbeColor = ProbeColor.COLOR1,

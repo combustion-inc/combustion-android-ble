@@ -267,15 +267,15 @@ internal class ProbeManager(
         private set
 
     // current minimum sequence number for the probe
-    val minSequenceNumber: UInt
+    val minSequenceNumber: UInt?
         get() {
-            return _probe.value.minSequenceNumber
+            return _probe.value.minSequence
         }
 
     // current maximum sequence number for the probe
-    val maxSequenceNumber: UInt
+    val maxSequenceNumber: UInt?
         get() {
-            return _probe.value.maxSequenceNumber
+            return _probe.value.maxSequence
         }
 
     // signals when logs are no longer being added to LogManager.
@@ -986,8 +986,8 @@ internal class ProbeManager(
 
     private fun updateSequenceNumbers(minSequenceNumber: UInt, maxSequenceNumber: UInt) {
         _probe.value = _probe.value.copy(
-            minSequenceNumber = minSequenceNumber,
-            maxSequenceNumber = maxSequenceNumber
+            minSequence = minSequenceNumber,
+            maxSequence = maxSequenceNumber
         )
     }
 

@@ -207,24 +207,33 @@ internal class LogManager {
                             .collect { response ->
 
                                 // debug log BLE IO if enabled.
-                                if(DebugSettings.DEBUG_LOG_LOG_MANAGER_IO) {
+                                if (DebugSettings.DEBUG_LOG_LOG_MANAGER_IO) {
                                     Log.d(LOG_TAG, "LOG-RX    : ${response.sequenceNumber}")
                                 }
 
                                 // Do not store the data point if its sequence number is greater than
                                 // the probe's max sequence number. This is a safety check for the
                                 // probe/node sending a record with an invalid sequence number.
-                                if (response.sequenceNumber <= probeManager.maxSequenceNumber) {
-                                    // add the response to the temperature log and set upload progress
-                                    val uploadProgress = temperatureLog.addFromLogResponse(response)
+                                probeManager.maxSequenceNumber?.let {
+                                    if (response.sequenceNumber <= it) {
+                                        // add the response to the temperature log and set upload
+                                        // progress
+                                        val uploadProgress =
+                                            temperatureLog.addFromLogResponse(response)
 
-                                    // update the count of records downloaded
-                                    probeManager.recordsDownloaded = temperatureLog.dataPointCount
+                                        // update the count of records downloaded
+                                        probeManager.recordsDownloaded =
+                                            temperatureLog.dataPointCount
 
-                                    // update ProbeManager state
-                                    probeManager.uploadState = uploadProgress.toProbeUploadState()
-                                } else {
-                                    Log.e(LOG_TAG, "Discarding invalid log response: ${response.sequenceNumber}")
+                                        // update ProbeManager state
+                                        probeManager.uploadState =
+                                            uploadProgress.toProbeUploadState()
+                                    } else {
+                                        Log.e(
+                                            LOG_TAG,
+                                            "Discarding invalid log response: ${response.sequenceNumber}"
+                                        )
+                                    }
                                 }
                             }
                     }
@@ -254,8 +263,8 @@ internal class LogManager {
 
         // prepare log for the request and determine the needed range
         val range =  log.prepareForLogRequest(
-            minSequenceNumber ?: probeManager.minSequenceNumber,
-            maxSequenceNumber ?: probeManager.maxSequenceNumber,
+            minSequenceNumber ?: probeManager.minSequenceNumber ?: 0u,
+            maxSequenceNumber ?: probeManager.maxSequenceNumber ?: 0u,
             sessionInfo
         )
 
