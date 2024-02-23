@@ -242,6 +242,11 @@ internal class LogManager {
         }
     }
 
+    fun finish(serialNumber: String) {
+        probes.remove(serialNumber)
+        temperatureLogs.remove(serialNumber)
+    }
+
     fun clear() {
         probes.clear()
         temperatureLogs.clear()
