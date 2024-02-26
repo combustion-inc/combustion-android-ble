@@ -73,8 +73,7 @@ package inc.combustion.framework.service
  * @see ProbeColor
  * @see ProbeMode
  */
-data class Probe
-constructor(
+data class Probe(
     val baseDevice: Device,
     val sessionInfo: SessionInformation? = null,
     val temperaturesCelsius: ProbeTemperatures? = null,
@@ -127,7 +126,6 @@ constructor(
     val rssi = baseDevice.rssi
     val connectionState = baseDevice.connectionState
 
-    val temperaturesStale: Boolean get() { return connectionState == DeviceConnectionState.OUT_OF_RANGE }
     val instantReadStale: Boolean get() { return instantReadCelsius == null }
 
     val predictionPercent: Double?
@@ -158,6 +156,9 @@ constructor(
         get() = (predictionMode != ProbePredictionMode.NONE && predictionMode != ProbePredictionMode.RESERVED)
 
     companion object {
+        const val PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS = 15000L
+        const val PREDICTION_IDLE_TIMEOUT_MS = 60000L
+
         fun create(serialNumber: String = "", mac: String = "") : Probe {
             return Probe(baseDevice = Device(
                 serialNumber = serialNumber,
