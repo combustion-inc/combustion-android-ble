@@ -68,8 +68,8 @@ internal class ProbeManager(
     companion object {
         const val OUT_OF_RANGE_TIMEOUT = 15000L
         private const val PROBE_STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS = 1000L
-        private const val PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS = 15000L
-        private const val PREDICTION_IDLE_TIMEOUT_MS = 60000L
+        private const val PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS = Probe.PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS
+        private const val PREDICTION_IDLE_TIMEOUT_MS = Probe.PREDICTION_IDLE_TIMEOUT_MS
         private const val PROBE_STATUS_NOTIFICATIONS_POLL_DELAY_MS = 30000L
         private const val PROBE_INSTANT_READ_IDLE_TIMEOUT_MS = 5000L
         private const val IGNORE_PROBES = false
@@ -923,26 +923,9 @@ internal class ProbeManager(
         _probe.value = _probe.value.copy(
             temperaturesCelsius = temperatures,
             virtualSensors = sensors,
-            coreTemperatureCelsius = when(sensors.virtualCoreSensor) {
-                ProbeVirtualSensors.VirtualCoreSensor.T1 -> temperatures.values[0]
-                ProbeVirtualSensors.VirtualCoreSensor.T2 -> temperatures.values[1]
-                ProbeVirtualSensors.VirtualCoreSensor.T3 -> temperatures.values[2]
-                ProbeVirtualSensors.VirtualCoreSensor.T4 -> temperatures.values[3]
-                ProbeVirtualSensors.VirtualCoreSensor.T5 -> temperatures.values[4]
-                ProbeVirtualSensors.VirtualCoreSensor.T6 -> temperatures.values[5]
-            },
-            surfaceTemperatureCelsius = when(sensors.virtualSurfaceSensor) {
-                ProbeVirtualSensors.VirtualSurfaceSensor.T4 -> temperatures.values[3]
-                ProbeVirtualSensors.VirtualSurfaceSensor.T5 -> temperatures.values[4]
-                ProbeVirtualSensors.VirtualSurfaceSensor.T6 -> temperatures.values[5]
-                ProbeVirtualSensors.VirtualSurfaceSensor.T7 -> temperatures.values[6]
-            },
-            ambientTemperatureCelsius = when(sensors.virtualAmbientSensor) {
-                ProbeVirtualSensors.VirtualAmbientSensor.T5 -> temperatures.values[4]
-                ProbeVirtualSensors.VirtualAmbientSensor.T6 -> temperatures.values[5]
-                ProbeVirtualSensors.VirtualAmbientSensor.T7 -> temperatures.values[6]
-                ProbeVirtualSensors.VirtualAmbientSensor.T8 -> temperatures.values[7]
-            },
+            coreTemperatureCelsius = temperatures.coreTemperatureCelsius(sensors),
+            surfaceTemperatureCelsius = temperatures.surfaceTemperatureCelsius(sensors),
+            ambientTemperatureCelsius = temperatures.ambientTemperatureCelsius(sensors),
             overheatingSensors = temperatures.overheatingSensors,
         )
 

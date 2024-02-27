@@ -39,7 +39,7 @@ import kotlin.random.Random
 data class ProbeTemperatures(
     val values: List<Double>
 ) {
-    internal val overheatingSensors: List<Int>
+    val overheatingSensors: List<Int>
         get() {
             val overheatingSensors = mutableListOf<Int>()
 
@@ -65,6 +65,35 @@ data class ProbeTemperatures(
 
             return overheatingSensors.toList()
         }
+
+    fun coreTemperatureCelsius(sensors: ProbeVirtualSensors): Double {
+        return when(sensors.virtualCoreSensor) {
+            ProbeVirtualSensors.VirtualCoreSensor.T1 -> values[0]
+            ProbeVirtualSensors.VirtualCoreSensor.T2 -> values[1]
+            ProbeVirtualSensors.VirtualCoreSensor.T3 -> values[2]
+            ProbeVirtualSensors.VirtualCoreSensor.T4 -> values[3]
+            ProbeVirtualSensors.VirtualCoreSensor.T5 -> values[4]
+            ProbeVirtualSensors.VirtualCoreSensor.T6 -> values[5]
+        }
+    }
+
+    fun surfaceTemperatureCelsius(sensors: ProbeVirtualSensors): Double {
+       return when(sensors.virtualSurfaceSensor) {
+            ProbeVirtualSensors.VirtualSurfaceSensor.T4 -> values[3]
+            ProbeVirtualSensors.VirtualSurfaceSensor.T5 -> values[4]
+            ProbeVirtualSensors.VirtualSurfaceSensor.T6 -> values[5]
+            ProbeVirtualSensors.VirtualSurfaceSensor.T7 -> values[6]
+        }
+    }
+
+    fun ambientTemperatureCelsius(sensors: ProbeVirtualSensors): Double {
+        return when(sensors.virtualAmbientSensor) {
+            ProbeVirtualSensors.VirtualAmbientSensor.T5 -> values[4]
+            ProbeVirtualSensors.VirtualAmbientSensor.T6 -> values[5]
+            ProbeVirtualSensors.VirtualAmbientSensor.T7 -> values[6]
+            ProbeVirtualSensors.VirtualAmbientSensor.T8 -> values[7]
+        }
+    }
 
     companion object {
         /// Overheating thresholds (in degrees C) for T1 and T2
