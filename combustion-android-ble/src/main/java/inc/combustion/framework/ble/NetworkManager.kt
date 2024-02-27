@@ -677,6 +677,7 @@ internal class NetworkManager(
 
         // Clean up the probe manager's resources, disconnecting only those nodes that are sole
         // providers.
+        LogManager.instance.finish(serialNumber)
         probeManager?.finish(soleProviders.map { it.repeatedProbe.id }.toSet())
 
         // Remove the probe from the device list--this should be the last reference to the held
