@@ -845,17 +845,27 @@ internal class ProbeManager(
 
         sessionInfoTimeout = false
         val info = any as SessionInformation
+        var minSequence = minSequenceNumber
+        var maxSequence = maxSequenceNumber
 
         // if the session information has changed, then we need to finish the previous log session.
         if(sessionInfo != info) {
             logTransferCompleteCallback()
             logTransferLink = null
             uploadState = ProbeUploadState.Unavailable
+
+            minSequence = null
+            maxSequence = null
+
             Log.i(LOG_TAG, "PM($serialNumber): finished log transfer.")
         }
 
         sessionInfo = info
-        _probe.value = _probe.value.copy(sessionInfo = info)
+        _probe.value = _probe.value.copy(
+            minSequence = minSequence,
+            maxSequence = maxSequence,
+            sessionInfo = info,
+        )
     }
 
     private fun updateDataFromAdvertisement(advertisement: CombustionAdvertisingData) {
