@@ -28,13 +28,9 @@
 
 package inc.combustion.framework.ble.scanning
 
-import android.bluetooth.le.ScanResult
-import android.os.Build
 import com.juul.kable.Advertisement
 import inc.combustion.framework.ble.device.DeviceID
 import inc.combustion.framework.service.*
-import kotlin.reflect.full.memberProperties
-import kotlin.reflect.jvm.isAccessible
 
 /**
  * Representation of Combustion device-specific advertising data.

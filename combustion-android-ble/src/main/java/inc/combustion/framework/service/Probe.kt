@@ -83,8 +83,18 @@ data class Probe(
     val coreTemperatureCelsius: Double? = null,
     val surfaceTemperatureCelsius: Double? = null,
     val ambientTemperatureCelsius: Double? = null,
-    val minSequenceNumber: UInt = 0u,
-    val maxSequenceNumber: UInt = 0u,
+    val minSequence: UInt? = null,
+    val maxSequence: UInt? = null,
+    @Deprecated(
+      message = "This field will be removed in a future release",
+      level = DeprecationLevel.WARNING
+    )
+    val minSequenceNumber: UInt = minSequence ?: 0u,
+    @Deprecated(
+        message = "This field will be removed in a future release",
+        level = DeprecationLevel.WARNING
+    )
+    val maxSequenceNumber: UInt = maxSequence ?: 0u,
     val uploadState: ProbeUploadState = ProbeUploadState.Unavailable,
     val id: ProbeID = ProbeID.ID1,
     val color: ProbeColor = ProbeColor.COLOR1,
@@ -116,7 +126,6 @@ data class Probe(
     val rssi = baseDevice.rssi
     val connectionState = baseDevice.connectionState
 
-    val temperaturesStale: Boolean get() { return connectionState == DeviceConnectionState.OUT_OF_RANGE }
     val instantReadStale: Boolean get() { return instantReadCelsius == null }
 
     val predictionPercent: Double?
@@ -147,6 +156,9 @@ data class Probe(
         get() = (predictionMode != ProbePredictionMode.NONE && predictionMode != ProbePredictionMode.RESERVED)
 
     companion object {
+        const val PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS = 15000L
+        const val PREDICTION_IDLE_TIMEOUT_MS = 60000L
+
         fun create(serialNumber: String = "", mac: String = "") : Probe {
             return Probe(baseDevice = Device(
                 serialNumber = serialNumber,

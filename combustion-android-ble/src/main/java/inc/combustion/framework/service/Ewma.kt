@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: ProbeDiscoveredEvent.kt
- * Author: https://github.com/miwright2
+ * File: Ewma.kt
+ * Author: Nick Helseth <nick@combustion.inc>
  *
  * MIT License
  *
- * Copyright (c) 2022. Combustion Inc.
+ * Copyright (c) 2023. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,35 +25,29 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+
 package inc.combustion.framework.service
 
-/**
- * Enumerates the asynchronous events that can be collected while the device is
- * scanning and producing events to the discovered probes flow.
- *
- * @see DeviceManager.discoveredProbesFlow
- *
- * TODO: This should probably have a more accurate name.
- */
-sealed class ProbeDiscoveredEvent {
-    /**
-     * Combustion device discovered
-     *
-     * @property serialNumber serial number of the discovered device
-     */
-    data class ProbeDiscovered(
-        val serialNumber: String
-    ) : ProbeDiscoveredEvent()
+internal class Ewma(
+    span: UInt,
+) {
+    private var alpha = if (span == 0u) 1.0 else 2.0 / (span.toFloat() + 1.0)
+    private var currentValue: Double? = null
 
-    /**
-     * Combustion device with serial number [serialNumber] was removed.
-     */
-    data class ProbeRemoved(
-        val serialNumber: String
-    ) : ProbeDiscoveredEvent()
+    val value: Double?
+        get() = currentValue
 
-    /**
-     * The device cache was cleared.
-     */
-    object DevicesCleared: ProbeDiscoveredEvent()
+    fun put(value: Double) {
+        currentValue = currentValue?.let {
+            alpha * value + (1.0 - alpha) * it
+        } ?: value
+    }
+
+    fun set(value: Double) {
+        currentValue = value
+    }
+
+    fun reset() {
+        currentValue = null
+    }
 }

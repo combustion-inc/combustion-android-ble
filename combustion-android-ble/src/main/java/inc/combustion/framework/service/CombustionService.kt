@@ -37,7 +37,6 @@ import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
-import androidx.annotation.RequiresApi
 import androidx.lifecycle.LifecycleService
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.*

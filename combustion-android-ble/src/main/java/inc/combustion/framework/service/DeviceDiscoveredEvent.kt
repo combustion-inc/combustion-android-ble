@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: ProbeDiscoveredEvent.kt
- * Author: https://github.com/miwright2
+ * File: DeviceDiscoveredEvent.kt
+ * Author: Nick Helseth <nick@combustion.inc>
  *
  * MIT License
  *
- * Copyright (c) 2022. Combustion Inc.
+ * Copyright (c) 2023. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,35 +25,26 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+
 package inc.combustion.framework.service
 
-/**
- * Enumerates the asynchronous events that can be collected while the device is
- * scanning and producing events to the discovered probes flow.
- *
- * @see DeviceManager.discoveredProbesFlow
- *
- * TODO: This should probably have a more accurate name.
- */
-sealed class ProbeDiscoveredEvent {
+sealed class DeviceDiscoveredEvent {
     /**
-     * Combustion device discovered
-     *
-     * @property serialNumber serial number of the discovered device
+     * Combustion probe discovered with serial number [serialNumber].
      */
     data class ProbeDiscovered(
         val serialNumber: String
-    ) : ProbeDiscoveredEvent()
+    ) : DeviceDiscoveredEvent()
 
     /**
-     * Combustion device with serial number [serialNumber] was removed.
+     * Combustion node discovered with serial number [serialNumber].
      */
-    data class ProbeRemoved(
+    data class NodeDiscovered(
         val serialNumber: String
-    ) : ProbeDiscoveredEvent()
+    ) : DeviceDiscoveredEvent()
 
     /**
      * The device cache was cleared.
      */
-    object DevicesCleared: ProbeDiscoveredEvent()
+    object DevicesCleared: DeviceDiscoveredEvent()
 }

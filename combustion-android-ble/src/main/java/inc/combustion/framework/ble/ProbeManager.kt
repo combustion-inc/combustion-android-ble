@@ -39,11 +39,11 @@ import inc.combustion.framework.ble.device.ProbeBleDeviceBase
 import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.uart.LogResponse
-import inc.combustion.framework.log.UploadProgress
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
+import kotlin.coroutines.coroutineContext
 
 /**
  * This class is responsible for managing and arbitrating the data links to a temperature
@@ -68,8 +68,8 @@ internal class ProbeManager(
     companion object {
         const val OUT_OF_RANGE_TIMEOUT = 15000L
         private const val PROBE_STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS = 1000L
-        private const val PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS = 15000L
-        private const val PREDICTION_IDLE_TIMEOUT_MS = 60000L
+        private const val PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS = Probe.PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS
+        private const val PREDICTION_IDLE_TIMEOUT_MS = Probe.PREDICTION_IDLE_TIMEOUT_MS
         private const val PROBE_STATUS_NOTIFICATIONS_POLL_DELAY_MS = 30000L
         private const val PROBE_INSTANT_READ_IDLE_TIMEOUT_MS = 5000L
         private const val IGNORE_PROBES = false
@@ -267,15 +267,15 @@ internal class ProbeManager(
         private set
 
     // current minimum sequence number for the probe
-    val minSequenceNumber: UInt
+    val minSequenceNumber: UInt?
         get() {
-            return _probe.value.minSequenceNumber
+            return _probe.value.minSequence
         }
 
     // current maximum sequence number for the probe
-    val maxSequenceNumber: UInt
+    val maxSequenceNumber: UInt?
         get() {
-            return _probe.value.maxSequenceNumber
+            return _probe.value.maxSequence
         }
 
     // signals when logs are no longer being added to LogManager.
@@ -293,7 +293,7 @@ internal class ProbeManager(
         monitorStatusNotifications()
     }
 
-    fun addJob(job: Job) = jobManager.addJob(job)
+    fun addJob(serialNumber: String, job: Job) = jobManager.addJob(serialNumber, job)
 
     fun addProbe(probe: ProbeBleDevice, baseDevice: DeviceInformationBleDevice, advertisement: CombustionAdvertisingData) {
         if(IGNORE_PROBES) return
@@ -369,8 +369,14 @@ internal class ProbeManager(
         simulatedProbe?.connect()
     }
 
-    fun disconnect() {
-        arbitrator.getNodesNeedingDisconnect(true).forEach {node ->
+    fun disconnect(canDisconnectFromMeatNetDevices: Boolean = false) {
+        arbitrator.getNodesNeedingDisconnect(
+            canDisconnectFromMeatNetDevices = canDisconnectFromMeatNetDevices
+        ).forEach {node ->
+            Log.d(LOG_TAG, "ProbeManager: disconnecting $node")
+
+            // Since this is an explicit disconnect, we want to also disable the auto-reconnect flag
+            arbitrator.setShouldAutoReconnect(false)
             node.disconnect()
         }
 
@@ -501,8 +507,31 @@ internal class ProbeManager(
         }
     }
 
-    fun finish() {
-        arbitrator.finish()
+    fun finish(deviceIdsToDisconnect: Set<DeviceID>? = null) {
+        Log.d(LOG_TAG, "ProbeManager.finish($deviceIdsToDisconnect) for ($serialNumber)")
+
+        arbitrator.finish(
+            nodeAction = {
+                // There's a couple specific things that come out of unlinking a probe that need to
+                // be addressed here:
+                //
+                // - Jobs are created on repeated probes (nodes) that need to be cancelled so that
+                //   we don't continue to obtain data for probes that we're disconnected from. If
+                //   all jobs on a node are blindly cancelled, then we'll likely cancel jobs that
+                //   are still needed for other probes connected to this node. The [jobKey]
+                //   parameter allows for selective cancellation of jobs.
+                // - On a related note, we need to be able to selectively disconnect from nodes as
+                //   some are still providing data from other probes.
+                it.finish(
+                    jobKey = serialNumber,
+                    disconnect = deviceIdsToDisconnect?.contains(it.id) ?: true
+                )
+            },
+            directConnectionAction = {
+                it.disconnect()
+            }
+        )
+
         jobManager.cancelJobs()
     }
 
@@ -516,7 +545,9 @@ internal class ProbeManager(
             )
         }
 
-        base.observeAdvertisingPackets(serialNumber, base.mac) { advertisement -> handleAdvertisingPackets(base, advertisement) }
+        base.observeAdvertisingPackets(serialNumber, base.mac) { advertisement ->
+            handleAdvertisingPackets(base, advertisement)
+        }
         base.observeConnectionState { state -> handleConnectionState(base, state) }
         base.observeOutOfRange(OUT_OF_RANGE_TIMEOUT){ handleOutOfRange() }
         base.observeProbeStatusUpdates { status -> handleProbeStatus(status) }
@@ -524,31 +555,38 @@ internal class ProbeManager(
     }
 
     private fun monitorStatusNotifications() {
-        jobManager.addJob(owner.lifecycleScope.launch(Dispatchers.IO) {
-            // Wait before starting to monitor prediction status, this allows for initial
-            // connection time
-            delay(PROBE_STATUS_NOTIFICATIONS_POLL_DELAY_MS)
+        jobManager.addJob(
+            key = serialNumber,
+            job = owner.lifecycleScope.launch(
+                CoroutineName("${serialNumber}.monitorStatusNotifications") + Dispatchers.IO
+            ) {
+                // Wait before starting to monitor prediction status, this allows for initial
+                // connection time
+                delay(PROBE_STATUS_NOTIFICATIONS_POLL_DELAY_MS)
 
-            while(isActive) {
-                delay(PROBE_STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS)
+                while(isActive) {
+                    delay(PROBE_STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS)
 
-                val statusNotificationsStale = statusNotificationsMonitor.isIdle(PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS)
-                val predictionStale = predictionMonitor.isIdle(PREDICTION_IDLE_TIMEOUT_MS) && _probe.value.isPredicting
-                val shouldUpdate = statusNotificationsStale != _probe.value.statusNotificationsStale ||
-                        predictionStale != _probe.value.predictionStale
+                    val statusNotificationsStale = statusNotificationsMonitor.isIdle(PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS)
+                    val predictionStale = predictionMonitor.isIdle(PREDICTION_IDLE_TIMEOUT_MS) && _probe.value.isPredicting
+                    val shouldUpdate = statusNotificationsStale != _probe.value.statusNotificationsStale ||
+                            predictionStale != _probe.value.predictionStale
 
-                if(shouldUpdate) {
-                    _probe.value = _probe.value.copy(
-                        statusNotificationsStale = statusNotificationsStale,
-                        predictionStale = predictionStale
-                    )
+                    if(shouldUpdate) {
+                        _probe.value = _probe.value.copy(
+                            statusNotificationsStale = statusNotificationsStale,
+                            predictionStale = predictionStale
+                        )
+                    }
                 }
             }
-        })
+        )
     }
 
     private suspend fun handleProbeStatus(status: ProbeStatus) {
         if(arbitrator.shouldUpdateDataFromProbeStatus(status, sessionInfo)) {
+            Log.v(LOG_TAG, "ProbeManager.handleProbeStatus: $serialNumber $status")
+
             updateLink()
             updateBatteryIdColor(status.batteryStatus, status.id, status.color)
             updateSequenceNumbers(status.minSequenceNumber, status.maxSequenceNumber)
@@ -579,6 +617,7 @@ internal class ProbeManager(
     }
 
     private fun handleAdvertisingPackets(device: ProbeBleDeviceBase, advertisement: CombustionAdvertisingData) {
+        Log.v(LOG_TAG, "ProbeManager.handleAdvertisingPackets($device, $advertisement)")
         val state = connectionState
         val networkIsAdvertisingAndNotConnected =
             (state == DeviceConnectionState.ADVERTISING_CONNECTABLE || state == DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE ||
@@ -806,17 +845,27 @@ internal class ProbeManager(
 
         sessionInfoTimeout = false
         val info = any as SessionInformation
+        var minSequence = minSequenceNumber
+        var maxSequence = maxSequenceNumber
 
         // if the session information has changed, then we need to finish the previous log session.
         if(sessionInfo != info) {
             logTransferCompleteCallback()
             logTransferLink = null
             uploadState = ProbeUploadState.Unavailable
+
+            minSequence = null
+            maxSequence = null
+
             Log.i(LOG_TAG, "PM($serialNumber): finished log transfer.")
         }
 
         sessionInfo = info
-        _probe.value = _probe.value.copy(sessionInfo = info)
+        _probe.value = _probe.value.copy(
+            minSequence = minSequence,
+            maxSequence = maxSequence,
+            sessionInfo = info,
+        )
     }
 
     private fun updateDataFromAdvertisement(advertisement: CombustionAdvertisingData) {
@@ -884,26 +933,9 @@ internal class ProbeManager(
         _probe.value = _probe.value.copy(
             temperaturesCelsius = temperatures,
             virtualSensors = sensors,
-            coreTemperatureCelsius = when(sensors.virtualCoreSensor) {
-                ProbeVirtualSensors.VirtualCoreSensor.T1 -> temperatures.values[0]
-                ProbeVirtualSensors.VirtualCoreSensor.T2 -> temperatures.values[1]
-                ProbeVirtualSensors.VirtualCoreSensor.T3 -> temperatures.values[2]
-                ProbeVirtualSensors.VirtualCoreSensor.T4 -> temperatures.values[3]
-                ProbeVirtualSensors.VirtualCoreSensor.T5 -> temperatures.values[4]
-                ProbeVirtualSensors.VirtualCoreSensor.T6 -> temperatures.values[5]
-            },
-            surfaceTemperatureCelsius = when(sensors.virtualSurfaceSensor) {
-                ProbeVirtualSensors.VirtualSurfaceSensor.T4 -> temperatures.values[3]
-                ProbeVirtualSensors.VirtualSurfaceSensor.T5 -> temperatures.values[4]
-                ProbeVirtualSensors.VirtualSurfaceSensor.T6 -> temperatures.values[5]
-                ProbeVirtualSensors.VirtualSurfaceSensor.T7 -> temperatures.values[6]
-            },
-            ambientTemperatureCelsius = when(sensors.virtualAmbientSensor) {
-                ProbeVirtualSensors.VirtualAmbientSensor.T5 -> temperatures.values[4]
-                ProbeVirtualSensors.VirtualAmbientSensor.T6 -> temperatures.values[5]
-                ProbeVirtualSensors.VirtualAmbientSensor.T7 -> temperatures.values[6]
-                ProbeVirtualSensors.VirtualAmbientSensor.T8 -> temperatures.values[7]
-            },
+            coreTemperatureCelsius = temperatures.coreTemperatureCelsius(sensors),
+            surfaceTemperatureCelsius = temperatures.surfaceTemperatureCelsius(sensors),
+            ambientTemperatureCelsius = temperatures.ambientTemperatureCelsius(sensors),
             overheatingSensors = temperatures.overheatingSensors,
         )
 
@@ -947,8 +979,8 @@ internal class ProbeManager(
 
     private fun updateSequenceNumbers(minSequenceNumber: UInt, maxSequenceNumber: UInt) {
         _probe.value = _probe.value.copy(
-            minSequenceNumber = minSequenceNumber,
-            maxSequenceNumber = maxSequenceNumber
+            minSequence = minSequenceNumber,
+            maxSequence = maxSequenceNumber
         )
     }
 

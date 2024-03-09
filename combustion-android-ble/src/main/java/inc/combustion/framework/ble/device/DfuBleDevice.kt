@@ -212,7 +212,7 @@ internal class DfuBleDevice(
         }
 
         // `true` doesn't filter any advertising packets.
-        observeAdvertisingPackets({ true }) {
+        observeAdvertisingPackets(serialNumber, { true }) {
             if (internalDfuState.status != InternalDfuState.Status.IN_PROGRESS
                 && !(connectionState == DeviceConnectionState.CONNECTING
                         || connectionState == DeviceConnectionState.CONNECTED)
@@ -247,11 +247,11 @@ internal class DfuBleDevice(
         connect()
     }
 
-    override fun finish(disconnect: Boolean) {
+    override fun finish(jobKey: String?, disconnect: Boolean) {
         DfuServiceListenerHelper.unregisterProgressListener(context, this)
 
         // Only disconnect if there's not a DFU operation in progress.
-        super.finish(internalDfuState.status == InternalDfuState.Status.IDLE)
+        super.finish(jobKey, internalDfuState.status == InternalDfuState.Status.IDLE)
     }
 
     fun performDfu(file: Uri, completionHandler: () -> Unit) {

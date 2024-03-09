@@ -63,13 +63,11 @@ internal class DeviceScanner private constructor() {
                 .build()
         }
 
-        val isScanning: Boolean
-            get() = atomicIsScanning.get()
-
         private val mutableAdvertisements = MutableSharedFlow<CombustionAdvertisingData>(5, 10, BufferOverflow.DROP_OLDEST)
         val advertisements = mutableAdvertisements.asSharedFlow()
 
         fun scan(owner: LifecycleOwner) {
+
             if(!atomicIsScanning.getAndSet(true)) {
                 allMatchesScanJob = owner.lifecycleScope.launch(Dispatchers.IO) {
                     // launches the block in a new coroutine every time the LifecycleOwner is
