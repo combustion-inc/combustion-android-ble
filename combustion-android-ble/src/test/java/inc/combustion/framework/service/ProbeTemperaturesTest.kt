@@ -99,7 +99,7 @@ internal class ProbeTemperaturesTest {
         assertEquals(listOf(1, 3, 5, 7), overheated.overheatingSensors)
 
         val allOverheated = ProbeTemperatures(values = listOf(
-            200.0, 200.0, 200.0, 200.0, 310.0, 318.0, 325.0, 340.0,
+            200.0, 200.0, 200.0, 200.0, 318.0, 318.0, 325.0, 340.0,
         ))
 
         assertEquals(listOf(0, 1, 2, 3, 4, 5, 6, 7), allOverheated.overheatingSensors)
