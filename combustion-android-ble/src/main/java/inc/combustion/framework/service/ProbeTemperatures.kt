@@ -74,7 +74,7 @@ data class ProbeTemperatures(
         /// Overheating thresholds (in degrees C) for T4
         private const val OVERHEATING_T4_THRESHOLD = 125.0
         /// Overheating thresholds (in degrees C) for T5-T8
-        private const val OVERHEATING_T5_T8_THRESHOLD = 300.0
+        private const val OVERHEATING_T5_T8_THRESHOLD = 315.56
 
         // deserializes temperature data from reversed set of bytes
         private fun fromReversed(bytes: UByteArray): ProbeTemperatures {
