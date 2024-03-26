@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: ProximityDevice.kt
+ * File: Constants.kt
  * Author: Nick Helseth <nick@combustion.inc>
  *
  * MIT License
@@ -26,42 +26,10 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble.device
+package inc.combustion.framework
 
-import inc.combustion.framework.Constants.Companion.MIN_RSSI
-import inc.combustion.framework.service.Ewma
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-
-/**
- * Class specifically set up to produce smoothed RSSI values for a given probe.
- */
-internal class ProximityDevice {
-    // holds the current smoothed RSSI value for this probe
-    private var _probeSmoothedRssi = MutableStateFlow<Double?>(null)
-
-    // the flow that is consumed to get smoothed RSSI updates
-    val probeSmoothedRssiFlow = _probeSmoothedRssi.asStateFlow()
-
-    fun handleRssiUpdate(rssi: Int) {
-        // Update smoothed rssi flow
-        _probeSmoothedRssi.value = getSmoothedRssi(rssi)
-    }
-
-    private val rssiEwma = Ewma(span = 6u)
-
-    private fun getSmoothedRssi(rssi: Int): Double? {
-        // Ignore unreasonable values
-        if (rssi > 0) {
-            return rssiEwma.value
-        }
-
-        if (rssi <= MIN_RSSI) {
-            rssiEwma.reset()
-        } else {
-            rssiEwma.put(rssi.toDouble())
-        }
-
-        return rssiEwma.value
+class Constants {
+    companion object {
+        const val MIN_RSSI = Byte.MIN_VALUE.toInt()
     }
 }

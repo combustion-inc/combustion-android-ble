@@ -28,6 +28,7 @@
 
 package inc.combustion.framework.service
 
+import inc.combustion.framework.Constants.Companion.MIN_RSSI
 import inc.combustion.framework.ble.device.DeviceID
 
 /**
@@ -48,7 +49,7 @@ data class Device(
     val fwVersion: FirmwareVersion? = null,
     val hwRevision: String? = null,
     val modelInformation: ModelInformation? = null,
-    val rssi: Int = 0,
+    val rssi: Int = MIN_RSSI,
     val productType: CombustionProductType? = null,
     val connectionState: DeviceConnectionState = DeviceConnectionState.DISCONNECTED,
 ) {
