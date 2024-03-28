@@ -152,6 +152,9 @@ class FoodSafeDataTest {
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
         assertEquals(FoodSafeData.Integrated.Product.DairyMilkLessThan10PercentFat, toProduct(raw))
+        productValue += 1u
+        raw[0] = (0x01u or (productValue shl 3)).toUByte()
+        assertEquals(FoodSafeData.Integrated.Product.Game, toProduct(raw))
         raw[0] = 0xF9u
         raw[1] = 0x1Fu
         assertEquals(FoodSafeData.Integrated.Product.Custom, toProduct(raw))
