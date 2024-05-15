@@ -52,4 +52,17 @@ class ProbeTest {
 
         assertTrue(probe.isOverheating)
     }
+
+    @Test
+    fun `Probe isPredicting is correct`() {
+        val probe = Probe(
+            baseDevice = Device(mac = "12:34:56:78:90:11"),
+        )
+
+        assertFalse(probe.copy(predictionMode = null).isPredicting)
+        assertFalse(probe.copy(predictionMode = ProbePredictionMode.NONE).isPredicting)
+        assertFalse(probe.copy(predictionMode = ProbePredictionMode.RESERVED).isPredicting)
+        assertTrue(probe.copy(predictionMode = ProbePredictionMode.TIME_TO_REMOVAL).isPredicting)
+        assertTrue(probe.copy(predictionMode = ProbePredictionMode.REMOVAL_AND_RESTING).isPredicting)
+    }
 }
