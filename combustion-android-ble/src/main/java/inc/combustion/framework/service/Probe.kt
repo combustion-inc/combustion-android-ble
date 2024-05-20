@@ -153,7 +153,11 @@ data class Probe(
         get() = overheatingSensors.isNotEmpty()
 
     val isPredicting: Boolean
-        get() = (predictionMode != ProbePredictionMode.NONE && predictionMode != ProbePredictionMode.RESERVED)
+        get() = (
+            predictionMode?.let {
+                it == ProbePredictionMode.TIME_TO_REMOVAL || it == ProbePredictionMode.REMOVAL_AND_RESTING
+            } ?: false
+        )
 
     companion object {
         const val PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS = 15000L
