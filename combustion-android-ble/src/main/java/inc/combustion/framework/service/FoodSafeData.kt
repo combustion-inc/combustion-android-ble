@@ -202,6 +202,7 @@ sealed class FoodSafeData {
             FishAndShellfish,
             FishAndShellfishGround,
             DairyMilkLessThan10PercentFat,
+            Game,
             Custom,
             ;
 
@@ -240,6 +241,7 @@ sealed class FoodSafeData {
                         FishAndShellfish -> 13u
                         FishAndShellfishGround -> 14u
                         DairyMilkLessThan10PercentFat -> 15u
+                        Game -> 16u
                         Custom -> 1023u
                     }
                 }
@@ -263,6 +265,7 @@ sealed class FoodSafeData {
                         13u -> FishAndShellfish
                         14u -> FishAndShellfishGround
                         15u -> DairyMilkLessThan10PercentFat
+                        16u -> Game
                         1023u -> Custom
                         else -> throw IllegalArgumentException("Invalid integrated product value $raw")
                     }
