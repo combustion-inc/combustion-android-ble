@@ -285,8 +285,10 @@ internal class ProbeManager(
     private val instantReadFilter = InstantReadFilter()
 
     init {
-        predictionManager.setPredictionCallback { prediction ->
-            _probe.update { updatePredictionInfo(prediction, _probe.value) }
+        predictionManager.setPredictionCallback { prediction, shouldUpdateStatus ->
+            if (shouldUpdateStatus) {
+                _probe.update { updatePredictionInfo(prediction, it) }
+            }
         }
 
         monitorStatusNotifications()
@@ -357,7 +359,7 @@ internal class ProbeManager(
             simulatedProbe = simProbe
 
             _probe.update {
-                updatedProbe.copy(baseDevice = _probe.value.baseDevice.copy(mac = simProbe.mac))
+                updatedProbe.copy(baseDevice = it.baseDevice.copy(mac = simProbe.mac))
             }
         }
     }
@@ -553,14 +555,14 @@ internal class ProbeManager(
             handleAdvertisingPackets(base, advertisement)
         }
         base.observeConnectionState { state ->
-            _probe.update { handleConnectionState(base, state, _probe.value) }
+            _probe.update { handleConnectionState(base, state, it) }
         }
         base.observeOutOfRange(OUT_OF_RANGE_TIMEOUT) {
-            _probe.update { handleOutOfRange(_probe.value) }
+            _probe.update { handleOutOfRange(it) }
         }
         base.observeProbeStatusUpdates { status -> handleProbeStatus(status) }
         base.observeRemoteRssi { rssi ->
-            _probe.update { handleRemoteRssi(base, rssi, _probe.value) }
+            _probe.update { handleRemoteRssi(base, rssi, it) }
         }
     }
 
@@ -955,7 +957,8 @@ internal class ProbeManager(
 
         updatedProbe = updateConnectionState(updatedProbe)
         updatedProbe = updateTemperatures(status.temperatures, status.virtualSensors, updatedProbe)
-        predictionManager.updatePredictionStatus(status.predictionStatus, status.maxSequenceNumber)
+        val predictionInfo = predictionManager.updatePredictionStatus(status.predictionStatus, status.maxSequenceNumber)
+        updatedProbe = updatePredictionInfo(predictionInfo, updatedProbe)
         updatedProbe = updateFoodSafe(status.foodSafeData, status.foodSafeStatus, updatedProbe)
 
         return updatedProbe

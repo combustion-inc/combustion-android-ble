@@ -34,6 +34,16 @@ import inc.combustion.framework.service.ProbePredictionState
 import inc.combustion.framework.service.ProbePredictionType
 import java.util.*
 
+/**
+ * Handler to be called when a prediction value's updated.
+ *
+ * [shouldUpdateStatus] is used to indicate if the status should be updated--callers doing in-band
+ * updates (i.e., updating due to an incoming status message) should set this to false to indicate
+ * that the status is being updated elsewhere.
+ */
+typealias CompletionHandler =
+    (predictionInfo: PredictionManager.PredictionInfo?, shouldUpdateStatus: Boolean) -> Unit
+
 class PredictionManager {
     data class PredictionInfo (
         val predictionState: ProbePredictionState,
@@ -82,19 +92,35 @@ class PredictionManager {
     private var linearizationTimer: Timer? = null
     private var linearizationStartTime: Long = 0
 
-    private var completionHandler: ((PredictionInfo?) -> Unit)? = null
+    private var completionHandler: CompletionHandler? = null
 
-    fun setPredictionCallback(completionHandler: (PredictionInfo?) -> Unit) {
+    /**
+     * Sets a callback to be invoked when the prediction status is updated. It's called in-band when
+     * [updatePredictionStatus] is called, and out-of-band when the linearization timer updates the
+     * status. See [CompletionHandler] for more information on how it's invoked.
+     */
+    fun setPredictionCallback(completionHandler: CompletionHandler) {
         this.completionHandler = completionHandler
     }
 
-    fun updatePredictionStatus(predictionStatus: PredictionStatus?, sequenceNumber: UInt) {
+    /**
+     * Updates the prediction status with the updated values in [predictionStatus] and
+     * [sequenceNumber]. Returns the updated prediction information, or null if [sequenceNumber] has
+     * not increased since the last call to this function (or if [predictionStatus] is null).
+     *
+     * [completionHandler] is called with the [shouldUpdateStatus] parameter set to false, so it's
+     * on the caller of this function to update their status appropriately.
+     */
+    fun updatePredictionStatus(
+        predictionStatus: PredictionStatus?,
+        sequenceNumber: UInt,
+    ): PredictionInfo? {
         // Duplicate status messages are sent when prediction is started. Ignore the duplicate sequence number
         // unless the prediction information has changed
         previousSequenceNumber?.let {
             if (it == sequenceNumber &&
                 predictionStatus?.setPointTemperature == previousPredictionInfo?.predictionSetPointTemperature) {
-                return
+                return null
             }
         }
 
@@ -108,7 +134,9 @@ class PredictionManager {
         previousSequenceNumber = sequenceNumber
 
         // Publish new prediction info
-        publishPredictionInfo(predictionInfo)
+        publishPredictionInfo(predictionInfo = predictionInfo, shouldUpdateStatus = false)
+
+        return predictionInfo
     }
 
     private fun infoFromStatus(predictionStatus: PredictionStatus?, sequenceNumber: UInt): PredictionInfo? {
@@ -191,7 +219,7 @@ class PredictionManager {
 
             // Start the linearization timer
             val intervalMs = LINEARIZATION_UPDATE_RATE_MS.toLong()
-            linearizationTimer?.scheduleAtFixedRate( object : TimerTask() {
+            linearizationTimer?.schedule( object : TimerTask() {
                 override fun run() {
                     updatePredictionSeconds()
                 }
@@ -208,7 +236,7 @@ class PredictionManager {
 
         currentLinearizationMs -= linearizationTimerUpdateValue
 
-        // Don't let the linerization value go below 0 or the UInt conversion will crash.
+        // Don't let the linearization value go below 0 or the UInt conversion will crash.
         if(currentLinearizationMs < 0.0) {
             currentLinearizationMs = 0.0
         }
@@ -228,7 +256,7 @@ class PredictionManager {
         )
 
         // Publish new prediction info
-        publishPredictionInfo(predictionInfo)
+        publishPredictionInfo(predictionInfo = predictionInfo, shouldUpdateStatus = true)
 
         // Stop the timer if the prediction has gone stale
         if( (SystemClock.elapsedRealtime() - linearizationStartTime) >= PREDICTION_STALE_TIMEOUT ) {
@@ -259,12 +287,19 @@ class PredictionManager {
         return (((core - start) / (end - start)) * 100.0).toInt()
     }
 
-    private fun publishPredictionInfo(predictionInfo: PredictionInfo?) {
+    /**
+     * Caches the prediction information [predictionInfo], and calls back to the probe manager with
+     * [completionHandler] to update the prediction status. See [CompletionHandler] for more
+     * information on how [shouldUpdateStatus] is used.
+     */
+    private fun publishPredictionInfo(
+        predictionInfo: PredictionInfo?, shouldUpdateStatus: Boolean
+    ) {
         // Save prediction information
         previousPredictionInfo = predictionInfo
 
         // Send new value to Probe manager
-        completionHandler?.let { it(predictionInfo) }
+        completionHandler?.let { it(predictionInfo, shouldUpdateStatus) }
     }
 
     private fun clearLinearizationTimer() {
