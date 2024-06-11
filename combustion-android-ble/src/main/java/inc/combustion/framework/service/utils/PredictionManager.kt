@@ -25,7 +25,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package inc.combustion.framework.ble
+package inc.combustion.framework.service.utils
 
 import android.os.SystemClock
 import inc.combustion.framework.service.PredictionStatus
