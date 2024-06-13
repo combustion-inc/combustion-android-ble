@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: ProbeManager.kt
- * Author: https://github.com/jjohnstz
+ * File: PredictionManager.kt
+ * Author:
  *
  * MIT License
  *
- * Copyright (c) 2023. Combustion Inc.
+ * Copyright (c) 2024. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -27,8 +27,8 @@
  */
 package inc.combustion.framework.service.utils
 
-import android.os.SystemClock
 import inc.combustion.framework.service.PredictionStatus
+import inc.combustion.framework.service.Probe
 import inc.combustion.framework.service.ProbePredictionMode
 import inc.combustion.framework.service.ProbePredictionState
 import inc.combustion.framework.service.ProbePredictionType
@@ -41,20 +41,73 @@ import java.util.*
  * updates (i.e., updating due to an incoming status message) should set this to false to indicate
  * that the status is being updated elsewhere.
  */
-typealias CompletionHandler = (predictionInfo: PredictionManager.PredictionInfo?, shouldUpdateStatus: Boolean) -> Unit
+typealias PredictionUpdatedCallback =
+            (predictionInfo: PredictionManager.PredictionInfo?, shouldUpdateStatus: Boolean) -> Unit
 
-class PredictionManager {
+class PredictionManager(
+    private val timer: LinearizationTimer
+) {
+    interface LinearizationTimer {
+        /**
+         * Starts the linearization timer with the given [callback] and [intervalMs].
+         */
+        fun start(callback: () -> Unit, intervalMs: Long)
+        fun stop()
+        val isActive: Boolean
+        val timeSinceStartMs: Long
+    }
+
     data class PredictionInfo(
         val predictionState: ProbePredictionState,
         val predictionMode: ProbePredictionMode,
         val predictionType: ProbePredictionType,
-        val predictionSetPointTemperature: Double,
+        val setPointTemperature: Double,
         val estimatedCoreTemperature: Double,
         val heatStartTemperature: Double,
         val rawPredictionSeconds: UInt,
-        val secondsRemaining: UInt?,
-        val percentThroughCook: Int
-    )
+        val linearizedProgress: LinearizedProgress,
+    ) {
+        data class LinearizedProgress(
+            val secondsRemaining: UInt? = null,
+            val percentThroughCook: Int = 0,
+        )
+
+        companion object {
+            internal fun fromPredictionStatus(
+                predictionStatus: PredictionStatus?
+            ): PredictionInfo? {
+                return predictionStatus?.let {
+                    PredictionInfo(
+                        predictionState = it.predictionState,
+                        predictionMode = it.predictionMode,
+                        predictionType = it.predictionType,
+                        setPointTemperature = it.setPointTemperature,
+                        heatStartTemperature = it.heatStartTemperature,
+                        rawPredictionSeconds = it.predictionValueSeconds,
+                        estimatedCoreTemperature = it.estimatedCoreTemperature,
+                        linearizedProgress = LinearizedProgress()
+                    )
+                }
+            }
+
+            fun fromProbe(
+                probe: Probe?,
+            ): PredictionInfo? {
+                return probe?.let {
+                    return PredictionInfo(
+                        predictionState = it.predictionState ?: return null,
+                        predictionMode = it.predictionMode ?: return null,
+                        predictionType = it.predictionType ?: return null,
+                        setPointTemperature = it.setPointTemperatureCelsius ?: return null,
+                        heatStartTemperature = it.heatStartTemperatureCelsius ?: return null,
+                        rawPredictionSeconds = it.rawPredictionSeconds ?: return null,
+                        estimatedCoreTemperature = it.estimatedCoreCelsius ?: return null,
+                        linearizedProgress = LinearizedProgress()
+                    )
+                }
+            }
+        }
+    }
 
     companion object {
         /// Prediction is considered stale after 15 seconds
@@ -88,18 +141,15 @@ class PredictionManager {
     private var currentLinearizationMs: Double = 0.0
     private var runningLinearization = false
 
-    private var linearizationTimer: Timer? = null
-    private var linearizationStartTime: Long = 0
-
-    private var completionHandler: CompletionHandler? = null
+    private var predictionUpdatedCallback: PredictionUpdatedCallback? = null
 
     /**
      * Sets a callback to be invoked when the prediction status is updated. It's called in-band when
      * [updatePredictionStatus] is called, and out-of-band when the linearization timer updates the
-     * status. See [CompletionHandler] for more information on how it's invoked.
+     * status. See [PredictionUpdatedCallback] for more information on how it's invoked.
      */
-    fun setPredictionCallback(completionHandler: CompletionHandler) {
-        this.completionHandler = completionHandler
+    fun setPredictionCallback(predictionUpdatedCallback: PredictionUpdatedCallback) {
+        this.predictionUpdatedCallback = predictionUpdatedCallback
     }
 
     /**
@@ -107,7 +157,7 @@ class PredictionManager {
      * [sequenceNumber]. Returns the updated prediction information, or null if [sequenceNumber] has
      * not increased since the last call to this function (or if [predictionStatus] is null).
      *
-     * [completionHandler] is called with the [shouldUpdateStatus] parameter set to false, so it's
+     * [predictionUpdatedCallback] is called with the [shouldUpdateStatus] parameter set to false, so it's
      * on the caller of this function to update their status appropriately.
      */
     fun updatePredictionStatus(
@@ -117,13 +167,15 @@ class PredictionManager {
         // Duplicate status messages are sent when prediction is started. Ignore the duplicate sequence number
         // unless the prediction information has changed
         previousSequenceNumber?.let {
-            if (it == sequenceNumber && predictionStatus?.setPointTemperature == previousPredictionInfo?.predictionSetPointTemperature) {
+            if (it == sequenceNumber &&
+                predictionStatus?.setPointTemperature == previousPredictionInfo?.setPointTemperature
+            ) {
                 return null
             }
         }
 
         // Stop the previous timer
-        clearLinearizationTimer()
+        timer.stop()
 
         // Update prediction information with latest prediction status from probe
         val predictionInfo = infoFromStatus(predictionStatus, sequenceNumber)
@@ -149,15 +201,16 @@ class PredictionManager {
             predictionState = status.predictionState,
             predictionMode = status.predictionMode,
             predictionType = status.predictionType,
-            predictionSetPointTemperature = status.setPointTemperature,
+            setPointTemperature = status.setPointTemperature,
             estimatedCoreTemperature = status.estimatedCoreTemperature,
-            secondsRemaining = secondsRemaining,
             heatStartTemperature = status.heatStartTemperature,
             rawPredictionSeconds = status.predictionValueSeconds,
-            percentThroughCook = percentThroughCook(status)
+            linearizedProgress = PredictionInfo.LinearizedProgress(
+                secondsRemaining = secondsRemaining,
+                percentThroughCook = percentThroughCook(status)
+            ),
         )
     }
-
 
     private fun secondsRemaining(predictionStatus: PredictionStatus, sequenceNumber: UInt): UInt? {
         // Do not return a value if not in predicting state
@@ -170,10 +223,9 @@ class PredictionManager {
             return null
         }
 
-        val previousSecondsRemaining = previousPredictionInfo?.secondsRemaining
+        val previousSecondsRemaining = previousPredictionInfo?.linearizedProgress?.secondsRemaining
 
         if (predictionStatus.predictionValueSeconds > LOW_RESOLUTION_CUTOFF_SECONDS) {
-
             runningLinearization = false
 
             // If the prediction is longer than the low-resolution cutoff, only update every few samples
@@ -182,12 +234,12 @@ class PredictionManager {
                 // In low-resolution mode, round the value to the nearest 15 seconds.
                 val remainder =
                     predictionStatus.predictionValueSeconds % LOW_RESOLUTION_PRECISION_SECONDS
-                if (remainder > (LOW_RESOLUTION_PRECISION_SECONDS / 2u)) {
+                return if (remainder > (LOW_RESOLUTION_PRECISION_SECONDS / 2u)) {
                     // Round up
-                    return predictionStatus.predictionValueSeconds + (LOW_RESOLUTION_PRECISION_SECONDS - remainder)
+                    predictionStatus.predictionValueSeconds + (LOW_RESOLUTION_PRECISION_SECONDS - remainder)
                 } else {
                     // Round down
-                    return predictionStatus.predictionValueSeconds - remainder
+                    predictionStatus.predictionValueSeconds - remainder
                 }
             } else {
                 return previousSecondsRemaining
@@ -200,12 +252,12 @@ class PredictionManager {
             // the linearization should hit the current prediction - 5 seconds
             val predictionUpdateRateSeconds = (PREDICTION_STATUS_RATE_MS / 1000.0).toUInt()
 
-            if (predictionStatus.predictionValueSeconds < predictionUpdateRateSeconds) {
-                linearizationTargetSeconds = 0
-            } else {
-                linearizationTargetSeconds =
+            linearizationTargetSeconds =
+                if (predictionStatus.predictionValueSeconds < predictionUpdateRateSeconds) {
+                    0
+                } else {
                     (predictionStatus.predictionValueSeconds - predictionUpdateRateSeconds).toInt()
-            }
+                }
 
             if (!runningLinearization) {
                 // If not already running linearization, then initialize values
@@ -218,17 +270,8 @@ class PredictionManager {
             }
 
             // Create a new linearization timer
-            clearLinearizationTimer()
-            linearizationTimer = Timer()
-            linearizationStartTime = SystemClock.elapsedRealtime()
-
-            // Start the linearization timer
-            val intervalMs = LINEARIZATION_UPDATE_RATE_MS.toLong()
-            linearizationTimer?.schedule(object : TimerTask() {
-                override fun run() {
-                    updatePredictionSeconds()
-                }
-            }, intervalMs, intervalMs)
+            timer.stop()
+            timer.start(::updatePredictionSeconds, LINEARIZATION_UPDATE_RATE_MS.toLong())
 
             runningLinearization = true
 
@@ -252,20 +295,22 @@ class PredictionManager {
             predictionState = previousInfo.predictionState,
             predictionMode = previousInfo.predictionMode,
             predictionType = previousInfo.predictionType,
-            predictionSetPointTemperature = previousInfo.predictionSetPointTemperature,
+            setPointTemperature = previousInfo.setPointTemperature,
             estimatedCoreTemperature = previousInfo.estimatedCoreTemperature,
-            secondsRemaining = secondsRemaining,
             heatStartTemperature = previousInfo.heatStartTemperature,
             rawPredictionSeconds = previousInfo.rawPredictionSeconds,
-            percentThroughCook = previousInfo.percentThroughCook
+            linearizedProgress = PredictionInfo.LinearizedProgress(
+                secondsRemaining = secondsRemaining,
+                percentThroughCook = previousInfo.linearizedProgress.percentThroughCook,
+            ),
         )
 
         // Publish new prediction info
         publishPredictionInfo(predictionInfo = predictionInfo, shouldUpdateStatus = true)
 
         // Stop the timer if the prediction has gone stale
-        if ((SystemClock.elapsedRealtime() - linearizationStartTime) >= PREDICTION_STALE_TIMEOUT) {
-            clearLinearizationTimer()
+        if (timer.timeSinceStartMs >= PREDICTION_STALE_TIMEOUT) {
+            timer.stop()
         }
     }
 
@@ -294,7 +339,7 @@ class PredictionManager {
 
     /**
      * Caches the prediction information [predictionInfo], and calls back to the probe manager with
-     * [completionHandler] to update the prediction status. See [CompletionHandler] for more
+     * [predictionUpdatedCallback] to update the prediction status. See [PredictionUpdatedCallback] for more
      * information on how [shouldUpdateStatus] is used.
      */
     private fun publishPredictionInfo(
@@ -304,11 +349,6 @@ class PredictionManager {
         previousPredictionInfo = predictionInfo
 
         // Send new value to Probe manager
-        completionHandler?.let { it(predictionInfo, shouldUpdateStatus) }
-    }
-
-    private fun clearLinearizationTimer() {
-        linearizationTimer?.cancel()
-        linearizationTimer = null
+        predictionUpdatedCallback?.let { it(predictionInfo, shouldUpdateStatus) }
     }
 }
