@@ -40,6 +40,8 @@ import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.uart.LogResponse
 import inc.combustion.framework.service.*
+import inc.combustion.framework.service.utils.DefaultLinearizationTimerImpl
+import inc.combustion.framework.service.utils.PredictionManager
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
@@ -280,7 +282,7 @@ internal class ProbeManager(
     // signals when logs are no longer being added to LogManager.
     var logTransferCompleteCallback: () -> Unit = { }
 
-    private val predictionManager = PredictionManager()
+    private val predictionManager = PredictionManager(DefaultLinearizationTimerImpl())
 
     private val instantReadFilter = InstantReadFilter()
 
@@ -957,7 +959,12 @@ internal class ProbeManager(
 
         updatedProbe = updateConnectionState(updatedProbe)
         updatedProbe = updateTemperatures(status.temperatures, status.virtualSensors, updatedProbe)
-        val predictionInfo = predictionManager.updatePredictionStatus(status.predictionStatus, status.maxSequenceNumber)
+        val predictionInfo = predictionManager.updatePredictionStatus(
+            predictionInfo = PredictionManager.PredictionInfo.fromPredictionStatus(
+                status.predictionStatus
+            ),
+            sequenceNumber = status.maxSequenceNumber
+        )
         updatedProbe = updatePredictionInfo(predictionInfo, updatedProbe)
         updatedProbe = updateFoodSafe(status.foodSafeData, status.foodSafeStatus, updatedProbe)
 
@@ -1001,10 +1008,10 @@ internal class ProbeManager(
             predictionState = predictionInfo?.predictionState,
             predictionMode = predictionInfo?.predictionMode,
             predictionType = predictionInfo?.predictionType,
-            setPointTemperatureCelsius = predictionInfo?.predictionSetPointTemperature,
+            setPointTemperatureCelsius = predictionInfo?.setPointTemperature,
             heatStartTemperatureCelsius = predictionInfo?.heatStartTemperature,
             rawPredictionSeconds = predictionInfo?.rawPredictionSeconds,
-            predictionSeconds = predictionInfo?.secondsRemaining,
+            predictionSeconds = predictionInfo?.linearizedProgress?.secondsRemaining,
             estimatedCoreCelsius = predictionInfo?.estimatedCoreTemperature
         )
     }

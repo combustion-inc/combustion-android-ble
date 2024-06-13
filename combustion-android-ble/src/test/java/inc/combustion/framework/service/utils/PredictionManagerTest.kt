@@ -55,7 +55,7 @@ class PredictionManagerTest {
     private var predictionInfo = PredictionManager.PredictionInfo.fromPredictionStatus(
         defaultPredictionStatus
     )
-    private var shouldUpdateStatus = false
+    private var isUpdateInitiatedByLinearizationTimer = false
 
     @BeforeTest
     fun setUp() {
@@ -78,7 +78,7 @@ class PredictionManagerTest {
     fun `Updates return null if not predicting`() {
         val status = defaultPredictionStatus
         val info = PredictionManager.PredictionInfo.fromPredictionStatus(status)
-        manager?.updatePredictionStatus(status, 0u)
+        manager?.updatePredictionStatus(info, 0u)
         assertEquals(info, predictionInfo)
     }
 
@@ -127,7 +127,6 @@ class PredictionManagerTest {
         val secondsRemainingAdvance = 5u
         var secondsRemaining = 240u
         var linearizedSecondsRemaining = secondsRemaining
-        val secondsRemainingFinal = 225u
         var estimatedCoreTemperature = 30.0
 
         var status = defaultPredictionStatus.copy(
@@ -142,11 +141,14 @@ class PredictionManagerTest {
             )
         )
 
-        manager?.updatePredictionStatus(status, 0u)
+        manager?.updatePredictionStatus(
+            PredictionManager.PredictionInfo.fromPredictionStatus(status), 0u
+        )
         info = info.getInfoWithUpdatedLinearizedSeconds(linearizedSecondsRemaining--)
 
         assertTrue(timer?.isActive ?: false)
         assertEquals(info, predictionInfo)
+        assertFalse(isUpdateInitiatedByLinearizationTimer)
 
         // Progress the timer by 5 seconds
         repeat(5) { outer ->
@@ -156,7 +158,7 @@ class PredictionManagerTest {
             repeat(5) { inner ->
                 timer?.triggerCallback()
                 assertEquals(info, predictionInfo)
-                assertTrue(shouldUpdateStatus)
+                assertTrue(isUpdateInitiatedByLinearizationTimer)
             }
         }
 
@@ -171,8 +173,10 @@ class PredictionManagerTest {
             info = newInfo
         }
 
-        manager?.updatePredictionStatus(status, 1u)
-        assertFalse(shouldUpdateStatus)
+        manager?.updatePredictionStatus(
+            PredictionManager.PredictionInfo.fromPredictionStatus(status), 1u
+        )
+        assertFalse(isUpdateInitiatedByLinearizationTimer)
         assertTrue(timer?.isActive ?: false)
 
         // Progress the timer by 5 seconds
@@ -205,7 +209,9 @@ class PredictionManagerTest {
             )
         )
 
-        manager?.updatePredictionStatus(status, 0u)
+        manager?.updatePredictionStatus(
+            PredictionManager.PredictionInfo.fromPredictionStatus(status), 0u
+        )
         info = info.getInfoWithUpdatedLinearizedSeconds(linearizedSecondsRemaining--)
 
         assertTrue(timer?.isActive ?: false)
@@ -250,7 +256,10 @@ class PredictionManagerTest {
         )
 
         for (sequenceNumber in 0u until 3u) {
-            manager?.updatePredictionStatus(status, sequenceNumber)
+            manager?.updatePredictionStatus(
+                PredictionManager.PredictionInfo.fromPredictionStatus(status),
+                sequenceNumber
+            )
             assertEquals(info, predictionInfo)
 
             localEstimatedCoreTemperature += 2.0
@@ -282,16 +291,18 @@ class PredictionManagerTest {
             )
         )
 
-        manager?.updatePredictionStatus(status, 3u)
+        manager?.updatePredictionStatus(
+            PredictionManager.PredictionInfo.fromPredictionStatus(status), 3u
+        )
         assertEquals(info, predictionInfo)
     }
 
     private fun onPredictionStatusChanged(
         predictionInfo: PredictionManager.PredictionInfo?,
-        shouldUpdateStatus: Boolean,
+        isUpdateInitiatedByLinearizationTimer: Boolean,
     ) {
         this.predictionInfo = predictionInfo
-        this.shouldUpdateStatus = shouldUpdateStatus
+        this.isUpdateInitiatedByLinearizationTimer = isUpdateInitiatedByLinearizationTimer
     }
 
     private fun PredictionManager.PredictionInfo?.getInfoWithUpdatedLinearizedSeconds(

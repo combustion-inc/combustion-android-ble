@@ -35,15 +35,27 @@ import inc.combustion.framework.service.ProbePredictionType
 import java.util.*
 
 /**
- * Handler to be called when a prediction value's updated.
+ * Handler to be called when a prediction value's updated whether through a linearization step
+ * initiated by the timer or by a status update.
  *
- * [shouldUpdateStatus] is used to indicate if the status should be updated--callers doing in-band
- * updates (i.e., updating due to an incoming status message) should set this to false to indicate
- * that the status is being updated elsewhere.
+ * [isUpdateInitiatedByLinearizationTimer] is used to indicate if the status should be
+ * updated--callers doing in-band updates (i.e., updating due to an incoming status message) should
+ * set this to false to indicate that the status is being updated elsewhere.
  */
 typealias PredictionUpdatedCallback =
-            (predictionInfo: PredictionManager.PredictionInfo?, shouldUpdateStatus: Boolean) -> Unit
+    (
+        predictionInfo: PredictionManager.PredictionInfo?,
+        isUpdateInitiatedByLinearizationTimer: Boolean
+    ) -> Unit
 
+/**
+ * Provides a mechanism for managing prediction information, including linearizing the prediction.
+ * The probe only provides updated prediction information every 5 seconds, leading to a 'jumpy'
+ * prediction display as the cook nears completion (and further out from completion as well). This
+ * class provides updates on 15-second boundaries for predictions outside of 5 minutes, and
+ * uses [timer] to provide linearized updates on 1-second boundaries for predictions within 5
+ * minutes.
+ */
 class PredictionManager(
     private val timer: LinearizationTimer
 ) {
@@ -153,23 +165,21 @@ class PredictionManager(
     }
 
     /**
-     * Updates the prediction status with the updated values in [predictionStatus] and
+     * Updates the prediction status with the updated values in [predictionInfo] and
      * [sequenceNumber]. Returns the updated prediction information, or null if [sequenceNumber] has
-     * not increased since the last call to this function (or if [predictionStatus] is null).
+     * not increased since the last call to this function (or if [predictionInfo] is null).
      *
-     * [predictionUpdatedCallback] is called with the [shouldUpdateStatus] parameter set to false, so it's
-     * on the caller of this function to update their status appropriately.
+     * [predictionUpdatedCallback] is called with the [shouldUpdateStatus] parameter set to false,
+     * so it's on the caller of this function to update their status appropriately.
      */
     fun updatePredictionStatus(
-        predictionStatus: PredictionStatus?,
+        predictionInfo: PredictionInfo?,
         sequenceNumber: UInt,
     ): PredictionInfo? {
-        // Duplicate status messages are sent when prediction is started. Ignore the duplicate sequence number
-        // unless the prediction information has changed
+        // Duplicate status messages are sent when prediction is started. Ignore the duplicate
+        // sequence number unless the prediction information has changed
         previousSequenceNumber?.let {
-            if (it == sequenceNumber &&
-                predictionStatus?.setPointTemperature == previousPredictionInfo?.setPointTemperature
-            ) {
+            if (it == sequenceNumber && predictionInfo?.setPointTemperature == previousPredictionInfo?.setPointTemperature) {
                 return null
             }
         }
@@ -178,54 +188,43 @@ class PredictionManager(
         timer.stop()
 
         // Update prediction information with latest prediction status from probe
-        val predictionInfo = infoFromStatus(predictionStatus, sequenceNumber)
+        val updatedPredictionInfo =
+            updatePredictionInfoWithLinearizedProgress(predictionInfo, sequenceNumber)
 
         // Save sequence number to check for duplicates
         previousSequenceNumber = sequenceNumber
 
         // Publish new prediction info
-        publishPredictionInfo(predictionInfo = predictionInfo, shouldUpdateStatus = false)
+        publishPredictionInfo(predictionInfo = updatedPredictionInfo, shouldUpdateStatus = false)
 
-        return predictionInfo
+        return updatedPredictionInfo
     }
 
-    private fun infoFromStatus(
-        predictionStatus: PredictionStatus?,
-        sequenceNumber: UInt
+    private fun updatePredictionInfoWithLinearizedProgress(
+        predictionInfo: PredictionInfo?, sequenceNumber: UInt
     ): PredictionInfo? {
-        val status = predictionStatus ?: return null
-
-        val secondsRemaining = secondsRemaining(status, sequenceNumber)
-
-        return PredictionInfo(
-            predictionState = status.predictionState,
-            predictionMode = status.predictionMode,
-            predictionType = status.predictionType,
-            setPointTemperature = status.setPointTemperature,
-            estimatedCoreTemperature = status.estimatedCoreTemperature,
-            heatStartTemperature = status.heatStartTemperature,
-            rawPredictionSeconds = status.predictionValueSeconds,
+        return predictionInfo?.copy(
             linearizedProgress = PredictionInfo.LinearizedProgress(
-                secondsRemaining = secondsRemaining,
-                percentThroughCook = percentThroughCook(status)
-            ),
+                secondsRemaining = secondsRemaining(predictionInfo, sequenceNumber),
+                percentThroughCook = percentThroughCook(predictionInfo)
+            )
         )
     }
 
-    private fun secondsRemaining(predictionStatus: PredictionStatus, sequenceNumber: UInt): UInt? {
+    private fun secondsRemaining(predictionInfo: PredictionInfo, sequenceNumber: UInt): UInt? {
         // Do not return a value if not in predicting state
-        if (predictionStatus.predictionState != ProbePredictionState.PREDICTING) {
+        if (predictionInfo.predictionState != ProbePredictionState.PREDICTING) {
             return null
         }
 
         // Do not return a value if above max seconds remaining
-        if (predictionStatus.predictionValueSeconds > MAX_PREDICTION_TIME) {
+        if (predictionInfo.rawPredictionSeconds > MAX_PREDICTION_TIME) {
             return null
         }
 
         val previousSecondsRemaining = previousPredictionInfo?.linearizedProgress?.secondsRemaining
 
-        if (predictionStatus.predictionValueSeconds > LOW_RESOLUTION_CUTOFF_SECONDS) {
+        if (predictionInfo.rawPredictionSeconds > LOW_RESOLUTION_CUTOFF_SECONDS) {
             runningLinearization = false
 
             // If the prediction is longer than the low-resolution cutoff, only update every few samples
@@ -233,13 +232,13 @@ class PredictionManager(
             if (previousSecondsRemaining == null || sequenceNumber % PREDICTION_TIME_UPDATE_COUNT == 0u) {
                 // In low-resolution mode, round the value to the nearest 15 seconds.
                 val remainder =
-                    predictionStatus.predictionValueSeconds % LOW_RESOLUTION_PRECISION_SECONDS
+                    predictionInfo.rawPredictionSeconds % LOW_RESOLUTION_PRECISION_SECONDS
                 return if (remainder > (LOW_RESOLUTION_PRECISION_SECONDS / 2u)) {
                     // Round up
-                    predictionStatus.predictionValueSeconds + (LOW_RESOLUTION_PRECISION_SECONDS - remainder)
+                    predictionInfo.rawPredictionSeconds + (LOW_RESOLUTION_PRECISION_SECONDS - remainder)
                 } else {
                     // Round down
-                    predictionStatus.predictionValueSeconds - remainder
+                    predictionInfo.rawPredictionSeconds - remainder
                 }
             } else {
                 return previousSecondsRemaining
@@ -253,15 +252,15 @@ class PredictionManager(
             val predictionUpdateRateSeconds = (PREDICTION_STATUS_RATE_MS / 1000.0).toUInt()
 
             linearizationTargetSeconds =
-                if (predictionStatus.predictionValueSeconds < predictionUpdateRateSeconds) {
+                if (predictionInfo.rawPredictionSeconds < predictionUpdateRateSeconds) {
                     0
                 } else {
-                    (predictionStatus.predictionValueSeconds - predictionUpdateRateSeconds).toInt()
+                    (predictionInfo.rawPredictionSeconds - predictionUpdateRateSeconds).toInt()
                 }
 
             if (!runningLinearization) {
                 // If not already running linearization, then initialize values
-                currentLinearizationMs = predictionStatus.predictionValueSeconds.toDouble() * 1000.0
+                currentLinearizationMs = predictionInfo.rawPredictionSeconds.toDouble() * 1000.0
                 linearizationTimerUpdateValue = LINEARIZATION_UPDATE_RATE_MS
             } else {
                 val intervalCount = PREDICTION_STATUS_RATE_MS / LINEARIZATION_UPDATE_RATE_MS
@@ -291,14 +290,7 @@ class PredictionManager(
 
         val secondsRemaining = (currentLinearizationMs / 1000.0).toUInt()
 
-        val predictionInfo = PredictionInfo(
-            predictionState = previousInfo.predictionState,
-            predictionMode = previousInfo.predictionMode,
-            predictionType = previousInfo.predictionType,
-            setPointTemperature = previousInfo.setPointTemperature,
-            estimatedCoreTemperature = previousInfo.estimatedCoreTemperature,
-            heatStartTemperature = previousInfo.heatStartTemperature,
-            rawPredictionSeconds = previousInfo.rawPredictionSeconds,
+        val predictionInfo = previousInfo.copy(
             linearizedProgress = PredictionInfo.LinearizedProgress(
                 secondsRemaining = secondsRemaining,
                 percentThroughCook = previousInfo.linearizedProgress.percentThroughCook,
@@ -314,10 +306,10 @@ class PredictionManager(
         }
     }
 
-    private fun percentThroughCook(predictionStatus: PredictionStatus): Int {
-        val start = predictionStatus.heatStartTemperature
-        val end = predictionStatus.setPointTemperature
-        val core = predictionStatus.estimatedCoreTemperature
+    private fun percentThroughCook(predictionInfo: PredictionInfo): Int {
+        val start = predictionInfo.heatStartTemperature
+        val end = predictionInfo.setPointTemperature
+        val core = predictionInfo.estimatedCoreTemperature
 
         // Max percentage is 100
         if (core > end) {
