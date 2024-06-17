@@ -621,7 +621,16 @@ internal class ProbeManager(
                 updatedProbe = updateInstantRead(status, updatedProbe)
             }
 
-            _probe.update { updatedProbe }
+            // These log-related items can be updated outside of this function--specifically, these
+            // are updated by the LogManager when we emit a new status to the
+            // normalModeProbeStatusFlow.
+            _probe.update {
+                updatedProbe.copy(
+                    uploadState = it.uploadState,
+                    recordsDownloaded = it.recordsDownloaded,
+                    logUploadPercent = it.logUploadPercent,
+                )
+            }
         }
 
         // optimize MeatNet connection resources.  if we have a direct link to a probe we want to
