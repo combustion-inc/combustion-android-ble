@@ -34,7 +34,7 @@ import inc.combustion.framework.service.*
 
 typealias LinkID = String
 
-internal abstract class ProbeBleDeviceBase() {
+internal abstract class ProbeBleDeviceBase {
 
     companion object {
         const val PROBE_MESSAGE_RESPONSE_TIMEOUT_MS = 5000L
@@ -114,4 +114,8 @@ internal abstract class ProbeBleDeviceBase() {
     abstract fun sendConfigureFoodSafe(foodSafeData: FoodSafeData, reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)? = null)
     abstract fun sendResetFoodSafe(reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)? = null)
     abstract fun sendLogRequest(minSequence: UInt, maxSequence: UInt, callback: (suspend (LogResponse) -> Unit)? = null)
+
+    override fun toString(): String {
+        return "$mac $probeSerialNumber $linkId $connectionState"
+    }
 }

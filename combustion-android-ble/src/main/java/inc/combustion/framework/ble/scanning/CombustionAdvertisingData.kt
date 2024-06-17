@@ -50,4 +50,8 @@ internal class CombustionAdvertisingData(
         get() {
             return productType == CombustionProductType.CHARGER || productType == CombustionProductType.DISPLAY
         }
+
+    override fun toString(): String {
+        return "${super.toString()} | $probeSerialNumber $mode $hopCount"
+    }
 }

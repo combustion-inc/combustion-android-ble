@@ -241,6 +241,10 @@ internal class ProbeBleDevice (
         }
     }
 
+    override fun toString(): String {
+        return "ProbeBleDevice(${super.toString()}"
+    }
+
     private fun observeUartResponses(callback: (suspend (responses: List<Response>) -> Unit)? = null) {
         uart.jobManager.addJob(
             key = probeSerialNumber,
