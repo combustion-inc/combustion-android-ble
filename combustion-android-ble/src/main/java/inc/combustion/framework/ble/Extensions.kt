@@ -27,6 +27,7 @@
  */
 package inc.combustion.framework.ble
 
+import inc.combustion.framework.service.utils.PredictionManager
 import kotlin.math.abs
 
 internal fun NOT_IMPLEMENTED(reason: String = ""): Nothing = TODO(reason)

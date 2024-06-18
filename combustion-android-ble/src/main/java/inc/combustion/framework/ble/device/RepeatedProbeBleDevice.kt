@@ -28,11 +28,9 @@
 
 package inc.combustion.framework.ble.device
 
-import android.icu.text.Normalizer2.Mode
 import android.util.Log
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.IdleMonitor
 import inc.combustion.framework.ble.NOT_IMPLEMENTED
 import inc.combustion.framework.ble.ProbeStatus
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
@@ -45,9 +43,6 @@ import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.ble.uart.meatnet.NodeReadSessionInfoRequest
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.CoroutineName
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -200,6 +195,10 @@ internal class RepeatedProbeBleDevice (
     override suspend fun readFirmwareVersion() = uart.readFirmwareVersion()
     override suspend fun readHardwareRevision() = uart.readHardwareRevision()
     override suspend fun readModelInformation() = uart.readModelInformation()
+
+    override fun toString(): String {
+        return "repeated$productType(${super.toString()})"
+    }
 
     fun readProbeFirmwareVersion(reqId: UInt?, callback: (FirmwareVersion) -> Unit) {
         if(!probeFirmwareRevisionHandler.isWaiting) {

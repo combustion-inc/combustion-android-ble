@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: CombustionAdvertisingData.kt
- * Author: httpsL//github.com/miwright2
+ * File: DefaultLinearizationTimerImpl.kt
+ * Author: Nick Helseth <nick@combustion.inc>
  *
  * MIT License
  *
- * Copyright (c) 2023. Combustion Inc.
+ * Copyright (c) 2024. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -26,32 +26,37 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble.scanning
+package inc.combustion.framework.service.utils
 
-import inc.combustion.framework.service.*
+import android.os.SystemClock
+import java.util.Timer
+import java.util.TimerTask
 
-internal class CombustionAdvertisingData(
-    mac: String,
-    name: String,
-    rssi: Int,
-    productType: CombustionProductType,
-    isConnectable: Boolean,
-    val probeSerialNumber: String,
-    val probeTemperatures: ProbeTemperatures,
-    val probeID: ProbeID,
-    val color: ProbeColor,
-    val mode: ProbeMode,
-    val batteryStatus: ProbeBatteryStatus,
-    val virtualSensors: ProbeVirtualSensors,
-    val hopCount: UInt = 0u
-): BaseAdvertisingData(mac, name, rssi, productType, isConnectable) {
+class DefaultLinearizationTimerImpl: PredictionManager.LinearizationTimer {
+    private var timer: Timer? = null
+    private var linearizationStartTime: Long = 0
 
-    val isRepeater: Boolean
-        get() {
-            return productType == CombustionProductType.CHARGER || productType == CombustionProductType.DISPLAY
-        }
+    override fun start(callback: () -> Unit, intervalMs: Long) {
+        timer = Timer()
+        linearizationStartTime = SystemClock.elapsedRealtime()
 
-    override fun toString(): String {
-        return "${super.toString()} | $probeSerialNumber $mode $hopCount"
+        // Start the linearization timer
+        timer?.schedule( object : TimerTask() {
+            override fun run() {
+                callback()
+            }
+        }, intervalMs, intervalMs)
     }
+
+    override fun stop() {
+        timer?.cancel()
+        timer = null
+    }
+
+    override val isActive: Boolean
+        get() = timer != null
+
+    override val timeSinceStartMs: Long
+        get() = SystemClock.elapsedRealtime() - linearizationStartTime
 }
+

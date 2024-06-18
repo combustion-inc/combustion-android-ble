@@ -153,4 +153,8 @@ open class BaseAdvertisingData(
      */
     val id: DeviceID
         get() = mac
+
+    override fun toString(): String {
+        return "$mac $name $rssi $productType $isConnectable"
+    }
 }
