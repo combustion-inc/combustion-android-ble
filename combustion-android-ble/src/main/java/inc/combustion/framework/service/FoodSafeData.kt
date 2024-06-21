@@ -187,37 +187,47 @@ sealed class FoodSafeData {
 
         enum class Product {
             Default,
-            Beef,
-            BeefGround,
-            Chicken,
-            ChickenGround,
-            Pork,
-            PorkGround,
-            Ham,
-            HamGround,
-            Turkey,
-            TurkeyGround,
-            Lamb,
-            LambGround,
-            FishAndShellfish,
-            FishAndShellfishGround,
+            Meats,
+            MeatsGround,
+            DeprecatedChicken,
+            PoultryGround,
+            DepracatedPork,
+            DeprecatedPorkGround,
+            DeprecatedHam,
+            DeprecatedHamGround,
+            DeprecatedTurkey,
+            DeprecatedTurkeyGround,
+            DeprecatedLamb,
+            DeprecatedLambGround,
+            Seafood,
+            SeafoodGround,
             DairyMilkLessThan10PercentFat,
-            Game,
+            Other,
+            SeafoodStuffed,
+            Eggs,
+            EggsYolk,
+            EggsWhite,
+            DairyCreamsGreaterThan10PercentFat,
+            DairyOther,
             Custom,
             ;
 
             override fun toString(): String {
                 return when (this) {
                     Default -> "Poultry (Default)"
-                    BeefGround -> "Beef (Ground)"
-                    ChickenGround -> "Chicken (Ground)"
-                    PorkGround -> "Pork (Ground)"
-                    HamGround -> "Ham (Ground)"
-                    TurkeyGround -> "Turkey (Ground)"
-                    LambGround -> "Lamb (Ground)"
-                    FishAndShellfish -> "Fish and Shellfish"
-                    FishAndShellfishGround -> "Fish and Shellfish (Ground)"
+                    MeatsGround -> "Meats (Ground, Chopped, or Stuffed)"
+                    PoultryGround -> "Poultry (Ground, Chopped, or Stuffed)"
+                    DeprecatedPorkGround -> "Pork (Ground, Chopped, or Stuffed)"
+                    DeprecatedHamGround -> "Ham (Ground)"
+                    DeprecatedTurkeyGround -> "Turkey (Ground)"
+                    DeprecatedLambGround -> "Lamb (Ground)"
+                    SeafoodGround -> "Seafood (Ground or Chopped)"
+                    SeafoodStuffed -> "Seafood (Stuffed)"
                     DairyMilkLessThan10PercentFat -> "Dairy - Milk (<10% fat)"
+                    DairyCreamsGreaterThan10PercentFat -> "Dairy - Creams (>10% fat)"
+                    DairyOther -> "Dairy - Ice Cream Mix, Eggnog"
+                    EggsYolk -> "Eggs yolk"
+                    EggsWhite -> "Eggs white"
                     else -> this.name
                 }
             }
@@ -226,22 +236,28 @@ sealed class FoodSafeData {
                 get() {
                     return when (this) {
                         Default -> 0u
-                        Beef -> 1u
-                        BeefGround -> 2u
-                        Chicken -> 3u
-                        ChickenGround -> 4u
-                        Pork -> 5u
-                        PorkGround -> 6u
-                        Ham -> 7u
-                        HamGround -> 8u
-                        Turkey -> 9u
-                        TurkeyGround -> 10u
-                        Lamb -> 11u
-                        LambGround -> 12u
-                        FishAndShellfish -> 13u
-                        FishAndShellfishGround -> 14u
+                        Meats -> 1u
+                        MeatsGround -> 2u
+                        DeprecatedChicken -> 3u
+                        PoultryGround -> 4u
+                        DepracatedPork -> 5u
+                        DeprecatedPorkGround -> 6u
+                        DeprecatedHam -> 7u
+                        DeprecatedHamGround -> 8u
+                        DeprecatedTurkey -> 9u
+                        DeprecatedTurkeyGround -> 10u
+                        DeprecatedLamb -> 11u
+                        DeprecatedLambGround -> 12u
+                        Seafood -> 13u
+                        SeafoodGround -> 14u
                         DairyMilkLessThan10PercentFat -> 15u
-                        Game -> 16u
+                        Other -> 16u
+                        SeafoodStuffed -> 17u
+                        Eggs -> 18u
+                        EggsYolk -> 19u
+                        EggsWhite -> 20u
+                        DairyCreamsGreaterThan10PercentFat -> 21u
+                        DairyOther -> 22u
                         Custom -> 1023u
                     }
                 }
@@ -250,22 +266,28 @@ sealed class FoodSafeData {
                 internal fun fromRaw(raw: UInt): Product {
                     return when (raw) {
                         0u -> Default
-                        1u -> Beef
-                        2u -> BeefGround
-                        3u -> Chicken
-                        4u -> ChickenGround
-                        5u -> Pork
-                        6u -> PorkGround
-                        7u -> Ham
-                        8u -> HamGround
-                        9u -> Turkey
-                        10u -> TurkeyGround
-                        11u -> Lamb
-                        12u -> LambGround
-                        13u -> FishAndShellfish
-                        14u -> FishAndShellfishGround
+                        1u -> Meats
+                        2u -> MeatsGround
+                        3u -> DeprecatedChicken
+                        4u -> PoultryGround
+                        5u -> DepracatedPork
+                        6u -> DeprecatedPorkGround
+                        7u -> DeprecatedHam
+                        8u -> DeprecatedHamGround
+                        9u -> DeprecatedTurkey
+                        10u -> DeprecatedTurkeyGround
+                        11u -> DeprecatedLamb
+                        12u -> DeprecatedLambGround
+                        13u -> Seafood
+                        14u -> SeafoodGround
                         15u -> DairyMilkLessThan10PercentFat
-                        16u -> Game
+                        16u -> Other
+                        17u -> SeafoodStuffed
+                        18u -> Eggs
+                        19u -> EggsYolk
+                        20u -> EggsWhite
+                        21u -> DairyCreamsGreaterThan10PercentFat
+                        22u -> DairyOther
                         1023u -> Custom
                         else -> throw IllegalArgumentException("Invalid integrated product value $raw")
                     }

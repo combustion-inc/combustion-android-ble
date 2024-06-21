@@ -28,11 +28,14 @@
 
 package inc.combustion.framework.service
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
+import junitparams.JUnitParamsRunner
+import junitparams.Parameters
+import junitparams.naming.TestCaseName
+import org.junit.Assert.*
 import org.junit.Test
+import org.junit.runner.RunWith
 
+@RunWith(JUnitParamsRunner::class)
 class FoodSafeDataTest {
     @Test
     fun `fromRaw Mode`() {
@@ -111,52 +114,73 @@ class FoodSafeDataTest {
         assertEquals(FoodSafeData.Integrated.Product.Default, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
-        assertEquals(FoodSafeData.Integrated.Product.Beef, toProduct(raw))
+        assertEquals(FoodSafeData.Integrated.Product.Meats, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
-        assertEquals(FoodSafeData.Integrated.Product.BeefGround, toProduct(raw))
+        assertEquals(FoodSafeData.Integrated.Product.MeatsGround, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
-        assertEquals(FoodSafeData.Integrated.Product.Chicken, toProduct(raw))
+        assertEquals(FoodSafeData.Integrated.Product.DeprecatedChicken, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
-        assertEquals(FoodSafeData.Integrated.Product.ChickenGround, toProduct(raw))
+        assertEquals(FoodSafeData.Integrated.Product.PoultryGround, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
-        assertEquals(FoodSafeData.Integrated.Product.Pork, toProduct(raw))
+        assertEquals(FoodSafeData.Integrated.Product.DepracatedPork, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
-        assertEquals(FoodSafeData.Integrated.Product.PorkGround, toProduct(raw))
+        assertEquals(FoodSafeData.Integrated.Product.DeprecatedPorkGround, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
-        assertEquals(FoodSafeData.Integrated.Product.Ham, toProduct(raw))
+        assertEquals(FoodSafeData.Integrated.Product.DeprecatedHam, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
-        assertEquals(FoodSafeData.Integrated.Product.HamGround, toProduct(raw))
+        assertEquals(FoodSafeData.Integrated.Product.DeprecatedHamGround, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
-        assertEquals(FoodSafeData.Integrated.Product.Turkey, toProduct(raw))
+        assertEquals(FoodSafeData.Integrated.Product.DeprecatedTurkey, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
-        assertEquals(FoodSafeData.Integrated.Product.TurkeyGround, toProduct(raw))
+        assertEquals(FoodSafeData.Integrated.Product.DeprecatedTurkeyGround, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
-        assertEquals(FoodSafeData.Integrated.Product.Lamb, toProduct(raw))
+        assertEquals(FoodSafeData.Integrated.Product.DeprecatedLamb, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
-        assertEquals(FoodSafeData.Integrated.Product.LambGround, toProduct(raw))
+        assertEquals(FoodSafeData.Integrated.Product.DeprecatedLambGround, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
-        assertEquals(FoodSafeData.Integrated.Product.FishAndShellfish, toProduct(raw))
+        assertEquals(FoodSafeData.Integrated.Product.Seafood, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
-        assertEquals(FoodSafeData.Integrated.Product.FishAndShellfishGround, toProduct(raw))
+        assertEquals(FoodSafeData.Integrated.Product.SeafoodGround, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
         assertEquals(FoodSafeData.Integrated.Product.DairyMilkLessThan10PercentFat, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
-        assertEquals(FoodSafeData.Integrated.Product.Game, toProduct(raw))
+        assertEquals(FoodSafeData.Integrated.Product.Other, toProduct(raw))
+        productValue += 1u
+        raw[0] = (0x01u or (productValue shl 3)).toUByte()
+        assertEquals(FoodSafeData.Integrated.Product.SeafoodStuffed, toProduct(raw))
+        productValue += 1u
+        raw[0] = (0x01u or (productValue shl 3)).toUByte()
+        assertEquals(FoodSafeData.Integrated.Product.Eggs, toProduct(raw))
+        productValue += 1u
+        raw[0] = (0x01u or (productValue shl 3)).toUByte()
+        assertEquals(FoodSafeData.Integrated.Product.EggsYolk, toProduct(raw))
+        productValue += 1u
+        raw[0] = (0x01u or (productValue shl 3)).toUByte()
+        assertEquals(FoodSafeData.Integrated.Product.EggsWhite, toProduct(raw))
+        productValue += 1u
+        raw[0] = (0x01u or (productValue shl 3)).toUByte()
+        assertEquals(
+            FoodSafeData.Integrated.Product.DairyCreamsGreaterThan10PercentFat,
+            toProduct(raw)
+        )
+        productValue += 1u
+        raw[0] = (0x01u or (productValue shl 3)).toUByte()
+        assertEquals(FoodSafeData.Integrated.Product.DairyOther, toProduct(raw))
         raw[0] = 0xF9u
         raw[1] = 0x1Fu
         assertEquals(FoodSafeData.Integrated.Product.Custom, toProduct(raw))
@@ -183,7 +207,7 @@ class FoodSafeDataTest {
             0x00u,
             0x00u,
             0x00u,
-            0x00u
+            0x00u,
         )
         assertEquals(FoodSafeData.Serving.Immediately, toServing(raw))
 
@@ -316,9 +340,13 @@ class FoodSafeDataTest {
     }
 
     @Test
-    fun `toRaw and fromRaw translate (integrated)`() {
+    @Parameters(method = "toAndFromRawTranslateIntegratedParams")
+    @TestCaseName("toRaw and fromRaw translate (Integrated) {0}")
+    fun `toRaw and fromRaw translate (integrated)`(
+        givenProduct: FoodSafeData.Integrated.Product,
+    ) {
         val foodSafeData = FoodSafeData.Integrated(
-            product = FoodSafeData.Integrated.Product.DairyMilkLessThan10PercentFat,
+            product = givenProduct,
             serving = FoodSafeData.Serving.CookAndChill,
             completionCriteria = FoodSafeData.Integrated.CompletionCriteria(
                 selectedThresholdReferenceTemperature = 273.05,
@@ -334,4 +362,7 @@ class FoodSafeDataTest {
 
         assertEquals(foodSafeData, convertedFoodSafeData)
     }
+
+    private fun toAndFromRawTranslateIntegratedParams(): Array<FoodSafeData.Integrated.Product> =
+        FoodSafeData.Integrated.Product.values()
 }
