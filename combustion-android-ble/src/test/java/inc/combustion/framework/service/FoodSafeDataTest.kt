@@ -28,7 +28,9 @@
 
 package inc.combustion.framework.service
 
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FoodSafeDataTest {
@@ -171,7 +173,18 @@ class FoodSafeDataTest {
             (FoodSafeData.fromRawData(value) as FoodSafeData.Simplified).serving
         }
 
-        val raw = ubyteArrayOf(0x00u, 0b0000_0000u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u)
+        val raw = ubyteArrayOf(
+            0x00u,
+            0b0000_0000u,
+            0x00u,
+            0x00u,
+            0x00u,
+            0x00u,
+            0x00u,
+            0x00u,
+            0x00u,
+            0x00u
+        )
         assertEquals(FoodSafeData.Serving.Immediately, toServing(raw))
 
         raw[1] = 0b0010_0000u

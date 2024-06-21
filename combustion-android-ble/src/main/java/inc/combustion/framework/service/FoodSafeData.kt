@@ -310,32 +310,40 @@ sealed class FoodSafeData {
 
             data[0] =
                 rawMode or
-                (rawProduct shl 3).toUByte()
+                        (rawProduct shl 3).toUByte()
 
             data[1] =
                 (rawProduct shr 5).toUByte() or
-                (serving.toRaw.toUShort() shl 5).toUByte()
+                        (serving.toRaw.toUShort() shl 5).toUByte()
 
-            val toPacked: (Double) -> UInt = {
-                value -> (value / 0.05).roundToInt().toUInt() and 0x1FFFu
+            val toPacked: (Double) -> UInt = { value ->
+                (value / 0.05).roundToInt().toUInt() and 0x1FFFu
             }
 
-            val rawSelectedThreshold = toPacked(when (this) {
-                is Simplified -> 0.0
-                is Integrated -> this.completionCriteria.selectedThresholdReferenceTemperature
-            })
-            val rawZValue = toPacked(when (this) {
-                is Simplified -> 0.0
-                is Integrated -> this.completionCriteria.zValue
-            })
-            val rawReferenceTemperature = toPacked(when (this) {
-                is Simplified -> 0.0
-                is Integrated -> this.completionCriteria.referenceTemperature
-            })
-            val rawDValueAtRt = toPacked(when (this) {
-                is Simplified -> 0.0
-                is Integrated -> this.completionCriteria.dValueAtRt
-            })
+            val rawSelectedThreshold = toPacked(
+                when (this) {
+                    is Simplified -> 0.0
+                    is Integrated -> this.completionCriteria.selectedThresholdReferenceTemperature
+                }
+            )
+            val rawZValue = toPacked(
+                when (this) {
+                    is Simplified -> 0.0
+                    is Integrated -> this.completionCriteria.zValue
+                }
+            )
+            val rawReferenceTemperature = toPacked(
+                when (this) {
+                    is Simplified -> 0.0
+                    is Integrated -> this.completionCriteria.referenceTemperature
+                }
+            )
+            val rawDValueAtRt = toPacked(
+                when (this) {
+                    is Simplified -> 0.0
+                    is Integrated -> this.completionCriteria.dValueAtRt
+                }
+            )
             val rawTargetLogReduction = when (this) {
                 is Simplified -> 0u
                 is Integrated -> (this.completionCriteria.targetLogReduction / 0.1).toUInt() and 0xFFu
@@ -346,25 +354,25 @@ sealed class FoodSafeData {
 
             data[3] =
                 ((rawSelectedThreshold and 0b1_1111_0000_0000u) shr 8).toUByte() or
-                ((rawZValue and 0b0_0000_0000_0111u) shl 5).toUByte()
+                        ((rawZValue and 0b0_0000_0000_0111u) shl 5).toUByte()
 
             data[4] =
                 ((rawZValue and 0b0_0111_1111_1000u) shr 3).toUByte()
 
             data[5] =
                 ((rawZValue and 0b1_1000_0000_0000u) shr 11).toUByte() or
-                ((rawReferenceTemperature and 0b0_0000_0011_1111u) shl 2).toUByte()
+                        ((rawReferenceTemperature and 0b0_0000_0011_1111u) shl 2).toUByte()
 
             data[6] =
                 ((rawReferenceTemperature and 0b1_1111_1100_0000u) shr 6).toUByte() or
-                ((rawDValueAtRt and 0b0_0000_0000_0001u) shl 7).toUByte()
+                        ((rawDValueAtRt and 0b0_0000_0000_0001u) shl 7).toUByte()
 
             data[7] =
                 ((rawDValueAtRt and 0b0_0001_1111_1110u) shr 1).toUByte()
 
             data[8] =
                 ((rawDValueAtRt and 0b1_1110_0000_0000u) shr 9).toUByte() or
-                ((rawTargetLogReduction and 0b0000_1111u) shl 4).toUByte()
+                        ((rawTargetLogReduction and 0b0000_1111u) shl 4).toUByte()
 
             data[9] =
                 (rawTargetLogReduction and 0b1111_0000u shr 4).toUByte()
@@ -383,27 +391,27 @@ sealed class FoodSafeData {
             val rawMode = data[0] and 0b0000_0111u
             val rawProduct =
                 ((data[0].toUShort() and 0b1111_1000u) shr 3) or
-                ((data[1].toUShort() and 0b0001_1111u) shl 5)
+                        ((data[1].toUShort() and 0b0001_1111u) shl 5)
             val rawServing =
                 ((data[1].toUShort() and 0b1110_0000u) shr 5)
 
             val rawSelectedThresholdReferenceTemperature =
                 data[2].toUShort() or
-                ((data[3].toUShort() and 0b0001_1111u) shl 8)
+                        ((data[3].toUShort() and 0b0001_1111u) shl 8)
             val rawZValue =
                 ((data[3].toUShort() and 0b1110_0000u) shr 5) or
-                ((data[4].toUShort() and 0b1111_1111u) shl 3) or
-                ((data[5].toUShort() and 0b0000_0011u) shl 11)
+                        ((data[4].toUShort() and 0b1111_1111u) shl 3) or
+                        ((data[5].toUShort() and 0b0000_0011u) shl 11)
             val rawReferenceTemperature =
                 ((data[5].toUShort() and 0b1111_1100u) shr 2) or
-                ((data[6].toUShort() and 0b0111_1111u) shl 6)
+                        ((data[6].toUShort() and 0b0111_1111u) shl 6)
             val rawDValueAtRt =
                 ((data[6].toUShort() and 0b1000_0000u) shr 7) or
-                ((data[7].toUShort() and 0b1111_1111u) shl 1) or
-                ((data[8].toUShort() and 0b0000_1111u) shl 9)
+                        ((data[7].toUShort() and 0b1111_1111u) shl 1) or
+                        ((data[8].toUShort() and 0b0000_1111u) shl 9)
             val targetLogReduction =
                 ((data[8].toUShort() and 0b1111_0000u) shr 4) or
-                ((data[9].toUShort() and 0b0000_1111u) shl 4)
+                        ((data[9].toUShort() and 0b0000_1111u) shl 4)
 
             try {
                 return when (Mode.fromRaw(rawMode.toUInt())) {
@@ -413,6 +421,7 @@ sealed class FoodSafeData {
                             serving = Serving.fromRaw(rawServing.toUInt()),
                         )
                     }
+
                     Mode.Integrated -> {
                         Integrated(
                             product = Integrated.Product.fromRaw(rawProduct.toUInt()),
@@ -447,6 +456,7 @@ sealed class FoodSafeData {
                     serving = Serving.Immediately,
                 )
             }
+
             Mode.Integrated -> {
                 Integrated(
                     product = Integrated.Product.fromRaw(Random.nextUInt(until = 13u)),
