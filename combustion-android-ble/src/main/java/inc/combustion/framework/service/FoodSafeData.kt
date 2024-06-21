@@ -191,7 +191,7 @@ sealed class FoodSafeData {
             MeatsGround,
             DeprecatedChicken,
             PoultryGround,
-            DepracatedPork,
+            DeprecatedPork,
             DeprecatedPorkGround,
             DeprecatedHam,
             DeprecatedHamGround,
@@ -240,7 +240,7 @@ sealed class FoodSafeData {
                         MeatsGround -> 2u
                         DeprecatedChicken -> 3u
                         PoultryGround -> 4u
-                        DepracatedPork -> 5u
+                        DeprecatedPork -> 5u
                         DeprecatedPorkGround -> 6u
                         DeprecatedHam -> 7u
                         DeprecatedHamGround -> 8u
@@ -270,7 +270,7 @@ sealed class FoodSafeData {
                         2u -> MeatsGround
                         3u -> DeprecatedChicken
                         4u -> PoultryGround
-                        5u -> DepracatedPork
+                        5u -> DeprecatedPork
                         6u -> DeprecatedPorkGround
                         7u -> DeprecatedHam
                         8u -> DeprecatedHamGround

@@ -126,7 +126,7 @@ class FoodSafeDataTest {
         assertEquals(FoodSafeData.Integrated.Product.PoultryGround, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
-        assertEquals(FoodSafeData.Integrated.Product.DepracatedPork, toProduct(raw))
+        assertEquals(FoodSafeData.Integrated.Product.DeprecatedPork, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
         assertEquals(FoodSafeData.Integrated.Product.DeprecatedPorkGround, toProduct(raw))
