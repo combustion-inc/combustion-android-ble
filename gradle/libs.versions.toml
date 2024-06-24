@@ -9,6 +9,7 @@ kableCore = "0.25.1"
 kotlin = "1.8.0"
 nordicsemiDfu = "2.3.2"
 junit = "4.13.2"
+junitParams = "1.1.1"
 androidDesugarJdkLibs = "2.0.3"
 kotlinTestJunit = "1.8.10"
 mavenPublish = "0.25.3"
@@ -25,6 +26,7 @@ junit = { group = "junit", name = "junit", version.ref = "junit" }
 kable-core = { group = "com.juul.kable", name = "core", version.ref = "kableCore" }
 kotlin-test-junit = { group = "org.jetbrains.kotlin", name = "kotlin-test-junit", version.ref = "kotlinTestJunit" }
 nordicsemi-dfu = { group = "no.nordicsemi.android", name = "dfu", version.ref = "nordicsemiDfu" }
+junit-params = { group = "pl.pragmatists", name = "JUnitParams", version.ref = "junitParams" }
 
 [plugins]
 android-library = { id = "com.android.library", version.ref = "androidGradlePlugin" }

@@ -106,6 +106,7 @@ dependencies {
     androidTestImplementation(frameworkLibs.androidx.test.espresso)
     testImplementation(frameworkLibs.junit)
     testImplementation(frameworkLibs.kotlin.test.junit)
+    testImplementation(frameworkLibs.junit.params)
 }
 
 afterEvaluate {
