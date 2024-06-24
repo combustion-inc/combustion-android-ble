@@ -637,6 +637,14 @@ class DeviceManager(
      */
     fun dfuFlowForDevice(id: DeviceID) = service.dfuManager?.dfuFlowForDevice(id)
 
+    /**
+     * Starts a DFU operation using the update file [updateFile] on the device associated with [id],
+     * returning the state flow to monitor progress.
+     *
+     * This function will return null if DFU mode is not enabled.
+     *
+     * This flow can also be obtained by using [dfuFlowForDevice].
+     */
     fun performDfuForDevice(id: DeviceID, updateFile: Uri) =
         service.dfuManager?.performDfu(id, updateFile)
 
