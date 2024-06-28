@@ -31,6 +31,7 @@ package inc.combustion.framework.ble.device
 import android.util.Log
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
+import inc.combustion.framework.ble.IdleMonitor
 import inc.combustion.framework.ble.NOT_IMPLEMENTED
 import inc.combustion.framework.ble.ProbeStatus
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
@@ -43,6 +44,8 @@ import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.ble.uart.meatnet.NodeReadSessionInfoRequest
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -137,6 +140,8 @@ internal class RepeatedProbeBleDevice (
 
     // base connection state callback
     private var connectionStateCallback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)? = null
+
+    private val meatNetNodeTimeoutMonitor = IdleMonitor()
 
     init {
         advertisementForProbe[advertisement.probeSerialNumber] = advertisement
@@ -269,6 +274,35 @@ internal class RepeatedProbeBleDevice (
         probeStatusCallback = callback
     }
 
+    /**
+     * Check for MeatNet node timeouts. There's a situation that we can enter where:
+     * - The probe is connected to a MeatNet node
+     * - The node is no longer scanning because it reached its two-minute timeout
+     * - The probe disconnects from the node
+     * - At this point, if the probe is connectable again (either through powering back on or
+     *   entering BLE range of the node), the node will not be scanning for the probe and won't find
+     *   it.
+     *
+     * In this case, we wait [timeout] ms to see if the probe reconnects to the node. If it doesn't,
+     * we assume the probe is no longer connected to MeatNet, and we mark this route as unavailable.
+     * When the probe enters range of the app again, the app will make a direct connection to the
+     * probe.
+     */
+    fun observeMeatNetNodeTimeout(timeout: Long) {
+        uart.jobManager.addJob(
+            key = probeSerialNumber,
+            job = uart.owner.lifecycleScope.launch(
+                CoroutineName("${probeSerialNumber}.observeMeatNetNodeTimeout")
+            ) {
+                while (isActive) {
+                    delay(IDLE_POLL_RATE_MS)
+
+                    routeIsAvailable = !meatNetNodeTimeoutMonitor.isIdle(timeout)
+                }
+            }
+        )
+    }
+
     private fun observeUartMessages(callback: (suspend (responses: List<NodeUARTMessage>) -> Unit)? = null) {
         uart.jobManager.addJob(
             key = probeSerialNumber,
@@ -317,6 +351,9 @@ internal class RepeatedProbeBleDevice (
     private suspend fun handleProbeStatusRequest(message: NodeProbeStatusRequest) {
         // Save hop count from probeStatus
         _hopCount = message.hopCount.hopCount
+
+        // Check for meatnet timeouts
+        meatNetNodeTimeoutMonitor.activity()
 
         probeStatusCallback?.let {
             it(message.probeStatus)
@@ -401,6 +438,7 @@ internal class RepeatedProbeBleDevice (
     }
 
     companion object {
+        private const val IDLE_POLL_RATE_MS = 1_000L
         const val INFO_LOG_MEATNET_UART_TRACE = false
         val MEATNET_TRACE_INCLUSION_FILTER = listOf<NodeMessageType>(
             // NodeMessageType.SET_ID,
