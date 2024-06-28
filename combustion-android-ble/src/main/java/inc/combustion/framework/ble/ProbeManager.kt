@@ -70,6 +70,7 @@ internal class ProbeManager(
         const val OUT_OF_RANGE_TIMEOUT = 15000L
         private const val PROBE_STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS = 1000L
         private const val PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS = Probe.PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS
+        private const val MEATNET_STATUS_NOTIFICATIONS_TIMEOUT_MS = 30_000L
         private const val PREDICTION_IDLE_TIMEOUT_MS = Probe.PREDICTION_IDLE_TIMEOUT_MS
         private const val PROBE_STATUS_NOTIFICATIONS_POLL_DELAY_MS = 30000L
         private const val PROBE_INSTANT_READ_IDLE_TIMEOUT_MS = 5000L
@@ -561,6 +562,9 @@ internal class ProbeManager(
         }
         base.observeOutOfRange(OUT_OF_RANGE_TIMEOUT) {
             _probe.update { handleOutOfRange(it) }
+        }
+        (base as? RepeatedProbeBleDevice)?.let {
+            it.observeMeatNetNodeTimeout(MEATNET_STATUS_NOTIFICATIONS_TIMEOUT_MS)
         }
         base.observeProbeStatusUpdates { status -> handleProbeStatus(status) }
         base.observeRemoteRssi { rssi ->
