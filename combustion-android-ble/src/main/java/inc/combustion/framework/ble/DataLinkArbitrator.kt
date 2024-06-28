@@ -367,6 +367,9 @@ internal class DataLinkArbitrator(
             currentStatus = status
 
             return shouldUpdate
+        } ?: run {
+            currentSessionInfo = sessionInfo
+            currentStatus = status
         }
 
         // don't yet have a session info, so want to update data
