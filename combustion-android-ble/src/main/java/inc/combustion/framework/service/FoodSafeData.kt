@@ -186,19 +186,10 @@ sealed class FoodSafeData {
         override val mode = Mode.Integrated
 
         enum class Product {
-            Default,
+            Poultry,
             Meats,
             MeatsGround,
-            DeprecatedChicken,
             PoultryGround,
-            DeprecatedPork,
-            DeprecatedPorkGround,
-            DeprecatedHam,
-            DeprecatedHamGround,
-            DeprecatedTurkey,
-            DeprecatedTurkeyGround,
-            DeprecatedLamb,
-            DeprecatedLambGround,
             Seafood,
             SeafoodGround,
             DairyMilkLessThan10PercentFat,
@@ -214,13 +205,9 @@ sealed class FoodSafeData {
 
             override fun toString(): String {
                 return when (this) {
-                    Default -> "Poultry (Default)"
+                    Poultry -> "Poultry (Default)"
                     MeatsGround -> "Meats (Ground, Chopped, or Stuffed)"
                     PoultryGround -> "Poultry (Ground, Chopped, or Stuffed)"
-                    DeprecatedPorkGround -> "Pork (Ground, Chopped, or Stuffed)"
-                    DeprecatedHamGround -> "Ham (Ground)"
-                    DeprecatedTurkeyGround -> "Turkey (Ground)"
-                    DeprecatedLambGround -> "Lamb (Ground)"
                     SeafoodGround -> "Seafood (Ground or Chopped)"
                     SeafoodStuffed -> "Seafood (Stuffed)"
                     DairyMilkLessThan10PercentFat -> "Dairy - Milk (<10% fat)"
@@ -235,19 +222,10 @@ sealed class FoodSafeData {
             internal val toRaw: UShort
                 get() {
                     return when (this) {
-                        Default -> 0u
+                        Poultry -> 0u
                         Meats -> 1u
                         MeatsGround -> 2u
-                        DeprecatedChicken -> 3u
                         PoultryGround -> 4u
-                        DeprecatedPork -> 5u
-                        DeprecatedPorkGround -> 6u
-                        DeprecatedHam -> 7u
-                        DeprecatedHamGround -> 8u
-                        DeprecatedTurkey -> 9u
-                        DeprecatedTurkeyGround -> 10u
-                        DeprecatedLamb -> 11u
-                        DeprecatedLambGround -> 12u
                         Seafood -> 13u
                         SeafoodGround -> 14u
                         DairyMilkLessThan10PercentFat -> 15u
@@ -265,19 +243,10 @@ sealed class FoodSafeData {
             companion object {
                 internal fun fromRaw(raw: UInt): Product {
                     return when (raw) {
-                        0u -> Default
+                        0u -> Poultry
                         1u -> Meats
                         2u -> MeatsGround
-                        3u -> DeprecatedChicken
                         4u -> PoultryGround
-                        5u -> DeprecatedPork
-                        6u -> DeprecatedPorkGround
-                        7u -> DeprecatedHam
-                        8u -> DeprecatedHamGround
-                        9u -> DeprecatedTurkey
-                        10u -> DeprecatedTurkeyGround
-                        11u -> DeprecatedLamb
-                        12u -> DeprecatedLambGround
                         13u -> Seafood
                         14u -> SeafoodGround
                         15u -> DairyMilkLessThan10PercentFat
@@ -481,7 +450,7 @@ sealed class FoodSafeData {
 
             Mode.Integrated -> {
                 Integrated(
-                    product = Integrated.Product.fromRaw(Random.nextUInt(until = 13u)),
+                    product = Integrated.Product.values().random(),
                     serving = Serving.Immediately,
                     completionCriteria = Integrated.CompletionCriteria(
                         selectedThresholdReferenceTemperature = Random.nextDouble(until = 100.0),
