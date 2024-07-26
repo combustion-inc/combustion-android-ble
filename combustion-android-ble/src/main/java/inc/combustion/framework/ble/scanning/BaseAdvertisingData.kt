@@ -93,7 +93,7 @@ open class BaseAdvertisingData(
                 serial = serial or byte.toUInt()
             }
 
-            val serialNumber = Integer.toHexString(serial.toInt()).uppercase()
+            val serialNumber = Integer.toHexString(serial.toInt()).uppercase().padStart(8, '0')
 
             val probeTemperatures = ProbeTemperatures.fromRawData(
                 manufacturerData.copyOf().sliceArray(TEMPERATURE_RANGE)
