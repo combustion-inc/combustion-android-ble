@@ -93,7 +93,13 @@ open class BaseAdvertisingData(
                 serial = serial or byte.toUInt()
             }
 
-            val serialNumber = Integer.toHexString(serial.toInt()).uppercase()
+            // When a repeater doesn't have connections, it uses '0' in its advertising data. Pass
+            // that on unchanged when we see it.
+            val serialNumber = if (serial == 0u) {
+                Integer.toHexString(serial.toInt()).uppercase()
+            } else {
+                Integer.toHexString(serial.toInt()).uppercase().padStart(8, '0')
+            }
 
             val probeTemperatures = ProbeTemperatures.fromRawData(
                 manufacturerData.copyOf().sliceArray(TEMPERATURE_RANGE)
