@@ -125,9 +125,6 @@ class PredictionManager(
         /// Prediction is considered stale after 15 seconds
         private const val PREDICTION_STALE_TIMEOUT = 15000L // 15 seconds in ms
 
-        /// Cap the prediction to 6 hours
-        private const val MAX_PREDICTION_TIME: UInt = 21600u // 6 hours
-
         /// Number of samples to wait between updates to prediction 'seconds remaining',
         /// for syncing time remaining across apps, Displays etc.
         private const val PREDICTION_TIME_UPDATE_COUNT: UInt = 3u
@@ -214,11 +211,6 @@ class PredictionManager(
     private fun secondsRemaining(predictionInfo: PredictionInfo, sequenceNumber: UInt): UInt? {
         // Do not return a value if not in predicting state
         if (predictionInfo.predictionState != ProbePredictionState.PREDICTING) {
-            return null
-        }
-
-        // Do not return a value if above max seconds remaining
-        if (predictionInfo.rawPredictionSeconds > MAX_PREDICTION_TIME) {
             return null
         }
 
