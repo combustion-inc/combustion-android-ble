@@ -30,17 +30,24 @@ package inc.combustion.framework.ble
 
 import android.util.Log
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.device.*
+import inc.combustion.framework.ble.device.DeviceID
+import inc.combustion.framework.ble.device.DeviceInformationBleDevice
 import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.device.ProbeBleDeviceBase
 import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
+import inc.combustion.framework.ble.device.SimulatedProbeBleDevice
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.service.DeviceManager
+import inc.combustion.framework.service.ProbeMode
 import inc.combustion.framework.service.SessionInformation
 
+/// Number of seconds to ignore other lower-priority (higher hop count) sources of information for Instant Read
+private const val INSTANT_READ_IDLE_TIMEOUT = 1000L
+
 internal class DataLinkArbitrator(
-    private val settings: DeviceManager.Settings
+    private val settings: DeviceManager.Settings,
+    private val instantReadIdleMonitor: IdleMonitor = IdleMonitor(),
 ) {
     companion object {
         private const val USE_STATIC_LINK: Boolean = false
@@ -352,8 +359,15 @@ internal class DataLinkArbitrator(
 
     private var currentStatus: ProbeStatus? = null
     private var currentSessionInfo: SessionInformation? = null
+    private var currentHopCount: UInt? = null
 
-    fun shouldUpdateDataFromProbeStatus(status: ProbeStatus, sessionInfo: SessionInformation?): Boolean {
+    fun shouldUpdateDataFromProbeStatus(status: ProbeStatus, sessionInfo: SessionInformation?, hopCount: UInt?): Boolean =
+        when (status.mode) {
+            ProbeMode.INSTANT_READ -> shouldUpdateDataFromProbeStatusForInstantReadMode(hopCount)
+            else -> shouldUpdateDataFromProbeStatusForNormalMode(status, sessionInfo)
+        }
+
+    private fun shouldUpdateDataFromProbeStatusForNormalMode(status: ProbeStatus, sessionInfo: SessionInformation?): Boolean {
         currentSessionInfo?.let {
             if(it != sessionInfo) {
                 currentSessionInfo = sessionInfo
@@ -374,6 +388,23 @@ internal class DataLinkArbitrator(
 
         // don't yet have a session info, so want to update data
         return true
+    }
+
+    private fun shouldUpdateDataFromProbeStatusForInstantReadMode(hopCount: UInt?): Boolean {
+        val immutableCurrentHopCount = currentHopCount
+        return when {
+            // If hopCount is nil, this is direct from a Probe and we should always update.
+            hopCount == null -> true
+            // This hop count is equal or better priority than the last, so update.
+            (immutableCurrentHopCount != null) && (hopCount <= immutableCurrentHopCount) -> true
+            // If we haven't received Instant Read data for more than the lockout period, we should always update.
+            else -> instantReadIdleMonitor.isIdle(INSTANT_READ_IDLE_TIMEOUT)
+        }.also { shouldUpdate ->
+            if (shouldUpdate) {
+                instantReadIdleMonitor.activity()
+                currentHopCount = hopCount
+            }
+        }
     }
 
     fun shouldUpdateOnRemoteRssi(device: ProbeBleDeviceBase): Boolean {

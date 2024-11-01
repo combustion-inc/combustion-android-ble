@@ -216,7 +216,7 @@ internal class ProbeBleDevice (
     override fun observeOutOfRange(timeout: Long, callback: (suspend () -> Unit)?) = uart.observeOutOfRange(timeout, callback)
     override fun observeConnectionState(callback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)?) = uart.observeConnectionState(callback)
 
-    override fun observeProbeStatusUpdates(callback: (suspend (status: ProbeStatus) -> Unit)?) {
+    override fun observeProbeStatusUpdates(hopCount: UInt?, callback: (suspend (status: ProbeStatus, hopCount: UInt?) -> Unit)?) {
         if (probeStatusJob?.isActive != true) {
             val job = uart.owner.lifecycleScope.launch(
                 CoroutineName("${probeSerialNumber}.observeProbeStatusUpdates")
@@ -231,7 +231,7 @@ internal class ProbeBleDevice (
                     .collect { data ->
                         ProbeStatus.fromRawData(data.toUByteArray())?.let { status ->
                             callback?.let {
-                                it(status)
+                                it(status, hopCount)
                             }
                         }
                     }

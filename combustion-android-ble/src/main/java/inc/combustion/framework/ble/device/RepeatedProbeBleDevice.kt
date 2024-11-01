@@ -64,7 +64,7 @@ internal class RepeatedProbeBleDevice (
     // TODO: Why is this a map? I only see probeSerialNumber being set here.
     private val advertisementForProbe = hashMapOf<String, CombustionAdvertisingData>()
 
-    private var probeStatusCallback: (suspend (status: ProbeStatus) -> Unit)? = null
+    private var probeStatusCallback: (suspend (status: ProbeStatus, hopCount: UInt?) -> Unit)? = null
     private var logResponseCallback: (suspend (LogResponse) -> Unit)? = null
 
     private var _deviceInfoSerialNumber: String? = null
@@ -270,7 +270,7 @@ internal class RepeatedProbeBleDevice (
         uart.observeConnectionState(this::baseConnectionStateHandler)
     }
 
-    override fun observeProbeStatusUpdates(callback: (suspend (status: ProbeStatus) -> Unit)?) {
+    override fun observeProbeStatusUpdates(hopCount: UInt?, callback: (suspend (status: ProbeStatus, hopCount: UInt?) -> Unit)?) {
         probeStatusCallback = callback
     }
 
@@ -356,7 +356,7 @@ internal class RepeatedProbeBleDevice (
         meatNetNodeTimeoutMonitor.activity()
 
         probeStatusCallback?.let {
-            it(message.probeStatus)
+            it(message.probeStatus, message.hopCount.hopCount)
         }
     }
 

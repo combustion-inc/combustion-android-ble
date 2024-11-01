@@ -32,19 +32,44 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.InstantReadFilter
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.device.*
+import inc.combustion.framework.ble.device.DeviceID
 import inc.combustion.framework.ble.device.DeviceInformationBleDevice
 import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.device.ProbeBleDeviceBase
 import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
+import inc.combustion.framework.ble.device.SimulatedProbeBleDevice
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.uart.LogResponse
-import inc.combustion.framework.service.*
+import inc.combustion.framework.service.DeviceConnectionState
+import inc.combustion.framework.service.DeviceManager
+import inc.combustion.framework.service.FirmwareVersion
+import inc.combustion.framework.service.FoodSafeData
+import inc.combustion.framework.service.FoodSafeStatus
+import inc.combustion.framework.service.ModelInformation
+import inc.combustion.framework.service.Probe
+import inc.combustion.framework.service.ProbeBatteryStatus
+import inc.combustion.framework.service.ProbeColor
+import inc.combustion.framework.service.ProbeID
+import inc.combustion.framework.service.ProbeMode
+import inc.combustion.framework.service.ProbePredictionMode
+import inc.combustion.framework.service.ProbeTemperatures
+import inc.combustion.framework.service.ProbeUploadState
+import inc.combustion.framework.service.ProbeVirtualSensors
+import inc.combustion.framework.service.SessionInformation
 import inc.combustion.framework.service.utils.DefaultLinearizationTimerImpl
 import inc.combustion.framework.service.utils.PredictionManager
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 /**
  * This class is responsible for managing and arbitrating the data links to a temperature
@@ -326,7 +351,7 @@ internal class ProbeManager(
             var updatedProbe = _probe.value
 
             // process simulated device status notifications
-            simProbe.observeProbeStatusUpdates { status ->
+            simProbe.observeProbeStatusUpdates(hopCount = null) { status, _ ->
                 if(status.mode == ProbeMode.NORMAL) {
                     updatedProbe = updateNormalMode(status, updatedProbe)
                     _normalModeProbeStatusFlow.emit(status)
@@ -566,7 +591,7 @@ internal class ProbeManager(
         (base as? RepeatedProbeBleDevice)?.let {
             it.observeMeatNetNodeTimeout(MEATNET_STATUS_NOTIFICATIONS_TIMEOUT_MS)
         }
-        base.observeProbeStatusUpdates { status -> handleProbeStatus(status) }
+        base.observeProbeStatusUpdates(hopCount = base.hopCount) { status, hopCount -> handleProbeStatus(status, hopCount) }
         base.observeRemoteRssi { rssi ->
             _probe.update { handleRemoteRssi(base, rssi, it) }
         }
@@ -603,8 +628,8 @@ internal class ProbeManager(
         )
     }
 
-    private suspend fun handleProbeStatus(status: ProbeStatus) {
-        if(arbitrator.shouldUpdateDataFromProbeStatus(status, sessionInfo)) {
+    private suspend fun handleProbeStatus(status: ProbeStatus, hopCount: UInt?) {
+        if(arbitrator.shouldUpdateDataFromProbeStatus(status, sessionInfo, hopCount)) {
             Log.v(LOG_TAG, "ProbeManager.handleProbeStatus: $serialNumber $status")
 
             var updatedProbe = _probe.value
