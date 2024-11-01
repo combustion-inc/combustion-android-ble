@@ -86,7 +86,7 @@ internal class DataLinkArbitratorTest {
         arrayOf(1u, false, null as? UInt?, true),
         arrayOf(2u, false, null as? UInt?, true),
 
-        // when not idle then hopCOunt should be <= currentHopCount
+        // when not idle then hopCount should be <= currentHopCount
         arrayOf(null as? UInt?, false, 0u, false),
         arrayOf(1u, false, 0u, true),
         arrayOf(1u, false, 1u, true),
