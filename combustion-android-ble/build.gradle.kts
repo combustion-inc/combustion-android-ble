@@ -107,6 +107,7 @@ dependencies {
     testImplementation(frameworkLibs.junit)
     testImplementation(frameworkLibs.kotlin.test.junit)
     testImplementation(frameworkLibs.junit.params)
+    testImplementation(frameworkLibs.mockk.android)
 }
 
 afterEvaluate {

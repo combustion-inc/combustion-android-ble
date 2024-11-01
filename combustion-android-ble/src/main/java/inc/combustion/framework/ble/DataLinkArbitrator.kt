@@ -48,6 +48,7 @@ private const val INSTANT_READ_IDLE_TIMEOUT = 1000L
 internal class DataLinkArbitrator(
     private val settings: DeviceManager.Settings,
     private val instantReadIdleMonitor: IdleMonitor = IdleMonitor(),
+    private var currentHopCount: UInt? = null,
 ) {
     companion object {
         private const val USE_STATIC_LINK: Boolean = false
@@ -373,7 +374,6 @@ internal class DataLinkArbitrator(
 
     private var currentStatus: ProbeStatus? = null
     private var currentSessionInfo: SessionInformation? = null
-    private var currentHopCount: UInt? = null
 
     fun shouldUpdateDataFromProbeStatus(
         status: ProbeStatus,
