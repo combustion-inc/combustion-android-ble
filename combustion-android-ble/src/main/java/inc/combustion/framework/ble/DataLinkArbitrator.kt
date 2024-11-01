@@ -42,7 +42,7 @@ import inc.combustion.framework.service.DeviceManager
 import inc.combustion.framework.service.ProbeMode
 import inc.combustion.framework.service.SessionInformation
 
-/// Number of seconds to ignore other lower-priority (higher hop count) sources of information for Instant Read
+// Number of seconds to ignore other lower-priority (higher hop count) sources of information for Instant Read
 private const val INSTANT_READ_IDLE_TIMEOUT = 1000L
 
 internal class DataLinkArbitrator(
