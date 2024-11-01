@@ -111,44 +111,17 @@ class FoodSafeDataTest {
         }
 
         var productValue = 0x00u
-        assertEquals(FoodSafeData.Integrated.Product.Default, toProduct(raw))
+        assertEquals(FoodSafeData.Integrated.Product.Poultry, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
         assertEquals(FoodSafeData.Integrated.Product.Meats, toProduct(raw))
         productValue += 1u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
         assertEquals(FoodSafeData.Integrated.Product.MeatsGround, toProduct(raw))
-        productValue += 1u
-        raw[0] = (0x01u or (productValue shl 3)).toUByte()
-        assertEquals(FoodSafeData.Integrated.Product.DeprecatedChicken, toProduct(raw))
-        productValue += 1u
+        productValue += 2u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
         assertEquals(FoodSafeData.Integrated.Product.PoultryGround, toProduct(raw))
-        productValue += 1u
-        raw[0] = (0x01u or (productValue shl 3)).toUByte()
-        assertEquals(FoodSafeData.Integrated.Product.DeprecatedPork, toProduct(raw))
-        productValue += 1u
-        raw[0] = (0x01u or (productValue shl 3)).toUByte()
-        assertEquals(FoodSafeData.Integrated.Product.DeprecatedPorkGround, toProduct(raw))
-        productValue += 1u
-        raw[0] = (0x01u or (productValue shl 3)).toUByte()
-        assertEquals(FoodSafeData.Integrated.Product.DeprecatedHam, toProduct(raw))
-        productValue += 1u
-        raw[0] = (0x01u or (productValue shl 3)).toUByte()
-        assertEquals(FoodSafeData.Integrated.Product.DeprecatedHamGround, toProduct(raw))
-        productValue += 1u
-        raw[0] = (0x01u or (productValue shl 3)).toUByte()
-        assertEquals(FoodSafeData.Integrated.Product.DeprecatedTurkey, toProduct(raw))
-        productValue += 1u
-        raw[0] = (0x01u or (productValue shl 3)).toUByte()
-        assertEquals(FoodSafeData.Integrated.Product.DeprecatedTurkeyGround, toProduct(raw))
-        productValue += 1u
-        raw[0] = (0x01u or (productValue shl 3)).toUByte()
-        assertEquals(FoodSafeData.Integrated.Product.DeprecatedLamb, toProduct(raw))
-        productValue += 1u
-        raw[0] = (0x01u or (productValue shl 3)).toUByte()
-        assertEquals(FoodSafeData.Integrated.Product.DeprecatedLambGround, toProduct(raw))
-        productValue += 1u
+        productValue += 9u
         raw[0] = (0x01u or (productValue shl 3)).toUByte()
         assertEquals(FoodSafeData.Integrated.Product.Seafood, toProduct(raw))
         productValue += 1u
