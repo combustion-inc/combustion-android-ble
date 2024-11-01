@@ -40,7 +40,7 @@ import inc.combustion.framework.ble.uart.MessageType
  * Baseclass for UART request messages
  */
 internal open class NodeRequest(
-    messageId: NodeMessageType
+    messageId: NodeMessage
 ) : NodeUARTMessage(
     messageId
 ) {
@@ -140,7 +140,7 @@ internal open class NodeRequest(
      */
     constructor(
         outgoingPayload: UByteArray,
-        messageType: NodeMessageType,
+        messageType: NodeMessage,
         requestId: UInt? = null
     ) : this(
         messageType
@@ -186,7 +186,7 @@ internal open class NodeRequest(
     constructor(
         requestId: UInt,
         payloadLength: UByte,
-        messageId: NodeMessageType
+        messageId: NodeMessage
     ) : this(
         messageId
     ) {

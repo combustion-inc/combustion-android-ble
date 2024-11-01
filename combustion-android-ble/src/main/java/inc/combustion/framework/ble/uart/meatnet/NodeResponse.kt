@@ -42,7 +42,7 @@ internal open class NodeResponse(
     val requestId: UInt,
     val responseId: UInt,
     val payloadLength: UByte,
-    messageId: NodeMessageType
+    messageId: NodeMessage
 ) : NodeUARTMessage(
     messageId
 ) {

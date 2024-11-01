@@ -27,12 +27,19 @@
  */
 package inc.combustion.framework.ble.uart.meatnet
 
+
+interface NodeMessage {
+    val value: UByte
+    companion object {
+        fun fromUByte(value: UByte): NodeMessage? = null
+    }
+}
 /**
  * Enumerates MeatNet Node message types in Combustion's UART protocol.
  *
  * @property value byte value for message type.
  */
-internal enum class NodeMessageType(val value: UByte) {
+internal enum class NodeMessageType(override val value: UByte) : NodeMessage{
 
     SET_ID(0x1u),
     SET_COLOR(0x2u),

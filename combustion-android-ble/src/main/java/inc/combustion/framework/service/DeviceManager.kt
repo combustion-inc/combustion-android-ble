@@ -41,6 +41,9 @@ import inc.combustion.framework.ble.NetworkManager
 import inc.combustion.framework.log.LogManager
 import inc.combustion.framework.ble.device.DeviceID
 import inc.combustion.framework.ble.dfu.DfuManager
+import inc.combustion.framework.ble.uart.meatnet.EncryptedNodeRequest
+import inc.combustion.framework.ble.uart.meatnet.EncryptedNodeResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeRequest
 import inc.combustion.framework.service.dfu.DfuSystemState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
@@ -267,6 +270,10 @@ class DeviceManager(
             return NetworkManager.instance.discoveredProbes
         }
 
+    val discoveredDevices: List<String>
+        get() {
+            return NetworkManager.instance.discoveredDevices
+        }
     /**
      * Registers a lambda to be called by the DeviceManager upon binding with the
      * Combustion Service and completing initialization.
@@ -647,6 +654,10 @@ class DeviceManager(
      */
     fun performDfuForDevice(id: DeviceID, updateFile: Uri) =
         service.dfuManager?.performDfu(id, updateFile)
+
+    fun ecnryptedMessage(deviceId: String, request: EncryptedNodeRequest, completionHandler: (EncryptedNodeResponse) -> Unit) {
+        NetworkManager.instance.encryptedMessage(deviceId, request, completionHandler)
+    }
 
     private fun probeDataToCsv(probe: Probe?, probeData: List<LoggedProbeDataPoint>?, appNameAndVersion: String): Pair<String, String> {
         val csvVersion = 4

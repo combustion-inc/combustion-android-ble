@@ -37,7 +37,7 @@ import inc.combustion.framework.service.DebugSettings
  * be both NodeRequest and NodeResponse types.
  */
 internal open class NodeUARTMessage(
-    val messageId: NodeMessageType
+    val messageId: NodeMessage
 ) {
     companion object {
         /**

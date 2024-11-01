@@ -26,6 +26,9 @@
  * SOFTWARE.
  */
 
+
+// TODO: need a way to track the connections to the repeater nodes. how do you send a message to one of those?
+
 package inc.combustion.framework.ble
 
 import android.bluetooth.BluetoothAdapter
@@ -41,6 +44,8 @@ import inc.combustion.framework.ble.device.*
 import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.scanning.DeviceScanner
+import inc.combustion.framework.ble.uart.meatnet.*
+import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.log.LogManager
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.CoroutineName
@@ -57,7 +62,7 @@ internal class NetworkManager(
 ) {
     private sealed class DeviceHolder {
         data class ProbeHolder(val probe: ProbeBleDevice) : DeviceHolder()
-        data class RepeaterHolder(val repeater: UartBleDevice) : DeviceHolder()
+        data class RepeaterHolder(val repeater: NodeBleDevice) : DeviceHolder()
     }
 
     private sealed class LinkHolder {
@@ -196,6 +201,11 @@ internal class NetworkManager(
     internal val discoveredProbes: List<String>
         get() {
             return probeManagers.keys.toList()
+        }
+
+    internal val discoveredDevices: List<String>
+        get() {
+            return devices.keys.toList()
         }
 
     fun setProbeAllowlist(allowlist: Set<String>?) {
@@ -375,6 +385,78 @@ internal class NetworkManager(
         }
     }
 
+    internal fun encryptedMessage(deviceId: String, request: EncryptedNodeRequest, completionHandler: (EncryptedNodeResponse) -> Unit) {
+        var device = devices[deviceId]
+        Log.d("ben", "sending message for deviceId: $deviceId")
+        if(device == null) {
+           // fail
+            return
+        }
+
+        when(device) {
+            is DeviceHolder.ProbeHolder-> {
+                // fail
+            }
+            is DeviceHolder.RepeaterHolder -> {
+                // TODO figure how how to send the message to the repeater
+                // device.repeater.
+
+                device.repeater.sendEncryptedRequest(request) { success, data ->
+                    val response = EncryptedNodeResponse(true, 0u, 0u, 0u, NodeMessageType.HEARTBEAT)
+                    completionHandler(response)
+                }
+                //observeUartMessages(device.repeater, deviceId) { responses ->
+                //    //val response = EncryptedNodeResponse.responseFromData(responses)
+                //    val response = EncryptedNodeResponse(true, 0u, 0u, 0u, NodeMessageType.HEARTBEAT)
+                //    Log.d("ben", "received response in callback $responses")
+                //    completionHandler(response)
+                //}
+
+                Log.d("ben", "sending message to repeater $request.sData")
+                // TOOD: The callback needs to be wired up.
+                // question: should we create a new device type or should this just
+                // extend one of the existing classes?
+                /*
+                device.repeater.observeUartCharacteristic { data ->
+                    val response = NodeResponse.fromRaw(data)
+                    completionHandler(response)
+                }*/
+            }
+            else -> {
+                // TODO, not supported
+            }
+        }
+    }
+    /*
+    private fun observeUartMessages(uart: UartBleDevice, deviceId: String, callback: (suspend (responses: List<NodeUARTMessage>) -> Unit)? = null) {
+        uart.jobManager.addJob(
+            key = deviceId,
+            job = uart.owner.lifecycleScope.launch(
+                CoroutineName("${deviceId}.observeUartMessages")
+            ) {
+                uart.observeUartCharacteristic { data ->
+
+                    callback?.let {
+                        val message = NodeUARTMessage.fromData(data.toUByteArray())
+
+                        if (RepeatedProbeBleDevice.INFO_LOG_MEATNET_TRACE && RepeatedProbeBleDevice.INFO_LOG_MEATNET_UART_TRACE) {
+                            message.forEach { uartMessage ->
+                                RepeatedProbeBleDevice.MEATNET_TRACE_INCLUSION_FILTER.firstOrNull{it == uartMessage.messageId}?.let {
+                                    val packet = data.joinToString("") {
+                                        it.toString(16).padStart(2, '0').uppercase()
+                                    }
+                                    Log.i(LOG_TAG, "UART-RX: $packet")
+                                }
+                            }
+                        }
+
+                        it(message)
+                    }
+                }
+            }
+        )
+    }
+    */
     @ExperimentalCoroutinesApi
     fun clearDevices() {
         probeManagers.forEach { (_, probe) -> probe.finish() }
@@ -406,6 +488,10 @@ internal class NetworkManager(
         val deviceId = advertisement.id
         val linkId = ProbeBleDeviceBase.makeLinkId(advertisement)
 
+        //Log.d( "ben", "Managing MeatNet serialNumber: $serialNumber")
+        //Log.d( "ben", "Managing MeatNet device: $deviceId")
+        //Log.d( "ben", "Here is the product type: ${advertisement.}")
+
         // if MeatNet isn't enabled and we see anything other than a probe, then return out now
         // because that product type isn't supported in this mode.
         if(!settings.meatNetEnabled && advertisement.productType != CombustionProductType.PROBE) {
@@ -429,7 +515,7 @@ internal class NetworkManager(
                 }
                 CombustionProductType.DISPLAY, CombustionProductType.CHARGER -> {
                     DeviceHolder.RepeaterHolder(
-                        UartBleDevice(advertisement.mac, advertisement, owner, adapter)
+                        NodeBleDevice(advertisement.mac, owner, advertisement, adapter)
                     )
                 }
                 else -> NOT_IMPLEMENTED("Unknown type of advertising data")
@@ -472,9 +558,10 @@ internal class NetworkManager(
                     probeManger?.addProbe(device.probe, device.probe.baseDevice, advertisement)
                 }
                 is DeviceHolder.RepeaterHolder -> {
-                    val repeatedProbe = RepeatedProbeBleDevice(serialNumber, device.repeater, advertisement)
+                    // TODO (bjc) - should these be updated to be NodeBleDevice?
+                    val repeatedProbe = RepeatedProbeBleDevice(serialNumber, device.repeater.getDevice(), advertisement)
                     meatNetLinks[linkId] = LinkHolder.RepeatedProbeHolder(repeatedProbe)
-                    probeManger?.addRepeatedProbe(repeatedProbe, device.repeater, advertisement)
+                    probeManger?.addRepeatedProbe(repeatedProbe, device.repeater.getDevice(), advertisement)
                 }
                 else -> NOT_IMPLEMENTED("Unknown type of device holder")
             }
@@ -514,6 +601,7 @@ internal class NetworkManager(
                         }
                     }
                 } else if (probeAllowlist == null) {
+                    // TODO (bjc) - does this need to be opened up a little bit for WiFi devices?
                     // Only connect to a node that doesn't have any connected probes if the
                     // allowlist is unset.
                     if(!firmwareStateOfNetwork.containsKey(advertisingData.id)) {
