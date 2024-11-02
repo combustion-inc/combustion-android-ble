@@ -77,6 +77,58 @@ internal class NetworkManager(
         var mutableDeviceProximityFlow: MutableSharedFlow<DeviceDiscoveredEvent>,
     )
 
+    inner private class NodeDeviceManager(
+        val owner: LifecycleOwner
+    ) {
+        private val connectedNodes : MutableMap<String, NodeBleDevice> = mutableMapOf()
+
+
+        fun sendEncryptedMessage(deviceId: String, request: EncryptedNodeRequest, completionHandler: (Boolean) -> Unit) {
+            if(connectedNodes.contains(deviceId)) {
+                // send the message
+                Log.d("ben", "sending the message!!")
+                connectedNodes[deviceId]?.sendEncryptedRequest(request) { status, data ->
+                    completionHandler(status)
+                }
+            }
+            else {
+                // fail
+                // todo
+                Log.d("ben", "unable to send message to device: $deviceId")
+            }
+        }
+
+        // TODO: something needs to be done to limit this to only devices that have wifi
+        // TOOD: it would be nice if this returned the serial number instead of the device id..
+        // TODO: this needs to support removing the devices as well as adding them. Perhaps that should be another flow
+        fun subscribeToNodeFlow(probeManager: ProbeManager) {
+            owner.lifecycleScope.launch(
+                CoroutineName("NodeConnectionFlow")
+            ) {
+                probeManager.nodeConnectionFlow
+                    .collect { deviceIds ->
+                        Log.d("ben", "Node connection flow: $deviceIds")
+                        deviceIds.forEach { deviceId ->
+                            if(!connectedNodes.containsKey(deviceId)) {
+                                val node = devices[deviceId]
+                                when(node) {
+                                    is DeviceHolder.ProbeHolder -> NOT_IMPLEMENTED("Unsupported device type")
+                                    is DeviceHolder.RepeaterHolder -> {
+                                        connectedNodes[deviceId] = node.repeater
+                                    }
+                                    else -> NOT_IMPLEMENTED("Uknown device type")
+                                }
+                                }
+                            }
+                        }
+                    }
+        }
+
+        fun discoveredNodes(): List<String> {
+            return connectedNodes.keys.toList()
+        }
+    }
+
     companion object {
         private const val FLOW_CONFIG_REPLAY = 5
         private const val FLOW_CONFIG_BUFFER = FLOW_CONFIG_REPLAY * 2
@@ -153,6 +205,8 @@ internal class NetworkManager(
     private val probeManagers = hashMapOf<String, ProbeManager>()
     private val deviceInformationDevices = hashMapOf<DeviceID, DeviceInformationBleDevice>()
     private var proximityDevices = hashMapOf<String, ProximityDevice>()
+    private var nodeDeviceManager = NodeDeviceManager(owner)
+
     var probeAllowlist: Set<String>? = settings.probeAllowlist
         private set
 
@@ -203,9 +257,9 @@ internal class NetworkManager(
             return probeManagers.keys.toList()
         }
 
-    internal val discoveredDevices: List<String>
+    internal val discoveredNodes: List<String>
         get() {
-            return devices.keys.toList()
+            return nodeDeviceManager.discoveredNodes()
         }
 
     fun setProbeAllowlist(allowlist: Set<String>?) {
@@ -385,78 +439,11 @@ internal class NetworkManager(
         }
     }
 
-    internal fun encryptedMessage(deviceId: String, request: EncryptedNodeRequest, completionHandler: (EncryptedNodeResponse) -> Unit) {
-        var device = devices[deviceId]
+    internal fun encryptedMessage(deviceId: String, request: EncryptedNodeRequest, completionHandler: (Boolean) -> Unit) {
         Log.d("ben", "sending message for deviceId: $deviceId")
-        if(device == null) {
-           // fail
-            return
-        }
-
-        when(device) {
-            is DeviceHolder.ProbeHolder-> {
-                // fail
-            }
-            is DeviceHolder.RepeaterHolder -> {
-                // TODO figure how how to send the message to the repeater
-                // device.repeater.
-
-                device.repeater.sendEncryptedRequest(request) { success, data ->
-                    val response = EncryptedNodeResponse(true, 0u, 0u, 0u, NodeMessageType.HEARTBEAT)
-                    completionHandler(response)
-                }
-                //observeUartMessages(device.repeater, deviceId) { responses ->
-                //    //val response = EncryptedNodeResponse.responseFromData(responses)
-                //    val response = EncryptedNodeResponse(true, 0u, 0u, 0u, NodeMessageType.HEARTBEAT)
-                //    Log.d("ben", "received response in callback $responses")
-                //    completionHandler(response)
-                //}
-
-                Log.d("ben", "sending message to repeater $request.sData")
-                // TOOD: The callback needs to be wired up.
-                // question: should we create a new device type or should this just
-                // extend one of the existing classes?
-                /*
-                device.repeater.observeUartCharacteristic { data ->
-                    val response = NodeResponse.fromRaw(data)
-                    completionHandler(response)
-                }*/
-            }
-            else -> {
-                // TODO, not supported
-            }
-        }
+        nodeDeviceManager.sendEncryptedMessage(deviceId, request, completionHandler)
     }
-    /*
-    private fun observeUartMessages(uart: UartBleDevice, deviceId: String, callback: (suspend (responses: List<NodeUARTMessage>) -> Unit)? = null) {
-        uart.jobManager.addJob(
-            key = deviceId,
-            job = uart.owner.lifecycleScope.launch(
-                CoroutineName("${deviceId}.observeUartMessages")
-            ) {
-                uart.observeUartCharacteristic { data ->
 
-                    callback?.let {
-                        val message = NodeUARTMessage.fromData(data.toUByteArray())
-
-                        if (RepeatedProbeBleDevice.INFO_LOG_MEATNET_TRACE && RepeatedProbeBleDevice.INFO_LOG_MEATNET_UART_TRACE) {
-                            message.forEach { uartMessage ->
-                                RepeatedProbeBleDevice.MEATNET_TRACE_INCLUSION_FILTER.firstOrNull{it == uartMessage.messageId}?.let {
-                                    val packet = data.joinToString("") {
-                                        it.toString(16).padStart(2, '0').uppercase()
-                                    }
-                                    Log.i(LOG_TAG, "UART-RX: $packet")
-                                }
-                            }
-                        }
-
-                        it(message)
-                    }
-                }
-            }
-        )
-    }
-    */
     @ExperimentalCoroutinesApi
     fun clearDevices() {
         probeManagers.forEach { (_, probe) -> probe.finish() }
@@ -544,6 +531,7 @@ internal class NetworkManager(
             probeManagers[serialNumber] = manager
             LogManager.instance.manage(owner, manager)
 
+            nodeDeviceManager.subscribeToNodeFlow(manager)
             discoveredProbe = true
         }
 

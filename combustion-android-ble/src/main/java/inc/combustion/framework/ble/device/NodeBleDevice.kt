@@ -9,6 +9,7 @@ import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.uart.Response
 import inc.combustion.framework.ble.uart.meatnet.EncryptedNodeRequest
 import inc.combustion.framework.ble.uart.meatnet.EncryptedNodeResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeResponse
 import inc.combustion.framework.service.DebugSettings
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Dispatchers
@@ -60,15 +61,15 @@ internal class NodeBleDevice(
         }
     }
 
-    private fun observeUartResponses(callback: (suspend (responses: List<Response>) -> Unit)? = null) {
+    private fun observeUartResponses(callback: (suspend (responses: List<EncryptedNodeResponse>) -> Unit)? = null) {
         uart.jobManager.addJob(
             key = "1234", // TODO: this needs to be the device serial number
             job = uart.owner.lifecycleScope.launch(
                 CoroutineName("UartResponseObserver"),
             ) {
-                uart.observeUartCharacteristic {
-                    val responses = Response.fromData(it)
-                    Log.d("ben", "UART-RX: received responses $responses")
+                uart.observeUartCharacteristic {data ->
+                    val responses = EncryptedNodeResponse.fromData(data.toUByteArray())
+                    //Log.d("ben", "received responses $responses")
                     callback?.invoke(responses)
                 }
             }
@@ -79,6 +80,7 @@ internal class NodeBleDevice(
             responses.forEach { response ->
                 when (response) {
                     is EncryptedNodeResponse -> {
+                        //Log.d("ben", "received encrypted node response")
                         encryptedRequestHandler.handled(response.success, response)
                     }
                 }

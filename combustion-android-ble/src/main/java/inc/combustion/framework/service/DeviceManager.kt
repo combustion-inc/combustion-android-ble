@@ -270,9 +270,9 @@ class DeviceManager(
             return NetworkManager.instance.discoveredProbes
         }
 
-    val discoveredDevices: List<String>
+    val discoveredNodes: List<String>
         get() {
-            return NetworkManager.instance.discoveredDevices
+            return NetworkManager.instance.discoveredNodes
         }
     /**
      * Registers a lambda to be called by the DeviceManager upon binding with the
@@ -655,7 +655,7 @@ class DeviceManager(
     fun performDfuForDevice(id: DeviceID, updateFile: Uri) =
         service.dfuManager?.performDfu(id, updateFile)
 
-    fun ecnryptedMessage(deviceId: String, request: EncryptedNodeRequest, completionHandler: (EncryptedNodeResponse) -> Unit) {
+    fun ecnryptedMessage(deviceId: String, request: EncryptedNodeRequest, completionHandler: (Boolean) -> Unit) {
         NetworkManager.instance.encryptedMessage(deviceId, request, completionHandler)
     }
 
