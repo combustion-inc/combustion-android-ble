@@ -196,6 +196,16 @@ internal class RepeatedProbeBleDevice (
         sendUartRequest(NodeReadLogsRequest(probeSerialNumber, minSequence, maxSequence))
     }
 
+    fun sendFeatureFlagRequest(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
+        if (uart.serialNumber == null) {
+            // TODO: should this call readSerialNumber?
+            throw IllegalStateException("Serial number is null")
+        }
+
+        // TODO can the !! be removed?
+        sendUartRequest(NodeReadFeatureFlagsRequest(uart.serialNumber!!, reqId))
+    }
+
     override suspend fun readSerialNumber() = uart.readSerialNumber()
     override suspend fun readFirmwareVersion() = uart.readFirmwareVersion()
     override suspend fun readHardwareRevision() = uart.readHardwareRevision()
