@@ -82,7 +82,6 @@ internal class NetworkManager(
     ) {
         private val connectedNodes : MutableMap<String, NodeBleDevice> = mutableMapOf()
 
-
         fun sendEncryptedMessage(deviceId: String, request: EncryptedNodeRequest, completionHandler: (Boolean) -> Unit) {
             if(connectedNodes.contains(deviceId)) {
                 // send the message
@@ -95,6 +94,7 @@ internal class NetworkManager(
                 // fail
                 // todo
                 Log.d("ben", "unable to send message to device: $deviceId")
+                completionHandler(false)
             }
         }
 
@@ -114,7 +114,12 @@ internal class NetworkManager(
                                 when(node) {
                                     is DeviceHolder.ProbeHolder -> NOT_IMPLEMENTED("Unsupported device type")
                                     is DeviceHolder.RepeaterHolder -> {
-                                        connectedNodes[deviceId] = node.repeater
+                                        // TODO: this needs to be tested, I'm not sure if it is the right way to get
+                                        // the serial number
+                                        node.repeater.readSerialNumber()
+                                        if (node.repeater.serialNumber != null) {
+                                            connectedNodes[node.repeater.serialNumber!!] = node.repeater
+                                        }
                                     }
                                     else -> NOT_IMPLEMENTED("Uknown device type")
                                 }

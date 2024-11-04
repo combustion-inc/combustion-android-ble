@@ -87,4 +87,13 @@ internal class NodeBleDevice(
             }
         }
     }
+    // Read the serial number from the device
+    suspend fun readSerialNumber() {
+        uart.readSerialNumber()
+    }
+
+    val serialNumber: String?
+        get() = uart.serialNumber
+    // TODO: feature flags?
+
 }
