@@ -9,7 +9,7 @@ internal class NodeReadFeatureFlagsRequest(
 {
     companion object {
 
-        const val PAYLOAD_LENGTH: UByte = 4u
+        const val PAYLOAD_LENGTH: UByte = 10u
 
         fun populatePayload(serialNumber: String): UByteArray {
             val payload = UByteArray(PAYLOAD_LENGTH.toInt()){ 0u }
