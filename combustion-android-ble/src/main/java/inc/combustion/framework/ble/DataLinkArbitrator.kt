@@ -30,17 +30,25 @@ package inc.combustion.framework.ble
 
 import android.util.Log
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.device.*
+import inc.combustion.framework.ble.device.DeviceID
+import inc.combustion.framework.ble.device.DeviceInformationBleDevice
 import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.device.ProbeBleDeviceBase
 import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
+import inc.combustion.framework.ble.device.SimulatedProbeBleDevice
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.service.DeviceManager
+import inc.combustion.framework.service.ProbeMode
 import inc.combustion.framework.service.SessionInformation
 
+// Number of seconds to ignore other lower-priority (higher hop count) sources of information for Instant Read
+private const val INSTANT_READ_IDLE_TIMEOUT = 1000L
+
 internal class DataLinkArbitrator(
-    private val settings: DeviceManager.Settings
+    private val settings: DeviceManager.Settings,
+    private val instantReadIdleMonitor: IdleMonitor = IdleMonitor(),
+    private var currentHopCount: UInt? = null,
 ) {
     companion object {
         private const val USE_STATIC_LINK: Boolean = false
@@ -66,7 +74,7 @@ internal class DataLinkArbitrator(
 
     val directLink: ProbeBleDevice?
         get() {
-            return if(probeBleDevice?.isConnected == true) probeBleDevice else null
+            return if (probeBleDevice?.isConnected == true) probeBleDevice else null
         }
 
     val connectedNodeLinks: List<RepeatedProbeBleDevice>
@@ -77,7 +85,7 @@ internal class DataLinkArbitrator(
     val preferredMeatNetLink: ProbeBleDeviceBase?
         get() {
             // If meatnet is not enabled, then return the probe connection
-            if(!settings.meatNetEnabled) {
+            if (!settings.meatNetEnabled) {
                 return directLink
             }
 
@@ -100,12 +108,12 @@ internal class DataLinkArbitrator(
     val hasMeatNetRoute: Boolean
         get() {
             // only applies when using MeatNet
-            if(!settings.meatNetEnabled) {
+            if (!settings.meatNetEnabled) {
                 return false
             }
 
-            for(probe in repeatedProbeBleDevices)  {
-                if(probe.isConnected && probe.connectionState != DeviceConnectionState.NO_ROUTE) {
+            for (probe in repeatedProbeBleDevices) {
+                if (probe.isConnected && probe.connectionState != DeviceConnectionState.NO_ROUTE) {
                     return true
                 }
             }
@@ -150,8 +158,11 @@ internal class DataLinkArbitrator(
     }
 
     fun addProbe(probe: ProbeBleDevice, baseDevice: DeviceInformationBleDevice): Boolean {
-        if(probeBleDevice == null) {
-            Log.d(LOG_TAG, "DataLinkArbitrator.addProbe(${probe.probeSerialNumber}, ${baseDevice.serialNumber}: ${baseDevice.id})")
+        if (probeBleDevice == null) {
+            Log.d(
+                LOG_TAG,
+                "DataLinkArbitrator.addProbe(${probe.probeSerialNumber}, ${baseDevice.serialNumber}: ${baseDevice.id})"
+            )
             probeBleDevice = probe
             networkNodes[baseDevice.id] = baseDevice
             return true
@@ -160,10 +171,16 @@ internal class DataLinkArbitrator(
         return false
     }
 
-    fun addRepeatedProbe(repeatedProbe: RepeatedProbeBleDevice, repeater: DeviceInformationBleDevice): Boolean {
-        Log.d(LOG_TAG, "DataLinkArbitrator.addRepeatedProbe(${repeatedProbe.probeSerialNumber}, ${repeater.id})")
+    fun addRepeatedProbe(
+        repeatedProbe: RepeatedProbeBleDevice,
+        repeater: DeviceInformationBleDevice
+    ): Boolean {
+        Log.d(
+            LOG_TAG,
+            "DataLinkArbitrator.addRepeatedProbe(${repeatedProbe.probeSerialNumber}, ${repeater.id})"
+        )
         repeatedProbeBleDevices.add(repeatedProbe)
-        if(!networkNodes.containsKey(repeater.id)) {
+        if (!networkNodes.containsKey(repeater.id)) {
             networkNodes[repeater.id] = repeater
         }
         return true
@@ -171,9 +188,9 @@ internal class DataLinkArbitrator(
 
     fun getPreferredConnectionState(state: DeviceConnectionState): ProbeBleDeviceBase? {
         // if not using MeatNet, then use the probe.
-        if(!settings.meatNetEnabled) {
+        if (!settings.meatNetEnabled) {
             probeBleDevice?.let {
-                if(it.connectionState == state) {
+                if (it.connectionState == state) {
                     return it
                 }
 
@@ -183,7 +200,7 @@ internal class DataLinkArbitrator(
 
         // if using MeatNet, prefer probe if state matches.
         probeBleDevice?.let {
-            if(it.connectionState == state) {
+            if (it.connectionState == state) {
                 return it
             }
         }
@@ -202,9 +219,9 @@ internal class DataLinkArbitrator(
         // for meatnet links
         repeatedProbeBleDevices.forEach {
             // should connect to this repeated probe
-            if(shouldConnect(it, fromApiCall)) {
+            if (shouldConnect(it, fromApiCall)) {
                 // if don't already plan to connect to the repeater for the repeated probe
-                if(!connectable.contains(it.id)) {
+                if (!connectable.contains(it.id)) {
                     // add to the list of meatnet devices we need to connect to
                     connectable.add(it.id)
                 }
@@ -213,13 +230,13 @@ internal class DataLinkArbitrator(
 
         // should direct connect to the probe
         probeBleDevice?.let {
-            if(shouldConnect(it, fromApiCall)) {
+            if (shouldConnect(it, fromApiCall)) {
                 connectable.add(it.id)
             }
         }
 
-        return networkNodes.filter {
-            entry: Map.Entry<DeviceID, DeviceInformationBleDevice> -> connectable.contains(entry.key)
+        return networkNodes.filter { entry: Map.Entry<DeviceID, DeviceInformationBleDevice> ->
+            connectable.contains(entry.key)
         }.values.toList()
     }
 
@@ -233,31 +250,30 @@ internal class DataLinkArbitrator(
 
         // Should disconnect from a direct connection to the probe
         probeBleDevice?.let {
-            if(shouldDisconnect(it)) {
+            if (shouldDisconnect(it)) {
                 nodesToDisconnect.add(it.id)
             }
         }
 
         Log.d(LOG_TAG, "DataLinkArbitrator.getNodesNeedingDisconnect: $nodesToDisconnect")
 
-        return networkNodes.filter {
-            entry: Map.Entry<DeviceID, DeviceInformationBleDevice> -> nodesToDisconnect.contains(entry.key)
+        return networkNodes.filter { entry: Map.Entry<DeviceID, DeviceInformationBleDevice> ->
+            nodesToDisconnect.contains(entry.key)
         }.values.toList()
     }
 
     fun shouldConnect(device: ProbeBleDeviceBase, fromApiCall: Boolean = false): Boolean {
         val canConnect = device.isDisconnected && device.isConnectable && !device.isInDfuMode
-        if(settings.meatNetEnabled) {
+        if (settings.meatNetEnabled) {
             // connect to every connectable device when using meatnet
-            if(USE_SIMPLE_MEATNET_CONNECTION_SCHEME) {
+            if (USE_SIMPLE_MEATNET_CONNECTION_SCHEME) {
                 return canConnect
             }
 
             return shouldMultiNodeMeatNetConnect(device)
-        }
-        else if(device is ProbeBleDevice) {
+        } else if (device is ProbeBleDevice) {
             // if not using meatnet, and the client app is asking us to connect
-            if(fromApiCall) {
+            if (fromApiCall) {
                 device.shouldAutoReconnect = settings.autoReconnect
                 return canConnect
             }
@@ -276,28 +292,28 @@ internal class DataLinkArbitrator(
         val canConnect = device.isDisconnected && device.isConnectable && !device.isInDfuMode
 
         // if this is from the network, then return if we can connect
-        if(device is RepeatedProbeBleDevice) {
+        if (device is RepeatedProbeBleDevice) {
             return canConnect
         }
 
         // if we can connect to this direct probe
-        if(canConnect) {
+        if (canConnect) {
 
             // if we have a discovery timestamp
             directLinkDiscoverTimestamp?.let { timestamp ->
 
                 // if the settling timeout has elapsed
-                if(timestamp + MULTINODE_PROBE_SETTLING_TIMEOUT_MS < System.currentTimeMillis()) {
+                if (timestamp + MULTINODE_PROBE_SETTLING_TIMEOUT_MS < System.currentTimeMillis()) {
 
                     // check if we have a MeatNet link
                     val hasMeatNetLink = repeatedProbeBleDevices.firstOrNull {
-                            it.isConnected && it.connectionState != DeviceConnectionState.NO_ROUTE
-                        } != null
+                        it.isConnected && it.connectionState != DeviceConnectionState.NO_ROUTE
+                    } != null
 
                     // connect only if we don't have a MeatNet link.
                     return !hasMeatNetLink
                 }
-            // otherwise, record the discovery timestamp and return false to wait for settling timeout.
+                // otherwise, record the discovery timestamp and return false to wait for settling timeout.
             } ?: run {
                 directLinkDiscoverTimestamp = System.currentTimeMillis()
             }
@@ -346,23 +362,42 @@ internal class DataLinkArbitrator(
         probeBleDevice?.shouldAutoReconnect = shouldAutoReconnect
     }
 
-    fun shouldUpdateDataFromAdvertisingPacket(device: ProbeBleDeviceBase, advertisement: CombustionAdvertisingData): Boolean {
-        return if(!USE_STATIC_LINK) advertisingArbitrator.shouldUpdate(device, advertisement) else debuggingWithStaticLink(device)
+    fun shouldUpdateDataFromAdvertisingPacket(
+        device: ProbeBleDeviceBase,
+        advertisement: CombustionAdvertisingData
+    ): Boolean {
+        return if (!USE_STATIC_LINK) advertisingArbitrator.shouldUpdate(
+            device,
+            advertisement
+        ) else debuggingWithStaticLink(device)
     }
 
     private var currentStatus: ProbeStatus? = null
     private var currentSessionInfo: SessionInformation? = null
 
-    fun shouldUpdateDataFromProbeStatus(status: ProbeStatus, sessionInfo: SessionInformation?): Boolean {
+    fun shouldUpdateDataFromProbeStatus(
+        status: ProbeStatus,
+        sessionInfo: SessionInformation?,
+        hopCount: UInt?,
+    ): Boolean = when (status.mode) {
+        ProbeMode.INSTANT_READ -> shouldUpdateDataFromProbeStatusForInstantReadMode(hopCount)
+        else -> shouldUpdateDataFromProbeStatusForNormalMode(status, sessionInfo)
+    }
+
+    private fun shouldUpdateDataFromProbeStatusForNormalMode(
+        status: ProbeStatus,
+        sessionInfo: SessionInformation?,
+    ): Boolean {
         currentSessionInfo?.let {
-            if(it != sessionInfo) {
+            if (it != sessionInfo) {
                 currentSessionInfo = sessionInfo
                 currentStatus = status
                 return true
             }
 
             // if status.max > current.max, then we want to update
-            val shouldUpdate = status.maxSequenceNumber > (currentStatus?.maxSequenceNumber ?: UInt.MAX_VALUE)
+            val shouldUpdate =
+                status.maxSequenceNumber > (currentStatus?.maxSequenceNumber ?: UInt.MAX_VALUE)
 
             currentStatus = status
 
@@ -376,12 +411,31 @@ internal class DataLinkArbitrator(
         return true
     }
 
+    private fun shouldUpdateDataFromProbeStatusForInstantReadMode(hopCount: UInt?): Boolean {
+        val immutableCurrentHopCount = currentHopCount
+        return when {
+            // If hopCount is nil, this is direct from a Probe and we should always update.
+            hopCount == null -> true
+            // This hop count is equal or better priority than the last, so update.
+            (immutableCurrentHopCount != null) && (hopCount <= immutableCurrentHopCount) -> true
+            // If we haven't received Instant Read data for more than the lockout period, we should always update.
+            else -> instantReadIdleMonitor.isIdle(INSTANT_READ_IDLE_TIMEOUT)
+        }.also { shouldUpdate ->
+            if (shouldUpdate) {
+                instantReadIdleMonitor.activity()
+                currentHopCount = hopCount
+            }
+        }
+    }
+
     fun shouldUpdateOnRemoteRssi(device: ProbeBleDeviceBase): Boolean {
-        return if(!USE_STATIC_LINK) (device == preferredMeatNetLink) else debuggingWithStaticLink(device)
+        return if (!USE_STATIC_LINK) (device == preferredMeatNetLink) else debuggingWithStaticLink(
+            device
+        )
     }
 
     private fun debuggingWithStaticLink(device: ProbeBleDeviceBase): Boolean {
-        return when(device) {
+        return when (device) {
             is ProbeBleDevice -> true
             is RepeatedProbeBleDevice -> false
             else -> false

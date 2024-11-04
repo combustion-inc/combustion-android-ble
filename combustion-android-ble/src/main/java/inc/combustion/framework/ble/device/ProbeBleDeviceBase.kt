@@ -104,7 +104,7 @@ internal abstract class ProbeBleDeviceBase {
     abstract suspend fun readModelInformation()
 
     // probe status updates
-    abstract fun observeProbeStatusUpdates(callback: (suspend (status: ProbeStatus) -> Unit)? = null)
+    abstract fun observeProbeStatusUpdates(hopCount: UInt?, callback: (suspend (status: ProbeStatus, hopCount: UInt?) -> Unit)? = null)
 
     // Probe UART Command APIs
     abstract fun sendSessionInformationRequest(reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)? = null)

@@ -102,7 +102,7 @@ internal class SimulatedProbeBleDevice(
     private var observeAdvertisingCallback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)? = null
     private var observeRemoteRssiCallback: (suspend (rssi: Int) -> Unit)? = null
     private var observeConnectionStateCallback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)? = null
-    private var observeStatusUpdatesCallback: (suspend (status: ProbeStatus) -> Unit)? = null
+    private var observeStatusUpdatesCallback: (suspend (status: ProbeStatus, hopCount: UInt?) -> Unit)? = null
 
     override var rssi: Int = randomRSSI()
         private set
@@ -163,7 +163,8 @@ internal class SimulatedProbeBleDevice(
                                 predictionStatus = PredictionStatus.withRandomData(),
                                 foodSafeData = FoodSafeData.RANDOM,
                                 foodSafeStatus = FoodSafeStatus.RANDOM,
-                            )
+                            ),
+                            null,
                         )
                     }
                 }
@@ -239,7 +240,7 @@ internal class SimulatedProbeBleDevice(
         // nothing to do -- handled on connect
     }
 
-    override fun observeProbeStatusUpdates(callback: (suspend (status: ProbeStatus) -> Unit)?) {
+    override fun observeProbeStatusUpdates(hopCount: UInt?, callback: (suspend (status: ProbeStatus, hopCount: UInt?) -> Unit)?) {
         observeStatusUpdatesCallback = callback
     }
 
