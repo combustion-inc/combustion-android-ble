@@ -50,6 +50,8 @@ internal enum class NodeMessageType(override val value: UByte) : NodeMessage{
     CONFIGURE_FOOD_SAFE(0x7u),
     RESET_FOOD_SAFE(0x8u),
 
+    GET_FEATURE_FLAGS(0x30u),
+
     CONNECTED(0x40u),
     DISCONNECTED(0x41u),
     READ_NODE_LIST(0x42u),
