@@ -87,6 +87,7 @@ internal class NodeBleDevice(
             ) {
                 uart.observeUartCharacteristic {data ->
                     //val responses = EncryptedNodeResponse.fromData(data.toUByteArray())
+                    // TODO: should this be a new function specific for the encrypted messages?
                     val responses = NodeUARTMessage.fromData(data.toUByteArray())
                     //Log.d("ben", "received responses $responses")
                     callback?.invoke(responses)
@@ -98,13 +99,16 @@ internal class NodeBleDevice(
         observeUartResponses { responses ->
             responses.forEach { response ->
                 when (response) {
+                    is NodeReadFeatureFlagsResponse -> {
+                        Log.d("ben", "received feature flags response")
+                        readFeatureFlagsRequest.handled(response.success, response)
+                    }
                     is EncryptedNodeResponse -> {
                         Log.d("ben", "received encrypted node response")
                         encryptedRequestHandler.handled(response.success, response)
                     }
-                    is NodeReadFeatureFlagsResponse -> {
-                        Log.d("ben", "received feature flags response")
-                        readFeatureFlagsRequest.handled(response.success, response)
+                    else -> {
+                        // Log.w("ben", "Unhandled response: $response")
                     }
                 }
             }

@@ -43,6 +43,7 @@ import inc.combustion.framework.ble.device.DeviceID
 import inc.combustion.framework.ble.dfu.DfuManager
 import inc.combustion.framework.ble.uart.meatnet.EncryptedNodeRequest
 import inc.combustion.framework.ble.uart.meatnet.EncryptedNodeResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeMessage
 import inc.combustion.framework.ble.uart.meatnet.NodeRequest
 import inc.combustion.framework.service.dfu.DfuSystemState
 import kotlinx.coroutines.flow.Flow
@@ -655,8 +656,12 @@ class DeviceManager(
     fun performDfuForDevice(id: DeviceID, updateFile: Uri) =
         service.dfuManager?.performDfu(id, updateFile)
 
-    fun ecnryptedMessage(deviceId: String, request: EncryptedNodeRequest, completionHandler: (Boolean) -> Unit) {
+    fun ecnryptedMessage(deviceId: String, request: EncryptedNodeRequest, completionHandler: (Boolean, Any?) -> Unit) {
         NetworkManager.instance.encryptedMessage(deviceId, request, completionHandler)
+    }
+
+    fun setMessageTypeCallback(callback: (UByte) -> NodeMessage?) {
+        NetworkManager.instance.setMessageTypeCallback(callback)
     }
 
     private fun probeDataToCsv(probe: Probe?, probeData: List<LoggedProbeDataPoint>?, appNameAndVersion: String): Pair<String, String> {

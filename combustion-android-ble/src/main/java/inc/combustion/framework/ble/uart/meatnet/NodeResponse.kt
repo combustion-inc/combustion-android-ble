@@ -29,9 +29,11 @@ package inc.combustion.framework.ble.uart.meatnet
 
 import android.util.Log
 import inc.combustion.framework.LOG_TAG
+import inc.combustion.framework.ble.NetworkManager
 import inc.combustion.framework.ble.getCRC16CCITT
 import inc.combustion.framework.ble.getLittleEndianUInt32At
 import inc.combustion.framework.ble.getLittleEndianUShortAt
+import inc.combustion.framework.ble.uart.MessageType
 import inc.combustion.framework.service.DebugSettings
 
 /**
@@ -41,10 +43,11 @@ internal open class NodeResponse(
     val success: Boolean,
     val requestId: UInt,
     val responseId: UInt,
-    val payloadLength: UByte,
-    messageId: NodeMessage
+    payloadLength: UByte,
+    messageId: NodeMessage,
 ) : NodeUARTMessage(
-    messageId
+    messageId,
+    payloadLength
 ) {
     override fun toString(): String {
         return "RESP $messageId (REQID: ${String.format("%08x",requestId.toInt())} RSPID: ${String.format("%08x",responseId.toInt())})"
@@ -62,7 +65,7 @@ internal open class NodeResponse(
          * @param data Raw data to parse
          * @return Instant of request if found or null if one could not be parsed from the data
          */
-        fun responseFromData(data : UByteArray) : NodeResponse? {
+        fun responseFromData(data : UByteArray) : NodeUARTMessage? {
             // Sync bytes
             val syncBytes = data.slice(0..1)
             val expectedSync = listOf<UByte>(202u, 254u) // 0xCA, 0xFE
@@ -79,8 +82,9 @@ internal open class NodeResponse(
                 return null
             }
 
-            val messageType = NodeMessageType.fromUByte((typeRaw and RESPONSE_TYPE_FLAG.inv()))
-                ?: return null
+            val rawMessageType = typeRaw and RESPONSE_TYPE_FLAG.inv()
+            val messageType = NodeMessageType.fromUByte(rawMessageType)
+                ?: rawMessageType//NodeMessage.fromUByte(rawMessageType)//return null
 
             // Request ID
             val requestId = data.getLittleEndianUInt32At(5)
@@ -196,10 +200,56 @@ internal open class NodeResponse(
                     )
                 }
                 else -> {
-                    Log.d("ben", "Unknown response type: $messageType")
+                    // if in additional messages types
+                    Log.d("ben", "Unknown response type before check: $messageType")
+                    val customMessage = NetworkManager.instance.messageTypeCallback(rawMessageType)
+
+                    if (customMessage != null) {
+                        Log.d("ben", "Unknown response type: $messageType")
+                        Log.d("ben", "Unknown response type asdfasdf: ${NodeMessage.fromUByte(rawMessageType)} as NodeMessage")
+                        return EncryptedNodeResponse.fromData(
+                            data,
+                            success,
+                            requestId,
+                            responseId,
+                            payloadLength,
+                            customMessage
+                        )
+                    }
                     return null
+                    /*
+                    return NodeResponse.fromData(
+                        data,
+                        success,
+                        requestId,
+                        responseId,
+                        payloadLength,
+                        messageType as UInt
+                    )
+                    */
+                    // TODO (bjc): this should return null when an additional type isn't matched
+                    // else return null
                 }
             }
+        }
+
+        fun fromData(
+            data: UByteArray,
+            success: Boolean,
+            requestId: UInt,
+            responseId: UInt,
+            payloadLength: UByte,
+            messageId:UInt
+        ): NodeResponse {
+            Log.d("ben", "Unknown response type: $messageId")
+            return NodeResponse(
+                success,
+                requestId,
+                responseId,
+                payloadLength,
+                NodeMessageType.RESET_FOOD_SAFE, // TOOD
+                //data.sliceArray(HEADER_SIZE.toInt() until data.size).toUByteArray()
+            )
         }
     }
 }

@@ -82,17 +82,17 @@ internal class NetworkManager(
     ) {
         private val connectedNodes : MutableMap<String, NodeBleDevice> = mutableMapOf()
 
-        fun sendEncryptedMessage(deviceId: String, request: EncryptedNodeRequest, completionHandler: (Boolean) -> Unit) {
+        fun sendEncryptedMessage(deviceId: String, request: EncryptedNodeRequest, completionHandler: (Boolean, Any?) -> Unit) {
             if(connectedNodes.contains(deviceId)) {
                 // send the message
                 Log.d("ben", "sending the message!!")
                 connectedNodes[deviceId]?.sendEncryptedRequest(request) { status, data ->
-                    completionHandler(status)
+                    completionHandler(status, data)
                 }
             }
             else {
                 Log.d("ben", "unable to send message to device: $deviceId")
-                completionHandler(false)
+                completionHandler(false, null)
             }
         }
 
@@ -452,7 +452,7 @@ internal class NetworkManager(
         }
     }
 
-    internal fun encryptedMessage(deviceId: String, request: EncryptedNodeRequest, completionHandler: (Boolean) -> Unit) {
+    internal fun encryptedMessage(deviceId: String, request: EncryptedNodeRequest, completionHandler: (Boolean, Any?) -> Unit) {
         Log.d("ben", "sending message for deviceId: $deviceId")
         nodeDeviceManager.sendEncryptedMessage(deviceId, request, completionHandler)
     }
@@ -779,5 +779,10 @@ internal class NetworkManager(
         flowHolder.mutableDiscoveredProbesFlow.tryEmit(
             ProbeDiscoveredEvent.ProbeRemoved(serialNumber)
         )
+    }
+
+    var messageTypeCallback = { messageType: UByte -> NodeMessage.fromUByte(messageType) }
+    internal fun setMessageTypeCallback(callback: (UByte) -> NodeMessage?) {
+        messageTypeCallback = callback
     }
 }

@@ -1,16 +1,21 @@
 package inc.combustion.framework.ble.uart.meatnet
 
+import android.util.Log
 import inc.combustion.framework.ble.getCRC16CCITT
 import inc.combustion.framework.ble.getLittleEndianUInt32At
 import inc.combustion.framework.ble.getLittleEndianUShortAt
 
-open class EncryptedNodeResponse(
+class EncryptedNodeResponse(
         val payload: UByteArray,
         val success: Boolean,
         val requestId: UInt,
         val responseId: UInt,
-        val payloadLength: UByte,
-        val messageId: NodeMessage) {
+        payloadLength: UByte,
+        messageId: NodeMessage
+) : NodeUARTMessage(
+    messageId,
+    payloadLength
+) {
 
     private val nodeResponse : NodeResponse = NodeResponse(success, requestId, responseId, payloadLength, messageId)
 
@@ -38,6 +43,7 @@ open class EncryptedNodeResponse(
         // NodeResponse messages have the leftmost bit in the 'message type' field set to 1.
         private const val RESPONSE_TYPE_FLAG : UByte = 0x80u
 
+        /*
         fun fromData(data: UByteArray): EncryptedNodeResponse? {
 
             // Sync bytes
@@ -53,12 +59,15 @@ open class EncryptedNodeResponse(
             // Verify that this is a Response by checking the response type flag
             if(typeRaw and EncryptedNodeResponse.RESPONSE_TYPE_FLAG != EncryptedNodeResponse.RESPONSE_TYPE_FLAG) {
                 // If that 'response type' bit isn't set, this is probably a Request.
+                Log.d("ben", "not a response?")
                 return null
             }
 
             val messageType = NodeMessageType.fromUByte((typeRaw and EncryptedNodeResponse.RESPONSE_TYPE_FLAG.inv()))
-                ?: return null
-
+            if (messageType == null) {
+                    Log.d("ben", "not a response, message type is null")
+                    return null
+                }
             // Request ID
             val requestId = data.getLittleEndianUInt32At(5)
 
@@ -81,6 +90,7 @@ open class EncryptedNodeResponse(
 
             val calculatedCRC = crcData.getCRC16CCITT()
 
+            Log.d("ben","processing node response")
             if(crc != calculatedCRC) {
                 return null
             }
@@ -92,6 +102,7 @@ open class EncryptedNodeResponse(
                 return null
             }
 
+            Log.d("ben","really processing node response")
             /*
             val responses = mutableListOf<EncryptedNodeResponse>()
 
@@ -127,6 +138,25 @@ open class EncryptedNodeResponse(
                 responseId,
                 payloadLength,
                 messageType
+            )
+        }
+
+         */
+        fun fromData(data: UByteArray,
+                     success: Boolean,
+                     requestId: UInt,
+                     responseId: UInt,
+                     payloadLength: UByte,
+                     messageId: NodeMessage,
+                     ): EncryptedNodeResponse? {
+            Log.d("ben", "processing encrypted node response")
+            return EncryptedNodeResponse(
+                data,
+                success,
+                requestId,
+                responseId,
+                payloadLength,
+               messageId
             )
         }
     }
