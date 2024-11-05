@@ -195,7 +195,10 @@ internal open class NodeResponse(
                         payloadLength
                     )
                 }
-                else -> null
+                else -> {
+                    Log.d("ben", "Unknown response type: $messageType")
+                    return null
+                }
             }
         }
     }

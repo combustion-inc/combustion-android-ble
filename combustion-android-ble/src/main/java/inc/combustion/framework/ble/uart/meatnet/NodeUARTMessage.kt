@@ -62,6 +62,13 @@ internal open class NodeUARTMessage(
                         messages.add(it)
                         numberBytesRead += (it.payloadLength + NodeRequest.HEADER_SIZE).toInt()
                     } ?: run {
+                        // try to parse the encrypted node response
+                        EncryptedNodeResponse.fromData(bytesToDecode)?.let {
+                            Log.d("ben", "its encrypted!")
+                          messages.add(it.getUARTMessage())
+                          numberBytesRead += (it.payloadLength + EncryptedNodeResponse.HEADER_SIZE).toInt()
+                      }
+                    } ?: run {
                         // drop data here, and return out what we have parsed so far
                         // Log.w(LOG_TAG, "MeatNet: Parsed invalid or unknown data! Dropping bytes $numberBytesRead to ${data.size}")
                         return messages

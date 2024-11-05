@@ -7,7 +7,7 @@ open class EncryptedNodeRequest (outgoingPayload: UByteArray, messageId: NodeMes
         return nodeRequest.toString()
     }
 
-    private val nodeRequest :  NodeRequest = NodeRequest(encryptPayload((outgoingPayload)), messageId)
+    private val nodeRequest :  NodeRequest = NodeRequest(encryptPayload(outgoingPayload), messageId)
 
     val sData get() = nodeRequest.sData
 

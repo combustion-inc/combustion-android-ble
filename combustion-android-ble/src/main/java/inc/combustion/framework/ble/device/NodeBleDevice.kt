@@ -38,7 +38,7 @@ internal class NodeBleDevice(
     }
 
     fun sendFeatureFlagRequest(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
-        readFeatureFlagsRequest.wait(uart.owner, NODE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
+        readFeatureFlagsRequest.wait(uart.owner, NODE_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
         sendUartRequest(NodeReadFeatureFlagsRequest(uart.serialNumber!!, reqId))
     }
 
@@ -81,7 +81,7 @@ internal class NodeBleDevice(
 
     private fun observeUartResponses(callback: (suspend (responses: List<NodeUARTMessage>) -> Unit)? = null) {
         uart.jobManager.addJob(
-            key = "1234", // TODO: this needs to be the device serial number
+            key = uart.serialNumber,
             job = uart.owner.lifecycleScope.launch(
                 CoroutineName("UartResponseObserver"),
             ) {
@@ -99,7 +99,7 @@ internal class NodeBleDevice(
             responses.forEach { response ->
                 when (response) {
                     is EncryptedNodeResponse -> {
-                        //Log.d("ben", "received encrypted node response")
+                        Log.d("ben", "received encrypted node response")
                         encryptedRequestHandler.handled(response.success, response)
                     }
                     is NodeReadFeatureFlagsResponse -> {
