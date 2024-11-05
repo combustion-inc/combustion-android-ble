@@ -186,6 +186,15 @@ internal open class NodeResponse(
                         payloadLength
                     )
                 }
+                NodeMessageType.GET_FEATURE_FLAGS -> {
+                    NodeReadFeatureFlagsResponse.fromData(
+                        data,
+                        success,
+                        requestId,
+                        responseId,
+                        payloadLength
+                    )
+                }
                 else -> null
             }
         }

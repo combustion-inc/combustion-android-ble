@@ -91,8 +91,6 @@ internal class NetworkManager(
                 }
             }
             else {
-                // fail
-                // todo
                 Log.d("ben", "unable to send message to device: $deviceId")
                 completionHandler(false)
             }
@@ -114,19 +112,29 @@ internal class NetworkManager(
                                 when(node) {
                                     is DeviceHolder.ProbeHolder -> NOT_IMPLEMENTED("Unsupported device type")
                                     is DeviceHolder.RepeaterHolder -> {
-                                        // TODO: this needs to be tested, I'm not sure if it is the right way to get
-                                        // the serial number
                                         node.repeater.readSerialNumber()
-                                        if (node.repeater.serialNumber != null) {
-                                            connectedNodes[node.repeater.serialNumber!!] = node.repeater
+                                        if (node.repeater.serialNumber != null && !connectedNodes.containsKey(node.repeater.serialNumber) ) {
+                                            Log.d("ben", "Node serial number: ${node.repeater.serialNumber}")
+                                            node.repeater.sendFeatureFlagRequest(null) { success: Boolean, data: Any? ->
+                                                Log.d("ben", "Feature flag request success: $success!!")
+                                                if (success) {
+                                                    val featureFlags =
+                                                        data as NodeReadFeatureFlagsResponse
+                                                    Log.d("ben", "Feature flags: ${featureFlags.wifi}")
+                                                    if (featureFlags.wifi) {
+                                                        connectedNodes[node.repeater.serialNumber!!] =
+                                                            node.repeater
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
-                                    else -> NOT_IMPLEMENTED("Uknown device type")
-                                }
+                                    else -> NOT_IMPLEMENTED("Unknown device type")
                                 }
                             }
                         }
                     }
+               }
         }
 
         fun discoveredNodes(): List<String> {

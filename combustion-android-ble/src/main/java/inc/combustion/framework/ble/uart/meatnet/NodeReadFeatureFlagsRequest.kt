@@ -13,9 +13,15 @@ internal class NodeReadFeatureFlagsRequest(
 
         fun populatePayload(serialNumber: String): UByteArray {
             val payload = UByteArray(PAYLOAD_LENGTH.toInt()){ 0u }
-
-            payload.putLittleEndianUInt32At(0, serialNumber.toLong(radix = 16).toUInt())
+            //payload.putLittleEndianUInt32At(0, serialNumber.toLong(radix = 16).toUInt())
+            serialNumber.toByteArray().copyInto(payload, 0, 0,10)
             return payload
         }
+    }
+}
+
+private fun ByteArray.copyInto(destination: UByteArray, destinationOffset: Int, startIndex: Int, endIndex: Int) {
+    for (i in startIndex until endIndex) {
+        destination[destinationOffset + i] = this[i].toUByte()
     }
 }

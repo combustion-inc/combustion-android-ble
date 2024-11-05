@@ -7,9 +7,8 @@ import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.uart.Response
-import inc.combustion.framework.ble.uart.meatnet.EncryptedNodeRequest
-import inc.combustion.framework.ble.uart.meatnet.EncryptedNodeResponse
-import inc.combustion.framework.ble.uart.meatnet.NodeResponse
+import inc.combustion.framework.ble.uart.meatnet.*
+import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsRequest
 import inc.combustion.framework.service.DebugSettings
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +23,7 @@ internal class NodeBleDevice(
 ) {
 
     protected val encryptedRequestHandler = UartBleDevice.MessageCompletionHandler()
+    protected val readFeatureFlagsRequest = UartBleDevice.MessageCompletionHandler()
 
     companion object {
         const val NODE_MESSAGE_RESPONSE_TIMEOUT_MS = 5000L
@@ -34,7 +34,12 @@ internal class NodeBleDevice(
     }
     fun sendEncryptedRequest(request: EncryptedNodeRequest, callback: ((Boolean, Any?) -> Unit)?) {
         encryptedRequestHandler.wait(uart.owner, NODE_MESSAGE_RESPONSE_TIMEOUT_MS,null, callback)
-        sendUartRequest(request)
+        sendUartRequestEncrypted(request)
+    }
+
+    fun sendFeatureFlagRequest(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
+        readFeatureFlagsRequest.wait(uart.owner, NODE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
+        sendUartRequest(NodeReadFeatureFlagsRequest(uart.serialNumber!!, reqId))
     }
 
     var isInDfuMode: Boolean
@@ -48,7 +53,7 @@ internal class NodeBleDevice(
 
     fun getDevice() = uart
 
-    private fun sendUartRequest(request: EncryptedNodeRequest) {
+    private fun sendUartRequestEncrypted(request: EncryptedNodeRequest) {
         uart.owner.lifecycleScope.launch(Dispatchers.IO) {
             if (DebugSettings.DEBUG_LOG_BLE_UART_IO) {
                 /*val packet = request.data.joinToString("") {
@@ -61,14 +66,28 @@ internal class NodeBleDevice(
         }
     }
 
-    private fun observeUartResponses(callback: (suspend (responses: List<EncryptedNodeResponse>) -> Unit)? = null) {
+    private fun sendUartRequest(request: NodeRequest) {
+        uart.owner.lifecycleScope.launch(Dispatchers.IO) {
+            if (DebugSettings.DEBUG_LOG_BLE_UART_IO) {
+                /*val packet = request.data.joinToString("") {
+                    it.toString(16).padStart(2, '0').uppercase()
+                }*/
+                Log.d(LOG_TAG, "UART-TX: sending encrypted request")
+            }
+            Log.d("ben", "UART-TX: sending request $request")
+            uart.writeUartCharacteristic(request.sData)
+        }
+    }
+
+    private fun observeUartResponses(callback: (suspend (responses: List<NodeUARTMessage>) -> Unit)? = null) {
         uart.jobManager.addJob(
             key = "1234", // TODO: this needs to be the device serial number
             job = uart.owner.lifecycleScope.launch(
                 CoroutineName("UartResponseObserver"),
             ) {
                 uart.observeUartCharacteristic {data ->
-                    val responses = EncryptedNodeResponse.fromData(data.toUByteArray())
+                    //val responses = EncryptedNodeResponse.fromData(data.toUByteArray())
+                    val responses = NodeUARTMessage.fromData(data.toUByteArray())
                     //Log.d("ben", "received responses $responses")
                     callback?.invoke(responses)
                 }
@@ -83,10 +102,15 @@ internal class NodeBleDevice(
                         //Log.d("ben", "received encrypted node response")
                         encryptedRequestHandler.handled(response.success, response)
                     }
+                    is NodeReadFeatureFlagsResponse -> {
+                        Log.d("ben", "received feature flags response")
+                        readFeatureFlagsRequest.handled(response.success, response)
+                    }
                 }
             }
         }
     }
+
     // Read the serial number from the device
     suspend fun readSerialNumber() {
         uart.readSerialNumber()
@@ -95,5 +119,4 @@ internal class NodeBleDevice(
     val serialNumber: String?
         get() = uart.serialNumber
     // TODO: feature flags?
-
 }
