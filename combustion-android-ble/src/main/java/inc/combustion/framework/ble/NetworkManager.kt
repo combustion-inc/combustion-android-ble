@@ -108,10 +108,12 @@ internal class NetworkManager(
         }
 
         fun discoveredNodes(): List<String> {
+            // This might need to be a flow into the app but this will work for now.
+            removeDisconnectedNodes()
             return connectedNodes.keys.toList()
         }
 
-        suspend fun updateConnectedNodes(node : NodeBleDevice) {
+        private suspend fun updateConnectedNodes(node : NodeBleDevice) {
             node.readSerialNumber()
             node.serialNumber?.let {
                 if (!connectedNodes.containsKey(it) && !ignoredNodes.contains(it)) {
@@ -130,6 +132,14 @@ internal class NetworkManager(
                     }
                 }
             }
+        }
+
+        private fun removeDisconnectedNodes() {
+           connectedNodes.forEach() { (serialNumber, node) ->
+               if(node.isDisconnected) {
+                   connectedNodes.remove(serialNumber)
+               }
+           }
         }
     }
 

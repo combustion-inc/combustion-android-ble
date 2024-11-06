@@ -9,6 +9,7 @@ import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.uart.meatnet.*
 import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsRequest
 import inc.combustion.framework.service.DebugSettings
+import inc.combustion.framework.service.DeviceConnectionState
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -31,6 +32,14 @@ internal class NodeBleDevice(
     init {
         processUartResponses()
     }
+
+    val rssi: Int get() { return uart.rssi }
+    val connectionState: DeviceConnectionState get() { return uart.connectionState }
+    val isConnected: Boolean get() { return uart.isConnected.get() }
+    val isDisconnected: Boolean get() { return uart.isDisconnected.get() }
+    val isInRange: Boolean get() { return uart.isInRange.get() }
+    val isConnectable: Boolean get() { return uart.isConnectable.get() }
+
     fun sendRequest(request: GenericNodeRequest, callback: ((Boolean, Any?) -> Unit)?) {
         val nodeRequest = request.toNodeRequest()
         genericRequestHandler.wait(uart.owner, NODE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)

@@ -188,7 +188,7 @@ internal open class BleDevice (
                 Log.d(LOG_TAG, "Connection State Monitor Complete")
             }
             .catch {
-                Log.i(LOG_TAG, "Connection State Monitor Catch: $it")
+                Log.i(LOG_TAG, "Connoection State Mnitor Catch: $it")
             }
             .collect { state ->
                 connectionMonitor.activity()
