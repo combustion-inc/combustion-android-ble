@@ -39,7 +39,7 @@ interface NodeMessage {
  *
  * @property value byte value for message type.
  */
-internal enum class NodeMessageType(override val value: UByte) : NodeMessage{
+internal enum class NodeMessageType(override val value: UByte) : NodeMessage {
 
     SET_ID(0x1u),
     SET_COLOR(0x2u),

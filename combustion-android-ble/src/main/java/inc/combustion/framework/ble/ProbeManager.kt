@@ -568,7 +568,7 @@ internal class ProbeManager(
         base.observeConnectionState { state ->
             _probe.update { handleConnectionState(base, state, it) }
             // TODO (bjc) - should this filter based on the hop count?
-            // TOD (bjc) - connection state?
+            // TODO (bjc) - connection state?
             _nodeConnectionFlow.emit(arbitrator.connectedNodeLinks.map { it.id }.toSet())
         }
         base.observeOutOfRange(OUT_OF_RANGE_TIMEOUT) {
