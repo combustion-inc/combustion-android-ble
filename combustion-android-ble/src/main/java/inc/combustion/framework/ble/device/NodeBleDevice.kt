@@ -6,7 +6,6 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
-import inc.combustion.framework.ble.uart.Response
 import inc.combustion.framework.ble.uart.meatnet.*
 import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsRequest
 import inc.combustion.framework.service.DebugSettings
@@ -22,7 +21,7 @@ internal class NodeBleDevice(
     private var uart: UartBleDevice = UartBleDevice(mac, nodeAdvertisingData, owner, adapter)
 ) {
 
-    protected val encryptedRequestHandler = UartBleDevice.MessageCompletionHandler()
+    protected val genericRequestHandler = UartBleDevice.MessageCompletionHandler()
     protected val readFeatureFlagsRequest = UartBleDevice.MessageCompletionHandler()
 
     companion object {
@@ -32,14 +31,16 @@ internal class NodeBleDevice(
     init {
         processUartResponses()
     }
-    fun sendEncryptedRequest(request: EncryptedNodeRequest, callback: ((Boolean, Any?) -> Unit)?) {
-        encryptedRequestHandler.wait(uart.owner, NODE_MESSAGE_RESPONSE_TIMEOUT_MS,null, callback)
-        sendUartRequestEncrypted(request)
+    fun sendRequest(request: GenericNodeRequest, callback: ((Boolean, Any?) -> Unit)?) {
+        val nodeRequest = request.toNodeRequest()
+        genericRequestHandler.wait(uart.owner, NODE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
+        sendUartRequest(nodeRequest)
     }
 
     fun sendFeatureFlagRequest(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
+        val serialNumber = uart.serialNumber?: return
         readFeatureFlagsRequest.wait(uart.owner, NODE_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
-        sendUartRequest(NodeReadFeatureFlagsRequest(uart.serialNumber!!, reqId))
+        sendUartRequest(NodeReadFeatureFlagsRequest(serialNumber, reqId))
     }
 
     var isInDfuMode: Boolean
@@ -53,28 +54,14 @@ internal class NodeBleDevice(
 
     fun getDevice() = uart
 
-    private fun sendUartRequestEncrypted(request: EncryptedNodeRequest) {
-        uart.owner.lifecycleScope.launch(Dispatchers.IO) {
-            if (DebugSettings.DEBUG_LOG_BLE_UART_IO) {
-                /*val packet = request.data.joinToString("") {
-                    it.toString(16).padStart(2, '0').uppercase()
-                }*/
-                Log.d(LOG_TAG, "UART-TX: sending encrypted request")
-            }
-            Log.d("ben", "UART-TX: sending encrypted request")
-            uart.writeUartCharacteristic(request.sData)
-        }
-    }
-
     private fun sendUartRequest(request: NodeRequest) {
         uart.owner.lifecycleScope.launch(Dispatchers.IO) {
             if (DebugSettings.DEBUG_LOG_BLE_UART_IO) {
-                /*val packet = request.data.joinToString("") {
+                val packet = request.data.joinToString("") {
                     it.toString(16).padStart(2, '0').uppercase()
-                }*/
-                Log.d(LOG_TAG, "UART-TX: sending encrypted request")
+                }
+                Log.d(LOG_TAG, "UART-TX: $packet")
             }
-            Log.d("ben", "UART-TX: sending request $request")
             uart.writeUartCharacteristic(request.sData)
         }
     }
@@ -86,10 +73,7 @@ internal class NodeBleDevice(
                 CoroutineName("UartResponseObserver"),
             ) {
                 uart.observeUartCharacteristic {data ->
-                    //val responses = EncryptedNodeResponse.fromData(data.toUByteArray())
-                    // TODO: should this be a new function specific for the encrypted messages?
                     val responses = NodeUARTMessage.fromData(data.toUByteArray())
-                    //Log.d("ben", "received responses $responses")
                     callback?.invoke(responses)
                 }
             }
@@ -100,15 +84,14 @@ internal class NodeBleDevice(
             responses.forEach { response ->
                 when (response) {
                     is NodeReadFeatureFlagsResponse -> {
-                        Log.d("ben", "received feature flags response")
                         readFeatureFlagsRequest.handled(response.success, response)
                     }
-                    is EncryptedNodeResponse -> {
-                        Log.d("ben", "received encrypted node response")
-                        encryptedRequestHandler.handled(response.success, response)
+                    is GenericNodeResponse -> {
+                        genericRequestHandler.handled(response.success, response)
                     }
                     else -> {
-                        // Log.w("ben", "Unhandled response: $response")
+                        // drop the message
+                        // Log.w(LOG_TAG, "Unhandled response: $response")
                     }
                 }
             }
@@ -122,5 +105,4 @@ internal class NodeBleDevice(
 
     val serialNumber: String?
         get() = uart.serialNumber
-    // TODO: feature flags?
 }

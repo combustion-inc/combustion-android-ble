@@ -41,10 +41,8 @@ import inc.combustion.framework.ble.NetworkManager
 import inc.combustion.framework.log.LogManager
 import inc.combustion.framework.ble.device.DeviceID
 import inc.combustion.framework.ble.dfu.DfuManager
-import inc.combustion.framework.ble.uart.meatnet.EncryptedNodeRequest
-import inc.combustion.framework.ble.uart.meatnet.EncryptedNodeResponse
+import inc.combustion.framework.ble.uart.meatnet.GenericNodeRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeMessage
-import inc.combustion.framework.ble.uart.meatnet.NodeRequest
 import inc.combustion.framework.service.dfu.DfuSystemState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
@@ -656,8 +654,8 @@ class DeviceManager(
     fun performDfuForDevice(id: DeviceID, updateFile: Uri) =
         service.dfuManager?.performDfu(id, updateFile)
 
-    fun ecnryptedMessage(deviceId: String, request: EncryptedNodeRequest, completionHandler: (Boolean, Any?) -> Unit) {
-        NetworkManager.instance.encryptedMessage(deviceId, request, completionHandler)
+    fun sendRequest(deviceId: String, request: GenericNodeRequest, completionHandler: (Boolean, Any?) -> Unit) {
+        NetworkManager.instance.sendRequest(deviceId, request, completionHandler)
     }
 
     fun setMessageTypeCallback(callback: (UByte) -> NodeMessage?) {

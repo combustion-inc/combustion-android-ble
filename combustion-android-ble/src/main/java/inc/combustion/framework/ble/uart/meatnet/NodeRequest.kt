@@ -130,9 +130,6 @@ internal open class NodeRequest(
     // Random ID for this request, for tracking request-response pairs
     var requestId: UInt = 0u
 
-    // Length of payload
-    //var payloadLength: UByte = 0u
-
     /**
      * Constructor for generating a new outgoing Request object.
      *
@@ -176,8 +173,6 @@ internal open class NodeRequest(
 
         // Message Type, payload length, payload
         this.data += crcData
-
-        //this.payloadLength = outgoingPayload.size.toUByte()
     }
 
     /**
@@ -195,7 +190,6 @@ internal open class NodeRequest(
         payloadLength
     ) {
         this.requestId = requestId
-        //this.payloadLength = payloadLength
     }
 
     /**

@@ -26,9 +26,6 @@
  * SOFTWARE.
  */
 
-
-// TODO: need a way to track the connections to the repeater nodes. how do you send a message to one of those?
-
 package inc.combustion.framework.ble
 
 import android.bluetooth.BluetoothAdapter
@@ -45,7 +42,6 @@ import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.scanning.DeviceScanner
 import inc.combustion.framework.ble.uart.meatnet.*
-import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.log.LogManager
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.CoroutineName
@@ -81,23 +77,16 @@ internal class NetworkManager(
         val owner: LifecycleOwner
     ) {
         private val connectedNodes : MutableMap<String, NodeBleDevice> = mutableMapOf()
+        private val ignoredNodes : MutableSet<String> = mutableSetOf()
 
-        fun sendEncryptedMessage(deviceId: String, request: EncryptedNodeRequest, completionHandler: (Boolean, Any?) -> Unit) {
-            if(connectedNodes.contains(deviceId)) {
-                // send the message
-                Log.d("ben", "sending the message!!")
-                connectedNodes[deviceId]?.sendEncryptedRequest(request) { status, data ->
-                    completionHandler(status, data)
-                }
-            }
-            else {
-                Log.d("ben", "unable to send message to device: $deviceId")
+        fun sendRequest(deviceId: String, request: GenericNodeRequest, completionHandler: (Boolean, Any?) -> Unit) {
+            connectedNodes[deviceId]?.sendRequest(request) { status, data ->
+                completionHandler(status, data)
+            } ?: run {
                 completionHandler(false, null)
             }
         }
 
-        // TODO: something needs to be done to limit this to only devices that have wifi
-        // TOOD: it would be nice if this returned the serial number instead of the device id..
         // TODO: this needs to support removing the devices as well as adding them. Perhaps that should be another flow
         fun subscribeToNodeFlow(probeManager: ProbeManager) {
             owner.lifecycleScope.launch(
@@ -105,40 +94,42 @@ internal class NetworkManager(
             ) {
                 probeManager.nodeConnectionFlow
                     .collect { deviceIds ->
-                        Log.d("ben", "Node connection flow: $deviceIds")
                         deviceIds.forEach { deviceId ->
-                            if(!connectedNodes.containsKey(deviceId)) {
-                                val node = devices[deviceId]
-                                when(node) {
-                                    is DeviceHolder.ProbeHolder -> NOT_IMPLEMENTED("Unsupported device type")
-                                    is DeviceHolder.RepeaterHolder -> {
-                                        node.repeater.readSerialNumber()
-                                        if (node.repeater.serialNumber != null && !connectedNodes.containsKey(node.repeater.serialNumber) ) {
-                                            Log.d("ben", "Node serial number: ${node.repeater.serialNumber}")
-                                            node.repeater.sendFeatureFlagRequest(null) { success: Boolean, data: Any? ->
-                                                Log.d("ben", "Feature flag request success: $success!!")
-                                                if (success) {
-                                                    val featureFlags =
-                                                        data as NodeReadFeatureFlagsResponse
-                                                    Log.d("ben", "Feature flags: ${featureFlags.wifi}")
-                                                    if (featureFlags.wifi) {
-                                                        connectedNodes[node.repeater.serialNumber!!] =
-                                                            node.repeater
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    else -> NOT_IMPLEMENTED("Unknown device type")
+                            when (val node = devices[deviceId]) {
+                                is DeviceHolder.ProbeHolder -> NOT_IMPLEMENTED("Unsupported device type")
+                                is DeviceHolder.RepeaterHolder -> {
+                                    updateConnectedNodes(node.repeater)
                                 }
+                                else -> NOT_IMPLEMENTED("Unknown device type")
                             }
                         }
                     }
-               }
+            }
         }
 
         fun discoveredNodes(): List<String> {
             return connectedNodes.keys.toList()
+        }
+
+        suspend fun updateConnectedNodes(node : NodeBleDevice) {
+            node.readSerialNumber()
+            node.serialNumber?.let {
+                if (!connectedNodes.containsKey(it) && !ignoredNodes.contains(it)) {
+                    node.sendFeatureFlagRequest(null) { success: Boolean, data: Any? ->
+                        if (success) {
+                            val featureFlags =
+                                data as NodeReadFeatureFlagsResponse
+                            if (featureFlags.wifi) {
+                                Log.d(LOG_TAG, "Node supports feature flag: $it")
+                                connectedNodes[it] = node
+                            } else {
+                                Log.d(LOG_TAG, "Node doesn't support feature flag: $it")
+                                ignoredNodes.add(it)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -452,9 +443,8 @@ internal class NetworkManager(
         }
     }
 
-    internal fun encryptedMessage(deviceId: String, request: EncryptedNodeRequest, completionHandler: (Boolean, Any?) -> Unit) {
-        Log.d("ben", "sending message for deviceId: $deviceId")
-        nodeDeviceManager.sendEncryptedMessage(deviceId, request, completionHandler)
+    internal fun sendRequest(deviceId: String, request: GenericNodeRequest, completionHandler: (Boolean, Any?) -> Unit) {
+        nodeDeviceManager.sendRequest(deviceId, request, completionHandler)
     }
 
     @ExperimentalCoroutinesApi
@@ -487,10 +477,6 @@ internal class NetworkManager(
         val serialNumber = advertisement.probeSerialNumber
         val deviceId = advertisement.id
         val linkId = ProbeBleDeviceBase.makeLinkId(advertisement)
-
-        //Log.d( "ben", "Managing MeatNet serialNumber: $serialNumber")
-        //Log.d( "ben", "Managing MeatNet device: $deviceId")
-        //Log.d( "ben", "Here is the product type: ${advertisement.}")
 
         // if MeatNet isn't enabled and we see anything other than a probe, then return out now
         // because that product type isn't supported in this mode.
@@ -559,7 +545,6 @@ internal class NetworkManager(
                     probeManger?.addProbe(device.probe, device.probe.baseDevice, advertisement)
                 }
                 is DeviceHolder.RepeaterHolder -> {
-                    // TODO (bjc) - should these be updated to be NodeBleDevice?
                     val repeatedProbe = RepeatedProbeBleDevice(serialNumber, device.repeater.getDevice(), advertisement)
                     meatNetLinks[linkId] = LinkHolder.RepeatedProbeHolder(repeatedProbe)
                     probeManger?.addRepeatedProbe(repeatedProbe, device.repeater.getDevice(), advertisement)
@@ -602,7 +587,6 @@ internal class NetworkManager(
                         }
                     }
                 } else if (probeAllowlist == null) {
-                    // TODO (bjc) - does this need to be opened up a little bit for WiFi devices?
                     // Only connect to a node that doesn't have any connected probes if the
                     // allowlist is unset.
                     if(!firmwareStateOfNetwork.containsKey(advertisingData.id)) {
@@ -783,6 +767,7 @@ internal class NetworkManager(
 
     var messageTypeCallback = { messageType: UByte -> NodeMessage.fromUByte(messageType) }
     internal fun setMessageTypeCallback(callback: (UByte) -> NodeMessage?) {
+        Log.d(LOG_TAG, "Setting message type callback")
         messageTypeCallback = callback
     }
 }

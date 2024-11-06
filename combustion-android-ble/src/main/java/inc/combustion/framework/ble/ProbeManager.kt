@@ -125,7 +125,8 @@ internal class ProbeManager(
     // updateNodeConnectionFlow?
     // provides a set of all the nodes that are currently connected
     private val _nodeConnectionFlow = MutableSharedFlow<Set<String>>(
-        replay = 0, extraBufferCapacity = 10, BufferOverflow.DROP_OLDEST)
+        replay = 0, extraBufferCapacity = 10, BufferOverflow.DROP_OLDEST
+    )
 
     val nodeConnectionFlow = _nodeConnectionFlow.asSharedFlow()
 
@@ -566,6 +567,8 @@ internal class ProbeManager(
         }
         base.observeConnectionState { state ->
             _probe.update { handleConnectionState(base, state, it) }
+            // TODO (bjc) - should this filter based on the hop count?
+            // TOD (bjc) - connection state?
             _nodeConnectionFlow.emit(arbitrator.connectedNodeLinks.map { it.id }.toSet())
         }
         base.observeOutOfRange(OUT_OF_RANGE_TIMEOUT) {

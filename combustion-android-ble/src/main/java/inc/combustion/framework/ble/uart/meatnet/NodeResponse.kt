@@ -27,14 +27,10 @@
  */
 package inc.combustion.framework.ble.uart.meatnet
 
-import android.util.Log
-import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.NetworkManager
 import inc.combustion.framework.ble.getCRC16CCITT
 import inc.combustion.framework.ble.getLittleEndianUInt32At
 import inc.combustion.framework.ble.getLittleEndianUShortAt
-import inc.combustion.framework.ble.uart.MessageType
-import inc.combustion.framework.service.DebugSettings
 
 /**
  * Baseclass for UART response messages
@@ -54,10 +50,10 @@ internal open class NodeResponse(
     }
 
     companion object {
-        const val HEADER_SIZE : UByte = 15u
+        const val HEADER_SIZE: UByte = 15u
 
         // NodeResponse messages have the leftmost bit in the 'message type' field set to 1.
-        private const val RESPONSE_TYPE_FLAG : UByte = 0x80u
+        private const val RESPONSE_TYPE_FLAG: UByte = 0x80u
 
         /**
          * Factory method for parsing a request from data.
@@ -65,11 +61,11 @@ internal open class NodeResponse(
          * @param data Raw data to parse
          * @return Instant of request if found or null if one could not be parsed from the data
          */
-        fun responseFromData(data : UByteArray) : NodeUARTMessage? {
+        fun responseFromData(data: UByteArray): NodeUARTMessage? {
             // Sync bytes
             val syncBytes = data.slice(0..1)
             val expectedSync = listOf<UByte>(202u, 254u) // 0xCA, 0xFE
-            if(syncBytes != expectedSync) {
+            if (syncBytes != expectedSync) {
                 return null
             }
 
@@ -77,7 +73,7 @@ internal open class NodeResponse(
             val typeRaw = data[4]
 
             // Verify that this is a Response by checking the response type flag
-            if(typeRaw and RESPONSE_TYPE_FLAG != RESPONSE_TYPE_FLAG) {
+            if (typeRaw and RESPONSE_TYPE_FLAG != RESPONSE_TYPE_FLAG) {
                 // If that 'response type' bit isn't set, this is probably a Request.
                 return null
             }
@@ -108,18 +104,18 @@ internal open class NodeResponse(
 
             val calculatedCRC = crcData.getCRC16CCITT()
 
-            if(crc != calculatedCRC) {
+            if (crc != calculatedCRC) {
                 return null
             }
 
             val responseLength = payloadLength.toInt() + HEADER_SIZE.toInt()
 
             // Invalid number of bytes
-            if(data.size < responseLength) {
+            if (data.size < responseLength) {
                 return null
             }
 
-            return when(messageType) {
+            return when (messageType) {
                 NodeMessageType.LOG -> {
                     NodeReadLogsResponse.fromData(
                         data,
@@ -129,6 +125,7 @@ internal open class NodeResponse(
                         payloadLength
                     )
                 }
+
                 NodeMessageType.SESSION_INFO -> {
                     NodeReadSessionInfoResponse.fromData(
                         data,
@@ -138,6 +135,7 @@ internal open class NodeResponse(
                         payloadLength
                     )
                 }
+
                 NodeMessageType.SET_PREDICTION -> {
                     NodeSetPredictionResponse.fromData(
                         data,
@@ -147,6 +145,7 @@ internal open class NodeResponse(
                         payloadLength
                     )
                 }
+
                 NodeMessageType.CONFIGURE_FOOD_SAFE -> {
                     NodeConfigureFoodSafeResponse.fromData(
                         success,
@@ -155,6 +154,7 @@ internal open class NodeResponse(
                         payloadLength,
                     )
                 }
+
                 NodeMessageType.RESET_FOOD_SAFE -> {
                     NodeResetFoodSafeResponse.fromData(
                         success,
@@ -163,6 +163,7 @@ internal open class NodeResponse(
                         payloadLength,
                     )
                 }
+
                 NodeMessageType.PROBE_FIRMWARE_REVISION -> {
                     NodeReadFirmwareRevisionResponse.fromData(
                         data,
@@ -172,6 +173,7 @@ internal open class NodeResponse(
                         payloadLength
                     )
                 }
+
                 NodeMessageType.PROBE_HARDWARE_REVISION -> {
                     NodeReadHardwareRevisionResponse.fromData(
                         data,
@@ -181,6 +183,7 @@ internal open class NodeResponse(
                         payloadLength
                     )
                 }
+
                 NodeMessageType.PROBE_MODEL_INFORMATION -> {
                     NodeReadModelInfoResponse.fromData(
                         data,
@@ -190,6 +193,7 @@ internal open class NodeResponse(
                         payloadLength
                     )
                 }
+
                 NodeMessageType.GET_FEATURE_FLAGS -> {
                     NodeReadFeatureFlagsResponse.fromData(
                         data,
@@ -199,57 +203,21 @@ internal open class NodeResponse(
                         payloadLength
                     )
                 }
-                else -> {
-                    // if in additional messages types
-                    Log.d("ben", "Unknown response type before check: $messageType")
-                    val customMessage = NetworkManager.instance.messageTypeCallback(rawMessageType)
 
-                    if (customMessage != null) {
-                        Log.d("ben", "Unknown response type: $messageType")
-                        Log.d("ben", "Unknown response type asdfasdf: ${NodeMessage.fromUByte(rawMessageType)} as NodeMessage")
-                        return EncryptedNodeResponse.fromData(
+                else -> {
+                    // The message didn't match any of the defined types, so check if it matches a custom type
+                    return NetworkManager.instance.messageTypeCallback(rawMessageType)?.let {
+                        return GenericNodeResponse.fromData(
                             data,
                             success,
                             requestId,
                             responseId,
                             payloadLength,
-                            customMessage
+                            it
                         )
                     }
-                    return null
-                    /*
-                    return NodeResponse.fromData(
-                        data,
-                        success,
-                        requestId,
-                        responseId,
-                        payloadLength,
-                        messageType as UInt
-                    )
-                    */
-                    // TODO (bjc): this should return null when an additional type isn't matched
-                    // else return null
                 }
             }
-        }
-
-        fun fromData(
-            data: UByteArray,
-            success: Boolean,
-            requestId: UInt,
-            responseId: UInt,
-            payloadLength: UByte,
-            messageId:UInt
-        ): NodeResponse {
-            Log.d("ben", "Unknown response type: $messageId")
-            return NodeResponse(
-                success,
-                requestId,
-                responseId,
-                payloadLength,
-                NodeMessageType.RESET_FOOD_SAFE, // TOOD
-                //data.sliceArray(HEADER_SIZE.toInt() until data.size).toUByteArray()
-            )
         }
     }
 }
