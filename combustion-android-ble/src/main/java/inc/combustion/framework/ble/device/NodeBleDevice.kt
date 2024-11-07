@@ -40,7 +40,7 @@ internal class NodeBleDevice(
     val isInRange: Boolean get() { return uart.isInRange.get() }
     val isConnectable: Boolean get() { return uart.isConnectable.get() }
 
-    fun sendRequest(request: GenericNodeRequest, callback: ((Boolean, Any?) -> Unit)?) {
+    fun sendNodeRequest(request: GenericNodeRequest, callback: ((Boolean, Any?) -> Unit)?) {
         val nodeRequest = request.toNodeRequest()
         genericRequestHandler.wait(uart.owner, NODE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
         sendUartRequest(nodeRequest)

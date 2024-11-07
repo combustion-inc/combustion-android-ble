@@ -654,8 +654,8 @@ class DeviceManager(
     fun performDfuForDevice(id: DeviceID, updateFile: Uri) =
         service.dfuManager?.performDfu(id, updateFile)
 
-    fun sendRequest(deviceId: String, request: GenericNodeRequest, completionHandler: (Boolean, Any?) -> Unit) {
-        NetworkManager.instance.sendRequest(deviceId, request, completionHandler)
+    fun sendNodeRequest(deviceId: String, request: GenericNodeRequest, completionHandler: (Boolean, Any?) -> Unit) {
+        NetworkManager.instance.sendNodeRequest(deviceId, request, completionHandler)
     }
 
     fun setMessageTypeCallback(callback: (UByte) -> NodeMessage?) {

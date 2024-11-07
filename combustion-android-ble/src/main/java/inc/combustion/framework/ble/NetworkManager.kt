@@ -79,8 +79,8 @@ internal class NetworkManager(
         private val connectedNodes : MutableMap<String, NodeBleDevice> = mutableMapOf()
         private val ignoredNodes : MutableSet<String> = mutableSetOf()
 
-        fun sendRequest(deviceId: String, request: GenericNodeRequest, completionHandler: (Boolean, Any?) -> Unit) {
-            connectedNodes[deviceId]?.sendRequest(request) { status, data ->
+        fun sendNodeRequest(deviceId: String, request: GenericNodeRequest, completionHandler: (Boolean, Any?) -> Unit) {
+            connectedNodes[deviceId]?.sendNodeRequest(request) { status, data ->
                 completionHandler(status, data)
             } ?: run {
                 completionHandler(false, null)
@@ -453,8 +453,8 @@ internal class NetworkManager(
         }
     }
 
-    internal fun sendRequest(deviceId: String, request: GenericNodeRequest, completionHandler: (Boolean, Any?) -> Unit) {
-        nodeDeviceManager.sendRequest(deviceId, request, completionHandler)
+    internal fun sendNodeRequest(deviceId: String, request: GenericNodeRequest, completionHandler: (Boolean, Any?) -> Unit) {
+        nodeDeviceManager.sendNodeRequest(deviceId, request, completionHandler)
     }
 
     @ExperimentalCoroutinesApi
@@ -775,9 +775,10 @@ internal class NetworkManager(
         )
     }
 
-    var messageTypeCallback = { messageType: UByte -> NodeMessage.fromUByte(messageType) }
-    internal fun setMessageTypeCallback(callback: (UByte) -> NodeMessage?) {
-        Log.d(LOG_TAG, "Setting message type callback")
+    var messageTypeCallback: (UByte)-> NodeMessage? = { messageType: UByte -> NodeMessage.fromUByte(messageType) }
+        private set
+
+    internal fun setMessageTypeCallback(callback: (UByte)-> NodeMessage?) {
         messageTypeCallback = callback
     }
 }

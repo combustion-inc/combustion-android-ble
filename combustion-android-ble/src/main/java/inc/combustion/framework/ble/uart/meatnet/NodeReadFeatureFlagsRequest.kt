@@ -13,7 +13,7 @@ internal class NodeReadFeatureFlagsRequest(
 
         fun populatePayload(serialNumber: String): UByteArray {
             val payload = UByteArray(PAYLOAD_LENGTH.toInt()){ 0u }
-            serialNumber.toByteArray().copyInto(payload, 0, 0, PAYLOAD_LENGTH)
+            serialNumber.toByteArray().copyInto(payload, 0, 0, PAYLOAD_LENGTH.toInt())
             return payload
         }
     }
