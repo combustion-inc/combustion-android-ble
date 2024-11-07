@@ -122,7 +122,6 @@ internal class ProbeManager(
             return _probe.value.serialNumber
         }
 
-    // updateNodeConnectionFlow?
     // provides a set of all the nodes that are currently connected
     private val _nodeConnectionFlow = MutableSharedFlow<Set<String>>(
         replay = 0, extraBufferCapacity = 10, BufferOverflow.DROP_OLDEST
