@@ -40,6 +40,8 @@ internal class NodeBleDevice(
     val isInRange: Boolean get() { return uart.isInRange.get() }
     val isConnectable: Boolean get() { return uart.isConnectable.get() }
 
+    val deviceInfoSerialNumber: String? get() { return uart.serialNumber }
+
     fun sendNodeRequest(request: GenericNodeRequest, callback: ((Boolean, Any?) -> Unit)?) {
         val nodeRequest = request.toNodeRequest()
         genericRequestHandler.wait(uart.owner, NODE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
@@ -47,9 +49,9 @@ internal class NodeBleDevice(
     }
 
     fun sendFeatureFlagRequest(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
-        val serialNumber = uart.serialNumber?: return
+        val nodeSerialNumber = deviceInfoSerialNumber?: return
         readFeatureFlagsRequest.wait(uart.owner, NODE_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
-        sendUartRequest(NodeReadFeatureFlagsRequest(serialNumber, reqId))
+        sendUartRequest(NodeReadFeatureFlagsRequest(nodeSerialNumber, reqId))
     }
 
     var isInDfuMode: Boolean
@@ -97,10 +99,9 @@ internal class NodeBleDevice(
                     }
                     is GenericNodeResponse -> {
                         genericRequestHandler.handled(response.success, response)
-                    }
-                    else -> {
+                    } else -> {
                         // drop the message
-                        // Log.w(LOG_TAG, "Unhandled response: $response")
+                        Log.w(LOG_TAG, "NodeBLEDevice: Unhandled response: $response")
                     }
                 }
             }
@@ -111,7 +112,4 @@ internal class NodeBleDevice(
     suspend fun readSerialNumber() {
         uart.readSerialNumber()
     }
-
-    val serialNumber: String?
-        get() = uart.serialNumber
 }

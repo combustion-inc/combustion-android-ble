@@ -27,10 +27,10 @@
  */
 package inc.combustion.framework.ble.uart.meatnet
 
-import inc.combustion.framework.ble.NetworkManager
 import inc.combustion.framework.ble.getCRC16CCITT
 import inc.combustion.framework.ble.getLittleEndianUInt32At
 import inc.combustion.framework.ble.getLittleEndianUShortAt
+import inc.combustion.framework.service.DeviceManager
 
 /**
  * Baseclass for UART response messages
@@ -206,7 +206,7 @@ internal open class NodeResponse(
 
                 else -> {
                     // The message didn't match any of the defined types, so check if it matches a custom type
-                    return NetworkManager.instance.messageTypeCallback(rawMessageType)?.let {
+                    return DeviceManager.instance.settings.messageTypeCallback(rawMessageType)?.let {
                         return GenericNodeResponse.fromData(
                             data,
                             success,

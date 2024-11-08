@@ -87,7 +87,6 @@ internal class NetworkManager(
             }
         }
 
-        // TODO: this needs to support removing the devices as well as adding them. Perhaps that should be another flow
         fun subscribeToNodeFlow(probeManager: ProbeManager) {
             owner.lifecycleScope.launch(
                 CoroutineName("NodeConnectionFlow")
@@ -114,8 +113,10 @@ internal class NetworkManager(
         }
 
         private suspend fun updateConnectedNodes(node : NodeBleDevice) {
-            node.readSerialNumber()
-            node.serialNumber?.let {
+            if (node.deviceInfoSerialNumber == null) {
+                node.readSerialNumber()
+            }
+            node.deviceInfoSerialNumber?.let {
                 if (!connectedNodes.containsKey(it) && !ignoredNodes.contains(it)) {
                     node.sendFeatureFlagRequest(null) { success: Boolean, data: Any? ->
                         if (success) {
@@ -773,12 +774,5 @@ internal class NetworkManager(
         flowHolder.mutableDiscoveredProbesFlow.tryEmit(
             ProbeDiscoveredEvent.ProbeRemoved(serialNumber)
         )
-    }
-
-    var messageTypeCallback: (UByte)-> NodeMessage? = { messageType: UByte -> NodeMessage.fromUByte(messageType) }
-        private set
-
-    internal fun setMessageTypeCallback(callback: (UByte)-> NodeMessage?) {
-        messageTypeCallback = callback
     }
 }

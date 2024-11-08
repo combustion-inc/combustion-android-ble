@@ -1,7 +1,7 @@
 package inc.combustion.framework.ble.uart.meatnet
 
 internal class NodeReadFeatureFlagsResponse(
-    val serialNumber: String,
+    val nodeSerialNumber: String,
     val wifi: Boolean,
     success: Boolean,
     requestId: UInt,
@@ -31,11 +31,11 @@ internal class NodeReadFeatureFlagsResponse(
                 return null
             }
 
-            val serialNumber = payload.sliceArray(HEADER_SIZE.toInt() until HEADER_SIZE.toInt() + NODE_SERIAL_NUMBER_LENGTH.toInt()).joinToString("") { it.toString(16).padStart(2, '0') }
+            val nodeSerialNumber = payload.sliceArray(HEADER_SIZE.toInt() until HEADER_SIZE.toInt() + NODE_SERIAL_NUMBER_LENGTH.toInt()).joinToString("") { it.toString(16).padStart(2, '0') }
             val wifi = payload[(HEADER_SIZE + NODE_SERIAL_NUMBER_LENGTH).toInt()] and WIFI_FLAG_MASK == 0x01.toUByte()
 
             return NodeReadFeatureFlagsResponse(
-                serialNumber,
+                nodeSerialNumber,
                 wifi,
                 success,
                 requestId,

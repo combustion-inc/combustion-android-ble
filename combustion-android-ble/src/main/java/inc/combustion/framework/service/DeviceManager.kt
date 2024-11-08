@@ -74,6 +74,7 @@ class DeviceManager(
         val autoLogTransfer: Boolean = false,
         val meatNetEnabled: Boolean = false,
         val probeAllowlist: Set<String>? = null,
+        val messageTypeCallback: (UByte)-> NodeMessage? = { messageType: UByte -> NodeMessage.fromUByte(messageType) }
     )
 
     companion object {
@@ -656,10 +657,6 @@ class DeviceManager(
 
     fun sendNodeRequest(deviceId: String, request: GenericNodeRequest, completionHandler: (Boolean, Any?) -> Unit) {
         NetworkManager.instance.sendNodeRequest(deviceId, request, completionHandler)
-    }
-
-    fun setMessageTypeCallback(callback: (UByte) -> NodeMessage?) {
-        NetworkManager.instance.setMessageTypeCallback(callback)
     }
 
     private fun probeDataToCsv(probe: Probe?, probeData: List<LoggedProbeDataPoint>?, appNameAndVersion: String): Pair<String, String> {
