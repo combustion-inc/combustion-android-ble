@@ -27,12 +27,10 @@
  */
 package inc.combustion.framework.ble.uart.meatnet
 
-import android.util.Log
-import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.getCRC16CCITT
 import inc.combustion.framework.ble.getLittleEndianUInt32At
 import inc.combustion.framework.ble.getLittleEndianUShortAt
-import inc.combustion.framework.service.DebugSettings
+import inc.combustion.framework.service.DeviceManager
 
 /**
  * Baseclass for UART response messages
@@ -41,20 +39,21 @@ internal open class NodeResponse(
     val success: Boolean,
     val requestId: UInt,
     val responseId: UInt,
-    val payloadLength: UByte,
-    messageId: NodeMessageType
+    payloadLength: UByte,
+    messageId: NodeMessage,
 ) : NodeUARTMessage(
-    messageId
+    messageId,
+    payloadLength
 ) {
     override fun toString(): String {
         return "RESP $messageId (REQID: ${String.format("%08x",requestId.toInt())} RSPID: ${String.format("%08x",responseId.toInt())})"
     }
 
     companion object {
-        const val HEADER_SIZE : UByte = 15u
+        const val HEADER_SIZE: UByte = 15u
 
         // NodeResponse messages have the leftmost bit in the 'message type' field set to 1.
-        private const val RESPONSE_TYPE_FLAG : UByte = 0x80u
+        private const val RESPONSE_TYPE_FLAG: UByte = 0x80u
 
         /**
          * Factory method for parsing a request from data.
@@ -62,11 +61,11 @@ internal open class NodeResponse(
          * @param data Raw data to parse
          * @return Instant of request if found or null if one could not be parsed from the data
          */
-        fun responseFromData(data : UByteArray) : NodeResponse? {
+        fun responseFromData(data: UByteArray): NodeUARTMessage? {
             // Sync bytes
             val syncBytes = data.slice(0..1)
             val expectedSync = listOf<UByte>(202u, 254u) // 0xCA, 0xFE
-            if(syncBytes != expectedSync) {
+            if (syncBytes != expectedSync) {
                 return null
             }
 
@@ -74,13 +73,14 @@ internal open class NodeResponse(
             val typeRaw = data[4]
 
             // Verify that this is a Response by checking the response type flag
-            if(typeRaw and RESPONSE_TYPE_FLAG != RESPONSE_TYPE_FLAG) {
+            if (typeRaw and RESPONSE_TYPE_FLAG != RESPONSE_TYPE_FLAG) {
                 // If that 'response type' bit isn't set, this is probably a Request.
                 return null
             }
 
-            val messageType = NodeMessageType.fromUByte((typeRaw and RESPONSE_TYPE_FLAG.inv()))
-                ?: return null
+            val rawMessageType = typeRaw and RESPONSE_TYPE_FLAG.inv()
+            val messageType = NodeMessageType.fromUByte(rawMessageType)
+                ?: rawMessageType
 
             // Request ID
             val requestId = data.getLittleEndianUInt32At(5)
@@ -104,18 +104,18 @@ internal open class NodeResponse(
 
             val calculatedCRC = crcData.getCRC16CCITT()
 
-            if(crc != calculatedCRC) {
+            if (crc != calculatedCRC) {
                 return null
             }
 
             val responseLength = payloadLength.toInt() + HEADER_SIZE.toInt()
 
             // Invalid number of bytes
-            if(data.size < responseLength) {
+            if (data.size < responseLength) {
                 return null
             }
 
-            return when(messageType) {
+            return when (messageType) {
                 NodeMessageType.LOG -> {
                     NodeReadLogsResponse.fromData(
                         data,
@@ -125,6 +125,7 @@ internal open class NodeResponse(
                         payloadLength
                     )
                 }
+
                 NodeMessageType.SESSION_INFO -> {
                     NodeReadSessionInfoResponse.fromData(
                         data,
@@ -134,6 +135,7 @@ internal open class NodeResponse(
                         payloadLength
                     )
                 }
+
                 NodeMessageType.SET_PREDICTION -> {
                     NodeSetPredictionResponse.fromData(
                         data,
@@ -143,6 +145,7 @@ internal open class NodeResponse(
                         payloadLength
                     )
                 }
+
                 NodeMessageType.CONFIGURE_FOOD_SAFE -> {
                     NodeConfigureFoodSafeResponse.fromData(
                         success,
@@ -151,6 +154,7 @@ internal open class NodeResponse(
                         payloadLength,
                     )
                 }
+
                 NodeMessageType.RESET_FOOD_SAFE -> {
                     NodeResetFoodSafeResponse.fromData(
                         success,
@@ -159,6 +163,7 @@ internal open class NodeResponse(
                         payloadLength,
                     )
                 }
+
                 NodeMessageType.PROBE_FIRMWARE_REVISION -> {
                     NodeReadFirmwareRevisionResponse.fromData(
                         data,
@@ -168,6 +173,7 @@ internal open class NodeResponse(
                         payloadLength
                     )
                 }
+
                 NodeMessageType.PROBE_HARDWARE_REVISION -> {
                     NodeReadHardwareRevisionResponse.fromData(
                         data,
@@ -177,6 +183,7 @@ internal open class NodeResponse(
                         payloadLength
                     )
                 }
+
                 NodeMessageType.PROBE_MODEL_INFORMATION -> {
                     NodeReadModelInfoResponse.fromData(
                         data,
@@ -186,7 +193,30 @@ internal open class NodeResponse(
                         payloadLength
                     )
                 }
-                else -> null
+
+                NodeMessageType.GET_FEATURE_FLAGS -> {
+                    NodeReadFeatureFlagsResponse.fromData(
+                        data,
+                        success,
+                        requestId,
+                        responseId,
+                        payloadLength
+                    )
+                }
+
+                else -> {
+                    // The message didn't match any of the defined types, so check if it matches a custom type
+                    return DeviceManager.instance.settings.messageTypeCallback(rawMessageType)?.let {
+                        return GenericNodeResponse.fromData(
+                            data,
+                            success,
+                            requestId,
+                            responseId,
+                            payloadLength,
+                            it
+                        )
+                    }
+                }
             }
         }
     }

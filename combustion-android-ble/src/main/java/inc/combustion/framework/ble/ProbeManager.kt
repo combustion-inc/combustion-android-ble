@@ -147,6 +147,13 @@ internal class ProbeManager(
             return _probe.value.serialNumber
         }
 
+    // provides a set of all the nodes that are currently connected
+    private val _nodeConnectionFlow = MutableSharedFlow<Set<String>>(
+        replay = 0, extraBufferCapacity = 10, BufferOverflow.DROP_OLDEST
+    )
+
+    val nodeConnectionFlow = _nodeConnectionFlow.asSharedFlow()
+
     // current upload state for this probe, determined by LogManager
     var uploadState: ProbeUploadState
         get() {
@@ -584,6 +591,7 @@ internal class ProbeManager(
         }
         base.observeConnectionState { state ->
             _probe.update { handleConnectionState(base, state, it) }
+            _nodeConnectionFlow.emit(arbitrator.connectedNodeLinks.map { it.id }.toSet())
         }
         base.observeOutOfRange(OUT_OF_RANGE_TIMEOUT) {
             _probe.update { handleOutOfRange(it) }

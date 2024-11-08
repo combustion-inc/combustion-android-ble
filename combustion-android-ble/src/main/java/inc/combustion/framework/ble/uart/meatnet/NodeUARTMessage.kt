@@ -36,8 +36,9 @@ import inc.combustion.framework.service.DebugSettings
  * is useful for decoding multiple UART messages from a single notification that can
  * be both NodeRequest and NodeResponse types.
  */
-internal open class NodeUARTMessage(
-    val messageId: NodeMessageType
+public open class NodeUARTMessage(
+    val messageId: NodeMessage,
+    val payloadLength: UByte
 ) {
     companion object {
         /**
@@ -68,7 +69,6 @@ internal open class NodeUARTMessage(
                     }
                 }
             }
-
             return messages
         }
     }
