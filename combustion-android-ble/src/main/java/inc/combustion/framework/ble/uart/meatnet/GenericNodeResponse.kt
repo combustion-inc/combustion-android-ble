@@ -1,6 +1,6 @@
 package inc.combustion.framework.ble.uart.meatnet
 
-class GenericNodeResponse(
+open class GenericNodeResponse(
         val payload: UByteArray,
         val success: Boolean,
         val requestId: UInt,
