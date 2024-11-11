@@ -75,10 +75,14 @@ internal open class UartBleDevice(
 
             job?.cancel()
             waiting.set(false)
-            completionCallback?.let {
+            // Make a local copy of the completion callback and then cleanup the state
+            // This allows for sending additional messages from within the callback
+            val localCallback = completionCallback
+            cleanup()
+
+            localCallback?.let {
                 it(result, data)
             }
-            cleanup()
         }
 
         fun wait(owner: LifecycleOwner, duration: Long, reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)?) {
