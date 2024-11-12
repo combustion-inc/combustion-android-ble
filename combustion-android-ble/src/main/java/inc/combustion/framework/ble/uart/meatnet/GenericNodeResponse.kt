@@ -19,6 +19,8 @@ open class GenericNodeResponse(
     }
 
     companion object {
+        const val HEADER_SIZE : UByte = NodeResponse.HEADER_SIZE
+
         fun fromData(data: UByteArray,
                      success: Boolean,
                      requestId: UInt,

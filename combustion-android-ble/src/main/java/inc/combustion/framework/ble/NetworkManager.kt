@@ -79,9 +79,9 @@ internal class NetworkManager(
         private val connectedNodes : MutableMap<String, NodeBleDevice> = mutableMapOf()
         private val ignoredNodes : MutableSet<String> = mutableSetOf()
 
-        fun sendNodeRequest(deviceId: String, request: GenericNodeRequest, completionHandler: (Boolean, Any?) -> Unit) {
+        fun sendNodeRequest(deviceId: String, request: GenericNodeRequest, completionHandler: (Boolean, GenericNodeResponse?) -> Unit) {
             connectedNodes[deviceId]?.sendNodeRequest(request) { status, data ->
-                completionHandler(status, data)
+                completionHandler(status, data as? GenericNodeResponse)
             } ?: run {
                 completionHandler(false, null)
             }
@@ -454,7 +454,7 @@ internal class NetworkManager(
         }
     }
 
-    internal fun sendNodeRequest(deviceId: String, request: GenericNodeRequest, completionHandler: (Boolean, Any?) -> Unit) {
+    internal fun sendNodeRequest(deviceId: String, request: GenericNodeRequest, completionHandler: (Boolean, GenericNodeResponse?) -> Unit) {
         nodeDeviceManager.sendNodeRequest(deviceId, request, completionHandler)
     }
 
