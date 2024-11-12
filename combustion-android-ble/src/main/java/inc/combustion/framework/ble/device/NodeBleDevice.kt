@@ -44,7 +44,7 @@ internal class NodeBleDevice(
 
     fun sendNodeRequest(request: GenericNodeRequest, callback: ((Boolean, Any?) -> Unit)?) {
         val nodeRequest = request.toNodeRequest()
-        genericRequestHandler.wait(uart.owner, NODE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
+        genericRequestHandler.wait(uart.owner, NODE_MESSAGE_RESPONSE_TIMEOUT_MS, nodeRequest.requestId, callback)
         sendUartRequest(nodeRequest)
     }
 
@@ -95,10 +95,10 @@ internal class NodeBleDevice(
             responses.forEach { response ->
                 when (response) {
                     is NodeReadFeatureFlagsResponse -> {
-                        readFeatureFlagsRequest.handled(response.success, response)
+                        readFeatureFlagsRequest.handled(response.success, response, response.requestId)
                     }
                     is GenericNodeResponse -> {
-                        genericRequestHandler.handled(response.success, response)
+                        genericRequestHandler.handled(response.success, response, response.requestId)
                     } else -> {
                         // drop the message
                         Log.w(LOG_TAG, "NodeBLEDevice: Unhandled response: $response")
