@@ -40,9 +40,11 @@ import inc.combustion.framework.ble.uart.MessageType
  * Baseclass for UART request messages
  */
 internal open class NodeRequest(
-    messageId: NodeMessageType
+    messageId: NodeMessage,
+    payloadLength: UByte
 ) : NodeUARTMessage(
-    messageId
+    messageId,
+    payloadLength
 ) {
     override fun toString(): String {
         return "REQ  $messageId (REQID: ${String.format("%08x", requestId.toInt())})"
@@ -128,9 +130,6 @@ internal open class NodeRequest(
     // Random ID for this request, for tracking request-response pairs
     var requestId: UInt = 0u
 
-    // Length of payload
-    var payloadLength: UByte = 0u
-
     /**
      * Constructor for generating a new outgoing Request object.
      *
@@ -140,10 +139,11 @@ internal open class NodeRequest(
      */
     constructor(
         outgoingPayload: UByteArray,
-        messageType: NodeMessageType,
+        messageType: NodeMessage,
         requestId: UInt? = null
     ) : this(
-        messageType
+        messageType,
+        outgoingPayload.size.toUByte()
     ) {
         // Sync Bytes { 0xCA, 0xFE }
         data += 0xCAu
@@ -173,8 +173,6 @@ internal open class NodeRequest(
 
         // Message Type, payload length, payload
         this.data += crcData
-
-        this.payloadLength = outgoingPayload.size.toUByte()
     }
 
     /**
@@ -186,12 +184,12 @@ internal open class NodeRequest(
     constructor(
         requestId: UInt,
         payloadLength: UByte,
-        messageId: NodeMessageType
+        messageId: NodeMessage
     ) : this(
-        messageId
+        messageId,
+        payloadLength
     ) {
         this.requestId = requestId
-        this.payloadLength = payloadLength
     }
 
     /**
