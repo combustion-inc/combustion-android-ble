@@ -35,6 +35,7 @@ import inc.combustion.framework.ble.getLittleEndianUInt32At
 import inc.combustion.framework.ble.putLittleEndianUInt32At
 import inc.combustion.framework.ble.putLittleEndianUShortAt
 import inc.combustion.framework.ble.uart.MessageType
+import inc.combustion.framework.service.DeviceManager
 
 /**
  * Baseclass for UART request messages
@@ -59,7 +60,7 @@ internal open class NodeRequest(
          * @param data Raw data to parse
          * @return Instant of request if found or null if one could not be parsed from the data
          */
-        fun requestFromData(data : UByteArray) : NodeRequest? {
+        fun requestFromData(data : UByteArray) : NodeUARTMessage? {
             // Sync bytes
             val syncBytes = data.slice(0..1)
             val expectedSync = listOf<UByte>(202u, 254u) // 0xCA, 0xFE
@@ -68,9 +69,9 @@ internal open class NodeRequest(
             }
 
             // Message type
-            val typeByte = data[4]
+            val rawMessageType = data[4]
 
-            val messageType = NodeMessageType.fromUByte(typeByte) ?: return null
+            val messageType = NodeMessageType.fromUByte(rawMessageType)// ?: null
 
             // Request ID
             val requestId = data.getLittleEndianUInt32At(5)
@@ -116,7 +117,16 @@ internal open class NodeRequest(
                         payloadLength
                     )
                 }
-                else -> null
+                else -> {
+                    DeviceManager.instance.settings.messageTypeCallback(rawMessageType)?.let {
+                        return GenericNodeRequest.fromRaw(
+                            data,
+                            requestId,
+                            payloadLength,
+                            it
+                       )
+                    }
+                }
             }
         }
 

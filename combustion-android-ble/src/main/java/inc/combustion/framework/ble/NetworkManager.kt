@@ -71,6 +71,7 @@ internal class NetworkManager(
         var mutableNetworkState: MutableStateFlow<NetworkState>,
         var mutableFirmwareUpdateState: MutableStateFlow<FirmwareState>,
         var mutableDeviceProximityFlow: MutableSharedFlow<DeviceDiscoveredEvent>,
+        var mutableGenericNodeRequestFlow: MutableSharedFlow<GenericNodeRequest>,
     )
 
     inner private class NodeDeviceManager(
@@ -163,6 +164,9 @@ internal class NetworkManager(
             mutableDeviceProximityFlow = MutableSharedFlow(
                 FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.SUSPEND
             ),
+            mutableGenericNodeRequestFlow = MutableSharedFlow(
+                FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.SUSPEND
+            ),
         )
 
         fun initialize(
@@ -211,6 +215,11 @@ internal class NetworkManager(
         val deviceProximityFlow: SharedFlow<DeviceDiscoveredEvent>
             get() {
                 return flowHolder.mutableDeviceProximityFlow.asSharedFlow()
+            }
+
+        val genericNodeRequestFlow: SharedFlow<GenericNodeRequest>
+            get() {
+                return flowHolder.mutableGenericNodeRequestFlow.asSharedFlow()
             }
     }
 

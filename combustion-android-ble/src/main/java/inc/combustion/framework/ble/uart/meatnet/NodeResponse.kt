@@ -80,7 +80,7 @@ internal open class NodeResponse(
 
             val rawMessageType = typeRaw and RESPONSE_TYPE_FLAG.inv()
             val messageType = NodeMessageType.fromUByte(rawMessageType)
-                ?: rawMessageType
+                ?: null
 
             // Request ID
             val requestId = data.getLittleEndianUInt32At(5)
