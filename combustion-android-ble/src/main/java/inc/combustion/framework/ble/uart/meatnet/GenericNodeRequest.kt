@@ -3,11 +3,13 @@ package inc.combustion.framework.ble.uart.meatnet
 // wrapper around a NodeRequest to encrypt the data
 open class GenericNodeRequest(
     outgoingPayload: UByteArray,
-    messageId: NodeMessage)
-    : NodeUARTMessage(messageId, outgoingPayload.size.toUByte())
-{
+    messageId: NodeMessage,
+) : NodeUARTMessage(
+    messageId,
+    outgoingPayload.size.toUByte()
+) {
     override fun toString(): String {
-        return nodeRequest.toString()
+        return "${nodeRequest} SerialNumber: $serialNumber"
     }
 
     private val nodeRequest :  NodeRequest = NodeRequest(outgoingPayload, messageId)
@@ -15,6 +17,9 @@ open class GenericNodeRequest(
     internal fun toNodeRequest() : NodeRequest {
         return nodeRequest
     }
+
+    var serialNumber: String = ""
+
     val sData get() = nodeRequest.sData
 
     companion object {
