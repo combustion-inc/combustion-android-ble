@@ -103,7 +103,7 @@ internal class NodeBleDevice(
                     }
                     is GenericNodeRequest -> {
                         // Publish the request to the flow so it can be handled by the user.
-                        message.serialNumber = deviceInfoSerialNumber?: ""
+                        message.nodeSerialNumber = deviceInfoSerialNumber?: ""
                         NetworkManager.flowHolder.mutableGenericNodeRequestFlow.emit(message)
                     }
                     else -> {
