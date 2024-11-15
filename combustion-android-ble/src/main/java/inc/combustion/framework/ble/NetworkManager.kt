@@ -146,6 +146,7 @@ internal class NetworkManager(
     }
 
     companion object {
+        private const val FLOW_CONFIG_NO_REPLAY = 0
         private const val FLOW_CONFIG_REPLAY = 5
         private const val FLOW_CONFIG_BUFFER = FLOW_CONFIG_REPLAY * 2
 
@@ -165,7 +166,7 @@ internal class NetworkManager(
                 FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.SUSPEND
             ),
             mutableGenericNodeRequestFlow = MutableSharedFlow(
-                FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.SUSPEND
+                FLOW_CONFIG_NO_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.DROP_OLDEST
             ),
         )
 

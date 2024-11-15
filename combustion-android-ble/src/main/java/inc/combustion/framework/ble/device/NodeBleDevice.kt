@@ -78,15 +78,15 @@ internal class NodeBleDevice(
         }
     }
 
-    private fun observeUartMessages(callback: (suspend (messages: List<NodeUARTMessage>) -> Unit)? = null) {
+    private fun observeUartMessages(callback: (suspend (messages: List<NodeUARTMessage>) -> Unit)) {
         uart.jobManager.addJob(
             key = uart.serialNumber,
             job = uart.owner.lifecycleScope.launch(
                 CoroutineName("UartResponseObserver"),
             ) {
-                uart.observeUartCharacteristic {data ->
+                uart.observeUartCharacteristic { data ->
                     val messages = NodeUARTMessage.fromData(data.toUByteArray())
-                    callback?.invoke(messages)
+                    callback.invoke(messages)
                 }
             }
         )

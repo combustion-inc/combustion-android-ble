@@ -71,7 +71,7 @@ internal open class NodeRequest(
             // Message type
             val rawMessageType = data[4]
 
-            val messageType = NodeMessageType.fromUByte(rawMessageType)// ?: null
+            val messageType = NodeMessageType.fromUByte(rawMessageType)
 
             // Request ID
             val requestId = data.getLittleEndianUInt32At(5)
