@@ -11,22 +11,6 @@ open class GenericNodeRequest(
     outgoingPayload.size.toUByte()
 ) {
     /**
-     * Constructor for generating incoming requests without a serial number
-     */
-    constructor(
-        outgoingPayload: UByteArray,
-        requestId: UInt,
-        payloadLength: UByte,
-        messageId: NodeMessage
-    ) : this(
-        outgoingPayload,
-        "",
-        requestId,
-        payloadLength,
-        messageId
-    )
-
-    /**
      * Constructor for generating outgoing requests
      */
     constructor(
@@ -54,15 +38,27 @@ open class GenericNodeRequest(
 
     companion object {
         const val HEADER_SIZE = NodeRequest.HEADER_SIZE
+        private const val NODE_SERIAL_NUMBER_LENGTH = 10
 
         fun fromRaw(
             data: UByteArray,
             requestId: UInt,
             payloadLength: UByte,
             messageId: NodeMessage
-            ): GenericNodeRequest {
+            ): GenericNodeRequest? {
+
+            if (payloadLength < NODE_SERIAL_NUMBER_LENGTH.toUByte())
+                return null
+
+            val nodeSerialNumber = String(
+                data.copyOfRange(
+                    HEADER_SIZE.toInt(),
+                    HEADER_SIZE.toInt() + NODE_SERIAL_NUMBER_LENGTH
+                ).toByteArray(), Charsets.UTF_8
+            )
             return GenericNodeRequest(
                 data,
+                nodeSerialNumber,
                 requestId,
                 payloadLength,
                 messageId
