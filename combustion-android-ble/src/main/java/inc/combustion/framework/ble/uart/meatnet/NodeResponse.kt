@@ -27,6 +27,8 @@
  */
 package inc.combustion.framework.ble.uart.meatnet
 
+import android.util.Log
+import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.getCRC16CCITT
 import inc.combustion.framework.ble.getLittleEndianUInt32At
 import inc.combustion.framework.ble.getLittleEndianUShortAt
@@ -99,6 +101,11 @@ internal open class NodeResponse(
             val crcDataLength = 11 + payloadLength.toInt()
 
             var crcData = data.drop(4).toUByteArray()
+            // prevent index out of bounds or negative value
+            if (crcData.size < crcDataLength) {
+                Log.w(LOG_TAG, "Invalid crc data length")
+                return null
+            }
             crcData = crcData.dropLast(crcData.size - crcDataLength).toUByteArray()
 
             val calculatedCRC = crcData.getCRC16CCITT()
