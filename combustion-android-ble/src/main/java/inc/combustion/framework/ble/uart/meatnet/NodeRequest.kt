@@ -85,6 +85,11 @@ internal open class NodeRequest(
             val crcDataLength = 6 + payloadLength.toInt()
 
             var crcData = data.drop(4).toUByteArray()
+            // Prevent index out of bounds or negative value
+            if (crcData.size < crcDataLength) {
+                Log.w(LOG_TAG, "Invalid crc data length")
+                return null
+            }
             crcData = crcData.dropLast(crcData.size - crcDataLength).toUByteArray()
 
             val calculatedCRC = crcData.getCRC16CCITT()
