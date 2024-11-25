@@ -1,10 +1,31 @@
 package inc.combustion.framework.ble.uart.meatnet
 
-// wrapper around a NodeRequest to encrypt the data
-open class GenericNodeRequest (outgoingPayload: UByteArray, messageId: NodeMessage)
-{
+open class GenericNodeRequest(
+    val outgoingPayload: UByteArray,
+    var nodeSerialNumber: String,
+    val requestId: UInt?,
+    payloadLength: UByte,
+    messageId: NodeMessage,
+) : NodeUARTMessage(
+    messageId,
+    outgoingPayload.size.toUByte()
+) {
+    /**
+     * Constructor for generating outgoing requests
+     */
+    constructor(
+        outgoingPayload: UByteArray,
+        messageId: NodeMessage
+    ) : this(
+        outgoingPayload,
+        "",
+        null,
+        outgoingPayload.size.toUByte(),
+        messageId
+    )
+
     override fun toString(): String {
-        return nodeRequest.toString()
+        return "${nodeRequest} SerialNumber: $nodeSerialNumber"
     }
 
     private val nodeRequest :  NodeRequest = NodeRequest(outgoingPayload, messageId)
@@ -12,5 +33,36 @@ open class GenericNodeRequest (outgoingPayload: UByteArray, messageId: NodeMessa
     internal fun toNodeRequest() : NodeRequest {
         return nodeRequest
     }
+
     val sData get() = nodeRequest.sData
+
+    companion object {
+        const val HEADER_SIZE = NodeRequest.HEADER_SIZE
+        private const val NODE_SERIAL_NUMBER_LENGTH = 10
+
+        fun fromRaw(
+            data: UByteArray,
+            requestId: UInt,
+            payloadLength: UByte,
+            messageId: NodeMessage
+            ): GenericNodeRequest? {
+
+            if (payloadLength < NODE_SERIAL_NUMBER_LENGTH.toUByte())
+                return null
+
+            val nodeSerialNumber = String(
+                data.copyOfRange(
+                    HEADER_SIZE.toInt(),
+                    HEADER_SIZE.toInt() + NODE_SERIAL_NUMBER_LENGTH
+                ).toByteArray(), Charsets.UTF_8
+            )
+            return GenericNodeRequest(
+                data,
+                nodeSerialNumber,
+                requestId,
+                payloadLength,
+                messageId
+            )
+        }
+    }
 }

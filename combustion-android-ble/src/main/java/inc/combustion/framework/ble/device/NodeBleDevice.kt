@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
+import inc.combustion.framework.ble.NetworkManager
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.uart.meatnet.*
 import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsRequest
@@ -30,7 +31,7 @@ internal class NodeBleDevice(
     }
 
     init {
-        processUartResponses()
+        processUartMessages()
     }
 
     val rssi: Int get() { return uart.rssi }
@@ -77,31 +78,36 @@ internal class NodeBleDevice(
         }
     }
 
-    private fun observeUartResponses(callback: (suspend (responses: List<NodeUARTMessage>) -> Unit)? = null) {
+    private fun observeUartMessages(callback: (suspend (messages: List<NodeUARTMessage>) -> Unit)) {
         uart.jobManager.addJob(
             key = uart.serialNumber,
             job = uart.owner.lifecycleScope.launch(
                 CoroutineName("UartResponseObserver"),
             ) {
-                uart.observeUartCharacteristic {data ->
-                    val responses = NodeUARTMessage.fromData(data.toUByteArray())
-                    callback?.invoke(responses)
+                uart.observeUartCharacteristic { data ->
+                    val messages = NodeUARTMessage.fromData(data.toUByteArray())
+                    callback.invoke(messages)
                 }
             }
         )
     }
-    private fun processUartResponses() {
-        observeUartResponses { responses ->
-            responses.forEach { response ->
-                when (response) {
+    private fun processUartMessages() {
+        observeUartMessages { messages ->
+            messages.forEach { message ->
+                when (message) {
                     is NodeReadFeatureFlagsResponse -> {
-                        readFeatureFlagsRequest.handled(response.success, response, response.requestId)
+                        readFeatureFlagsRequest.handled(message.success, message, message.requestId)
                     }
                     is GenericNodeResponse -> {
-                        genericRequestHandler.handled(response.success, response, response.requestId)
-                    } else -> {
+                        genericRequestHandler.handled(message.success, message, message.requestId)
+                    }
+                    is GenericNodeRequest -> {
+                        // Publish the request to the flow so it can be handled by the user.
+                        NetworkManager.flowHolder.mutableGenericNodeRequestFlow.emit(message)
+                    }
+                    else -> {
                         // drop the message
-                        Log.w(LOG_TAG, "NodeBLEDevice: Unhandled response: $response")
+                        //Log.w(LOG_TAG, "NodeBLEDevice: Unhandled response: $response")
                     }
                 }
             }

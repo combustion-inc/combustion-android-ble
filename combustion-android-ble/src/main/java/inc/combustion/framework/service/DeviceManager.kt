@@ -263,6 +263,14 @@ class DeviceManager(
         }
 
     /**
+     * Kotlin flow for collecting GenericNodeRequest messages that are sent from nodes.
+     */
+    val genericNodeRequestFlow : SharedFlow<GenericNodeRequest>
+        get() {
+            return NetworkManager.genericNodeRequestFlow
+        }
+
+    /**
      * Returns a list of device serial numbers, consisting of all devices that have been
      * discovered.
      */
@@ -271,6 +279,10 @@ class DeviceManager(
             return NetworkManager.instance.discoveredProbes
         }
 
+    /**
+     * Returns a list of node serial numbers, consisting of all nodes that have been discovered.
+     * This will exclude any probe devices.
+     */
     val discoveredNodes: List<String>
         get() {
             return NetworkManager.instance.discoveredNodes
