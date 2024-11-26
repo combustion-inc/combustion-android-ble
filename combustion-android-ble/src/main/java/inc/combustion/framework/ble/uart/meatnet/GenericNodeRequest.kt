@@ -56,8 +56,12 @@ open class GenericNodeRequest(
                     HEADER_SIZE.toInt() + NODE_SERIAL_NUMBER_LENGTH
                 ).toByteArray(), Charsets.UTF_8
             )
+
+            // remove the header from the data since we want to just pass along the payload
+            val payloadData = data.copyOfRange(HEADER_SIZE.toInt(), data.size)
+
             return GenericNodeRequest(
-                data,
+                payloadData,
                 nodeSerialNumber,
                 requestId,
                 payloadLength,
