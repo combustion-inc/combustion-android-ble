@@ -8,7 +8,7 @@ open class GenericNodeRequest(
     messageId: NodeMessage,
 ) : NodeUARTMessage(
     messageId,
-    outgoingPayload.size.toUByte()
+    payloadLength
 ) {
     /**
      * Constructor for generating outgoing requests
