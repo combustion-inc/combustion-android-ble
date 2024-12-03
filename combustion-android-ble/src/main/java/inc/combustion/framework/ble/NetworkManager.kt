@@ -137,11 +137,7 @@ internal class NetworkManager(
         }
 
         private fun removeDisconnectedNodes() {
-           connectedNodes.forEach() { (serialNumber, node) ->
-               if(node.isDisconnected) {
-                   connectedNodes.remove(serialNumber)
-               }
-           }
+            connectedNodes.entries.removeIf() { (_, node) -> node.isDisconnected }
         }
     }
 
