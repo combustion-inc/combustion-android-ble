@@ -27,7 +27,7 @@ internal class NodeBleDevice(
     protected val readFeatureFlagsRequest = UartBleDevice.MessageCompletionHandler()
 
     companion object {
-        const val NODE_MESSAGE_RESPONSE_TIMEOUT_MS = 5000L
+        const val NODE_MESSAGE_RESPONSE_TIMEOUT_MS = 30000L
     }
 
     init {
@@ -43,12 +43,14 @@ internal class NodeBleDevice(
 
     val deviceInfoSerialNumber: String? get() { return uart.serialNumber }
 
+    @Synchronized
     fun sendNodeRequest(request: GenericNodeRequest, callback: ((Boolean, Any?) -> Unit)?) {
         val nodeRequest = request.toNodeRequest()
         genericRequestHandler.wait(uart.owner, NODE_MESSAGE_RESPONSE_TIMEOUT_MS, nodeRequest.requestId, callback)
         sendUartRequest(nodeRequest)
     }
 
+    @Synchronized
     fun sendFeatureFlagRequest(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
         val nodeSerialNumber = deviceInfoSerialNumber?: return
         readFeatureFlagsRequest.wait(uart.owner, NODE_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
