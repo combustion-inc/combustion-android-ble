@@ -68,7 +68,6 @@ internal class NodeBleDevice(
             return uart.serialNumber
         }
 
-    @Synchronized
     fun sendNodeRequest(request: GenericNodeRequest, callback: ((Boolean, Any?) -> Unit)?) {
         val nodeRequest = request.toNodeRequest()
         genericRequestHandler.wait(
@@ -80,7 +79,6 @@ internal class NodeBleDevice(
         sendUartRequest(nodeRequest)
     }
 
-    @Synchronized
     fun sendFeatureFlagRequest(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
         val nodeSerialNumber = deviceInfoSerialNumber ?: return
         readFeatureFlagsRequest.wait(uart.owner, NODE_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
