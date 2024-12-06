@@ -99,11 +99,16 @@ internal class NodeBleDevice(
                         readFeatureFlagsRequest.handled(message.success, message, message.requestId)
                     }
                     is GenericNodeResponse -> {
-                        genericRequestHandler.handled(message.success, message, message.requestId)
+                        val handled = genericRequestHandler.handled(message.success, message, message.requestId)
+                        // If the response wasn't handled then pass it up to the NetworkManager, allows us to handle asynchronous response messages
+                        if (!handled) {
+                            Log.w(LOG_TAG, "NodeBLEDevice: GenericNodeResponse not handled; Passing on to the NetworkManager GenericNodeMessageFlow: $message")
+                            NetworkManager.flowHolder.mutableGenericNodeMessageFlow.emit(message)
+                        }
                     }
                     is GenericNodeRequest -> {
                         // Publish the request to the flow so it can be handled by the user.
-                        NetworkManager.flowHolder.mutableGenericNodeRequestFlow.emit(message)
+                        NetworkManager.flowHolder.mutableGenericNodeMessageFlow.emit(message)
                     }
                     else -> {
                         // drop the message

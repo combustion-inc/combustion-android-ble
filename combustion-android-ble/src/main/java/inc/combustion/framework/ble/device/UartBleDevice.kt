@@ -63,13 +63,16 @@ internal open class UartBleDevice(
                 return waiting.get()
             }
 
-        fun handled(result: Boolean, data: Any?, reqId: UInt? = null) {
+        // Returns true if the message was handled, false otherwise
+        // If the message was handled, the completion callback is called
+        // with the result and data
+        fun handled(result: Boolean, data: Any?, reqId: UInt? = null): Boolean {
             // if we are waiting for a specific request id
             requestId?.let {
                 // and we weren't called with the request id we are looking for
                 if(it != reqId) {
                     // then return
-                    return
+                    return false
                 }
             }
 
@@ -82,7 +85,10 @@ internal open class UartBleDevice(
 
             localCallback?.let {
                 it(result, data)
+                return true
             }
+
+            return false
         }
 
         fun wait(owner: LifecycleOwner, duration: Long, reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)?) {
