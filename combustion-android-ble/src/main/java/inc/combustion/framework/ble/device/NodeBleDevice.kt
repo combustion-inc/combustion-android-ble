@@ -7,8 +7,12 @@ import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.NetworkManager
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
-import inc.combustion.framework.ble.uart.meatnet.*
+import inc.combustion.framework.ble.uart.meatnet.GenericNodeRequest
+import inc.combustion.framework.ble.uart.meatnet.GenericNodeResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.service.DebugSettings
 import inc.combustion.framework.service.DeviceConnectionState
 import kotlinx.coroutines.CoroutineName
@@ -23,34 +27,60 @@ internal class NodeBleDevice(
     private var uart: UartBleDevice = UartBleDevice(mac, nodeAdvertisingData, owner, adapter)
 ) {
 
-    protected val genericRequestHandler = UartBleDevice.MessageCompletionHandler()
-    protected val readFeatureFlagsRequest = UartBleDevice.MessageCompletionHandler()
+    private val genericRequestHandler = UartBleDevice.MessageCompletionHandler()
+    private val readFeatureFlagsRequest = UartBleDevice.MessageCompletionHandler()
 
     companion object {
-        const val NODE_MESSAGE_RESPONSE_TIMEOUT_MS = 5000L
+        const val NODE_MESSAGE_RESPONSE_TIMEOUT_MS = 30000L
     }
 
     init {
         processUartMessages()
     }
 
-    val rssi: Int get() { return uart.rssi }
-    val connectionState: DeviceConnectionState get() { return uart.connectionState }
-    val isConnected: Boolean get() { return uart.isConnected.get() }
-    val isDisconnected: Boolean get() { return uart.isDisconnected.get() }
-    val isInRange: Boolean get() { return uart.isInRange.get() }
-    val isConnectable: Boolean get() { return uart.isConnectable.get() }
+    val rssi: Int
+        get() {
+            return uart.rssi
+        }
+    val connectionState: DeviceConnectionState
+        get() {
+            return uart.connectionState
+        }
+    val isConnected: Boolean
+        get() {
+            return uart.isConnected.get()
+        }
+    val isDisconnected: Boolean
+        get() {
+            return uart.isDisconnected.get()
+        }
+    val isInRange: Boolean
+        get() {
+            return uart.isInRange.get()
+        }
+    val isConnectable: Boolean
+        get() {
+            return uart.isConnectable.get()
+        }
 
-    val deviceInfoSerialNumber: String? get() { return uart.serialNumber }
+    val deviceInfoSerialNumber: String?
+        get() {
+            return uart.serialNumber
+        }
 
     fun sendNodeRequest(request: GenericNodeRequest, callback: ((Boolean, Any?) -> Unit)?) {
         val nodeRequest = request.toNodeRequest()
-        genericRequestHandler.wait(uart.owner, NODE_MESSAGE_RESPONSE_TIMEOUT_MS, nodeRequest.requestId, callback)
+        genericRequestHandler.wait(
+            uart.owner,
+            NODE_MESSAGE_RESPONSE_TIMEOUT_MS,
+            nodeRequest.requestId,
+            callback
+        )
         sendUartRequest(nodeRequest)
     }
 
     fun sendFeatureFlagRequest(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
-        val nodeSerialNumber = deviceInfoSerialNumber?: return
+        val nodeSerialNumber = deviceInfoSerialNumber ?: return
         readFeatureFlagsRequest.wait(uart.owner, NODE_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
         sendUartRequest(NodeReadFeatureFlagsRequest(nodeSerialNumber, reqId))
     }
@@ -91,6 +121,7 @@ internal class NodeBleDevice(
             }
         )
     }
+
     private fun processUartMessages() {
         observeUartMessages { messages ->
             messages.forEach { message ->
@@ -98,13 +129,16 @@ internal class NodeBleDevice(
                     is NodeReadFeatureFlagsResponse -> {
                         readFeatureFlagsRequest.handled(message.success, message, message.requestId)
                     }
+
                     is GenericNodeResponse -> {
                         genericRequestHandler.handled(message.success, message, message.requestId)
                     }
+
                     is GenericNodeRequest -> {
                         // Publish the request to the flow so it can be handled by the user.
                         NetworkManager.flowHolder.mutableGenericNodeRequestFlow.emit(message)
                     }
+
                     else -> {
                         // drop the message
                         //Log.w(LOG_TAG, "NodeBLEDevice: Unhandled response: $response")

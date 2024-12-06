@@ -49,6 +49,8 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Semaphore
 import java.util.concurrent.atomic.AtomicBoolean
 
 internal class NetworkManager(
@@ -74,15 +76,33 @@ internal class NetworkManager(
         var mutableGenericNodeRequestFlow: MutableSharedFlow<GenericNodeRequest>,
     )
 
-    inner private class NodeDeviceManager(
+    private inner class NodeDeviceManager(
         val owner: LifecycleOwner
     ) {
         private val connectedNodes : MutableMap<String, NodeBleDevice> = mutableMapOf()
         private val ignoredNodes : MutableSet<String> = mutableSetOf()
+        private val nodeRequestMutexMap: MutableMap<String, Semaphore> = ConcurrentHashMap()
 
-        fun sendNodeRequest(deviceId: String, request: GenericNodeRequest, completionHandler: (Boolean, GenericNodeResponse?) -> Unit) {
-            connectedNodes[deviceId]?.sendNodeRequest(request) { status, data ->
-                completionHandler(status, data as? GenericNodeResponse)
+        private fun getNodeRequestMutex(deviceId: String): Semaphore =
+            // Note, using Java's Semaphore instead ok Kotlin's coroutine friendly version since methods do not use suspend modifier
+            nodeRequestMutexMap[deviceId] ?: (Semaphore(1, true).also {
+                nodeRequestMutexMap[deviceId] = it
+            })
+
+        fun sendNodeRequest(
+            deviceId: String,
+            request: GenericNodeRequest,
+            completionHandler: (Boolean, GenericNodeResponse?) -> Unit,
+        ) {
+            connectedNodes[deviceId]?.let {
+                val mutex = getNodeRequestMutex(deviceId)
+                // TODO DROID-531 : initial sendNodeRequest threadsafety solution - should be replaced with a better solution,
+                //  e.g. one that is coroutine-suspend friendly (instead of thread-block)
+                mutex.acquire()
+                it.sendNodeRequest(request) { status, data ->
+                    mutex.release()
+                    completionHandler(status, data as? GenericNodeResponse)
+                }
             } ?: run {
                 completionHandler(false, null)
             }
