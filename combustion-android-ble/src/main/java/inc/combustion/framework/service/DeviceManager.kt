@@ -44,6 +44,7 @@ import inc.combustion.framework.ble.dfu.DfuManager
 import inc.combustion.framework.ble.uart.meatnet.GenericNodeRequest
 import inc.combustion.framework.ble.uart.meatnet.GenericNodeResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeMessage
+import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.service.dfu.DfuSystemState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
@@ -265,9 +266,9 @@ class DeviceManager(
     /**
      * Kotlin flow for collecting GenericNodeRequest messages that are sent from nodes.
      */
-    val genericNodeRequestFlow : SharedFlow<GenericNodeRequest>
+    val genericNodeRequestFlow : SharedFlow<NodeUARTMessage>
         get() {
-            return NetworkManager.genericNodeRequestFlow
+            return NetworkManager.genericNodeMessageFlow
         }
 
     /**
