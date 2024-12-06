@@ -84,6 +84,7 @@ internal class NetworkManager(
         private val nodeRequestMutexMap: MutableMap<String, Semaphore> = ConcurrentHashMap()
 
         private fun getNodeRequestMutex(deviceId: String): Semaphore =
+            // Note, using Java's Semaphore instead ok Kotlin's coroutine friendly version since methods do not use suspend modifier
             nodeRequestMutexMap[deviceId] ?: (Semaphore(1, true).also {
                 nodeRequestMutexMap[deviceId] = it
             })
@@ -95,6 +96,8 @@ internal class NetworkManager(
         ) {
             connectedNodes[deviceId]?.let {
                 val mutex = getNodeRequestMutex(deviceId)
+                // TODO : initial sendNodeRequest threadsafety solution - should be replaced with a better solution,
+                //  e.g. one that is coroutine-suspend friendly (instead of thread-block)
                 mutex.acquire()
                 it.sendNodeRequest(request) { status, data ->
                     mutex.release()
