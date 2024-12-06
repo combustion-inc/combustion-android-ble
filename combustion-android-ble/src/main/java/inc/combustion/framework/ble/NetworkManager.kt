@@ -96,7 +96,7 @@ internal class NetworkManager(
         ) {
             connectedNodes[deviceId]?.let {
                 val mutex = getNodeRequestMutex(deviceId)
-                // TODO : initial sendNodeRequest threadsafety solution - should be replaced with a better solution,
+                // TODO DROID-531 : initial sendNodeRequest threadsafety solution - should be replaced with a better solution,
                 //  e.g. one that is coroutine-suspend friendly (instead of thread-block)
                 mutex.acquire()
                 it.sendNodeRequest(request) { status, data ->
