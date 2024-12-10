@@ -44,6 +44,7 @@ import inc.combustion.framework.ble.dfu.DfuManager
 import inc.combustion.framework.ble.uart.meatnet.GenericNodeRequest
 import inc.combustion.framework.ble.uart.meatnet.GenericNodeResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeMessage
+import inc.combustion.framework.ble.uart.meatnet.NodeMessageType
 import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.service.dfu.DfuSystemState
 import kotlinx.coroutines.flow.Flow
@@ -76,7 +77,7 @@ class DeviceManager(
         val autoLogTransfer: Boolean = false,
         val meatNetEnabled: Boolean = false,
         val probeAllowlist: Set<String>? = null,
-        val messageTypeCallback: (UByte)-> NodeMessage? = { messageType: UByte -> NodeMessage.fromUByte(messageType) }
+        val messageTypeCallback: (UByte) -> NodeMessage? = { messageType: UByte -> NodeMessageType.fromUByte(messageType) }
     )
 
     companion object {

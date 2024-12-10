@@ -27,13 +27,10 @@
  */
 package inc.combustion.framework.ble.uart.meatnet
 
-
 interface NodeMessage {
     val value: UByte
-    companion object {
-        fun fromUByte(value: UByte): NodeMessage? = null
-    }
 }
+
 /**
  * Enumerates MeatNet Node message types in Combustion's UART protocol.
  *
