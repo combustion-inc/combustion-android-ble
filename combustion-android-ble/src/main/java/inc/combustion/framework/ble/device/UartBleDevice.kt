@@ -63,22 +63,32 @@ internal open class UartBleDevice(
                 return waiting.get()
             }
 
-        fun handled(result: Boolean, data: Any?, reqId: UInt? = null) {
+        // Returns true if the message reqId matched or the callback was called
+        fun handled(result: Boolean, data: Any?, reqId: UInt? = null): Boolean {
+            var matched = false
             // if we are waiting for a specific request id
             requestId?.let {
                 // and we weren't called with the request id we are looking for
-                if(it != reqId) {
-                    // then return
-                    return
+                if(it == reqId) {
+                    matched = true
+                } else {
+                    return matched
                 }
             }
 
             job?.cancel()
             waiting.set(false)
-            completionCallback?.let {
-                it(result, data)
-            }
+            // Make a local copy of the completion callback and then cleanup the state
+            // This allows for sending additional messages from within the callback
+            val localCallback = completionCallback
             cleanup()
+
+            localCallback?.let {
+                it(result, data)
+                matched = true
+            }
+
+            return matched
         }
 
         fun wait(owner: LifecycleOwner, duration: Long, reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)?) {

@@ -35,14 +35,17 @@ import inc.combustion.framework.ble.getLittleEndianUInt32At
 import inc.combustion.framework.ble.putLittleEndianUInt32At
 import inc.combustion.framework.ble.putLittleEndianUShortAt
 import inc.combustion.framework.ble.uart.MessageType
+import inc.combustion.framework.service.DeviceManager
 
 /**
  * Baseclass for UART request messages
  */
 internal open class NodeRequest(
-    messageId: NodeMessageType
+    messageId: NodeMessage,
+    payloadLength: UByte
 ) : NodeUARTMessage(
-    messageId
+    messageId,
+    payloadLength
 ) {
     override fun toString(): String {
         return "REQ  $messageId (REQID: ${String.format("%08x", requestId.toInt())})"
@@ -57,7 +60,7 @@ internal open class NodeRequest(
          * @param data Raw data to parse
          * @return Instant of request if found or null if one could not be parsed from the data
          */
-        fun requestFromData(data : UByteArray) : NodeRequest? {
+        fun requestFromData(data : UByteArray) : NodeUARTMessage? {
             // Sync bytes
             val syncBytes = data.slice(0..1)
             val expectedSync = listOf<UByte>(202u, 254u) // 0xCA, 0xFE
@@ -66,9 +69,9 @@ internal open class NodeRequest(
             }
 
             // Message type
-            val typeByte = data[4]
+            val rawMessageType = data[4]
 
-            val messageType = NodeMessageType.fromUByte(typeByte) ?: return null
+            val messageType = NodeMessageType.fromUByte(rawMessageType)
 
             // Request ID
             val requestId = data.getLittleEndianUInt32At(5)
@@ -82,6 +85,11 @@ internal open class NodeRequest(
             val crcDataLength = 6 + payloadLength.toInt()
 
             var crcData = data.drop(4).toUByteArray()
+            // Prevent index out of bounds or negative value
+            if (crcData.size < crcDataLength) {
+                Log.w(LOG_TAG, "Invalid crc data length")
+                return null
+            }
             crcData = crcData.dropLast(crcData.size - crcDataLength).toUByteArray()
 
             val calculatedCRC = crcData.getCRC16CCITT()
@@ -114,7 +122,16 @@ internal open class NodeRequest(
                         payloadLength
                     )
                 }
-                else -> null
+                else -> {
+                    DeviceManager.instance.settings.messageTypeCallback(rawMessageType)?.let {
+                        return GenericNodeRequest.fromRaw(
+                            data,
+                            requestId,
+                            payloadLength,
+                            it
+                       )
+                    }
+                }
             }
         }
 
@@ -128,9 +145,6 @@ internal open class NodeRequest(
     // Random ID for this request, for tracking request-response pairs
     var requestId: UInt = 0u
 
-    // Length of payload
-    var payloadLength: UByte = 0u
-
     /**
      * Constructor for generating a new outgoing Request object.
      *
@@ -140,10 +154,11 @@ internal open class NodeRequest(
      */
     constructor(
         outgoingPayload: UByteArray,
-        messageType: NodeMessageType,
+        messageType: NodeMessage,
         requestId: UInt? = null
     ) : this(
-        messageType
+        messageType,
+        outgoingPayload.size.toUByte()
     ) {
         // Sync Bytes { 0xCA, 0xFE }
         data += 0xCAu
@@ -173,8 +188,6 @@ internal open class NodeRequest(
 
         // Message Type, payload length, payload
         this.data += crcData
-
-        this.payloadLength = outgoingPayload.size.toUByte()
     }
 
     /**
@@ -186,12 +199,12 @@ internal open class NodeRequest(
     constructor(
         requestId: UInt,
         payloadLength: UByte,
-        messageId: NodeMessageType
+        messageId: NodeMessage
     ) : this(
-        messageId
+        messageId,
+        payloadLength
     ) {
         this.requestId = requestId
-        this.payloadLength = payloadLength
     }
 
     /**

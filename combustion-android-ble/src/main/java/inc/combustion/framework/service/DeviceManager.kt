@@ -41,6 +41,11 @@ import inc.combustion.framework.ble.NetworkManager
 import inc.combustion.framework.log.LogManager
 import inc.combustion.framework.ble.device.DeviceID
 import inc.combustion.framework.ble.dfu.DfuManager
+import inc.combustion.framework.ble.uart.meatnet.GenericNodeRequest
+import inc.combustion.framework.ble.uart.meatnet.GenericNodeResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeMessage
+import inc.combustion.framework.ble.uart.meatnet.NodeMessageType
+import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.service.dfu.DfuSystemState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
@@ -72,6 +77,7 @@ class DeviceManager(
         val autoLogTransfer: Boolean = false,
         val meatNetEnabled: Boolean = false,
         val probeAllowlist: Set<String>? = null,
+        val messageTypeCallback: (UByte) -> NodeMessage? = { messageType: UByte -> NodeMessageType.fromUByte(messageType) }
     )
 
     companion object {
@@ -259,6 +265,14 @@ class DeviceManager(
         }
 
     /**
+     * Kotlin flow for collecting GenericNodeRequest messages that are sent from nodes.
+     */
+    val genericNodeRequestFlow : SharedFlow<NodeUARTMessage>
+        get() {
+            return NetworkManager.genericNodeMessageFlow
+        }
+
+    /**
      * Returns a list of device serial numbers, consisting of all devices that have been
      * discovered.
      */
@@ -267,6 +281,14 @@ class DeviceManager(
             return NetworkManager.instance.discoveredProbes
         }
 
+    /**
+     * Returns a list of node serial numbers, consisting of all nodes that have been discovered.
+     * This will exclude any probe devices.
+     */
+    val discoveredNodes: List<String>
+        get() {
+            return NetworkManager.instance.discoveredNodes
+        }
     /**
      * Registers a lambda to be called by the DeviceManager upon binding with the
      * Combustion Service and completing initialization.
@@ -647,6 +669,10 @@ class DeviceManager(
      */
     fun performDfuForDevice(id: DeviceID, updateFile: Uri) =
         service.dfuManager?.performDfu(id, updateFile)
+
+    fun sendNodeRequest(deviceId: String, request: GenericNodeRequest, completionHandler: (Boolean, GenericNodeResponse?) -> Unit) {
+        NetworkManager.instance.sendNodeRequest(deviceId, request, completionHandler)
+    }
 
     private fun probeDataToCsv(probe: Probe?, probeData: List<LoggedProbeDataPoint>?, appNameAndVersion: String): Pair<String, String> {
         val csvVersion = 4

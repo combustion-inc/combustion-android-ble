@@ -27,12 +27,16 @@
  */
 package inc.combustion.framework.ble.uart.meatnet
 
+interface NodeMessage {
+    val value: UByte
+}
+
 /**
  * Enumerates MeatNet Node message types in Combustion's UART protocol.
  *
  * @property value byte value for message type.
  */
-internal enum class NodeMessageType(val value: UByte) {
+internal enum class NodeMessageType(override val value: UByte) : NodeMessage {
 
     SET_ID(0x1u),
     SET_COLOR(0x2u),
@@ -42,6 +46,8 @@ internal enum class NodeMessageType(val value: UByte) {
     READ_OVER_TEMPERATURE(0x6u),
     CONFIGURE_FOOD_SAFE(0x7u),
     RESET_FOOD_SAFE(0x8u),
+
+    GET_FEATURE_FLAGS(0x30u),
 
     CONNECTED(0x40u),
     DISCONNECTED(0x41u),

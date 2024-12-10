@@ -41,6 +41,7 @@ import inc.combustion.framework.ble.device.*
 import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.scanning.DeviceScanner
+import inc.combustion.framework.ble.uart.meatnet.*
 import inc.combustion.framework.log.LogManager
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.CoroutineName
@@ -48,6 +49,8 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Semaphore
 import java.util.concurrent.atomic.AtomicBoolean
 
 internal class NetworkManager(
@@ -57,7 +60,7 @@ internal class NetworkManager(
 ) {
     private sealed class DeviceHolder {
         data class ProbeHolder(val probe: ProbeBleDevice) : DeviceHolder()
-        data class RepeaterHolder(val repeater: UartBleDevice) : DeviceHolder()
+        data class RepeaterHolder(val repeater: NodeBleDevice) : DeviceHolder()
     }
 
     private sealed class LinkHolder {
@@ -70,9 +73,96 @@ internal class NetworkManager(
         var mutableNetworkState: MutableStateFlow<NetworkState>,
         var mutableFirmwareUpdateState: MutableStateFlow<FirmwareState>,
         var mutableDeviceProximityFlow: MutableSharedFlow<DeviceDiscoveredEvent>,
+        var mutableGenericNodeMessageFlow: MutableSharedFlow<NodeUARTMessage>,
     )
 
+    private inner class NodeDeviceManager(
+        val owner: LifecycleOwner
+    ) {
+        private val connectedNodes : MutableMap<String, NodeBleDevice> = mutableMapOf()
+        private val ignoredNodes : MutableSet<String> = mutableSetOf()
+        private val nodeRequestMutexMap: MutableMap<String, Semaphore> = ConcurrentHashMap()
+
+        private fun getNodeRequestMutex(deviceId: String): Semaphore =
+            // Note, using Java's Semaphore instead ok Kotlin's coroutine friendly version since methods do not use suspend modifier
+            nodeRequestMutexMap[deviceId] ?: (Semaphore(1, true).also {
+                nodeRequestMutexMap[deviceId] = it
+            })
+
+        fun sendNodeRequest(
+            deviceId: String,
+            request: GenericNodeRequest,
+            completionHandler: (Boolean, GenericNodeResponse?) -> Unit,
+        ) {
+            connectedNodes[deviceId]?.let {
+                val mutex = getNodeRequestMutex(deviceId)
+                // TODO DROID-531 : initial sendNodeRequest threadsafety solution - should be replaced with a better solution,
+                //  e.g. one that is coroutine-suspend friendly (instead of thread-block)
+                mutex.acquire()
+                it.sendNodeRequest(request) { status, data ->
+                    mutex.release()
+                    completionHandler(status, data as? GenericNodeResponse)
+                }
+            } ?: run {
+                completionHandler(false, null)
+            }
+        }
+
+        fun subscribeToNodeFlow(probeManager: ProbeManager) {
+            owner.lifecycleScope.launch(
+                CoroutineName("NodeConnectionFlow")
+            ) {
+                probeManager.nodeConnectionFlow
+                    .collect { deviceIds ->
+                        deviceIds.forEach { deviceId ->
+                            when (val node = devices[deviceId]) {
+                                is DeviceHolder.ProbeHolder -> NOT_IMPLEMENTED("Unsupported device type")
+                                is DeviceHolder.RepeaterHolder -> {
+                                    updateConnectedNodes(node.repeater)
+                                }
+                                else -> NOT_IMPLEMENTED("Unknown device type")
+                            }
+                        }
+                    }
+            }
+        }
+
+        fun discoveredNodes(): List<String> {
+            // This might need to be a flow into the app but this will work for now.
+            removeDisconnectedNodes()
+            return connectedNodes.keys.toList()
+        }
+
+        private suspend fun updateConnectedNodes(node : NodeBleDevice) {
+            if (node.deviceInfoSerialNumber == null) {
+                node.readSerialNumber()
+            }
+            node.deviceInfoSerialNumber?.let {
+                if (!connectedNodes.containsKey(it) && !ignoredNodes.contains(it)) {
+                    node.sendFeatureFlagRequest(null) { success: Boolean, data: Any? ->
+                        if (success) {
+                            val featureFlags =
+                                data as NodeReadFeatureFlagsResponse
+                            if (featureFlags.wifi) {
+                                Log.d(LOG_TAG, "Node supports feature flag: $it")
+                                connectedNodes[it] = node
+                            } else {
+                                Log.d(LOG_TAG, "Node doesn't support feature flag: $it")
+                                ignoredNodes.add(it)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private fun removeDisconnectedNodes() {
+            connectedNodes.entries.removeIf() { (_, node) -> node.isDisconnected }
+        }
+    }
+
     companion object {
+        private const val FLOW_CONFIG_NO_REPLAY = 0
         private const val FLOW_CONFIG_REPLAY = 5
         private const val FLOW_CONFIG_BUFFER = FLOW_CONFIG_REPLAY * 2
 
@@ -90,6 +180,9 @@ internal class NetworkManager(
             mutableFirmwareUpdateState = MutableStateFlow(FirmwareState(listOf())),
             mutableDeviceProximityFlow = MutableSharedFlow(
                 FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.SUSPEND
+            ),
+            mutableGenericNodeMessageFlow = MutableSharedFlow(
+                FLOW_CONFIG_NO_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.DROP_OLDEST
             ),
         )
 
@@ -140,6 +233,11 @@ internal class NetworkManager(
             get() {
                 return flowHolder.mutableDeviceProximityFlow.asSharedFlow()
             }
+
+        val genericNodeMessageFlow: SharedFlow<NodeUARTMessage>
+            get() {
+                return flowHolder.mutableGenericNodeMessageFlow.asSharedFlow()
+            }
     }
 
     private val jobManager = JobManager()
@@ -148,6 +246,8 @@ internal class NetworkManager(
     private val probeManagers = hashMapOf<String, ProbeManager>()
     private val deviceInformationDevices = hashMapOf<DeviceID, DeviceInformationBleDevice>()
     private var proximityDevices = hashMapOf<String, ProximityDevice>()
+    private var nodeDeviceManager = NodeDeviceManager(owner)
+
     var probeAllowlist: Set<String>? = settings.probeAllowlist
         private set
 
@@ -196,6 +296,11 @@ internal class NetworkManager(
     internal val discoveredProbes: List<String>
         get() {
             return probeManagers.keys.toList()
+        }
+
+    internal val discoveredNodes: List<String>
+        get() {
+            return nodeDeviceManager.discoveredNodes()
         }
 
     fun setProbeAllowlist(allowlist: Set<String>?) {
@@ -375,6 +480,10 @@ internal class NetworkManager(
         }
     }
 
+    internal fun sendNodeRequest(deviceId: String, request: GenericNodeRequest, completionHandler: (Boolean, GenericNodeResponse?) -> Unit) {
+        nodeDeviceManager.sendNodeRequest(deviceId, request, completionHandler)
+    }
+
     @ExperimentalCoroutinesApi
     fun clearDevices() {
         probeManagers.forEach { (_, probe) -> probe.finish() }
@@ -429,7 +538,7 @@ internal class NetworkManager(
                 }
                 CombustionProductType.DISPLAY, CombustionProductType.CHARGER -> {
                     DeviceHolder.RepeaterHolder(
-                        UartBleDevice(advertisement.mac, advertisement, owner, adapter)
+                        NodeBleDevice(advertisement.mac, owner, advertisement, adapter)
                     )
                 }
                 else -> NOT_IMPLEMENTED("Unknown type of advertising data")
@@ -458,6 +567,7 @@ internal class NetworkManager(
             probeManagers[serialNumber] = manager
             LogManager.instance.manage(owner, manager)
 
+            nodeDeviceManager.subscribeToNodeFlow(manager)
             discoveredProbe = true
         }
 
@@ -472,9 +582,9 @@ internal class NetworkManager(
                     probeManger?.addProbe(device.probe, device.probe.baseDevice, advertisement)
                 }
                 is DeviceHolder.RepeaterHolder -> {
-                    val repeatedProbe = RepeatedProbeBleDevice(serialNumber, device.repeater, advertisement)
+                    val repeatedProbe = RepeatedProbeBleDevice(serialNumber, device.repeater.getDevice(), advertisement)
                     meatNetLinks[linkId] = LinkHolder.RepeatedProbeHolder(repeatedProbe)
-                    probeManger?.addRepeatedProbe(repeatedProbe, device.repeater, advertisement)
+                    probeManger?.addRepeatedProbe(repeatedProbe, device.repeater.getDevice(), advertisement)
                 }
                 else -> NOT_IMPLEMENTED("Unknown type of device holder")
             }
