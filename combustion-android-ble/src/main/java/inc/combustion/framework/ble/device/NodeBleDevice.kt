@@ -31,7 +31,7 @@ internal class NodeBleDevice(
     private val readFeatureFlagsRequest = UartBleDevice.MessageCompletionHandler()
 
     companion object {
-        const val NODE_MESSAGE_RESPONSE_TIMEOUT_MS = 30000L
+        const val NODE_MESSAGE_RESPONSE_TIMEOUT_MS = 120000L
     }
 
     init {
