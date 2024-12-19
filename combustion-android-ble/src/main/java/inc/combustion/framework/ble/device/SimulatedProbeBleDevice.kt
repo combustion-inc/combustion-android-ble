@@ -79,6 +79,7 @@ internal class SimulatedProbeBleDevice(
             probeID: ProbeID,
             probeColor: ProbeColor
         ) : CombustionAdvertisingData {
+            val probeTemperatures = ProbeTemperatures.withRandomData()
             return CombustionAdvertisingData(
                 mac,
                 "CP",
@@ -86,12 +87,13 @@ internal class SimulatedProbeBleDevice(
                 productType,
                 true,
                 probeSerialNumber,
-                ProbeTemperatures.withRandomData(),
+                probeTemperatures,
                 probeID,
                 probeColor,
                 ProbeMode.NORMAL,
                 ProbeBatteryStatus.OK,
                 ProbeVirtualSensors.DEFAULT,
+                OverheatingSensors.fromTemperatures(probeTemperatures),
                 hopCount,
             )
         }
@@ -149,12 +151,13 @@ internal class SimulatedProbeBleDevice(
             owner.lifecycleScope.launch {
                 maxSequence += 1u
                 observeStatusUpdatesCallback?.let {
+                    val probeTemperatures = ProbeTemperatures.withRandomData()
                     if(isConnected) {
                         it(
                             ProbeStatus(
                                 minSequenceNumber = 0u,
                                 maxSequenceNumber = maxSequence,
-                                temperatures = ProbeTemperatures.withRandomData(),
+                                temperatures = probeTemperatures,
                                 id = probeID,
                                 color = probeColor,
                                 mode = ProbeMode.NORMAL,
@@ -163,6 +166,7 @@ internal class SimulatedProbeBleDevice(
                                 predictionStatus = PredictionStatus.withRandomData(),
                                 foodSafeData = FoodSafeData.RANDOM,
                                 foodSafeStatus = FoodSafeStatus.RANDOM,
+                                overheatingSensors = OverheatingSensors.fromTemperatures(probeTemperatures),
                             ),
                             null,
                         )
