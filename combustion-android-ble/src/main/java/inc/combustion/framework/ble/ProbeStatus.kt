@@ -67,7 +67,8 @@ internal data class ProbeStatus(
 
     companion object {
         const val MIN_RAW_SIZE = 30
-        const val RAW_SIZE_INCLUDING_FOOD_SAFE = MIN_RAW_SIZE + FoodSafeData.SIZE_BYTES + FoodSafeStatus.SIZE_BYTES
+        const val RAW_SIZE_INCLUDING_FOOD_SAFE =
+            MIN_RAW_SIZE + FoodSafeData.SIZE_BYTES + FoodSafeStatus.SIZE_BYTES
         const val RAW_SIZE_INCLUDING_OVERHEAT =
             MIN_RAW_SIZE + FoodSafeData.SIZE_BYTES + FoodSafeStatus.SIZE_BYTES + OverheatingSensors.SIZE_BYTES
 
@@ -79,10 +80,12 @@ internal data class ProbeStatus(
         private val PREDICTION_STATUS_RANGE = 23 until 23 + PredictionStatus.SIZE_BYTES
 
         private val FOOD_SAFE_DATA_START_INDEX = PREDICTION_STATUS_RANGE.last + 1
-        private val FOOD_SAFE_DATA_RANGE = FOOD_SAFE_DATA_START_INDEX until FOOD_SAFE_DATA_START_INDEX + FoodSafeData.SIZE_BYTES
+        private val FOOD_SAFE_DATA_RANGE =
+            FOOD_SAFE_DATA_START_INDEX until FOOD_SAFE_DATA_START_INDEX + FoodSafeData.SIZE_BYTES
 
         private val FOOD_SAFE_STATUS_START_INDEX = FOOD_SAFE_DATA_RANGE.last + 1
-        private val FOOD_SAFE_STATUS_RANGE = FOOD_SAFE_STATUS_START_INDEX until FOOD_SAFE_STATUS_START_INDEX + FoodSafeStatus.SIZE_BYTES
+        private val FOOD_SAFE_STATUS_RANGE =
+            FOOD_SAFE_STATUS_START_INDEX until FOOD_SAFE_STATUS_START_INDEX + FoodSafeStatus.SIZE_BYTES
 
         private val OVERHEAT_BYTE_START_INDEX = FOOD_SAFE_STATUS_RANGE.last + 1
         private val OVERHEAT_BYTE_RANGE =
@@ -96,7 +99,8 @@ internal data class ProbeStatus(
             val temperatures = ProbeTemperatures.fromRawData(data.sliceArray(TEMPERATURE_RANGE))
             val modeColorId = data.sliceArray(MODE_COLOR_ID_RANGE)[0]
             val deviceStatus = data.sliceArray(STATUS_RANGE)[0]
-            val predictionStatus = PredictionStatus.fromRawData(data.sliceArray(PREDICTION_STATUS_RANGE))
+            val predictionStatus =
+                PredictionStatus.fromRawData(data.sliceArray(PREDICTION_STATUS_RANGE))
             val probeColor = ProbeColor.fromUByte(modeColorId)
             val probeID = ProbeID.fromUByte(modeColorId)
             val probeMode = ProbeMode.fromUByte(modeColorId)
