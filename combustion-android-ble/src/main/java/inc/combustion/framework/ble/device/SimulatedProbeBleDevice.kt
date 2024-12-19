@@ -79,7 +79,7 @@ internal class SimulatedProbeBleDevice(
             probeID: ProbeID,
             probeColor: ProbeColor
         ) : CombustionAdvertisingData {
-            val proberTemperatures = ProbeTemperatures.withRandomData()
+            val probeTemperatures = ProbeTemperatures.withRandomData()
             return CombustionAdvertisingData(
                 mac,
                 "CP",
@@ -87,13 +87,13 @@ internal class SimulatedProbeBleDevice(
                 productType,
                 true,
                 probeSerialNumber,
-                proberTemperatures,
+                probeTemperatures,
                 probeID,
                 probeColor,
                 ProbeMode.NORMAL,
                 ProbeBatteryStatus.OK,
                 ProbeVirtualSensors.DEFAULT,
-                OverheatingSensors.fromTemperatures(proberTemperatures),
+                OverheatingSensors.fromTemperatures(probeTemperatures),
                 hopCount,
             )
         }
