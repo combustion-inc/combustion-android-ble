@@ -128,6 +128,7 @@ open class BaseAdvertisingData(
             val probeMode = modeColorId?.let { ProbeMode.fromUByte(it) } ?: run { ProbeMode.NORMAL }
             val batteryStatus = deviceStatus?.let { ProbeBatteryStatus.fromUByte(it) } ?: run { ProbeBatteryStatus.OK }
             val virtualSensors = deviceStatus?.let { ProbeVirtualSensors.fromDeviceStatus(it) } ?: run { ProbeVirtualSensors.DEFAULT }
+            val overheatingSensors = OverheatingSensors.fromTemperatures(probeTemperatures)
 
             return when(type) {
                 CombustionProductType.UNKNOWN -> {
@@ -147,6 +148,7 @@ open class BaseAdvertisingData(
                         mode = probeMode,
                         batteryStatus = batteryStatus,
                         virtualSensors = virtualSensors,
+                        overheatingSensors = overheatingSensors,
                         hopCount = hopCount
                     )
                 }

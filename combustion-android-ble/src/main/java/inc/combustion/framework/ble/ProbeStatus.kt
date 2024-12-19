@@ -48,6 +48,7 @@ internal data class ProbeStatus(
     val predictionStatus: PredictionStatus,
     val foodSafeData: FoodSafeData?,
     val foodSafeStatus: FoodSafeStatus?,
+    val overheatingSensors: OverheatingSensors,
 ) {
     val virtualCoreTemperature: Double
         get() {
@@ -67,6 +68,8 @@ internal data class ProbeStatus(
     companion object {
         const val MIN_RAW_SIZE = 30
         const val RAW_SIZE_INCLUDING_FOOD_SAFE = MIN_RAW_SIZE + FoodSafeData.SIZE_BYTES + FoodSafeStatus.SIZE_BYTES
+        const val RAW_SIZE_INCLUDING_OVERHEAT =
+            MIN_RAW_SIZE + FoodSafeData.SIZE_BYTES + FoodSafeStatus.SIZE_BYTES + OverheatingSensors.SIZE_BYTES
 
         private const val MIN_SEQ_INDEX = 0
         private const val MAX_SEQ_INDEX = 4
@@ -80,6 +83,10 @@ internal data class ProbeStatus(
 
         private val FOOD_SAFE_STATUS_START_INDEX = FOOD_SAFE_DATA_RANGE.last + 1
         private val FOOD_SAFE_STATUS_RANGE = FOOD_SAFE_STATUS_START_INDEX until FOOD_SAFE_STATUS_START_INDEX + FoodSafeStatus.SIZE_BYTES
+
+        private val OVERHEAT_BYTE_START_INDEX = FOOD_SAFE_STATUS_RANGE.last + 1
+        private val OVERHEAT_BYTE_RANGE =
+            OVERHEAT_BYTE_START_INDEX until OVERHEAT_BYTE_START_INDEX + OverheatingSensors.SIZE_BYTES
 
         fun fromRawData(data: UByteArray): ProbeStatus? {
             if (data.size < MIN_RAW_SIZE) return null
@@ -98,15 +105,23 @@ internal data class ProbeStatus(
 
             val dataIncludesFoodSafe = data.size > MIN_RAW_SIZE
             val foodSafeData = if (dataIncludesFoodSafe) {
-                    FoodSafeData.fromRawData(data.sliceArray(FOOD_SAFE_DATA_RANGE))
-                } else {
-                    null
-                }
+                FoodSafeData.fromRawData(data.sliceArray(FOOD_SAFE_DATA_RANGE))
+            } else {
+                null
+            }
             val foodSafeStatus = if (dataIncludesFoodSafe) {
-                    FoodSafeStatus.fromRawData(data.sliceArray(FOOD_SAFE_STATUS_RANGE))
-                } else {
-                    null
-                }
+                FoodSafeStatus.fromRawData(data.sliceArray(FOOD_SAFE_STATUS_RANGE))
+            } else {
+                null
+            }
+
+            // Decode Over heating flags
+            val dataIncludesOverheat = data.size >= RAW_SIZE_INCLUDING_OVERHEAT
+            val overheatingSensors = if (dataIncludesOverheat) {
+                OverheatingSensors.fromRawByte(data.sliceArray(OVERHEAT_BYTE_RANGE)[0])
+            } else {
+                OverheatingSensors.fromTemperatures(temperatures)
+            }
 
             return ProbeStatus(
                 minSequenceNumber = minSequenceNumber,
@@ -120,6 +135,7 @@ internal data class ProbeStatus(
                 predictionStatus = predictionStatus,
                 foodSafeData = foodSafeData,
                 foodSafeStatus = foodSafeStatus,
+                overheatingSensors = overheatingSensors,
             )
         }
     }

@@ -46,6 +46,7 @@ import inc.combustion.framework.service.FirmwareVersion
 import inc.combustion.framework.service.FoodSafeData
 import inc.combustion.framework.service.FoodSafeStatus
 import inc.combustion.framework.service.ModelInformation
+import inc.combustion.framework.service.OverheatingSensors
 import inc.combustion.framework.service.Probe
 import inc.combustion.framework.service.ProbeBatteryStatus
 import inc.combustion.framework.service.ProbeColor
@@ -982,7 +983,7 @@ internal class ProbeManager(
                 updateInstantRead(advertisement.probeTemperatures.values[0], updatedProbe)
             }
             ProbeMode.NORMAL -> {
-                updateTemperatures(advertisement.probeTemperatures, advertisement.virtualSensors, updatedProbe)
+                updateTemperatures(advertisement.probeTemperatures, advertisement.virtualSensors, advertisement.overheatingSensors, updatedProbe)
             }
             else -> {
                 updatedProbe
@@ -1004,7 +1005,7 @@ internal class ProbeManager(
         var updatedProbe = currentProbe
 
         updatedProbe = updateConnectionState(updatedProbe)
-        updatedProbe = updateTemperatures(status.temperatures, status.virtualSensors, updatedProbe)
+        updatedProbe = updateTemperatures(status.temperatures, status.virtualSensors, status.overheatingSensors, updatedProbe)
         val predictionInfo = predictionManager.updatePredictionStatus(
             predictionInfo = PredictionManager.PredictionInfo.fromPredictionStatus(
                 status.predictionStatus
@@ -1065,6 +1066,7 @@ internal class ProbeManager(
     private fun updateTemperatures(
         temperatures: ProbeTemperatures,
         sensors: ProbeVirtualSensors,
+        overheatingSensors: OverheatingSensors,
         currentProbe: Probe,
     ): Probe {
         var probe = currentProbe.copy(
@@ -1073,7 +1075,7 @@ internal class ProbeManager(
             coreTemperatureCelsius = temperatures.coreTemperatureCelsius(sensors),
             surfaceTemperatureCelsius = temperatures.surfaceTemperatureCelsius(sensors),
             ambientTemperatureCelsius = temperatures.ambientTemperatureCelsius(sensors),
-            overheatingSensors = temperatures.overheatingSensors,
+            overheatingSensors = overheatingSensors.values,
         )
 
         if(instantReadMonitor.isIdle(PROBE_INSTANT_READ_IDLE_TIMEOUT_MS)) {

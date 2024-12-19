@@ -43,7 +43,8 @@ internal class CombustionAdvertisingData(
     val mode: ProbeMode,
     val batteryStatus: ProbeBatteryStatus,
     val virtualSensors: ProbeVirtualSensors,
-    val hopCount: UInt = 0u
+    val overheatingSensors: OverheatingSensors,
+    val hopCount: UInt = 0u,
 ): BaseAdvertisingData(mac, name, rssi, productType, isConnectable) {
 
     val isRepeater: Boolean
