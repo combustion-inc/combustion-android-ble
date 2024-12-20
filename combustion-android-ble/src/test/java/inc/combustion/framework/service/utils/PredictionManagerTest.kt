@@ -151,11 +151,11 @@ class PredictionManagerTest {
         assertFalse(isUpdateInitiatedByLinearizationTimer)
 
         // Progress the timer by 5 seconds
-        repeat(5) { outer ->
+        repeat(5) { _ ->
             info = info.getInfoWithUpdatedLinearizedSeconds(linearizedSecondsRemaining--)
 
             // Progress the timer by 1 second
-            repeat(5) { inner ->
+            repeat(5) { _ ->
                 timer?.triggerCallback()
                 assertEquals(info, predictionInfo)
                 assertTrue(isUpdateInitiatedByLinearizationTimer)
@@ -218,11 +218,11 @@ class PredictionManagerTest {
         assertEquals(info, predictionInfo)
 
         // Progress the timer by 5 seconds
-        repeat(5) { outer ->
+        repeat(5) { _ ->
             info = info.getInfoWithUpdatedLinearizedSeconds(linearizedSecondsRemaining--)
 
             // Progress the timer by 1 second
-            repeat(5) { inner ->
+            repeat(5) { _ ->
                 timer?.triggerCallback()
                 assertEquals(info, predictionInfo)
             }
