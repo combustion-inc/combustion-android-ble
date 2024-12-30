@@ -65,8 +65,11 @@ import inc.combustion.framework.service.ProbeColor
 import inc.combustion.framework.service.ProbeDiscoveredEvent
 import inc.combustion.framework.service.ProbeID
 import inc.combustion.framework.service.ProbePredictionMode
+import inc.combustion.framework.service.utils.StateFlowMutableMap
 import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -74,7 +77,10 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Semaphore
 import java.util.concurrent.atomic.AtomicBoolean
@@ -105,9 +111,18 @@ internal class NetworkManager(
     private inner class NodeDeviceManager(
         val owner: LifecycleOwner
     ) {
-        private val connectedNodes: MutableMap<String, NodeBleDevice> = mutableMapOf()
+        private val connectedNodes = StateFlowMutableMap<String, NodeBleDevice>()
         private val ignoredNodes: MutableSet<String> = mutableSetOf()
         private val nodeRequestMutexMap: MutableMap<String, Semaphore> = ConcurrentHashMap()
+        private val coroutineScope = CoroutineScope(SupervisorJob())
+
+        val discoveredNodesFlow: StateFlow<List<String>> by lazy {
+            val mutableDiscoveredNodesFlow = MutableStateFlow<List<String>>(emptyList())
+            connectedNodes.stateFlow.onEach { nodes ->
+                mutableDiscoveredNodesFlow.value = nodes.keys.toList()
+            }.launchIn(coroutineScope)
+            mutableDiscoveredNodesFlow.asStateFlow()
+        }
 
         private fun getNodeRequestMutex(deviceId: String): Semaphore =
             // Note, using Java's Semaphore instead ok Kotlin's coroutine friendly version since methods do not use suspend modifier
@@ -154,11 +169,7 @@ internal class NetworkManager(
             }
         }
 
-        fun discoveredNodes(): List<String> {
-            // This might need to be a flow into the app but this will work for now.
-            removeDisconnectedNodes()
-            return connectedNodes.keys.toList()
-        }
+        fun discoveredNodes(): List<String> = discoveredNodesFlow.value
 
         private suspend fun updateConnectedNodes(node: NodeBleDevice) {
             if (node.deviceInfoSerialNumber == null) {
@@ -173,6 +184,12 @@ internal class NetworkManager(
                             if (featureFlags.wifi) {
                                 Log.d(LOG_TAG, "Node supports feature flag: $it")
                                 connectedNodes[it] = node
+                                UUID.randomUUID().toString().let { key ->
+                                    node.observeDisconnected(key) {
+                                        connectedNodes.remove(it)
+                                        node.removeDisconnectedObserver(key)
+                                    }
+                                }
                             } else {
                                 Log.d(LOG_TAG, "Node doesn't support feature flag: $it")
                                 ignoredNodes.add(it)
@@ -181,10 +198,6 @@ internal class NetworkManager(
                     }
                 }
             }
-        }
-
-        private fun removeDisconnectedNodes() {
-            connectedNodes.entries.removeIf() { (_, node) -> node.isDisconnected }
         }
     }
 
@@ -332,6 +345,9 @@ internal class NetworkManager(
         get() {
             return nodeDeviceManager.discoveredNodes()
         }
+
+    internal val discoveredNodesFlow: StateFlow<List<String>>
+        get() = nodeDeviceManager.discoveredNodesFlow
 
     fun setProbeAllowlist(allowlist: Set<String>?) {
         // Make sure that the new allowlist is set before we get another advertisement sneak in and
