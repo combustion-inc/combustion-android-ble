@@ -106,7 +106,7 @@ internal class NodeBleDevice(
     private fun processConnectionState() {
         uart.observeConnectionState { newConnectionState ->
             if (newConnectionState == DeviceConnectionState.DISCONNECTED) {
-                disconnectedCallbacks.forEach { entry ->
+                disconnectedCallbacks.toMap().forEach { entry ->
                     entry.value.invoke()
                 }
             }
