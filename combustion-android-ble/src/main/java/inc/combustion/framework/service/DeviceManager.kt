@@ -289,6 +289,14 @@ class DeviceManager(
         get() {
             return NetworkManager.instance.discoveredNodes
         }
+
+    /**
+     * Returns a stateFlow of a list of node serial numbers, consisting of all nodes that have been discovered.
+     * This will exclude any probe devices.
+     */
+    val discoveredNodesFlow: StateFlow<List<String>>
+        get() = NetworkManager.instance.discoveredNodesFlow
+
     /**
      * Registers a lambda to be called by the DeviceManager upon binding with the
      * Combustion Service and completing initialization.
