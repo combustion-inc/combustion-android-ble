@@ -321,7 +321,7 @@ internal open class BleDevice (
             else -> DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE
         }
 
-        rssiCallbacks.forEach {
+        rssiCallbacks.toList().forEach {
             dispatchOnDefault {
                 it(remoteRssi.get())
             }
