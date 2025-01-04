@@ -182,16 +182,17 @@ internal class NetworkManager(
                             val featureFlags =
                                 data as NodeReadFeatureFlagsResponse
                             if (featureFlags.wifi) {
-                                Log.d(LOG_TAG, "Node supports feature flag: $it")
+                                Log.d(LOG_TAG, "Node $it supports WiFi feature flag: add to connectedNodes")
                                 connectedNodes[it] = node
                                 UUID.randomUUID().toString().let { key ->
                                     node.observeDisconnected(key) {
+                                        Log.d(LOG_TAG, "Node $it disconnected: remove from connectedNodes")
                                         connectedNodes.remove(it)
                                         node.removeDisconnectedObserver(key)
                                     }
                                 }
                             } else {
-                                Log.d(LOG_TAG, "Node doesn't support feature flag: $it")
+                                Log.d(LOG_TAG, "Node doesn't support WiFi feature flag: $it")
                                 ignoredNodes.add(it)
                             }
                         }
