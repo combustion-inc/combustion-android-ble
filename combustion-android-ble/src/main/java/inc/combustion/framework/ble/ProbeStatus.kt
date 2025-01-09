@@ -126,9 +126,9 @@ internal data class ProbeStatus(
                 // There is a bug in the repeater firmware versions <= 2.2.0 that can cause these
                 // flags to be incorrectly set. This should help reduce invalid overheating errors
                 // to the user.
-                if (!OverheatingSensors.fromTemperatures(temperatures).isAnySensorOverheating())
+                if (!OverheatingSensors.fromTemperatures(temperatures).isAnySensorOverheating()) {
                     OverheatingSensors.fromRawByte(0u)
-                else {
+                } else {
                     OverheatingSensors.fromRawByte(data.sliceArray(overheatRange)[0])
                 }
             } else {
