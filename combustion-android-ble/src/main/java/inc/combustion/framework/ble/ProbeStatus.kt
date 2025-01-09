@@ -67,8 +67,8 @@ internal data class ProbeStatus(
 
     companion object {
         const val MIN_RAW_SIZE = 30
-        const val RAW_SIZE_INCLUDING_FOOD_SAFE =
-            MIN_RAW_SIZE + FoodSafeData.SIZE_BYTES + FoodSafeStatus.SIZE_BYTES
+        const val RAW_SIZE_INCLUDING_FOOD_SAFE_AND_OVERHEAT =
+            MIN_RAW_SIZE + FoodSafeData.SIZE_BYTES + FoodSafeStatus.SIZE_BYTES + OverheatingSensors.SIZE_BYTES
 
         private const val MIN_SEQ_INDEX = 0
         private const val MAX_SEQ_INDEX = 4
@@ -120,7 +120,17 @@ internal data class ProbeStatus(
             // Decode Over heating flags
             val dataIncludesOverheat = data.size >= overheatRange.last
             val overheatingSensors = if (dataIncludesOverheat) {
-                OverheatingSensors.fromRawByte(data.sliceArray(overheatRange)[0])
+
+                // Sanity check for the overheating flags. If none of the temperatures are above the
+                // previous thresholds, then ignore the flag values there are no overheating sensors.
+                // There is a bug in the repeater firmware versions <= 2.2.0 that can cause these
+                // flags to be incorrectly set. This should help reduce invalid overheating errors
+                // to the user.
+                if (!OverheatingSensors.fromTemperatures(temperatures).isAnySensorOverheating())
+                    OverheatingSensors.fromRawByte(0u)
+                else {
+                    OverheatingSensors.fromRawByte(data.sliceArray(overheatRange)[0])
+                }
             } else {
                 OverheatingSensors.fromTemperatures(temperatures)
             }
