@@ -69,8 +69,6 @@ internal data class ProbeStatus(
         const val MIN_RAW_SIZE = 30
         const val RAW_SIZE_INCLUDING_FOOD_SAFE =
             MIN_RAW_SIZE + FoodSafeData.SIZE_BYTES + FoodSafeStatus.SIZE_BYTES
-        const val RAW_SIZE_INCLUDING_OVERHEAT =
-            MIN_RAW_SIZE + FoodSafeData.SIZE_BYTES + FoodSafeStatus.SIZE_BYTES + OverheatingSensors.SIZE_BYTES
 
         private const val MIN_SEQ_INDEX = 0
         private const val MAX_SEQ_INDEX = 4
@@ -91,7 +89,7 @@ internal data class ProbeStatus(
         private val OVERHEAT_BYTE_RANGE =
             OVERHEAT_BYTE_START_INDEX until OVERHEAT_BYTE_START_INDEX + OverheatingSensors.SIZE_BYTES
 
-        fun fromRawData(data: UByteArray): ProbeStatus? {
+        fun fromRawData(data: UByteArray, overheatRange: IntRange = OVERHEAT_BYTE_RANGE): ProbeStatus? {
             if (data.size < MIN_RAW_SIZE) return null
 
             val minSequenceNumber = data.getLittleEndianUInt32At(MIN_SEQ_INDEX)
@@ -120,9 +118,9 @@ internal data class ProbeStatus(
             }
 
             // Decode Over heating flags
-            val dataIncludesOverheat = data.size >= RAW_SIZE_INCLUDING_OVERHEAT
+            val dataIncludesOverheat = data.size >= overheatRange.last
             val overheatingSensors = if (dataIncludesOverheat) {
-                OverheatingSensors.fromRawByte(data.sliceArray(OVERHEAT_BYTE_RANGE)[0])
+                OverheatingSensors.fromRawByte(data.sliceArray(overheatRange)[0])
             } else {
                 OverheatingSensors.fromTemperatures(temperatures)
             }
