@@ -65,15 +65,15 @@ internal class NodeProbeStatusRequest(
             val probeStatusIndexEnd = PROBE_STATUS_INDEX + if (payloadLength.toInt() == MINIMUM_PAYLOAD_LENGTH) {
                     ProbeStatus.MIN_RAW_SIZE
                 } else {
-                    // Add one byte because the overheating flags are after the hopcount :sad:
-                    ProbeStatus.RAW_SIZE_INCLUDING_FOOD_SAFE_AND_OVERHEAT + 1
+                    ProbeStatus.RAW_SIZE_INCLUDING_FOOD_SAFE
                 }
 
-            val probeStatusRange = PROBE_STATUS_INDEX until probeStatusIndexEnd
+            val probeStatusRange = PROBE_STATUS_INDEX until data.size
 
             // The overheating flags are stored after the hop count for the node messages
-            val overheatRangeStart = probeStatusIndexEnd - OverheatingSensors.SIZE_BYTES
-            val overheatRange = overheatRangeStart until probeStatusIndexEnd
+            // so the range is updated to take that into account
+            val overheatRangeStart = ProbeStatus.RAW_SIZE_INCLUDING_FOOD_SAFE + 1
+            val overheatRange = overheatRangeStart until overheatRangeStart + OverheatingSensors.SIZE_BYTES
 
             val probeStatus: ProbeStatus =
                 ProbeStatus.fromRawData(data.slice(probeStatusRange).toUByteArray(), overheatRange) ?: return null

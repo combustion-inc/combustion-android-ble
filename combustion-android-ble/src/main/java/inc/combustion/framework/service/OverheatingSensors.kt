@@ -30,7 +30,7 @@ package inc.combustion.framework.service
 
 data class OverheatingSensors(val values: List<Int>) {
 
-    public fun isAnySensorOverheating: Boolean {
+    public fun isAnySensorOverheating(): Boolean {
         return values.isNotEmpty()
     }
 
