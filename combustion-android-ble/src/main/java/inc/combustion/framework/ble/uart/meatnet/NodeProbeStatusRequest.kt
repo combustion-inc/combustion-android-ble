@@ -31,6 +31,7 @@ package inc.combustion.framework.ble.uart.meatnet
 import inc.combustion.framework.ble.ProbeStatus
 import inc.combustion.framework.ble.getLittleEndianUInt32At
 import inc.combustion.framework.service.HopCount
+import inc.combustion.framework.service.OverheatingSensors
 
 internal class NodeProbeStatusRequest(
     requestId : UInt,
@@ -67,10 +68,15 @@ internal class NodeProbeStatusRequest(
                     ProbeStatus.RAW_SIZE_INCLUDING_FOOD_SAFE
                 }
 
-            val probeStatusRange = PROBE_STATUS_INDEX until probeStatusIndexEnd
+            val probeStatusRange = PROBE_STATUS_INDEX until data.size
+
+            // The overheating flags are stored after the hop count for the node messages
+            // so the range is updated to take that into account
+            val overheatRangeStart = ProbeStatus.RAW_SIZE_INCLUDING_FOOD_SAFE + 1
+            val overheatRange = overheatRangeStart until overheatRangeStart + OverheatingSensors.SIZE_BYTES
 
             val probeStatus: ProbeStatus =
-                ProbeStatus.fromRawData(data.slice(probeStatusRange).toUByteArray()) ?: return null
+                ProbeStatus.fromRawData(data.slice(probeStatusRange).toUByteArray(), overheatRange) ?: return null
 
             val hopCount: HopCount = HopCount.fromUByte(data[probeStatusIndexEnd])
 
