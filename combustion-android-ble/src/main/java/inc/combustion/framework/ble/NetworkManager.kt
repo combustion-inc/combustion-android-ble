@@ -182,11 +182,17 @@ internal class NetworkManager(
                             val featureFlags =
                                 data as NodeReadFeatureFlagsResponse
                             if (featureFlags.wifi) {
-                                Log.d(LOG_TAG, "Node $it supports WiFi feature flag: add to connectedNodes")
+                                Log.d(
+                                    LOG_TAG,
+                                    "Node $it supports WiFi feature flag: add to connectedNodes",
+                                )
                                 connectedNodes[it] = node
                                 UUID.randomUUID().toString().let { key ->
                                     node.observeDisconnected(key) {
-                                        Log.d(LOG_TAG, "Node $it disconnected: remove from connectedNodes")
+                                        Log.d(
+                                            LOG_TAG,
+                                            "Node $it disconnected: remove from connectedNodes",
+                                        )
                                         connectedNodes.remove(it)
                                         node.removeDisconnectedObserver(key)
                                     }
@@ -619,9 +625,9 @@ internal class NetworkManager(
                 }
 
                 CombustionProductType.DISPLAY, CombustionProductType.CHARGER -> {
-                    DeviceHolder.RepeaterHolder(
-                        NodeBleDevice(advertisement.mac, owner, advertisement, adapter)
-                    )
+                    val device = NodeBleDevice(advertisement.mac, owner, advertisement, adapter)
+                    publishNodeFirmwareOnConnectedState(device.getDevice())
+                    DeviceHolder.RepeaterHolder(device)
                 }
 
                 else -> NOT_IMPLEMENTED("Unknown type of advertising data")
@@ -727,42 +733,52 @@ internal class NetworkManager(
         }
     }
 
-    private fun handleMeatNetLinkWithoutProbe(advertisement: CombustionAdvertisingData) {
-        if (!deviceInformationDevices.containsKey(advertisement.id)) {
-            // construct a device info so that we can read the details
-            val device = DeviceInformationBleDevice(advertisement.id, advertisement, owner, adapter)
-            deviceInformationDevices[device.id] = device
+    private fun publishNodeFirmwareOnConnectedState(
+        device: DeviceInformationBleDevice,
+        onDeviceConnectedState: () -> Unit = {},
+    ): Boolean = if (!deviceInformationDevices.containsKey(device.id)) {
+        deviceInformationDevices[device.id] = device
 
-            // read details once connected
-            device.observeConnectionState { connectionState ->
-                if (connectionState == DeviceConnectionState.CONNECTED) {
-                    device.firmwareVersion ?: run {
-                        device.readFirmwareVersion()
+        // read details once connected
+        device.observeConnectionState { connectionState ->
+            if (connectionState == DeviceConnectionState.CONNECTED) {
+                device.firmwareVersion ?: run {
+                    device.readFirmwareVersion()
 
-                        device.firmwareVersion?.let { firmwareVersion ->
-                            // Add to firmware state map
-                            val node =
-                                FirmwareState.Node(device.id, device.productType, firmwareVersion)
-                            firmwareStateOfNetwork[device.id] = node
+                    device.firmwareVersion?.let { firmwareVersion ->
+                        // Add to firmware state map
+                        val node =
+                            FirmwareState.Node(device.id, device.productType, firmwareVersion)
+                        firmwareStateOfNetwork[device.id] = node
 
-                            // publish the list of firmware details for the network
-                            flowHolder.mutableFirmwareUpdateState.value = FirmwareState(
-                                nodes = firmwareStateOfNetwork.values.toList()
-                            )
-                        }
-                    }
-
-                    // free up resources
-                    device.finish()
-
-                    // if we don't have the details at this point, we are going to want to try again
-                    // on the next advertising packet
-                    if (!firmwareStateOfNetwork.containsKey(device.id)) {
-                        deviceInformationDevices.remove(device.id)
+                        // publish the list of firmware details for the network
+                        flowHolder.mutableFirmwareUpdateState.value = FirmwareState(
+                            nodes = firmwareStateOfNetwork.values.toList()
+                        )
                     }
                 }
+                onDeviceConnectedState()
             }
+        }
+        true
+    } else {
+        false
+    }
 
+    private fun handleMeatNetLinkWithoutProbe(advertisement: CombustionAdvertisingData) {
+        // construct a device info so that we can read the details
+        val device = DeviceInformationBleDevice(advertisement.id, advertisement, owner, adapter)
+        val success = publishNodeFirmwareOnConnectedState(device) {
+            // free up resources
+            device.finish()
+
+            // if we don't have the details at this point, we are going to want to try again
+            // on the next advertising packet
+            if (!firmwareStateOfNetwork.containsKey(device.id)) {
+                deviceInformationDevices.remove(device.id)
+            }
+        }
+        if (success) {
             // Connect to device
             if (device.isDisconnected.get() && device.isConnectable.get()) {
                 device.connect()
