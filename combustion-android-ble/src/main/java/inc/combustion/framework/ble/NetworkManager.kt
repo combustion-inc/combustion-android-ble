@@ -596,7 +596,10 @@ internal class NetworkManager(
         jobManager.cancelJobs()
     }
 
-    private fun manageMeatNetDevice(advertisement: CombustionAdvertisingData): Boolean {
+    private fun manageMeatNetDevice(
+        advertisement: CombustionAdvertisingData,
+        isProbelessRepeater: Boolean,
+    ): Boolean {
         var discoveredProbe = false
         val serialNumber = advertisement.probeSerialNumber
         val deviceId = advertisement.id
@@ -608,10 +611,12 @@ internal class NetworkManager(
             return false
         }
 
-        // If the advertised probe isn't in the subscriber list, don't bother connecting
-        probeAllowlist?.let {
-            if (!it.contains(serialNumber)) {
-                return false
+        if (!isProbelessRepeater) {
+            // If the advertised probe isn't in the subscriber list, don't bother connecting
+            probeAllowlist?.let {
+                if (!it.contains(serialNumber)) {
+                    return false
+                }
             }
         }
 
@@ -696,37 +701,33 @@ internal class NetworkManager(
         DeviceScanner.advertisements.collect { advertisingData ->
             if (scanningForProbes) {
                 val serialNumber = advertisingData.probeSerialNumber
-                if (serialNumber != REPEATER_NO_PROBES_SERIAL_NUMBER) {
-                    if (manageMeatNetDevice(advertisingData)) {
-                        flowHolder.mutableDiscoveredProbesFlow.emit(
-                            ProbeDiscoveredEvent.ProbeDiscovered(serialNumber)
+                if (manageMeatNetDevice(
+                        advertisingData,
+                        isProbelessRepeater = serialNumber == REPEATER_NO_PROBES_SERIAL_NUMBER,
+                    )
+                ) {
+                    flowHolder.mutableDiscoveredProbesFlow.emit(
+                        ProbeDiscoveredEvent.ProbeDiscovered(serialNumber)
+                    )
+                }
+
+                // Publish this device to the proximity flow if it's a probe.
+                if (advertisingData.productType == CombustionProductType.PROBE) {
+                    // If we haven't seen this probe before, then add it to our list of devices
+                    // that we track proximity for and publish the addition.
+                    if (!proximityDevices.contains(serialNumber)) {
+                        Log.i(LOG_TAG, "Adding $serialNumber to probes in proximity")
+
+                        // Guarantee that the device has a valid RSSI value before flowing out
+                        // the discovery event.
+                        proximityDevices[serialNumber] = ProximityDevice()
+                        proximityDevices[serialNumber]?.handleRssiUpdate(advertisingData.rssi)
+                        flowHolder.mutableDeviceProximityFlow.emit(
+                            DeviceDiscoveredEvent.ProbeDiscovered(serialNumber)
                         )
-                    }
-
-                    // Publish this device to the proximity flow if it's a probe.
-                    if (advertisingData.productType == CombustionProductType.PROBE) {
-                        // If we haven't seen this probe before, then add it to our list of devices
-                        // that we track proximity for and publish the addition.
-                        if (!proximityDevices.contains(serialNumber)) {
-                            Log.i(LOG_TAG, "Adding $serialNumber to probes in proximity")
-
-                            // Guarantee that the device has a valid RSSI value before flowing out
-                            // the discovery event.
-                            proximityDevices[serialNumber] = ProximityDevice()
-                            proximityDevices[serialNumber]?.handleRssiUpdate(advertisingData.rssi)
-                            flowHolder.mutableDeviceProximityFlow.emit(
-                                DeviceDiscoveredEvent.ProbeDiscovered(serialNumber)
-                            )
-                        } else {
-                            // Update the smoothed RSSI value for this device
-                            proximityDevices[serialNumber]?.handleRssiUpdate(advertisingData.rssi)
-                        }
-                    }
-                } else if (probeAllowlist == null) {
-                    // Only connect to a node that doesn't have any connected probes if the
-                    // allowlist is unset.
-                    if (!firmwareStateOfNetwork.containsKey(advertisingData.id)) {
-                        handleMeatNetLinkWithoutProbe(advertisingData)
+                    } else {
+                        // Update the smoothed RSSI value for this device
+                        proximityDevices[serialNumber]?.handleRssiUpdate(advertisingData.rssi)
                     }
                 }
             }
@@ -763,27 +764,6 @@ internal class NetworkManager(
         true
     } else {
         false
-    }
-
-    private fun handleMeatNetLinkWithoutProbe(advertisement: CombustionAdvertisingData) {
-        // construct a device info so that we can read the details
-        val device = DeviceInformationBleDevice(advertisement.id, advertisement, owner, adapter)
-        val success = publishNodeFirmwareOnConnectedState(device) {
-            // free up resources
-            device.finish()
-
-            // if we don't have the details at this point, we are going to want to try again
-            // on the next advertising packet
-            if (!firmwareStateOfNetwork.containsKey(device.id)) {
-                deviceInformationDevices.remove(device.id)
-            }
-        }
-        if (success) {
-            // Connect to device
-            if (device.isDisconnected.get() && device.isConnectable.get()) {
-                device.connect()
-            }
-        }
     }
 
     private fun initialize() {
