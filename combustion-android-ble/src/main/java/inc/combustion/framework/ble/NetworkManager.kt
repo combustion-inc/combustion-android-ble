@@ -634,7 +634,7 @@ internal class NetworkManager(
                 serialNumber = probeSerialNumber,
                 owner = owner,
                 settings = settings,
-                // called by the ProbeManager whenever a meatnet node is disconnected
+                // called by the ProbeManager whenever a MeatNet node is disconnected
                 dfuDisconnectedNodeCallback = {
                     firmwareStateOfNetwork.remove(it)
 
@@ -658,6 +658,9 @@ internal class NetworkManager(
         createProbeManagerIfNew(REPEATER_NO_PROBES_SERIAL_NUMBER)
     }
 
+    /**
+     * if we haven't seen link [linkId] before, then create it and add it to the right probe manager
+     */
     private fun createMeatNetLinkIfNewAndAddToProbeManager(
         linkId: LinkID,
         deviceId: String,
