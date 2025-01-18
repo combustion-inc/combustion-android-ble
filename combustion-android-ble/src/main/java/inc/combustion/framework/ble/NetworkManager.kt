@@ -596,26 +596,13 @@ internal class NetworkManager(
         jobManager.cancelJobs()
     }
 
-    private fun manageMeatNetDevice(advertisement: CombustionAdvertisingData): Boolean {
-        var discoveredProbe = false
-        val serialNumber = advertisement.probeSerialNumber
-        val deviceId = advertisement.id
-        val linkId = ProbeBleDeviceBase.makeLinkId(advertisement)
-
-        // if MeatNet isn't enabled and we see anything other than a probe, then return out now
-        // because that product type isn't supported in this mode.
-        if (!settings.meatNetEnabled && advertisement.productType != CombustionProductType.PROBE) {
-            return false
-        }
-
-        // If the advertised probe isn't in the subscriber list, don't bother connecting
-        probeAllowlist?.let {
-            if (!it.contains(serialNumber)) {
-                return false
-            }
-        }
-
-        // if we have not seen this device by its uid, then track in the device map.
+    /**
+     * If we have not seen this device by its uid [deviceId], then track in the device map.
+     */
+    private fun trackDeviceIfNew(
+        deviceId: String,
+        advertisement: CombustionAdvertisingData,
+    ) {
         if (!devices.containsKey(deviceId)) {
             val deviceHolder = when (advertisement.productType) {
                 CombustionProductType.PROBE -> {
@@ -635,14 +622,19 @@ internal class NetworkManager(
 
             devices[deviceId] = deviceHolder
         }
+    }
 
-        // if we haven't seen this serial number, then create a manager for it
-        if (!probeManagers.containsKey(serialNumber)) {
+    /**
+     * if we haven't seen [probeSerialNumber], then create a manager for it.
+     * @return true if new manager was created
+     */
+    private fun createProbeManagerIfNew(probeSerialNumber: String): Boolean =
+        if (!probeManagers.containsKey(probeSerialNumber)) {
             val manager = ProbeManager(
-                serialNumber = serialNumber,
+                serialNumber = probeSerialNumber,
                 owner = owner,
                 settings = settings,
-                // called by the ProbeManager whenever a meatnet node is disconnected
+                // called by the ProbeManager whenever a MeatNet node is disconnected
                 dfuDisconnectedNodeCallback = {
                     firmwareStateOfNetwork.remove(it)
 
@@ -653,18 +645,32 @@ internal class NetworkManager(
                 }
             )
 
-            probeManagers[serialNumber] = manager
+            probeManagers[probeSerialNumber] = manager
             LogManager.instance.manage(owner, manager)
 
             nodeDeviceManager.subscribeToNodeFlow(manager)
-            discoveredProbe = true
+            true
+        } else {
+            false
         }
 
-        // if we haven't seen this link before, then create it and add it to the right probe manager
+    private fun createManagerForDevicesWithoutProbeIfItDoesNotExist() {
+        createProbeManagerIfNew(REPEATER_NO_PROBES_SERIAL_NUMBER)
+    }
+
+    /**
+     * if we haven't seen link [linkId] before, then create it and add it to the right probe manager
+     */
+    private fun createMeatNetLinkIfNewAndAddToProbeManager(
+        linkId: LinkID,
+        deviceId: String,
+        probeSerialNumber: String,
+        advertisement: CombustionAdvertisingData
+    ) {
         if (!meatNetLinks.containsKey(linkId)) {
             // get reference to the source device for this link
             val device = devices[deviceId]
-            val probeManger = probeManagers[serialNumber]
+            val probeManger = probeManagers[probeSerialNumber]
             when (device) {
                 is DeviceHolder.ProbeHolder -> {
                     meatNetLinks[linkId] = LinkHolder.ProbeHolder(device.probe)
@@ -673,7 +679,7 @@ internal class NetworkManager(
 
                 is DeviceHolder.RepeaterHolder -> {
                     val repeatedProbe = RepeatedProbeBleDevice(
-                        serialNumber,
+                        probeSerialNumber,
                         device.repeater.getDevice(),
                         advertisement,
                     )
@@ -688,6 +694,68 @@ internal class NetworkManager(
                 else -> NOT_IMPLEMENTED("Unknown type of device holder")
             }
         }
+    }
+
+    private fun createMeatNetLinkIfNewAndAddToProbelessDevicesManager(
+        deviceId: String,
+        advertisement: CombustionAdvertisingData
+    ) {
+        createMeatNetLinkIfNewAndAddToProbeManager(
+            linkId = ProbeBleDeviceBase.makeLinkId(advertisement),
+            deviceId = deviceId,
+            probeSerialNumber = REPEATER_NO_PROBES_SERIAL_NUMBER,
+            advertisement = advertisement,
+        )
+    }
+
+    private fun manageMeatNetDeviceWithoutProbe(
+        advertisement: CombustionAdvertisingData,
+    ) {
+        // Not supported if MeatNet is disabled
+        if (!settings.meatNetEnabled) {
+            return
+        }
+
+        val deviceId = advertisement.id
+        trackDeviceIfNew(deviceId, advertisement)
+        createManagerForDevicesWithoutProbeIfItDoesNotExist()
+        createMeatNetLinkIfNewAndAddToProbelessDevicesManager(
+            deviceId = deviceId,
+            advertisement = advertisement,
+        )
+    }
+
+
+    private fun manageMeatNetDeviceWithProbe(
+        advertisement: CombustionAdvertisingData,
+    ): Boolean {
+        // if MeatNet isn't enabled and we see anything other than a probe, then return out now
+        // because that product type isn't supported in this mode.
+        if (!settings.meatNetEnabled && advertisement.productType != CombustionProductType.PROBE) {
+            return false
+        }
+
+        val probeSerialNumber = advertisement.probeSerialNumber
+        val deviceId = advertisement.id
+        val linkId = ProbeBleDeviceBase.makeLinkId(advertisement)
+
+        // If the advertised probe isn't in the subscriber list, don't bother connecting
+        probeAllowlist?.let {
+            if (!it.contains(probeSerialNumber)) {
+                return false
+            }
+        }
+
+        trackDeviceIfNew(deviceId, advertisement)
+
+        val discoveredProbe = createProbeManagerIfNew(probeSerialNumber)
+
+        createMeatNetLinkIfNewAndAddToProbeManager(
+            linkId = linkId,
+            deviceId = deviceId,
+            probeSerialNumber = probeSerialNumber,
+            advertisement = advertisement,
+        )
 
         return discoveredProbe
     }
@@ -696,37 +764,31 @@ internal class NetworkManager(
         DeviceScanner.advertisements.collect { advertisingData ->
             if (scanningForProbes) {
                 val serialNumber = advertisingData.probeSerialNumber
-                if (serialNumber != REPEATER_NO_PROBES_SERIAL_NUMBER) {
-                    if (manageMeatNetDevice(advertisingData)) {
-                        flowHolder.mutableDiscoveredProbesFlow.emit(
-                            ProbeDiscoveredEvent.ProbeDiscovered(serialNumber)
+                if (serialNumber == REPEATER_NO_PROBES_SERIAL_NUMBER) {
+                    manageMeatNetDeviceWithoutProbe(advertisingData)
+                } else if (manageMeatNetDeviceWithProbe(advertisingData)) {
+                    flowHolder.mutableDiscoveredProbesFlow.emit(
+                        ProbeDiscoveredEvent.ProbeDiscovered(serialNumber)
+                    )
+                }
+
+                // Publish this device to the proximity flow if it's a probe.
+                if (advertisingData.productType == CombustionProductType.PROBE) {
+                    // If we haven't seen this probe before, then add it to our list of devices
+                    // that we track proximity for and publish the addition.
+                    if (!proximityDevices.contains(serialNumber)) {
+                        Log.i(LOG_TAG, "Adding $serialNumber to probes in proximity")
+
+                        // Guarantee that the device has a valid RSSI value before flowing out
+                        // the discovery event.
+                        proximityDevices[serialNumber] = ProximityDevice()
+                        proximityDevices[serialNumber]?.handleRssiUpdate(advertisingData.rssi)
+                        flowHolder.mutableDeviceProximityFlow.emit(
+                            DeviceDiscoveredEvent.ProbeDiscovered(serialNumber)
                         )
-                    }
-
-                    // Publish this device to the proximity flow if it's a probe.
-                    if (advertisingData.productType == CombustionProductType.PROBE) {
-                        // If we haven't seen this probe before, then add it to our list of devices
-                        // that we track proximity for and publish the addition.
-                        if (!proximityDevices.contains(serialNumber)) {
-                            Log.i(LOG_TAG, "Adding $serialNumber to probes in proximity")
-
-                            // Guarantee that the device has a valid RSSI value before flowing out
-                            // the discovery event.
-                            proximityDevices[serialNumber] = ProximityDevice()
-                            proximityDevices[serialNumber]?.handleRssiUpdate(advertisingData.rssi)
-                            flowHolder.mutableDeviceProximityFlow.emit(
-                                DeviceDiscoveredEvent.ProbeDiscovered(serialNumber)
-                            )
-                        } else {
-                            // Update the smoothed RSSI value for this device
-                            proximityDevices[serialNumber]?.handleRssiUpdate(advertisingData.rssi)
-                        }
-                    }
-                } else if (probeAllowlist == null) {
-                    // Only connect to a node that doesn't have any connected probes if the
-                    // allowlist is unset.
-                    if (!firmwareStateOfNetwork.containsKey(advertisingData.id)) {
-                        handleMeatNetLinkWithoutProbe(advertisingData)
+                    } else {
+                        // Update the smoothed RSSI value for this device
+                        proximityDevices[serialNumber]?.handleRssiUpdate(advertisingData.rssi)
                     }
                 }
             }
@@ -763,27 +825,6 @@ internal class NetworkManager(
         true
     } else {
         false
-    }
-
-    private fun handleMeatNetLinkWithoutProbe(advertisement: CombustionAdvertisingData) {
-        // construct a device info so that we can read the details
-        val device = DeviceInformationBleDevice(advertisement.id, advertisement, owner, adapter)
-        val success = publishNodeFirmwareOnConnectedState(device) {
-            // free up resources
-            device.finish()
-
-            // if we don't have the details at this point, we are going to want to try again
-            // on the next advertising packet
-            if (!firmwareStateOfNetwork.containsKey(device.id)) {
-                deviceInformationDevices.remove(device.id)
-            }
-        }
-        if (success) {
-            // Connect to device
-            if (device.isDisconnected.get() && device.isConnectable.get()) {
-                device.connect()
-            }
-        }
     }
 
     private fun initialize() {
