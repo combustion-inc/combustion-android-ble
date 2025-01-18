@@ -596,31 +596,13 @@ internal class NetworkManager(
         jobManager.cancelJobs()
     }
 
-    private fun manageMeatNetDevice(
+    /**
+     * If we have not seen this device by its uid [deviceId], then track in the device map.
+     */
+    private fun trackDeviceIfNew(
+        deviceId: String,
         advertisement: CombustionAdvertisingData,
-        isProbelessRepeater: Boolean,
-    ): Boolean {
-        var discoveredProbe = false
-        val serialNumber = advertisement.probeSerialNumber
-        val deviceId = advertisement.id
-        val linkId = ProbeBleDeviceBase.makeLinkId(advertisement)
-
-        // if MeatNet isn't enabled and we see anything other than a probe, then return out now
-        // because that product type isn't supported in this mode.
-        if (!settings.meatNetEnabled && advertisement.productType != CombustionProductType.PROBE) {
-            return false
-        }
-
-        if (!isProbelessRepeater) {
-            // If the advertised probe isn't in the subscriber list, don't bother connecting
-            probeAllowlist?.let {
-                if (!it.contains(serialNumber)) {
-                    return false
-                }
-            }
-        }
-
-        // if we have not seen this device by its uid, then track in the device map.
+    ) {
         if (!devices.containsKey(deviceId)) {
             val deviceHolder = when (advertisement.productType) {
                 CombustionProductType.PROBE -> {
@@ -640,11 +622,16 @@ internal class NetworkManager(
 
             devices[deviceId] = deviceHolder
         }
+    }
 
-        // if we haven't seen this serial number, then create a manager for it
-        if (!probeManagers.containsKey(serialNumber)) {
+    /**
+     * if we haven't seen [probeSerialNumber], then create a manager for it.
+     * @return true if new manager was created
+     */
+    private fun createProbeManagerIfNew(probeSerialNumber: String): Boolean =
+        if (!probeManagers.containsKey(probeSerialNumber)) {
             val manager = ProbeManager(
-                serialNumber = serialNumber,
+                serialNumber = probeSerialNumber,
                 owner = owner,
                 settings = settings,
                 // called by the ProbeManager whenever a meatnet node is disconnected
@@ -658,18 +645,29 @@ internal class NetworkManager(
                 }
             )
 
-            probeManagers[serialNumber] = manager
+            probeManagers[probeSerialNumber] = manager
             LogManager.instance.manage(owner, manager)
 
             nodeDeviceManager.subscribeToNodeFlow(manager)
-            discoveredProbe = true
+            true
+        } else {
+            false
         }
 
-        // if we haven't seen this link before, then create it and add it to the right probe manager
+    private fun createManagerForDevicesWithoutProbeIfItDoesNotExist() {
+        createProbeManagerIfNew(REPEATER_NO_PROBES_SERIAL_NUMBER)
+    }
+
+    private fun createMeatNetLinkIfNewAndAddToProbeManager(
+        linkId: LinkID,
+        deviceId: String,
+        probeSerialNumber: String,
+        advertisement: CombustionAdvertisingData
+    ) {
         if (!meatNetLinks.containsKey(linkId)) {
             // get reference to the source device for this link
             val device = devices[deviceId]
-            val probeManger = probeManagers[serialNumber]
+            val probeManger = probeManagers[probeSerialNumber]
             when (device) {
                 is DeviceHolder.ProbeHolder -> {
                     meatNetLinks[linkId] = LinkHolder.ProbeHolder(device.probe)
@@ -678,7 +676,7 @@ internal class NetworkManager(
 
                 is DeviceHolder.RepeaterHolder -> {
                     val repeatedProbe = RepeatedProbeBleDevice(
-                        serialNumber,
+                        probeSerialNumber,
                         device.repeater.getDevice(),
                         advertisement,
                     )
@@ -693,6 +691,68 @@ internal class NetworkManager(
                 else -> NOT_IMPLEMENTED("Unknown type of device holder")
             }
         }
+    }
+
+    private fun createMeatNetLinkIfNewAndAddToProbelessDevicesManager(
+        deviceId: String,
+        advertisement: CombustionAdvertisingData
+    ) {
+        createMeatNetLinkIfNewAndAddToProbeManager(
+            linkId = ProbeBleDeviceBase.makeLinkId(advertisement),
+            deviceId = deviceId,
+            probeSerialNumber = REPEATER_NO_PROBES_SERIAL_NUMBER,
+            advertisement = advertisement,
+        )
+    }
+
+    private fun manageMeatNetDeviceWithoutProbe(
+        advertisement: CombustionAdvertisingData,
+    ) {
+        // Not supported if MeatNet is disabled
+        if (!settings.meatNetEnabled) {
+            return
+        }
+
+        val deviceId = advertisement.id
+        trackDeviceIfNew(deviceId, advertisement)
+        createManagerForDevicesWithoutProbeIfItDoesNotExist()
+        createMeatNetLinkIfNewAndAddToProbelessDevicesManager(
+            deviceId = deviceId,
+            advertisement = advertisement,
+        )
+    }
+
+
+    private fun manageMeatNetDeviceWithProbe(
+        advertisement: CombustionAdvertisingData,
+    ): Boolean {
+        // if MeatNet isn't enabled and we see anything other than a probe, then return out now
+        // because that product type isn't supported in this mode.
+        if (!settings.meatNetEnabled && advertisement.productType != CombustionProductType.PROBE) {
+            return false
+        }
+
+        val probeSerialNumber = advertisement.probeSerialNumber
+        val deviceId = advertisement.id
+        val linkId = ProbeBleDeviceBase.makeLinkId(advertisement)
+
+        // If the advertised probe isn't in the subscriber list, don't bother connecting
+        probeAllowlist?.let {
+            if (!it.contains(probeSerialNumber)) {
+                return false
+            }
+        }
+
+        trackDeviceIfNew(deviceId, advertisement)
+
+        val discoveredProbe = createProbeManagerIfNew(probeSerialNumber)
+
+        createMeatNetLinkIfNewAndAddToProbeManager(
+            linkId = linkId,
+            deviceId = deviceId,
+            probeSerialNumber = probeSerialNumber,
+            advertisement = advertisement,
+        )
 
         return discoveredProbe
     }
@@ -701,11 +761,9 @@ internal class NetworkManager(
         DeviceScanner.advertisements.collect { advertisingData ->
             if (scanningForProbes) {
                 val serialNumber = advertisingData.probeSerialNumber
-                if (manageMeatNetDevice(
-                        advertisingData,
-                        isProbelessRepeater = serialNumber == REPEATER_NO_PROBES_SERIAL_NUMBER,
-                    )
-                ) {
+                if (serialNumber == REPEATER_NO_PROBES_SERIAL_NUMBER) {
+                    manageMeatNetDeviceWithoutProbe(advertisingData)
+                } else if (manageMeatNetDeviceWithProbe(advertisingData)) {
                     flowHolder.mutableDiscoveredProbesFlow.emit(
                         ProbeDiscoveredEvent.ProbeDiscovered(serialNumber)
                     )
