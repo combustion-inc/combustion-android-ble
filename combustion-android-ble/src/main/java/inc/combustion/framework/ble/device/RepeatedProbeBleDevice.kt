@@ -36,6 +36,7 @@ import inc.combustion.framework.ble.NOT_IMPLEMENTED
 import inc.combustion.framework.ble.ProbeStatus
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.uart.LogResponse
+import inc.combustion.framework.ble.uart.ResetProbeRequest
 import inc.combustion.framework.ble.uart.meatnet.*
 import inc.combustion.framework.ble.uart.meatnet.NodeProbeStatusRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeRequest
@@ -194,6 +195,20 @@ internal class RepeatedProbeBleDevice (
     override fun sendLogRequest(minSequence: UInt, maxSequence: UInt, callback: (suspend (LogResponse) -> Unit)?) {
         logResponseCallback = callback
         sendUartRequest(NodeReadLogsRequest(probeSerialNumber, minSequence, maxSequence))
+    }
+
+    override fun sendSetPowerMode(
+        powerMode: ProbePowerMode,
+        reqId: UInt?,
+        callback: ((Boolean, Any?) -> Unit)?,
+    ) {
+        setPowerModeHandler.wait(uart.owner, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
+        sendUartRequest(NodeSetPowerModeRequest(probeSerialNumber, powerMode, reqId))
+    }
+
+    override fun sendResetProbe(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
+        resetProbeHandler.wait(uart.owner, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
+        sendUartRequest(NodeResetProbeRequest(probeSerialNumber))
     }
 
     override suspend fun readSerialNumber() = uart.readSerialNumber()
@@ -403,6 +418,13 @@ internal class RepeatedProbeBleDevice (
                     }
                     is NodeResetFoodSafeResponse -> {
                         resetFoodSafeHandler.handled(message.success, null, message.requestId)
+                    }
+
+                    is NodeSetPowerModeResponse -> {
+                        setPowerModeHandler.handled(message.success, null, message.requestId)
+                    }
+                    is NodeResetProbeResponse -> {
+                        resetProbeHandler.handled(message.success, null, message.requestId)
                     }
 
                     is NodeReadFirmwareRevisionResponse -> {

@@ -117,6 +117,7 @@ data class Probe(
     val logUploadPercent: UInt = 0u,
     val foodSafeData: FoodSafeData? = null,
     val foodSafeStatus: FoodSafeStatus? = null,
+    val powerMode: ProbePowerMode? = null,
 ) {
     val serialNumber = baseDevice.serialNumber
     val mac = baseDevice.mac
