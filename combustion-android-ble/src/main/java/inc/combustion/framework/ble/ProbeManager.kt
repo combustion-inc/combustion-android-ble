@@ -32,15 +32,47 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.InstantReadFilter
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.device.*
+import inc.combustion.framework.ble.device.DeviceID
+import inc.combustion.framework.ble.device.DeviceInformationBleDevice
+import inc.combustion.framework.ble.device.ProbeBleDevice
+import inc.combustion.framework.ble.device.ProbeBleDeviceBase
+import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
+import inc.combustion.framework.ble.device.SimulatedProbeBleDevice
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.uart.LogResponse
-import inc.combustion.framework.service.*
+import inc.combustion.framework.service.DeviceConnectionState
+import inc.combustion.framework.service.DeviceManager
+import inc.combustion.framework.service.FirmwareVersion
+import inc.combustion.framework.service.FoodSafeData
+import inc.combustion.framework.service.FoodSafeStatus
+import inc.combustion.framework.service.ModelInformation
+import inc.combustion.framework.service.OverheatingSensors
+import inc.combustion.framework.service.Probe
+import inc.combustion.framework.service.ProbeBatteryStatus
+import inc.combustion.framework.service.ProbeColor
+import inc.combustion.framework.service.ProbeID
+import inc.combustion.framework.service.ProbeMode
+import inc.combustion.framework.service.ProbePowerMode
+import inc.combustion.framework.service.ProbePredictionMode
+import inc.combustion.framework.service.ProbePreferences
+import inc.combustion.framework.service.ProbeTemperatures
+import inc.combustion.framework.service.ProbeUploadState
+import inc.combustion.framework.service.ProbeVirtualSensors
+import inc.combustion.framework.service.SessionInformation
 import inc.combustion.framework.service.utils.DefaultLinearizationTimerImpl
 import inc.combustion.framework.service.utils.PredictionManager
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 /**
  * This class is responsible for managing and arbitrating the data links to a temperature
@@ -497,7 +529,7 @@ internal class ProbeManager(
     }
 
     fun resetFoodSafe(completionHandler: (Boolean) -> Unit) {
-        simulatedProbe?.sendResetFoodSafe() { status, _ ->
+        simulatedProbe?.sendResetFoodSafe { status, _ ->
             completionHandler(status)
         } ?: run {
             // if there is a direct link to the probe, then use that
@@ -525,12 +557,22 @@ internal class ProbeManager(
     }
 
     fun setPowerMode(powerMode: ProbePowerMode, completionHandler: (Boolean) -> Unit) {
+        val onCompletion: (Boolean) -> Unit = { success ->
+            if (success) {
+                _probe.update {
+                    _probe.value.copy(
+                        powerMode = powerMode,
+                    )
+                }
+            }
+            completionHandler(success)
+        }
         simulatedProbe?.sendSetPowerMode(powerMode) { status, _ ->
-            completionHandler(status)
+            onCompletion(status)
         } ?: run {
             // if there is a direct link to the probe, then use that
             arbitrator.directLink?.sendSetPowerMode(powerMode) { status, _ ->
-                completionHandler(status)
+                onCompletion(status)
             } ?: run {
                 val nodeLinks = arbitrator.connectedNodeLinks
                 if (nodeLinks.isNotEmpty()) {
@@ -540,13 +582,13 @@ internal class ProbeManager(
                         it.sendSetPowerMode(powerMode, requestId) { status, _ ->
                             if (!handled) {
                                 handled = true
-                                completionHandler(status)
+                                onCompletion(status)
                             }
                         }
                     }
 
                 } else {
-                    completionHandler(false)
+                    onCompletion(false)
                 }
             }
         }
