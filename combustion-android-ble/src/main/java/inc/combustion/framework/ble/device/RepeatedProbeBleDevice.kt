@@ -202,12 +202,12 @@ internal class RepeatedProbeBleDevice (
         reqId: UInt?,
         callback: ((Boolean, Any?) -> Unit)?,
     ) {
-        setPowerModeHandler.wait(uart.owner, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
+        setPowerModeHandler.wait(uart.owner, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
         sendUartRequest(NodeSetPowerModeRequest(probeSerialNumber, powerMode, reqId))
     }
 
     override fun sendResetProbe(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
-        resetProbeHandler.wait(uart.owner, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
+        resetProbeHandler.wait(uart.owner, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
         sendUartRequest(NodeResetProbeRequest(probeSerialNumber))
     }
 
