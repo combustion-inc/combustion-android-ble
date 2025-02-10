@@ -208,7 +208,7 @@ internal class RepeatedProbeBleDevice (
 
     override fun sendResetProbe(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
         resetProbeHandler.wait(uart.owner, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
-        sendUartRequest(NodeResetProbeRequest(probeSerialNumber))
+        sendUartRequest(NodeResetProbeRequest(probeSerialNumber, reqId))
     }
 
     override suspend fun readSerialNumber() = uart.readSerialNumber()
@@ -395,7 +395,7 @@ internal class RepeatedProbeBleDevice (
                     MEATNET_TRACE_INCLUSION_FILTER.firstOrNull{it == message.messageId}?.let {
                         when(message) {
                             is NodeRequest -> Log.i(LOG_TAG + "_MEATNET", "$probeSerialNumber: RX Node $id $message")
-                            is NodeResponse -> Log.i(LOG_TAG + "_MEATNET", "$probeSerialNumber: RX Node $id $message")
+                            is NodeResponse -> Log.i(LOG_TAG + "_MEATNET", "NodeResponse = $probeSerialNumber: RX Node $id $message")
                             else -> { }
                         }
                     }
@@ -461,7 +461,7 @@ internal class RepeatedProbeBleDevice (
 
     companion object {
         private const val IDLE_POLL_RATE_MS = 1_000L
-        const val INFO_LOG_MEATNET_UART_TRACE = false
+        const val INFO_LOG_MEATNET_UART_TRACE = true
         val MEATNET_TRACE_INCLUSION_FILTER = listOf<NodeMessageType>(
             // NodeMessageType.SET_ID,
             // NodeMessageType.SET_COLOR,
@@ -478,7 +478,8 @@ internal class RepeatedProbeBleDevice (
             // NodeMessageType.PROBE_FIRMWARE_REVISION,
             // NodeMessageType.PROBE_HARDWARE_REVISION,
             // NodeMessageType.PROBE_MODEL_INFORMATION,
-            // NodeMessageType.HEARTBEAT
+            // NodeMessageType.HEARTBEAT,
+            NodeMessageType.RESET_PROBE,
         )
         val INFO_LOG_MEATNET_TRACE = MEATNET_TRACE_INCLUSION_FILTER.isNotEmpty()
     }
