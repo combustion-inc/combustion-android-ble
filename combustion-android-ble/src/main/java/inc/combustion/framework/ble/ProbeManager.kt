@@ -52,7 +52,9 @@ import inc.combustion.framework.service.ProbeBatteryStatus
 import inc.combustion.framework.service.ProbeColor
 import inc.combustion.framework.service.ProbeID
 import inc.combustion.framework.service.ProbeMode
+import inc.combustion.framework.service.ProbePowerMode
 import inc.combustion.framework.service.ProbePredictionMode
+import inc.combustion.framework.service.ProbePreferences
 import inc.combustion.framework.service.ProbeTemperatures
 import inc.combustion.framework.service.ProbeUploadState
 import inc.combustion.framework.service.ProbeVirtualSensors
@@ -527,7 +529,7 @@ internal class ProbeManager(
     }
 
     fun resetFoodSafe(completionHandler: (Boolean) -> Unit) {
-        simulatedProbe?.sendResetFoodSafe() { status, _ ->
+        simulatedProbe?.sendResetFoodSafe { status, _ ->
             completionHandler(status)
         } ?: run {
             // if there is a direct link to the probe, then use that
@@ -540,6 +542,72 @@ internal class ProbeManager(
                     val requestId = makeRequestId()
                     nodeLinks.forEach {
                         it.sendResetFoodSafe(requestId) { status, _ ->
+                            if (!handled) {
+                                handled = true
+                                completionHandler(status)
+                            }
+                        }
+                    }
+
+                } else {
+                    completionHandler(false)
+                }
+            }
+        }
+    }
+
+    fun setPowerMode(powerMode: ProbePowerMode, completionHandler: (Boolean) -> Unit) {
+        val onCompletion: (Boolean) -> Unit = { success ->
+            if (success) {
+                _probe.update {
+                    _probe.value.copy(
+                        powerMode = powerMode,
+                    )
+                }
+            }
+            completionHandler(success)
+        }
+        simulatedProbe?.sendSetPowerMode(powerMode) { status, _ ->
+            onCompletion(status)
+        } ?: run {
+            // if there is a direct link to the probe, then use that
+            arbitrator.directLink?.sendSetPowerMode(powerMode) { status, _ ->
+                onCompletion(status)
+            } ?: run {
+                val nodeLinks = arbitrator.connectedNodeLinks
+                if (nodeLinks.isNotEmpty()) {
+                    var handled = false
+                    val requestId = makeRequestId()
+                    nodeLinks.forEach {
+                        it.sendSetPowerMode(powerMode, requestId) { status, _ ->
+                            if (!handled) {
+                                handled = true
+                                onCompletion(status)
+                            }
+                        }
+                    }
+
+                } else {
+                    onCompletion(false)
+                }
+            }
+        }
+    }
+
+    fun resetProbe(completionHandler: (Boolean) -> Unit) {
+        simulatedProbe?.sendResetProbe { status, _ ->
+            completionHandler(status)
+        } ?: run {
+            // if there is a direct link to the probe, then use that
+            arbitrator.directLink?.sendResetProbe { status, _ ->
+                completionHandler(status)
+            } ?: run {
+                val nodeLinks = arbitrator.connectedNodeLinks
+                if (nodeLinks.isNotEmpty()) {
+                    var handled = false
+                    val requestId = makeRequestId()
+                    nodeLinks.forEach {
+                        it.sendResetProbe(requestId) { status, _ ->
                             if (!handled) {
                                 handled = true
                                 completionHandler(status)
@@ -677,6 +745,7 @@ internal class ProbeManager(
                 status.maxSequenceNumber,
                 updatedProbe
             )
+            updatedProbe = updateProbePreferences(status.probePreferences, updatedProbe)
 
             if (status.mode == ProbeMode.NORMAL) {
                 updatedProbe = updateNormalMode(status, updatedProbe)
@@ -1152,6 +1221,15 @@ internal class ProbeManager(
         return currentProbe.copy(
             foodSafeData = foodSafeData,
             foodSafeStatus = foodSafeStatus,
+        )
+    }
+
+    private fun updateProbePreferences(
+        probePreferences: ProbePreferences,
+        currentProbe: Probe,
+    ): Probe {
+        return currentProbe.copy(
+            powerMode = probePreferences.powerMode,
         )
     }
 

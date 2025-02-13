@@ -49,6 +49,7 @@ internal data class ProbeStatus(
     val foodSafeData: FoodSafeData?,
     val foodSafeStatus: FoodSafeStatus?,
     val overheatingSensors: OverheatingSensors,
+    val probePreferences: ProbePreferences,
 ) {
     val virtualCoreTemperature: Double
         get() {
@@ -89,7 +90,10 @@ internal data class ProbeStatus(
         private val OVERHEAT_BYTE_RANGE =
             OVERHEAT_BYTE_START_INDEX until OVERHEAT_BYTE_START_INDEX + OverheatingSensors.SIZE_BYTES
 
-        fun fromRawData(data: UByteArray, overheatRange: IntRange = OVERHEAT_BYTE_RANGE): ProbeStatus? {
+        fun fromRawData(
+            data: UByteArray,
+            overheatRange: IntRange = OVERHEAT_BYTE_RANGE
+        ): ProbeStatus? {
             if (data.size < MIN_RAW_SIZE) return null
 
             val minSequenceNumber = data.getLittleEndianUInt32At(MIN_SEQ_INDEX)
@@ -135,6 +139,15 @@ internal data class ProbeStatus(
                 OverheatingSensors.fromTemperatures(temperatures)
             }
 
+            val probeRefsByteStartIndex = overheatRange.last + 1
+            val probeRefsRange = probeRefsByteStartIndex until probeRefsByteStartIndex + ProbePreferences.PROBE_PREFS_SIZE_BYTES
+            val probePrefs = if (data.size > probeRefsRange.last) {
+                val probePrefsRaw = data.sliceArray(probeRefsRange)[0]
+                ProbePreferences.fromUByte(probePrefsRaw)
+            } else {
+                ProbePreferences.DEFAULT
+            }
+
             return ProbeStatus(
                 minSequenceNumber = minSequenceNumber,
                 maxSequenceNumber = maxSequenceNumber,
@@ -148,6 +161,7 @@ internal data class ProbeStatus(
                 foodSafeData = foodSafeData,
                 foodSafeStatus = foodSafeStatus,
                 overheatingSensors = overheatingSensors,
+                probePreferences = probePrefs,
             )
         }
     }

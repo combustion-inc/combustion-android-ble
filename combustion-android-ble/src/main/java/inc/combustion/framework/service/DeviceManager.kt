@@ -147,7 +147,7 @@ class DeviceManager(
                     app.applicationContext, notification, dfuNotificationTarget, INSTANCE.settings
                 )
             }
-            return 0;
+            return 0
         }
 
         /**
@@ -627,6 +627,24 @@ class DeviceManager(
     fun resetFoodSafe(serialNumber: String, completionHandler: (Boolean) -> Unit) {
         Log.i(LOG_TAG, "Resetting food safe configuration")
         NetworkManager.instance.resetFoodSafe(serialNumber, completionHandler)
+    }
+
+    /**
+     * Set powerMode on probe with the serial number [serialNumber] to
+     * [powerMode], calling [completionHandler] with the success value on completion.
+     */
+    fun setPowerMode(serialNumber: String, powerMode: ProbePowerMode, completionHandler: (Boolean) -> Unit) {
+        Log.i(LOG_TAG, "Setting probe $serialNumber's powerMode to $powerMode")
+        NetworkManager.instance.setPowerMode(serialNumber, powerMode, completionHandler)
+    }
+
+    /**
+     * Reset probe with the serial number [serialNumber],
+     * calling [completionHandler] with the success value on completion.
+     */
+    fun resetProbe(serialNumber: String, completionHandler: (Boolean) -> Unit) {
+        Log.i(LOG_TAG, "Resetting probe $serialNumber")
+        NetworkManager.instance.resetProbe(serialNumber, completionHandler)
     }
 
     /**

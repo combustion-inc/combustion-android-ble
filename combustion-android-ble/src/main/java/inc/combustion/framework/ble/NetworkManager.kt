@@ -53,18 +53,7 @@ import inc.combustion.framework.ble.uart.meatnet.GenericNodeResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.log.LogManager
-import inc.combustion.framework.service.CombustionProductType
-import inc.combustion.framework.service.DeviceConnectionState
-import inc.combustion.framework.service.DeviceDiscoveredEvent
-import inc.combustion.framework.service.DeviceManager
-import inc.combustion.framework.service.FirmwareState
-import inc.combustion.framework.service.FoodSafeData
-import inc.combustion.framework.service.NetworkState
-import inc.combustion.framework.service.Probe
-import inc.combustion.framework.service.ProbeColor
-import inc.combustion.framework.service.ProbeDiscoveredEvent
-import inc.combustion.framework.service.ProbeID
-import inc.combustion.framework.service.ProbePredictionMode
+import inc.combustion.framework.service.*
 import inc.combustion.framework.service.utils.StateFlowMutableMap
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
@@ -559,6 +548,22 @@ internal class NetworkManager(
 
     internal fun resetFoodSafe(serialNumber: String, completionHandler: (Boolean) -> Unit) {
         probeManagers[serialNumber]?.resetFoodSafe(completionHandler) ?: run {
+            completionHandler(false)
+        }
+    }
+
+    internal fun setPowerMode(
+        serialNumber: String,
+        powerMode: ProbePowerMode,
+        completionHandler: (Boolean) -> Unit,
+    ) {
+        probeManagers[serialNumber]?.setPowerMode(powerMode, completionHandler) ?: run {
+            completionHandler(false)
+        }
+    }
+
+    internal fun resetProbe(serialNumber: String, completionHandler: (Boolean) -> Unit) {
+        probeManagers[serialNumber]?.resetProbe(completionHandler) ?: run {
             completionHandler(false)
         }
     }

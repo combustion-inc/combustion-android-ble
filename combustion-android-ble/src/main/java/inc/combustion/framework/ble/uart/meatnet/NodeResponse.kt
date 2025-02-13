@@ -48,7 +48,12 @@ internal open class NodeResponse(
     payloadLength
 ) {
     override fun toString(): String {
-        return "RESP $messageId (REQID: ${String.format("%08x",requestId.toInt())} RSPID: ${String.format("%08x",responseId.toInt())})"
+        return "RESP $messageId (REQID: ${
+            String.format(
+                "%08x",
+                requestId.toInt()
+            )
+        } RSPID: ${String.format("%08x", responseId.toInt())})"
     }
 
     companion object {
@@ -210,18 +215,37 @@ internal open class NodeResponse(
                     )
                 }
 
+                NodeMessageType.SET_POWER_MODE -> {
+                    NodeSetPowerModeResponse.fromData(
+                        success,
+                        requestId,
+                        responseId,
+                        payloadLength,
+                    )
+                }
+
+                NodeMessageType.RESET_PROBE -> {
+                    NodeResetProbeResponse.fromData(
+                        success,
+                        requestId,
+                        responseId,
+                        payloadLength,
+                    )
+                }
+
                 else -> {
                     // The message didn't match any of the defined types, so check if it matches a custom type
-                    return DeviceManager.instance.settings.messageTypeCallback(rawMessageType)?.let {
-                        return GenericNodeResponse.fromData(
-                            data,
-                            success,
-                            requestId,
-                            responseId,
-                            payloadLength,
-                            it
-                        )
-                    }
+                    return DeviceManager.instance.settings.messageTypeCallback(rawMessageType)
+                        ?.let {
+                            return GenericNodeResponse.fromData(
+                                data,
+                                success,
+                                requestId,
+                                responseId,
+                                payloadLength,
+                                it
+                            )
+                        }
                 }
             }
         }

@@ -78,7 +78,7 @@ internal class SimulatedProbeBleDevice(
             hopCount: UInt,
             probeID: ProbeID,
             probeColor: ProbeColor
-        ) : CombustionAdvertisingData {
+        ): CombustionAdvertisingData {
             val probeTemperatures = ProbeTemperatures.withRandomData()
             return CombustionAdvertisingData(
                 mac,
@@ -101,15 +101,19 @@ internal class SimulatedProbeBleDevice(
 
     private var maxSequence = 0u
 
-    private var observeAdvertisingCallback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)? = null
+    private var observeAdvertisingCallback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)? =
+        null
     private var observeRemoteRssiCallback: (suspend (rssi: Int) -> Unit)? = null
-    private var observeConnectionStateCallback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)? = null
-    private var observeStatusUpdatesCallback: (suspend (status: ProbeStatus, hopCount: UInt?) -> Unit)? = null
+    private var observeConnectionStateCallback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)? =
+        null
+    private var observeStatusUpdatesCallback: (suspend (status: ProbeStatus, hopCount: UInt?) -> Unit)? =
+        null
 
     override var rssi: Int = randomRSSI()
         private set
 
-    override var connectionState: DeviceConnectionState = DeviceConnectionState.ADVERTISING_CONNECTABLE
+    override var connectionState: DeviceConnectionState =
+        DeviceConnectionState.ADVERTISING_CONNECTABLE
         private set
 
     override var isConnected: Boolean = false
@@ -137,8 +141,17 @@ internal class SimulatedProbeBleDevice(
         fixedRateTimer(name = "SimAdvertising", initialDelay = 1000, period = 1000) {
             owner.lifecycleScope.launch {
                 observeAdvertisingCallback?.let {
-                    if(!isConnected) {
-                        it(randomAdvertisement(mac, productType, probeSerialNumber, hopCount, probeID, probeColor))
+                    if (!isConnected) {
+                        it(
+                            randomAdvertisement(
+                                mac,
+                                productType,
+                                probeSerialNumber,
+                                hopCount,
+                                probeID,
+                                probeColor
+                            )
+                        )
                     }
                 }
                 observeRemoteRssiCallback?.let {
@@ -152,7 +165,7 @@ internal class SimulatedProbeBleDevice(
                 maxSequence += 1u
                 observeStatusUpdatesCallback?.let {
                     val probeTemperatures = ProbeTemperatures.withRandomData()
-                    if(isConnected) {
+                    if (isConnected) {
                         it(
                             ProbeStatus(
                                 minSequenceNumber = 0u,
@@ -166,7 +179,10 @@ internal class SimulatedProbeBleDevice(
                                 predictionStatus = PredictionStatus.withRandomData(),
                                 foodSafeData = FoodSafeData.RANDOM,
                                 foodSafeStatus = FoodSafeStatus.RANDOM,
-                                overheatingSensors = OverheatingSensors.fromTemperatures(probeTemperatures),
+                                overheatingSensors = OverheatingSensors.fromTemperatures(
+                                    probeTemperatures
+                                ),
+                                probePreferences = ProbePreferences.DEFAULT,
                             ),
                             null,
                         )
@@ -244,7 +260,10 @@ internal class SimulatedProbeBleDevice(
         // nothing to do -- handled on connect
     }
 
-    override fun observeProbeStatusUpdates(hopCount: UInt?, callback: (suspend (status: ProbeStatus, hopCount: UInt?) -> Unit)?) {
+    override fun observeProbeStatusUpdates(
+        hopCount: UInt?,
+        callback: (suspend (status: ProbeStatus, hopCount: UInt?) -> Unit)?
+    ) {
         observeStatusUpdatesCallback = callback
     }
 
@@ -290,6 +309,18 @@ internal class SimulatedProbeBleDevice(
         callback: (suspend (LogResponse) -> Unit)?
     ) {
         // do nothing
+    }
+
+    override fun sendResetProbe(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
+        callback?.let { it(true, null) }
+    }
+
+    override fun sendSetPowerMode(
+        powerMode: ProbePowerMode,
+        reqId: UInt?,
+        callback: ((Boolean, Any?) -> Unit)?
+    ) {
+        callback?.let { it(true, null) }
     }
 
     private fun publishConnectionState() {

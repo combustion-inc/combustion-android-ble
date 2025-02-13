@@ -36,13 +36,41 @@ import inc.combustion.framework.ble.NOT_IMPLEMENTED
 import inc.combustion.framework.ble.ProbeStatus
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.uart.LogResponse
-import inc.combustion.framework.ble.uart.meatnet.*
+import inc.combustion.framework.ble.uart.meatnet.NodeConfigureFoodSafeRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeConfigureFoodSafeResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeHeartbeatRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeMessageType
 import inc.combustion.framework.ble.uart.meatnet.NodeProbeStatusRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeReadFirmwareRevisionRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeReadFirmwareRevisionResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeReadHardwareRevisionRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeReadHardwareRevisionResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeReadLogsRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeReadLogsResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeReadModelInfoRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeReadModelInfoResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeReadSessionInfoRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeReadSessionInfoResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeResetFoodSafeRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeResetFoodSafeResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeResetProbeRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeResetProbeResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeSetPowerModeRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeSetPowerModeResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeSetPredictionRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeSetPredictionResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
-import inc.combustion.framework.ble.uart.meatnet.NodeReadSessionInfoRequest
-import inc.combustion.framework.service.*
+import inc.combustion.framework.service.CombustionProductType
+import inc.combustion.framework.service.DeviceConnectionState
+import inc.combustion.framework.service.FirmwareVersion
+import inc.combustion.framework.service.FoodSafeData
+import inc.combustion.framework.service.ModelInformation
+import inc.combustion.framework.service.ProbeColor
+import inc.combustion.framework.service.ProbeID
+import inc.combustion.framework.service.ProbePowerMode
+import inc.combustion.framework.service.ProbePredictionMode
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -194,6 +222,20 @@ internal class RepeatedProbeBleDevice (
     override fun sendLogRequest(minSequence: UInt, maxSequence: UInt, callback: (suspend (LogResponse) -> Unit)?) {
         logResponseCallback = callback
         sendUartRequest(NodeReadLogsRequest(probeSerialNumber, minSequence, maxSequence))
+    }
+
+    override fun sendSetPowerMode(
+        powerMode: ProbePowerMode,
+        reqId: UInt?,
+        callback: ((Boolean, Any?) -> Unit)?,
+    ) {
+        setPowerModeHandler.wait(uart.owner, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
+        sendUartRequest(NodeSetPowerModeRequest(probeSerialNumber, powerMode, reqId))
+    }
+
+    override fun sendResetProbe(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
+        resetProbeHandler.wait(uart.owner, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
+        sendUartRequest(NodeResetProbeRequest(probeSerialNumber, reqId))
     }
 
     override suspend fun readSerialNumber() = uart.readSerialNumber()
@@ -405,6 +447,13 @@ internal class RepeatedProbeBleDevice (
                         resetFoodSafeHandler.handled(message.success, null, message.requestId)
                     }
 
+                    is NodeSetPowerModeResponse -> {
+                        setPowerModeHandler.handled(message.success, null, message.requestId)
+                    }
+                    is NodeResetProbeResponse -> {
+                        resetProbeHandler.handled(message.success, null, message.requestId)
+                    }
+
                     is NodeReadFirmwareRevisionResponse -> {
                         probeFirmwareRevisionHandler.handled(message.success, message, message.requestId)
                     }
@@ -456,7 +505,8 @@ internal class RepeatedProbeBleDevice (
             // NodeMessageType.PROBE_FIRMWARE_REVISION,
             // NodeMessageType.PROBE_HARDWARE_REVISION,
             // NodeMessageType.PROBE_MODEL_INFORMATION,
-            // NodeMessageType.HEARTBEAT
+            // NodeMessageType.HEARTBEAT,
+            // NodeMessageType.RESET_PROBE,
         )
         val INFO_LOG_MEATNET_TRACE = MEATNET_TRACE_INCLUSION_FILTER.isNotEmpty()
     }

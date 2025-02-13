@@ -37,11 +37,6 @@ import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.ProbeStatus
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.ble.uart.*
-import inc.combustion.framework.ble.uart.LogRequest
-import inc.combustion.framework.ble.uart.SessionInfoRequest
-import inc.combustion.framework.ble.uart.SetColorRequest
-import inc.combustion.framework.ble.uart.SetIDRequest
-import inc.combustion.framework.ble.uart.SetPredictionRequest
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Dispatchers
@@ -156,6 +151,16 @@ internal class ProbeBleDevice (
     override fun sendResetFoodSafe(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
         resetFoodSafeHandler.wait(uart.owner, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
         sendUartRequest(ResetFoodSafeRequest())
+    }
+
+    override fun sendResetProbe(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
+        resetProbeHandler.wait(uart.owner, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
+        sendUartRequest(ResetProbeRequest())
+    }
+
+    override fun sendSetPowerMode(powerMode: ProbePowerMode, reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
+        setPowerModeHandler.wait(uart.owner, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
+        sendUartRequest(SetPowerModeRequest(powerMode))
     }
 
     override fun sendLogRequest(minSequence: UInt, maxSequence: UInt, callback: (suspend (LogResponse) -> Unit)?) {
@@ -283,6 +288,8 @@ internal class ProbeBleDevice (
                     is SetPredictionResponse -> setPredictionHandler.handled(response.success, null)
                     is ConfigureFoodSafeResponse -> configureFoodSafeHandler.handled(response.success, null)
                     is ResetFoodSafeResponse -> resetFoodSafeHandler.handled(response.success, null)
+                    is SetPowerModeResponse -> setPowerModeHandler.handled(response.success, null)
+                    is ResetProbeResponse -> resetProbeHandler.handled(response.success, null)
                 }
             }
         }
