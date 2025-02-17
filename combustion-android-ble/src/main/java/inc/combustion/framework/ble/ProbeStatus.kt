@@ -49,7 +49,7 @@ internal data class ProbeStatus(
     val foodSafeData: FoodSafeData?,
     val foodSafeStatus: FoodSafeStatus?,
     val overheatingSensors: OverheatingSensors,
-    val probePreferences: ProbePreferences,
+    val thermometerPrefs: ThermometerPreferences,
 ) {
     val virtualCoreTemperature: Double
         get() {
@@ -140,12 +140,12 @@ internal data class ProbeStatus(
             }
 
             val probeRefsByteStartIndex = overheatRange.last + 1
-            val probeRefsRange = probeRefsByteStartIndex until probeRefsByteStartIndex + ProbePreferences.PROBE_PREFS_SIZE_BYTES
+            val probeRefsRange = probeRefsByteStartIndex until probeRefsByteStartIndex + ThermometerPreferences.PROBE_PREFS_SIZE_BYTES
             val probePrefs = if (data.size > probeRefsRange.last) {
                 val probePrefsRaw = data.sliceArray(probeRefsRange)[0]
-                ProbePreferences.fromUByte(probePrefsRaw)
+                ThermometerPreferences.fromUByte(probePrefsRaw)
             } else {
-                ProbePreferences.DEFAULT
+                ThermometerPreferences.DEFAULT
             }
 
             return ProbeStatus(
@@ -161,7 +161,7 @@ internal data class ProbeStatus(
                 foodSafeData = foodSafeData,
                 foodSafeStatus = foodSafeStatus,
                 overheatingSensors = overheatingSensors,
-                probePreferences = probePrefs,
+                thermometerPrefs = probePrefs,
             )
         }
     }

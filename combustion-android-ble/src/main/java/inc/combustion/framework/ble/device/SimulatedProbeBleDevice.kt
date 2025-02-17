@@ -182,7 +182,7 @@ internal class SimulatedProbeBleDevice(
                                 overheatingSensors = OverheatingSensors.fromTemperatures(
                                     probeTemperatures
                                 ),
-                                probePreferences = ProbePreferences.DEFAULT,
+                                thermometerPrefs = ThermometerPreferences.DEFAULT,
                             ),
                             null,
                         )
