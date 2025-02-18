@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.StateFlow
  * A StateFlow with an interface similar to a mutable map.
  * Note, does not implement the [MutableMap] interface, e.g. cant modify its entries and keys directly.
  */
+@Suppress("unused")
 class StateFlowMutableMap<K, V>(initialMap: Map<K, V> = emptyMap()) {
     private val mutableMap: MutableMap<K, V> = initialMap.toMutableMap()
     private val _stateFlow = MutableStateFlow(initialMap)
@@ -44,6 +45,7 @@ class StateFlowMutableMap<K, V>(initialMap: Map<K, V> = emptyMap()) {
         _stateFlow.value = mutableMap.toMap() // Emit a new copy
     }
 
+    @Suppress("MemberVisibilityCanBePrivate")
     fun put(key: K, value: V): V? {
         val prevValue = mutableMap.put(key, value)
         emitChange()
@@ -103,4 +105,8 @@ class StateFlowMutableMap<K, V>(initialMap: Map<K, V> = emptyMap()) {
         }
         return removed
     }
+
+    fun toMap(): Map<K, V> = this.mutableMap.toMap()
+
+    fun asStateFlow(): StateFlow<Map<K, V>> = stateFlow
 }
