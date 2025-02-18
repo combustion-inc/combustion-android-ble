@@ -54,11 +54,11 @@ import inc.combustion.framework.service.ProbeID
 import inc.combustion.framework.service.ProbeMode
 import inc.combustion.framework.service.ProbePowerMode
 import inc.combustion.framework.service.ProbePredictionMode
-import inc.combustion.framework.service.ProbePreferences
 import inc.combustion.framework.service.ProbeTemperatures
 import inc.combustion.framework.service.ProbeUploadState
 import inc.combustion.framework.service.ProbeVirtualSensors
 import inc.combustion.framework.service.SessionInformation
+import inc.combustion.framework.service.ThermometerPreferences
 import inc.combustion.framework.service.utils.DefaultLinearizationTimerImpl
 import inc.combustion.framework.service.utils.PredictionManager
 import kotlinx.coroutines.CoroutineName
@@ -559,9 +559,12 @@ internal class ProbeManager(
     fun setPowerMode(powerMode: ProbePowerMode, completionHandler: (Boolean) -> Unit) {
         val onCompletion: (Boolean) -> Unit = { success ->
             if (success) {
+                val probeVal = _probe.value
                 _probe.update {
-                    _probe.value.copy(
-                        powerMode = powerMode,
+                    probeVal.copy(
+                        thermometerPrefs = probeVal.thermometerPrefs?.copy(
+                            powerMode = powerMode,
+                        ) ?: ThermometerPreferences(powerMode = powerMode),
                     )
                 }
             }
@@ -745,7 +748,7 @@ internal class ProbeManager(
                 status.maxSequenceNumber,
                 updatedProbe
             )
-            updatedProbe = updateProbePreferences(status.probePreferences, updatedProbe)
+            updatedProbe = updateThermometerPreferences(status.thermometerPrefs, updatedProbe)
 
             if (status.mode == ProbeMode.NORMAL) {
                 updatedProbe = updateNormalMode(status, updatedProbe)
@@ -1224,12 +1227,12 @@ internal class ProbeManager(
         )
     }
 
-    private fun updateProbePreferences(
-        probePreferences: ProbePreferences,
+    private fun updateThermometerPreferences(
+        thermometerPrefs: ThermometerPreferences,
         currentProbe: Probe,
     ): Probe {
         return currentProbe.copy(
-            powerMode = probePreferences.powerMode,
+            thermometerPrefs = thermometerPrefs,
         )
     }
 
