@@ -155,7 +155,7 @@ class CombustionService : LifecycleService() {
             // setup receiver to see when platform Bluetooth state changes
             registerReceiver(
                 NetworkManager.instance.bluetoothAdapterStateReceiver,
-                NetworkManager.instance.bluetoothAdapterStateIntentFilter
+                NetworkManager.instance.bluetoothAdapterStateIntentFilter,
             )
         }
 
