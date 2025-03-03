@@ -62,7 +62,7 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class DeviceManager(
-    val settings: Settings
+    val settings: Settings,
 ) {
     private val onBoundInitList = mutableListOf<() -> Unit>()
     private lateinit var service: CombustionService
@@ -138,13 +138,18 @@ class DeviceManager(
         fun startCombustionService(
             notification: Notification?,
             dfuNotificationTarget: Class<out Activity?>? = null,
+            latestFirmware: Map<CombustionProductType, Uri> = emptyMap()
         ): Int {
             if(!connected.get()) {
                 if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
                     Log.d(LOG_TAG, "Start Service")
 
                 return CombustionService.start(
-                    app.applicationContext, notification, dfuNotificationTarget, INSTANCE.settings
+                    app.applicationContext,
+                    notification,
+                    dfuNotificationTarget,
+                    INSTANCE.settings,
+                    latestFirmware,
                 )
             }
             return 0
