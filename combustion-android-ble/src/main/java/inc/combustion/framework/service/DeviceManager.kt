@@ -37,8 +37,9 @@ import android.os.IBinder
 import android.util.Log
 import inc.combustion.framework.Combustion
 import inc.combustion.framework.LOG_TAG
+import inc.combustion.framework.analytics.AnalyticsEvent
+import inc.combustion.framework.analytics.AnalyticsTracker
 import inc.combustion.framework.ble.NetworkManager
-import inc.combustion.framework.log.LogManager
 import inc.combustion.framework.ble.device.DeviceID
 import inc.combustion.framework.ble.dfu.DfuManager
 import inc.combustion.framework.ble.uart.meatnet.GenericNodeRequest
@@ -46,11 +47,11 @@ import inc.combustion.framework.ble.uart.meatnet.GenericNodeResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeMessage
 import inc.combustion.framework.ble.uart.meatnet.NodeMessageType
 import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
+import inc.combustion.framework.log.LogManager
 import inc.combustion.framework.service.dfu.DfuSystemState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import java.lang.StringBuilder
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.*
@@ -62,7 +63,7 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class DeviceManager(
-    val settings: Settings
+    val settings: Settings,
 ) {
     private val onBoundInitList = mutableListOf<() -> Unit>()
     private lateinit var service: CombustionService
@@ -138,13 +139,18 @@ class DeviceManager(
         fun startCombustionService(
             notification: Notification?,
             dfuNotificationTarget: Class<out Activity?>? = null,
+            latestFirmware: Map<CombustionProductType, Uri> = emptyMap()
         ): Int {
             if(!connected.get()) {
                 if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
                     Log.d(LOG_TAG, "Start Service")
 
                 return CombustionService.start(
-                    app.applicationContext, notification, dfuNotificationTarget, INSTANCE.settings
+                    app.applicationContext,
+                    notification,
+                    dfuNotificationTarget,
+                    INSTANCE.settings,
+                    latestFirmware,
                 )
             }
             return 0
@@ -296,6 +302,13 @@ class DeviceManager(
      */
     val discoveredNodesFlow: StateFlow<List<String>>
         get() = NetworkManager.instance.discoveredNodesFlow
+
+    /**
+     * Returns a flow of [AnalyticsEvent], tracked analytics events.
+     * Note, flow does not suspend and discards old events.
+     */
+    val analyticsFlow: SharedFlow<AnalyticsEvent>
+        get() = AnalyticsTracker.instance.analyticsFlow
 
     /**
      * Registers a lambda to be called by the DeviceManager upon binding with the

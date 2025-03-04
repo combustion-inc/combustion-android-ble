@@ -33,13 +33,25 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import inc.combustion.framework.LOG_TAG
+import inc.combustion.framework.SingletonHolder
 import inc.combustion.framework.ble.ProbeManager
-import inc.combustion.framework.ble.ProbeStatus
-import inc.combustion.framework.service.*
-import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.*
-import java.util.*
-import java.util.concurrent.atomic.AtomicBoolean
+import inc.combustion.framework.service.DebugSettings
+import inc.combustion.framework.service.DeviceManager
+import inc.combustion.framework.service.LoggedProbeDataPoint
+import inc.combustion.framework.service.ProbeMode
+import inc.combustion.framework.service.ProbeUploadState
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import java.util.Date
+import java.util.SortedMap
 import kotlin.math.ceil
 
 /**
@@ -49,18 +61,7 @@ internal class LogManager {
     private val probes = hashMapOf<String, ProbeManager>()
     private val temperatureLogs:  SortedMap<String, ProbeTemperatureLog> = sortedMapOf()
 
-    companion object {
-        private lateinit var INSTANCE: LogManager
-        private val initialized = AtomicBoolean(false)
-
-        val instance: LogManager
-            get() {
-            if(!initialized.getAndSet(true)) {
-                INSTANCE = LogManager()
-            }
-            return INSTANCE
-        }
-    }
+    companion object : SingletonHolder<LogManager>({ LogManager() })
 
     fun manage(owner: LifecycleOwner, probeManager: ProbeManager) {
         if(!probes.containsKey(probeManager.serialNumber)) {
