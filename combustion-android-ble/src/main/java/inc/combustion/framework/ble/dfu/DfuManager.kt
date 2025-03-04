@@ -36,6 +36,7 @@ import android.util.Log
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
+import inc.combustion.framework.analytics.AnalyticsTracker
 import inc.combustion.framework.ble.device.BootLoaderDevice
 import inc.combustion.framework.ble.device.DeviceID
 import inc.combustion.framework.ble.device.DfuBleDevice
@@ -62,6 +63,7 @@ internal class DfuManager(
     private var adapter: BluetoothAdapter, // TODO: Should this be nullable? Better to get from context?
     private val notificationTarget: Class<out Activity?>?,
     private val latestFirmware: Map<CombustionProductType, Uri>,
+    private val analyticsTracker: AnalyticsTracker = AnalyticsTracker.instance,
 ) {
     private val devices = hashMapOf<DeviceID, DfuBleDevice>()
     private var scanningJob: Job? = null
@@ -167,6 +169,11 @@ internal class DfuManager(
 
             // set dfu in progress to true
             dfuInProgress.set(true)
+
+            analyticsTracker.trackStartDfu(
+                productType = currentDevice.state.value.device.productType,
+                serialNumber = currentDevice.state.value.device.serialNumber,
+            )
 
             currentDevice.performDfu(file) {
                 // Re-enable all devices when DFU is complete
@@ -291,6 +298,12 @@ internal class DfuManager(
             )
             activeRetryDfuContext = retryDfuContext
             retryDfuHistory[standardId] = retryDfuContext
+
+            analyticsTracker.trackRetryDfu(
+                productType = retryDfuContext.productType,
+                serialNumber = bootLoaderDevice.performDfuDelegate.state.value.device.serialNumber,
+            )
+
             val matchingDeviceCallback =
                 matchingDevice?.performDfuDelegate?.dfuCompleteCallback
             bootLoaderDevice.performDfu(firmwareFile) {
