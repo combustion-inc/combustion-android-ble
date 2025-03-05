@@ -31,82 +31,68 @@ package inc.combustion.framework.ble.device
 import android.bluetooth.BluetoothAdapter
 import android.content.Context
 import android.net.Uri
-import android.os.Build
 import android.util.Log
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.dfu.DfuService
+import inc.combustion.framework.ble.dfu.PerformDfuDelegate
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
-import inc.combustion.framework.service.Device
 import inc.combustion.framework.service.DeviceConnectionState
-import inc.combustion.framework.service.dfu.DfuProgress
 import inc.combustion.framework.service.dfu.DfuState
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import no.nordicsemi.android.dfu.*
-import no.nordicsemi.android.error.SecureDfuError
+import no.nordicsemi.android.dfu.DfuBaseService
+import no.nordicsemi.android.dfu.DfuLogListener
+import no.nordicsemi.android.dfu.DfuProgressListener
+import no.nordicsemi.android.dfu.DfuServiceListenerHelper
 
 internal class DfuBleDevice(
+    val performDfuDelegate: PerformDfuDelegate,
     private val context: Context,
     owner: LifecycleOwner,
     adapter: BluetoothAdapter,
     advertisingData: CombustionAdvertisingData,
 ) : DeviceInformationBleDevice(advertisingData.mac, advertisingData, owner, adapter),
     DfuProgressListener,
-    DfuLogListener
-{
-    private val _state = MutableStateFlow<DfuState>(
-        DfuState.NotReady(
-            device = Device(
-                mac = advertisingData.mac,
-                rssi = advertisingData.rssi,
-                productType = advertisingData.productType
-            ),
-            DfuState.NotReady.Status.DISCONNECTED
+    DfuLogListener {
+
+    constructor(
+        context: Context,
+        owner: LifecycleOwner,
+        adapter: BluetoothAdapter,
+        advertisingData: CombustionAdvertisingData,
+    ) : this(
+        performDfuDelegate = PerformDfuDelegate(context, advertisingData, advertisingData.mac),
+        context = context,
+        owner = owner, adapter = adapter, advertisingData = advertisingData,
+    ) {
+        // CombustionAdvertisingData's productType might be more reliable than previous value
+        performDfuDelegate.emitState(
+            state.value.copy(
+                device = state.value.device.copy(
+                    productType = advertisingData.productType,
+                ),
+            )
         )
-    )
-    val state = _state.asStateFlow()
+    }
+
+    val state = performDfuDelegate.state
 
     // Flag to indicate whether we should transition to a blocked state after connecting
     // Needed to handle new connections after a successful DFU and the device is rebooted
     private var blockAfterConnect: Boolean = false
 
-    /**
-     * Holds bookkeeping state internal to the device. [status] indicates where we are in the DFU
-     * process. [disconnectingEventCount] keeps track of the number of times [onDeviceDisconnecting]
-     * has been called. We keep track of this to differentiate between when we're disconnecting to
-     * boot into the bootloader at the beginning of the process or when we're disconnecting out of
-     * the bootloader and into the app at the end.
-     */
-    private data class InternalDfuState(
-        var status: Status = Status.IDLE,
-        var disconnectingEventCount: Int = 0
-    ) {
-        enum class Status {
-            IDLE, // A DFU operation has not been initiated.
-            IN_PROGRESS, // A DFU operation is in progress; the Nordic library owns the connection.
-            COMPLETE, // The DFU operation completed and the framework should manage the connection.
-        }
-    }
-
-    private var internalDfuState = InternalDfuState()
-
-    private var dfuServiceController: DfuServiceController? = null
-
-    // callback used to signal that a DFU is complete (can be success, error) and other devices can be DFU'd.
-    private var dfuCompleteCallback: (() -> Unit)? = null
-
     private fun onConnectionStateChange(connectionState: DeviceConnectionState) {
         when (connectionState) {
             DeviceConnectionState.ADVERTISING_CONNECTABLE, DeviceConnectionState.CONNECTING -> {
-                _state.value = DfuState.NotReady(
-                    state.value.device.copy(connectionState = connectionState),
-                    DfuState.NotReady.Status.CONNECTING
+                performDfuDelegate.emitState(
+                    DfuState.NotReady(
+                        state.value.device.copy(connectionState = connectionState),
+                        DfuState.NotReady.Status.CONNECTING
+                    )
                 )
             }
+
             DeviceConnectionState.CONNECTED -> {
                 owner.lifecycleScope.launch(Dispatchers.IO) {
                     readSerialNumber()
@@ -120,69 +106,81 @@ internal class DfuBleDevice(
                     // If we're blocked, we don't want to transition to idle.
 
                     if (blockAfterConnect) {
-                        _state.value = DfuState.NotReady(
-                            state.value.device.copy(
-                                serialNumber = serialNumber ?: "",
-                                fwVersion = firmwareVersion,
-                                hwRevision = hardwareRevision,
-                                modelInformation = modelInformation,
-                                connectionState = connectionState,
-                            ),
-                            DfuState.NotReady.Status.BLOCKED
+                        performDfuDelegate.emitState(
+                            DfuState.NotReady(
+                                state.value.device.copy(
+                                    serialNumber = serialNumber ?: "",
+                                    fwVersion = firmwareVersion,
+                                    hwRevision = hardwareRevision,
+                                    modelInformation = modelInformation,
+                                    connectionState = connectionState,
+                                ),
+                                DfuState.NotReady.Status.BLOCKED
+                            )
                         )
                     } else {
-                        _state.value = DfuState.Idle(
-                            state.value.device.copy(
-                                serialNumber = serialNumber ?: "",
-                                fwVersion = firmwareVersion,
-                                hwRevision = hardwareRevision,
-                                modelInformation = modelInformation,
-                                connectionState = connectionState,
+                        performDfuDelegate.emitState(
+                            DfuState.Idle(
+                                state.value.device.copy(
+                                    serialNumber = serialNumber ?: "",
+                                    fwVersion = firmwareVersion,
+                                    hwRevision = hardwareRevision,
+                                    modelInformation = modelInformation,
+                                    connectionState = connectionState,
+                                )
                             )
                         )
                     }
 
-                    Log.i(LOG_TAG, "Connected DFU handler finished (state: ${_state.value})")
+                    Log.i(LOG_TAG, "Connected DFU handler finished (state: ${state.value})")
                 }
 
-                _state.value = DfuState.NotReady(
-                    state.value.device.copy(connectionState = connectionState),
-                    DfuState.NotReady.Status.READING_DEVICE_INFORMATION
+                performDfuDelegate.emitState(
+                    DfuState.NotReady(
+                        state.value.device.copy(connectionState = connectionState),
+                        DfuState.NotReady.Status.READING_DEVICE_INFORMATION
+                    )
                 )
             }
+
             DeviceConnectionState.DISCONNECTING,
             DeviceConnectionState.DISCONNECTED -> {
                 // If we get a spontaneous disconnect while not in DFU mode, invalidate ourselves.
                 // Otherwise, if DFU is in progress, eventing up to clients is handled by the DFU
                 // progress listener callbacks.
                 // TODO: Better to not show this device at all on spontaneous disconnect?
-                if (internalDfuState.status == InternalDfuState.Status.IDLE) {
+                if (performDfuDelegate.internalDfuState.status == PerformDfuDelegate.InternalDfuState.Status.IDLE) {
                     serialNumber = null
                     firmwareVersion = null
                     hardwareRevision = null
 
-                    _state.value = DfuState.NotReady(
+                    performDfuDelegate.emitState(
+                        DfuState.NotReady(
+                            state.value.device.copy(
+                                serialNumber = "",
+                                fwVersion = null,
+                                hwRevision = null,
+                                connectionState = connectionState,
+                            ),
+                            DfuState.NotReady.Status.DISCONNECTED
+                        )
+                    )
+                }
+            }
+
+            DeviceConnectionState.NO_ROUTE,
+            DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE,
+            DeviceConnectionState.OUT_OF_RANGE -> {
+                performDfuDelegate.emitState(
+                    DfuState.NotReady(
                         state.value.device.copy(
                             serialNumber = "",
                             fwVersion = null,
                             hwRevision = null,
                             connectionState = connectionState,
                         ),
-                        DfuState.NotReady.Status.DISCONNECTED
+                        DfuState.NotReady.Status.DISCONNECTED,
                     )
-                }
-            }
-            DeviceConnectionState.NO_ROUTE,
-            DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE,
-            DeviceConnectionState.OUT_OF_RANGE -> {
-                _state.value = DfuState.NotReady(
-                    state.value.device.copy(
-                        serialNumber = "",
-                        fwVersion = null,
-                        hwRevision = null,
-                        connectionState = connectionState,
-                    ),
-                    DfuState.NotReady.Status.DISCONNECTED
                 )
             }
         }
@@ -191,39 +189,45 @@ internal class DfuBleDevice(
     }
 
     init {
-        Log.e(LOG_TAG, "INITIALIZING DFU BLE DEVICE")
+        Log.i(LOG_TAG, "INITIALIZING DFU BLE DEVICE")
+
         observeConnectionState {
             // If we're in the middle of a DFU operation, let the Nordic library handle connection
             // state changes.
-            Log.v(LOG_TAG, "Connection state observation: $it, status: ${internalDfuState.status}")
+            Log.v(
+                LOG_TAG,
+                "Connection state observation: $it, status: ${performDfuDelegate.internalDfuState.status}"
+            )
             onConnectionStateChange(it)
         }
 
         observeOutOfRange(5000L) {
-            if (internalDfuState.status == InternalDfuState.Status.IDLE) {
-                _state.value = DfuState.NotReady(
-                    state.value.device.copy(), DfuState.NotReady.Status.OUT_OF_RANGE
+            if (performDfuDelegate.internalDfuState.status == PerformDfuDelegate.InternalDfuState.Status.IDLE) {
+                performDfuDelegate.emitState(
+                    DfuState.NotReady(
+                        state.value.device.copy(), DfuState.NotReady.Status.OUT_OF_RANGE
+                    )
                 )
             }
         }
 
         observeRemoteRssi {
-            _state.value = _state.value.copy(_state.value.device.copy(rssi = it))
+            performDfuDelegate.emitState(state.value.copy(state.value.device.copy(rssi = it)))
         }
 
         // `true` doesn't filter any advertising packets.
-        observeAdvertisingPackets(serialNumber, { true }) {
-            if (internalDfuState.status != InternalDfuState.Status.IN_PROGRESS
+        observeAdvertisingPackets(serialNumber, { true }) { _ ->
+            if (performDfuDelegate.internalDfuState.status != PerformDfuDelegate.InternalDfuState.Status.IN_PROGRESS
                 && !(connectionState == DeviceConnectionState.CONNECTING
                         || connectionState == DeviceConnectionState.CONNECTED)
             ) {
                 Log.i(
                     LOG_TAG,
-                    "Attempting to connect after DFU!!!! $internalDfuState ${isDisconnected.get()} $connectionState"
+                    "Attempting to connect after DFU!!!! ${performDfuDelegate.internalDfuState} ${isDisconnected.get()} $connectionState"
                 )
 
                 // Make sure we don't try to connect again
-                internalDfuState = InternalDfuState()
+                performDfuDelegate.resetInternalState()
 
                 // We very regularly get a ConnectionLostException from the Kable peripheral when we
                 // try to connect after the DFU process is complete (generally during service
@@ -238,10 +242,10 @@ internal class DfuBleDevice(
         }
 
         DfuServiceListenerHelper.registerProgressListener(
-            context, this, _state.value.device.mac
+            context, this, state.value.device.mac
         )
         DfuServiceListenerHelper.registerLogListener(
-            context, this, _state.value.device.mac
+            context, this, state.value.device.mac
         )
 
         connect()
@@ -251,108 +255,42 @@ internal class DfuBleDevice(
         DfuServiceListenerHelper.unregisterProgressListener(context, this)
 
         // Only disconnect if there's not a DFU operation in progress.
-        super.finish(jobKey, internalDfuState.status == InternalDfuState.Status.IDLE)
+        super.finish(
+            jobKey,
+            performDfuDelegate.internalDfuState.status == PerformDfuDelegate.InternalDfuState.Status.IDLE
+        )
     }
 
     fun performDfu(file: Uri, completionHandler: () -> Unit) {
-        Log.i(LOG_TAG, "Performing DFU for device ${_state.value.device} with file $file")
-
-        // Save off the completion handler so we can call it when the DFU process is complete.
-        dfuCompleteCallback = completionHandler
-
-        // Reset our internal state.
-        internalDfuState = InternalDfuState(status = InternalDfuState.Status.IN_PROGRESS)
-
-        _state.value = DfuState.InProgress(
-            _state.value.device,
-            DfuProgress.Initializing(DfuProgress.Initializing.Status.INITIALIZING)
-        )
-
-        val starter = DfuServiceInitiator(_state.value.device.mac).apply {
-            setDeviceName(serialNumber)
-
-            setKeepBond(false)
-            setForceDfu(false)
-
-            setForceScanningForNewAddressInLegacyDfu(false)
-            setPrepareDataObjectDelay(400)
-            setRebootTime(3000)
-            setScanTimeout(4000)
-            setUnsafeExperimentalButtonlessServiceInSecureDfuEnabled(true)
-
-            setPacketsReceiptNotificationsEnabled(true)
-            setPacketsReceiptNotificationsValue(12)
-        }
-
-        starter.setZip(file, null)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            DfuServiceInitiator.createDfuNotificationChannel(context)
-        }
-
-        dfuServiceController = starter.start(context, DfuService::class.java)
+        performDfuDelegate.performDfu(file, completionHandler)
     }
 
     fun abortDfu() {
-        dfuServiceController?.abort() ?: Log.e(LOG_TAG, "Unable to abort DFU process.")
-
-        // Call DFU completed callback
-        dfuCompleteCallback?.invoke()
+        performDfuDelegate.abortDfu()
     }
 
     override fun onDeviceConnecting(deviceAddress: String) {
-        _state.value = DfuState.InProgress(
-            _state.value.device,
-            DfuProgress.Initializing(DfuProgress.Initializing.Status.CONNECTING_TO_DEVICE)
-        )
-
-        Log.i(LOG_TAG, "[onDeviceConnecting] $deviceAddress ${_state.value}")
+        performDfuDelegate.onDeviceDisconnecting(deviceAddress)
     }
 
     override fun onDeviceConnected(deviceAddress: String) {
-        _state.value = DfuState.InProgress(
-            _state.value.device,
-            DfuProgress.Initializing(DfuProgress.Initializing.Status.CONNECTED_TO_DEVICE)
-        )
-
-        Log.i(LOG_TAG, "[onDeviceConnected] $deviceAddress ${_state.value}")
+        performDfuDelegate.onDeviceConnected(deviceAddress)
     }
 
     override fun onDfuProcessStarting(deviceAddress: String) {
-        _state.value = DfuState.InProgress(
-            _state.value.device,
-            DfuProgress.Initializing(DfuProgress.Initializing.Status.STARTING_DFU_PROCESS)
-        )
-
-        Log.i(LOG_TAG, "[onDfuProcessStarting] $deviceAddress ${_state.value}")
+        performDfuDelegate.onDfuProcessStarting(deviceAddress)
     }
 
     override fun onDfuProcessStarted(deviceAddress: String) {
-        _state.value = DfuState.InProgress(
-            _state.value.device,
-            DfuProgress.Initializing(DfuProgress.Initializing.Status.STARTED_DFU_PROCESS)
-        )
-
-        Log.i(LOG_TAG, "[onDfuProcessStarted] $deviceAddress ${_state.value}")
+        performDfuDelegate.onDfuProcessStarted(deviceAddress)
     }
 
     override fun onEnablingDfuMode(deviceAddress: String) {
-        // The command to enter the bootloader is sent immediately after this; the next event
-        // encountered is onDeviceDisconnecting.
-        _state.value = DfuState.InProgress(
-            _state.value.device,
-            DfuProgress.Initializing(DfuProgress.Initializing.Status.ENABLING_DFU_MODE)
-        )
-
-        Log.i(LOG_TAG, "[onEnablingDfuMode] $deviceAddress ${_state.value}")
+        performDfuDelegate.onEnablingDfuMode(deviceAddress)
     }
 
     override fun onFirmwareValidating(deviceAddress: String) {
-        _state.value = DfuState.InProgress(
-            _state.value.device,
-            DfuProgress.Initializing(DfuProgress.Initializing.Status.VALIDATING_FIRMWARE)
-        )
-
-        Log.i(LOG_TAG, "[onFirmwareValidating] $deviceAddress ${_state.value}")
+        performDfuDelegate.onFirmwareValidating(deviceAddress)
     }
 
     override fun onProgressChanged(
@@ -361,66 +299,32 @@ internal class DfuBleDevice(
         speed: Float,
         avgSpeed: Float,
         currentPart: Int,
-        partsTotal: Int
+        partsTotal: Int,
     ) {
-        _state.value = DfuState.InProgress(
-            _state.value.device,
-            DfuProgress.Uploading(percent, avgSpeed, currentPart, partsTotal)
+        performDfuDelegate.onProgressChanged(
+            deviceAddress = deviceAddress,
+            percent = percent,
+            speed = speed,
+            avgSpeed = avgSpeed,
+            currentPart = currentPart,
+            partsTotal = partsTotal,
         )
-
-        Log.i(LOG_TAG, "[onProgressChanged] $deviceAddress : ${_state.value}")
     }
 
     override fun onDeviceDisconnecting(deviceAddress: String?) {
-        // This is reached when rebooting into the bootloader--need to have it not be finishing until
-        // we've started
-        val progress =
-            if (internalDfuState.disconnectingEventCount++ == 0)
-                DfuProgress.Initializing(DfuProgress.Initializing.Status.ENTERING_BOOTLOADER)
-            else
-                DfuProgress.Finishing(DfuProgress.Finishing.Status.DISCONNECTING_FROM_DEVICE)
-
-        deviceAddress?.let {
-            _state.value = DfuState.InProgress(
-                _state.value.device,
-                progress
-            )
-        }
-
-        Log.i(LOG_TAG, "[onDeviceDisconnecting] $deviceAddress ${_state.value}")
+        performDfuDelegate.onDeviceDisconnecting(deviceAddress)
     }
 
     override fun onDeviceDisconnected(deviceAddress: String) {
-        // This isn't reached when rebooting into the bootloader
-        _state.value = DfuState.InProgress(
-            _state.value.device,
-            DfuProgress.Finishing(DfuProgress.Finishing.Status.DISCONNECTED_FROM_DEVICE)
-        )
-
-        Log.i(LOG_TAG, "[onDeviceDisconnected] $deviceAddress ${_state.value}")
+        performDfuDelegate.onDeviceDisconnected(deviceAddress)
     }
 
     override fun onDfuCompleted(deviceAddress: String) {
-        _state.value = DfuState.InProgress(
-            _state.value.device,
-            DfuProgress.Finishing(DfuProgress.Finishing.Status.COMPLETE_RESTARTING_DEVICE)
-        )
-
-        Log.i(LOG_TAG, "[onDfuCompleted] $deviceAddress ${_state.value}")
-
-        internalDfuState.status = InternalDfuState.Status.COMPLETE
-
-        // Call DFU completed callback
-        dfuCompleteCallback?.invoke()
+        performDfuDelegate.onDfuCompleted(deviceAddress)
     }
 
     override fun onDfuAborted(deviceAddress: String) {
-        _state.value = DfuState.InProgress(_state.value.device, DfuProgress.Aborted)
-
-        Log.i(LOG_TAG, "[onDfuAborted] $deviceAddress ${_state.value}")
-
-        // Call DFU completed callback
-        dfuCompleteCallback?.invoke()
+        performDfuDelegate.onDfuAborted(deviceAddress)
     }
 
     override fun onError(
@@ -429,63 +333,38 @@ internal class DfuBleDevice(
         errorType: Int,
         message: String?
     ) {
-        val type = when (error) {
-            DfuBaseService.ERROR_TYPE_COMMUNICATION_STATE -> DfuProgress.Error.ErrorType.COMMUNICATION_STATE
-            DfuBaseService.ERROR_TYPE_COMMUNICATION -> DfuProgress.Error.ErrorType.COMMUNICATION
-            DfuBaseService.ERROR_TYPE_DFU_REMOTE -> DfuProgress.Error.ErrorType.DFU_OPERATION
-            else -> DfuProgress.Error.ErrorType.OTHER
-        }
-
-        // These (English) descriptions are taken from Nordic's DFU example. This implementation
-        // will need to be addressed during i18n.
-        val betterMessage = when (error) {
-            DfuBaseService.ERROR_DEVICE_DISCONNECTED -> "Device has disconnected."
-            DfuBaseService.ERROR_FILE_ERROR -> "Invalid or too large file."
-            DfuBaseService.ERROR_FILE_INVALID -> "Unsupported file."
-            DfuBaseService.ERROR_FILE_TYPE_UNSUPPORTED -> "The file type is not supported."
-            DfuBaseService.ERROR_SERVICE_NOT_FOUND -> "The device does not support nRF5 DFU"
-            DfuBaseService.ERROR_BLUETOOTH_DISABLED -> "Bluetooth is disabled."
-            DfuBaseService.ERROR_DEVICE_NOT_BONDED -> "The device is not bonded."
-            DfuBaseService.ERROR_INIT_PACKET_REQUIRED -> "The init packet is required."
-
-            // Secure DFU errors
-            DfuBaseService.ERROR_REMOTE_TYPE_SECURE or SecureDfuError.INVALID_OBJECT ->
-                "Selected firmware is not compatible with the device."
-            DfuBaseService.ERROR_REMOTE_TYPE_SECURE or SecureDfuError.INSUFFICIENT_RESOURCES ->
-                "Insufficient resources."
-
-            else -> message
-        } ?: "Unknown error"
-
-        _state.value = DfuState.InProgress(
-            _state.value.device, DfuProgress.Error(type, betterMessage)
+        performDfuDelegate.onError(
+            deviceAddress = deviceAddress,
+            error = error,
+            errorType = errorType,
+            message = message,
         )
-
-        Log.e(LOG_TAG, "[onError] $error (type: $errorType, message: $message ${_state.value}")
-
-        // Call DFU complete callback
-        dfuCompleteCallback?.invoke()
     }
 
     override fun onLogEvent(deviceAddress: String?, level: Int, message: String?) {
         message?.let {
-            val s = "[onLogEvent] $it (${_state.value}])"
+            val s = "[onLogEvent] $it (${state.value}])"
             when (level) {
                 DfuBaseService.LOG_LEVEL_VERBOSE -> {
                     Log.v(LOG_TAG, s)
                 }
+
                 DfuBaseService.LOG_LEVEL_DEBUG -> {
                     Log.d(LOG_TAG, s)
                 }
+
                 DfuBaseService.LOG_LEVEL_INFO, DfuBaseService.LOG_LEVEL_APPLICATION -> {
                     Log.i(LOG_TAG, s)
                 }
+
                 DfuBaseService.LOG_LEVEL_WARNING -> {
                     Log.w(LOG_TAG, s)
                 }
+
                 DfuBaseService.LOG_LEVEL_ERROR -> {
                     Log.e(LOG_TAG, s)
                 }
+
                 else -> {
                     Log.e(LOG_TAG, "Unknown log level [$level]: $s")
                 }
@@ -495,17 +374,24 @@ internal class DfuBleDevice(
 
     fun setEnabled(enabled: Boolean) {
         if (enabled) {
-            _state.value = DfuState.Idle(
-                state.value.device.copy(
-                    serialNumber = serialNumber ?: "",
-                    fwVersion = firmwareVersion,
-                    hwRevision = hardwareRevision,
-                    modelInformation = modelInformation,
-                    connectionState = connectionState,
+            performDfuDelegate.emitState(
+                DfuState.Idle(
+                    state.value.device.copy(
+                        serialNumber = serialNumber ?: "",
+                        fwVersion = firmwareVersion,
+                        hwRevision = hardwareRevision,
+                        modelInformation = modelInformation,
+                        connectionState = connectionState,
+                    )
                 )
             )
         } else {
-            _state.value = DfuState.NotReady(_state.value.device, DfuState.NotReady.Status.BLOCKED)
+            performDfuDelegate.emitState(
+                DfuState.NotReady(
+                    state.value.device,
+                    DfuState.NotReady.Status.BLOCKED,
+                )
+            )
         }
 
         // Blocking after connect is the inverse of the enabled state
