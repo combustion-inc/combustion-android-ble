@@ -183,7 +183,7 @@ internal class LogManager {
                                 } ?: run {
                                     temperatureLog.currentSessionStartTime?.let {
                                         probeManager.logUploadPercent = 100u
-                                    } ?: {
+                                    } ?: run {
                                         probeManager.logUploadPercent = 0u
                                     }
                                 }
