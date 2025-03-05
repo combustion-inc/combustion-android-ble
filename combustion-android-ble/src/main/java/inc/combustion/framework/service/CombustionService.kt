@@ -33,6 +33,7 @@ import android.app.NotificationManager
 import android.bluetooth.BluetoothManager
 import android.content.*
 import android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+import android.net.Uri
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
@@ -61,6 +62,7 @@ class CombustionService : LifecycleService() {
         private var dfuNotificationTarget: Class<out Activity?>? = null
         private val serviceIsStarted = AtomicBoolean(false)
         private val serviceIsStopping = AtomicBoolean(false)
+        private var latestFirmware: Map<CombustionProductType, Uri> = emptyMap()
         var serviceNotification : Notification? = null
         var notificationId = 0
         lateinit var settings: DeviceManager.Settings
@@ -70,11 +72,13 @@ class CombustionService : LifecycleService() {
             notification: Notification?,
             dfuNotificationTarget: Class<out Activity?>?,
             serviceSettings: DeviceManager.Settings = DeviceManager.Settings(),
+            latestFirmware: Map<CombustionProductType, Uri>,
         ): Int {
             if(!serviceIsStarted.get() || serviceIsStopping.get()) {
                 settings = serviceSettings
                 serviceNotification = notification
                 this.dfuNotificationTarget = dfuNotificationTarget
+                this.latestFirmware = latestFirmware
                 notificationId = ThreadLocalRandom.current().asKotlinRandom().nextInt()
                 Intent(context, CombustionService::class.java).also { intent ->
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -149,7 +153,7 @@ class CombustionService : LifecycleService() {
 
             // Allocate DFU Manager
             if(dfuManager == null) {
-                dfuManager = DfuManager(this, this, bluetooth.adapter, dfuNotificationTarget)
+                dfuManager = DfuManager(this, this, bluetooth.adapter, dfuNotificationTarget, latestFirmware)
             }
 
             // setup receiver to see when platform Bluetooth state changes

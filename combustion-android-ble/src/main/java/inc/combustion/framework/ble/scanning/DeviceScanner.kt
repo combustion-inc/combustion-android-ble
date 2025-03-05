@@ -37,11 +37,18 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.juul.kable.Filter
 import com.juul.kable.Scanner
 import inc.combustion.framework.LOG_TAG
+import inc.combustion.framework.ble.device.isBootLoading
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.buffer
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -65,6 +72,9 @@ internal class DeviceScanner private constructor() {
 
         private val mutableAdvertisements = MutableSharedFlow<CombustionAdvertisingData>(5, 10, BufferOverflow.DROP_OLDEST)
         val advertisements = mutableAdvertisements.asSharedFlow()
+
+        private val _bootloadingAdvertisements = MutableSharedFlow<BaseAdvertisingData>(5, 10, BufferOverflow.DROP_OLDEST)
+        val bootloadingAdvertisements: SharedFlow<BaseAdvertisingData> = _bootloadingAdvertisements.asSharedFlow()
 
         fun scan(owner: LifecycleOwner) {
 
@@ -91,9 +101,11 @@ internal class DeviceScanner private constructor() {
                                 atomicIsScanning.set(false)
                             }
                             .collect { advertisement ->
-                                when (val advertisingData = BaseAdvertisingData.create(advertisement)) {
-                                    is CombustionAdvertisingData -> mutableAdvertisements.tryEmit(advertisingData)
-                                    // else, if just BaseAdvertisingData, then no need to produce to flow.
+                                val advertisingData = BaseAdvertisingData.create(advertisement)
+                                when {
+                                    advertisingData is CombustionAdvertisingData -> mutableAdvertisements.tryEmit(advertisingData)
+                                    advertisingData.isBootLoading -> _bootloadingAdvertisements.tryEmit(advertisingData)
+                                    else -> {} // if just BaseAdvertisingData, then no need to produce to flow.
                                 }
                             }
                     }
