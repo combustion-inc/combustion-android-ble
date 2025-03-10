@@ -39,6 +39,7 @@ import inc.combustion.framework.Combustion
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.analytics.AnalyticsEvent
 import inc.combustion.framework.analytics.AnalyticsTracker
+import inc.combustion.framework.analytics.ExceptionEvent
 import inc.combustion.framework.ble.NetworkManager
 import inc.combustion.framework.ble.device.DeviceID
 import inc.combustion.framework.ble.dfu.DfuManager
@@ -308,7 +309,14 @@ class DeviceManager(
      * Note, flow does not suspend and discards old events.
      */
     val analyticsFlow: SharedFlow<AnalyticsEvent>
-        get() = AnalyticsTracker.instance.analyticsFlow
+        get() = AnalyticsTracker.instance.eventFlow
+
+    /**
+     * Returns a flow of [ExceptionEvent], tracked analytics exception events.
+     * Note, flow does not suspend and discards old events.
+     */
+    val analyticsExceptionsFlow: SharedFlow<ExceptionEvent>
+        get() = AnalyticsTracker.instance.exceptionEventFlow
 
     /**
      * Registers a lambda to be called by the DeviceManager upon binding with the
