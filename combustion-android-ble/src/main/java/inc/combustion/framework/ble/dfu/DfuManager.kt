@@ -37,6 +37,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.analytics.AnalyticsTracker
+import inc.combustion.framework.analytics.ExceptionEvent
 import inc.combustion.framework.ble.device.BootLoaderDevice
 import inc.combustion.framework.ble.device.DeviceID
 import inc.combustion.framework.ble.device.DfuBleDevice
@@ -113,6 +114,16 @@ internal class DfuManager(
             return false
         }
 
+        if (notificationTarget != null) {
+            DfuService.notifyActivity = notificationTarget
+        } else {
+            analyticsTracker.trackExceptionEvent(
+                ExceptionEvent.NonFatalException(
+                    IllegalStateException("DfuManager.notificationTarget should not be null")
+                )
+            )
+        }
+
         _systemState.resetReplayCache()
 
         clearDevices()
@@ -155,11 +166,9 @@ internal class DfuManager(
      * This flow can also be obtained by using [dfuFlowForDevice].
      */
     fun performDfu(id: DeviceID, file: Uri): StateFlow<DfuState>? {
-        if (notificationTarget == null) {
-            TODO("You must provide a Notification Target when initializing Combustion Service to use DFU")
+        if (!DfuService.isNotifyActivitySet()) {
+            throw NotImplementedError("You must provide a Notification Target when initializing Combustion Service to use DFU")
         }
-
-        DfuService.notifyActivity = notificationTarget
 
         if (!enabled) {
             return null
@@ -279,6 +288,10 @@ internal class DfuManager(
         bootLoaderDevice: BootLoaderDevice,
         matchingDevice: DfuBleDevice?,
     ) {
+        if (!DfuService.isNotifyActivitySet()) {
+            throw NotImplementedError("You must provide a Notification Target when initializing Combustion Service to use DFU")
+        }
+
         val standardId = bootLoaderDevice.standardId
         val retryDfuContext = retryDfuHistory[standardId]?.let {
             val count = it.count + 1

@@ -39,14 +39,32 @@ import kotlinx.coroutines.flow.asSharedFlow
 internal class AnalyticsTracker {
     companion object : SingletonHolder<AnalyticsTracker>({ AnalyticsTracker() })
 
-    private val _analyticsFlow =
-        MutableSharedFlow<AnalyticsEvent>(replay = 5, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    private val _eventFlow =
+        MutableSharedFlow<AnalyticsEvent>(
+            replay = 0,
+            extraBufferCapacity = 1,
+            onBufferOverflow = BufferOverflow.DROP_OLDEST,
+        )
 
-    val analyticsFlow: SharedFlow<AnalyticsEvent>
-        get() = _analyticsFlow.asSharedFlow()
+    val eventFlow: SharedFlow<AnalyticsEvent>
+        get() = _eventFlow.asSharedFlow()
+
+    private val _exceptionEventFlow =
+        MutableSharedFlow<ExceptionEvent>(
+            replay = 0,
+            extraBufferCapacity = 1,
+            onBufferOverflow = BufferOverflow.DROP_OLDEST,
+        )
+
+    val exceptionEventFlow: SharedFlow<ExceptionEvent>
+        get() = _exceptionEventFlow.asSharedFlow()
 
     fun trackEvent(event: AnalyticsEvent) {
-        _analyticsFlow.tryEmit(event)
+        _eventFlow.tryEmit(event)
+    }
+
+    fun trackExceptionEvent(exceptionEvent: ExceptionEvent) {
+        _exceptionEventFlow.tryEmit(exceptionEvent)
     }
 
     fun trackStartDfu(productType: CombustionProductType?, serialNumber: String?) {
