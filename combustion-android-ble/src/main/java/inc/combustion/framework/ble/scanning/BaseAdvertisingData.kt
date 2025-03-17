@@ -134,7 +134,7 @@ open class BaseAdvertisingData(
                 CombustionProductType.UNKNOWN -> {
                     base
                 }
-                CombustionProductType.PROBE, CombustionProductType.CHARGER, CombustionProductType.DISPLAY -> {
+                CombustionProductType.PROBE, CombustionProductType.NODE -> {
                     CombustionAdvertisingData(
                         mac = address,
                         name = name,
@@ -152,6 +152,7 @@ open class BaseAdvertisingData(
                         hopCount = hopCount
                     )
                 }
+                CombustionProductType.GAUGE -> TODO()
             }
         }
     }

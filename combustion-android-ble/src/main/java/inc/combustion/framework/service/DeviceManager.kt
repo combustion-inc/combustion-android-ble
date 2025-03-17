@@ -49,6 +49,7 @@ import inc.combustion.framework.ble.uart.meatnet.NodeMessage
 import inc.combustion.framework.ble.uart.meatnet.NodeMessageType
 import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.log.LogManager
+import inc.combustion.framework.service.dfu.DfuProductType
 import inc.combustion.framework.service.dfu.DfuSystemState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
@@ -79,13 +80,17 @@ class DeviceManager(
         val autoLogTransfer: Boolean = false,
         val meatNetEnabled: Boolean = false,
         val probeAllowlist: Set<String>? = null,
-        val messageTypeCallback: (UByte) -> NodeMessage? = { messageType: UByte -> NodeMessageType.fromUByte(messageType) }
+        val messageTypeCallback: (UByte) -> NodeMessage? = { messageType: UByte ->
+            NodeMessageType.fromUByte(
+                messageType
+            )
+        }
     )
 
     companion object {
         private lateinit var INSTANCE: DeviceManager
-        private lateinit var app : Application
-        private lateinit var onServiceBound : (deviceManager: DeviceManager) -> Unit
+        private lateinit var app: Application
+        private lateinit var onServiceBound: (deviceManager: DeviceManager) -> Unit
         private val initialized = AtomicBoolean(false)
         private val connected = AtomicBoolean(false)
         private val bindingCount = AtomicInteger(0)
@@ -99,7 +104,7 @@ class DeviceManager(
                 connected.set(true)
                 onServiceBound(INSTANCE)
 
-                INSTANCE.onBoundInitList.forEach{ initCallback ->
+                INSTANCE.onBoundInitList.forEach { initCallback ->
                     initCallback()
                 }
             }
@@ -122,8 +127,12 @@ class DeviceManager(
          * @param application Application context.
          * @param onBound Optional lambda to be called when the service is connected to an Activity.
          */
-        fun initialize(application: Application, settings: Settings = Settings(), onBound: (deviceManager: DeviceManager) -> Unit = {_ -> }) {
-            if(!initialized.getAndSet(true)) {
+        fun initialize(
+            application: Application,
+            settings: Settings = Settings(),
+            onBound: (deviceManager: DeviceManager) -> Unit = { _ -> }
+        ) {
+            if (!initialized.getAndSet(true)) {
                 app = application
                 onServiceBound = onBound
                 INSTANCE = DeviceManager(settings)
@@ -140,10 +149,10 @@ class DeviceManager(
         fun startCombustionService(
             notification: Notification?,
             dfuNotificationTarget: Class<out Activity?>? = null,
-            latestFirmware: Map<CombustionProductType, Uri> = emptyMap()
+            latestFirmware: Map<DfuProductType, Uri> = emptyMap()
         ): Int {
-            if(!connected.get()) {
-                if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
+            if (!connected.get()) {
+                if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
                     Log.d(LOG_TAG, "Start Service")
 
                 return CombustionService.start(
@@ -162,14 +171,14 @@ class DeviceManager(
          */
         fun bindCombustionService() {
             val count = bindingCount.getAndIncrement()
-            if(count <= 0) {
-                if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
+            if (count <= 0) {
+                if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
                     Log.d(LOG_TAG, "Binding Service")
 
                 CombustionService.bind(app.applicationContext, connection)
             }
 
-            if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
+            if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
                 Log.d(LOG_TAG, "Binding Reference Count (${count + 1})")
         }
 
@@ -179,11 +188,11 @@ class DeviceManager(
         fun unbindCombustionService() {
             val count = bindingCount.decrementAndGet()
 
-            if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE) {
+            if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE) {
                 Log.d(LOG_TAG, "Unbinding Reference Count ($count)")
             }
 
-            if(connected.get() && count <= 0) {
+            if (connected.get() && count <= 0) {
                 stopCombustionService()
             }
         }
@@ -192,7 +201,7 @@ class DeviceManager(
          * Stops the Combustion Android Service
          */
         fun stopCombustionService() {
-            if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE) {
+            if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE) {
                 Log.d(LOG_TAG, "Unbinding & Stopping Service")
             }
 
@@ -243,7 +252,7 @@ class DeviceManager(
      *
      * @see ProbeDiscoveredEvent
      */
-    val discoveredProbesFlow : SharedFlow<ProbeDiscoveredEvent>
+    val discoveredProbesFlow: SharedFlow<ProbeDiscoveredEvent>
         get() {
             return NetworkManager.discoveredProbesFlow
         }
@@ -256,7 +265,7 @@ class DeviceManager(
      * Note that this flow will emit events for all devices in proximity, disregarding any allowlist
      * information.
      */
-    val deviceProximityFlow : SharedFlow<DeviceDiscoveredEvent>
+    val deviceProximityFlow: SharedFlow<DeviceDiscoveredEvent>
         get() {
             return NetworkManager.deviceProximityFlow
         }
@@ -266,7 +275,7 @@ class DeviceManager(
      *
      * @see NetworkEvent
      */
-    val networkFlow : StateFlow<NetworkState>
+    val networkFlow: StateFlow<NetworkState>
         get() {
             return NetworkManager.networkStateFlow
         }
@@ -274,7 +283,7 @@ class DeviceManager(
     /**
      * Kotlin flow for collecting GenericNodeRequest messages that are sent from nodes.
      */
-    val genericNodeRequestFlow : SharedFlow<NodeUARTMessage>
+    val genericNodeRequestFlow: SharedFlow<NodeUARTMessage>
         get() {
             return NetworkManager.genericNodeMessageFlow
         }
@@ -324,9 +333,9 @@ class DeviceManager(
      *
      * @param callback Lambda to be called by the Device Manager upon completing initialization.
      */
-    fun registerOnBoundInitialization(callback : () -> Unit) {
+    fun registerOnBoundInitialization(callback: () -> Unit) {
         // if service is already connected, then run the callback right away.
-        if(connected.get()) {
+        if (connected.get()) {
             callback()
         }
         // otherwise queue the callback to be run when the service is bound.
@@ -437,7 +446,7 @@ class DeviceManager(
      * @see DeviceConnectionState.CONNECTING
      * @see probeFlow
      */
-    fun connect(serialNumber : String) {
+    fun connect(serialNumber: String) {
         NetworkManager.instance.connect(serialNumber)
     }
 
@@ -511,7 +520,10 @@ class DeviceManager(
      * @param appNameAndVersion Name and version to include in the CSV header
      * @return Pair: first is suggested name for the exported file, second is the CSV data.
      */
-    fun exportLogsForDeviceAsCsv(serialNumber: String, appNameAndVersion: String): Pair<String, String> {
+    fun exportLogsForDeviceAsCsv(
+        serialNumber: String,
+        appNameAndVersion: String
+    ): Pair<String, String> {
         val logs = exportLogsForDevice(serialNumber)
         val probe = probe(serialNumber)
 
@@ -552,7 +564,10 @@ class DeviceManager(
      *
      * @see LoggedProbeDataPoint
      */
-    fun createLogFlowForDevice(serialNumber: String, includeHistory: Boolean = true): Flow<LoggedProbeDataPoint> {
+    fun createLogFlowForDevice(
+        serialNumber: String,
+        includeHistory: Boolean = true
+    ): Flow<LoggedProbeDataPoint> {
         return LogManager.instance.createLogFlowForDevice(serialNumber, includeHistory)
     }
 
@@ -587,7 +602,11 @@ class DeviceManager(
      * @param completionHandler completion handler to be called operation is complete
      *
      */
-    fun setProbeColor(serialNumber: String, color: ProbeColor, completionHandler: (Boolean) -> Unit) {
+    fun setProbeColor(
+        serialNumber: String,
+        color: ProbeColor,
+        completionHandler: (Boolean) -> Unit
+    ) {
         NetworkManager.instance.setProbeColor(serialNumber, color, completionHandler)
     }
 
@@ -614,12 +633,20 @@ class DeviceManager(
      * @param removalTemperatureC the target removal temperature in Celsius.
      * @param completionHandler completion handler to be called operation is complete
      */
-    fun setRemovalPrediction(serialNumber: String, removalTemperatureC: Double, completionHandler: (Boolean) -> Unit) {
-        if(removalTemperatureC > MAXIMUM_PREDICTION_SETPOINT_CELSIUS || removalTemperatureC < MINIMUM_PREDICTION_SETPOINT_CELSIUS) {
+    fun setRemovalPrediction(
+        serialNumber: String,
+        removalTemperatureC: Double,
+        completionHandler: (Boolean) -> Unit
+    ) {
+        if (removalTemperatureC > MAXIMUM_PREDICTION_SETPOINT_CELSIUS || removalTemperatureC < MINIMUM_PREDICTION_SETPOINT_CELSIUS) {
             completionHandler(false)
             return
         }
-        NetworkManager.instance.setRemovalPrediction(serialNumber, removalTemperatureC, completionHandler)
+        NetworkManager.instance.setRemovalPrediction(
+            serialNumber,
+            removalTemperatureC,
+            completionHandler
+        )
     }
 
     /**
@@ -636,7 +663,11 @@ class DeviceManager(
      * Set the food safety configuration on the probe with the serial number [serialNumber] to
      * [foodSafeData], calling [completionHandler] with the success value on completion.
      */
-    fun configureFoodSafe(serialNumber: String, foodSafeData: FoodSafeData, completionHandler: (Boolean) -> Unit) {
+    fun configureFoodSafe(
+        serialNumber: String,
+        foodSafeData: FoodSafeData,
+        completionHandler: (Boolean) -> Unit
+    ) {
         Log.i(LOG_TAG, "Setting food safe configuration: $foodSafeData")
         NetworkManager.instance.configureFoodSafe(serialNumber, foodSafeData, completionHandler)
     }
@@ -654,7 +685,11 @@ class DeviceManager(
      * Set powerMode on probe with the serial number [serialNumber] to
      * [powerMode], calling [completionHandler] with the success value on completion.
      */
-    fun setPowerMode(serialNumber: String, powerMode: ProbePowerMode, completionHandler: (Boolean) -> Unit) {
+    fun setPowerMode(
+        serialNumber: String,
+        powerMode: ProbePowerMode,
+        completionHandler: (Boolean) -> Unit
+    ) {
         Log.i(LOG_TAG, "Setting probe $serialNumber's powerMode to $powerMode")
         NetworkManager.instance.setPowerMode(serialNumber, powerMode, completionHandler)
     }
@@ -688,7 +723,7 @@ class DeviceManager(
     /**
      * Flow exposing the DFU system's overall state.
      */
-    val dfuSystemStateFlow : SharedFlow<DfuSystemState>
+    val dfuSystemStateFlow: SharedFlow<DfuSystemState>
         get() {
             return DfuManager.SYSTEM_STATE_FLOW
         }
@@ -717,18 +752,27 @@ class DeviceManager(
     fun performDfuForDevice(id: DeviceID, updateFile: Uri) =
         service.dfuManager?.performDfu(id, updateFile)
 
-    fun sendNodeRequest(deviceId: String, request: GenericNodeRequest, completionHandler: (Boolean, GenericNodeResponse?) -> Unit) {
+    fun sendNodeRequest(
+        deviceId: String,
+        request: GenericNodeRequest,
+        completionHandler: (Boolean, GenericNodeResponse?) -> Unit
+    ) {
         NetworkManager.instance.sendNodeRequest(deviceId, request, completionHandler)
     }
 
-    private fun probeDataToCsv(probe: Probe?, probeData: List<LoggedProbeDataPoint>?, appNameAndVersion: String): Pair<String, String> {
+    private fun probeDataToCsv(
+        probe: Probe?,
+        probeData: List<LoggedProbeDataPoint>?,
+        appNameAndVersion: String
+    ): Pair<String, String> {
         val csvVersion = 4
         val sb = StringBuilder()
         val serialNumber = probe?.serialNumber ?: "UNKNOWN"
         val firmwareVersion = probe?.fwVersion ?: "UNKNOWN"
         val hardwareVersion = probe?.hwRevision ?: "UNKNOWN"
         val samplePeriod = probe?.sessionInfo?.samplePeriod ?: 0
-        val frameworkVersion = "Android ${Combustion.FRAMEWORK_VERSION_NAME} ${Combustion.FRAMEWORK_BUILD_TYPE}"
+        val frameworkVersion =
+            "Android ${Combustion.FRAMEWORK_VERSION_NAME} ${Combustion.FRAMEWORK_BUILD_TYPE}"
 
         val now = LocalDateTime.now()
         val headerDateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
@@ -755,17 +799,31 @@ class DeviceManager(
             val timestamp = dataPoint.timestamp.time
             val elapsed = (timestamp - startTime) / 1000.0f
             sb.appendLine(
-                String.format(locale = Locale.US,
+                String.format(
+                    locale = Locale.US,
                     "%.3f,%s,%s,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%s,%s,%s,%s,%s,%s,%d",
                     elapsed,
                     dataPoint.sessionId.toString(),
                     dataPoint.sequenceNumber.toString(),
-                    dataPoint.temperatures.values[0], dataPoint.temperatures.values[1], dataPoint.temperatures.values[2], dataPoint.temperatures.values[3],
-                    dataPoint.temperatures.values[4], dataPoint.temperatures.values[5], dataPoint.temperatures.values[6], dataPoint.temperatures.values[7],
-                    dataPoint.virtualCoreTemperature, dataPoint.virtualSurfaceTemperature, dataPoint.virtualAmbientTemperature,
-                    dataPoint.estimatedCoreTemperature, dataPoint.predictionSetPointTemperature,
-                    dataPoint.virtualCoreSensor.toString(), dataPoint.virtualSurfaceSensor.toString(), dataPoint.virtualAmbientSensor.toString(),
-                    dataPoint.predictionState.toString(), dataPoint.predictionMode.toString(), dataPoint.predictionType.toString(),
+                    dataPoint.temperatures.values[0],
+                    dataPoint.temperatures.values[1],
+                    dataPoint.temperatures.values[2],
+                    dataPoint.temperatures.values[3],
+                    dataPoint.temperatures.values[4],
+                    dataPoint.temperatures.values[5],
+                    dataPoint.temperatures.values[6],
+                    dataPoint.temperatures.values[7],
+                    dataPoint.virtualCoreTemperature,
+                    dataPoint.virtualSurfaceTemperature,
+                    dataPoint.virtualAmbientTemperature,
+                    dataPoint.estimatedCoreTemperature,
+                    dataPoint.predictionSetPointTemperature,
+                    dataPoint.virtualCoreSensor.toString(),
+                    dataPoint.virtualSurfaceSensor.toString(),
+                    dataPoint.virtualAmbientSensor.toString(),
+                    dataPoint.predictionState.toString(),
+                    dataPoint.predictionMode.toString(),
+                    dataPoint.predictionType.toString(),
                     dataPoint.predictionValueSeconds.toInt()
                 )
             )
@@ -773,7 +831,8 @@ class DeviceManager(
 
         // recommended file name
         val fileDateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
-        val recommendedFileName = "ProbeData_${serialNumber}_${now.format(fileDateTimeFormatter)}.csv"
+        val recommendedFileName =
+            "ProbeData_${serialNumber}_${now.format(fileDateTimeFormatter)}.csv"
 
         return recommendedFileName to sb.toString()
     }

@@ -32,6 +32,7 @@ import androidx.lifecycle.LifecycleOwner
 import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
 import inc.combustion.framework.service.FirmwareVersion
 import inc.combustion.framework.service.ModelInformation
+import inc.combustion.framework.service.dfu.DfuProductType
 
 internal open class DeviceInformationBleDevice(
     mac: String,
@@ -45,34 +46,40 @@ internal open class DeviceInformationBleDevice(
     var hardwareRevision: String? = null
     var modelInformation: ModelInformation? = null
 
+    val dfuProductType: DfuProductType
+        get() = modelInformation?.dfuProductType ?: DfuProductType.fromCombustionProductType(
+            productType
+        )
+
     override fun disconnect() {
         serialNumber = null
         firmwareVersion = null
         hardwareRevision = null
         super.disconnect()
     }
+
     suspend fun readSerialNumber() {
-        if(isConnected.get()) {
+        if (isConnected.get()) {
             serialNumber = readSerialNumberCharacteristic()?.uppercase()
         }
     }
 
     suspend fun readFirmwareVersion() {
-        if(isConnected.get()) {
-            firmwareVersion = readFirmwareVersionCharacteristic()?.let {versionString ->
+        if (isConnected.get()) {
+            firmwareVersion = readFirmwareVersionCharacteristic()?.let { versionString ->
                 FirmwareVersion.fromString(versionString = versionString)
             }
         }
     }
 
     suspend fun readHardwareRevision() {
-        if(isConnected.get()) {
+        if (isConnected.get()) {
             hardwareRevision = readHardwareRevisionCharacteristic()
         }
     }
 
     suspend fun readModelInformation() {
-        if(isConnected.get()) {
+        if (isConnected.get()) {
             modelInformation = readModelNumberCharacteristic()?.let { infoString ->
                 ModelInformation.fromString(infoString)
             }

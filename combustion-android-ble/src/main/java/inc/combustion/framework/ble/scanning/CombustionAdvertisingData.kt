@@ -28,7 +28,14 @@
 
 package inc.combustion.framework.ble.scanning
 
-import inc.combustion.framework.service.*
+import inc.combustion.framework.service.CombustionProductType
+import inc.combustion.framework.service.OverheatingSensors
+import inc.combustion.framework.service.ProbeBatteryStatus
+import inc.combustion.framework.service.ProbeColor
+import inc.combustion.framework.service.ProbeID
+import inc.combustion.framework.service.ProbeMode
+import inc.combustion.framework.service.ProbeTemperatures
+import inc.combustion.framework.service.ProbeVirtualSensors
 
 internal class CombustionAdvertisingData(
     mac: String,
@@ -45,11 +52,11 @@ internal class CombustionAdvertisingData(
     val virtualSensors: ProbeVirtualSensors,
     val overheatingSensors: OverheatingSensors,
     val hopCount: UInt = 0u,
-): BaseAdvertisingData(mac, name, rssi, productType, isConnectable) {
+) : BaseAdvertisingData(mac, name, rssi, productType, isConnectable) {
 
     val isRepeater: Boolean
         get() {
-            return productType == CombustionProductType.CHARGER || productType == CombustionProductType.DISPLAY
+            return productType.isRepeater
         }
 
     override fun toString(): String {

@@ -32,7 +32,7 @@ import android.content.Context
 import android.net.Uri
 import inc.combustion.framework.ble.dfu.PerformDfuDelegate
 import inc.combustion.framework.ble.scanning.BaseAdvertisingData
-import inc.combustion.framework.service.CombustionProductType
+import inc.combustion.framework.service.dfu.DfuProductType
 
 private const val LEGACY_PROBE_NAME = "CI Probe BL"
 private const val LEGACY_DISPLAY_AND_CHARGER_NAME = "CI Timer BL"
@@ -54,23 +54,22 @@ class BootLoaderDevice(
 ) {
     val standardId: String = advertisingData.standardId()
 
-    // TODO : support GAUGE
-    val productType: CombustionProductType
-        get() = performDfuDelegate.state.value.device.productType.takeIf {
-            (it != null) && (it != CombustionProductType.UNKNOWN)
-        } ?: if (advertisingData.isLegacyBootLoading) {
-            when {
-                advertisingData.name == LEGACY_PROBE_NAME -> CombustionProductType.PROBE
-                // can be either charger or display - initially assume charger and retryProductType() will return display
-                else -> CombustionProductType.CHARGER
+    val dfuProductType: DfuProductType
+        get() = performDfuDelegate.state.value.device.dfuProductType.takeIf { it != DfuProductType.UNKNOWN }
+            ?: if (advertisingData.isLegacyBootLoading) {
+                when {
+                    advertisingData.name == LEGACY_PROBE_NAME -> DfuProductType.PROBE
+                    // can be either charger or display - initially assume charger and retryProductType() will return display
+                    else -> DfuProductType.CHARGER
+                }
+            } else {
+                when {
+                    advertisingData.name.startsWith(DISPLAY_NAME_PREFIX) -> DfuProductType.DISPLAY
+                    advertisingData.name.startsWith(CHARGER_NAME_PREFIX) -> DfuProductType.CHARGER
+                    advertisingData.name.startsWith(GAUGE_NAME_PREFIX) -> DfuProductType.GAUGE
+                    else -> DfuProductType.PROBE
+                }
             }
-        } else {
-            when {
-                advertisingData.name.startsWith(DISPLAY_NAME_PREFIX) -> CombustionProductType.DISPLAY
-                advertisingData.name.startsWith(CHARGER_NAME_PREFIX) -> CombustionProductType.CHARGER
-                else -> CombustionProductType.PROBE
-            }
-        }
 
     private val firstSeenTimestamp: Long = System.currentTimeMillis()
 
@@ -89,18 +88,18 @@ class BootLoaderDevice(
         performDfuDelegate.performDfu(file, completionHandler)
     }
 
-    fun retryProductType(retryCount: Int): CombustionProductType =
+    fun retryProductType(retryCount: Int): DfuProductType =
         if (advertisingData.isLegacyBootLoading && (advertisingData.name == LEGACY_DISPLAY_AND_CHARGER_NAME)) {
             when {
-                retryCount % 2 == 0 -> CombustionProductType.DISPLAY
-                else -> CombustionProductType.CHARGER
+                retryCount % 2 == 0 -> DfuProductType.DISPLAY
+                else -> DfuProductType.CHARGER
             }
         } else {
-            productType
+            dfuProductType
         }
 
     override fun toString(): String {
-        return "BootLoaderDevice(standardId=$standardId, productType=$productType)"
+        return "BootLoaderDevice(standardId=$standardId, dfuProductType=$dfuProductType)"
     }
 }
 

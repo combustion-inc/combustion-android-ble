@@ -81,9 +81,9 @@ internal class NodeHeartbeatRequest (
                 val sn = when (pt) {
                     CombustionProductType.PROBE ->
                         Integer.toHexString(data.getLittleEndianUInt32At(SERIAL_NUMBER_INDEX).toInt()).uppercase()
-                    CombustionProductType.DISPLAY,
-                    CombustionProductType.CHARGER ->
+                    CombustionProductType.NODE ->
                         data.trimmedStringFromRange(SERIAL_NUMBER_INDEX until SERIAL_NUMBER_INDEX + NODE_SERIAL_NUMBER_SIZE)
+                    CombustionProductType.GAUGE -> TODO()
                     CombustionProductType.UNKNOWN -> {
                         Log.w(LOG_TAG, "Unknown product type ($pt) encountered")
                         ""

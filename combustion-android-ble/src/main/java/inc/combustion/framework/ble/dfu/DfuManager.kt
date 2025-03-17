@@ -43,7 +43,7 @@ import inc.combustion.framework.ble.device.DeviceID
 import inc.combustion.framework.ble.device.DfuBleDevice
 import inc.combustion.framework.ble.device.standardId
 import inc.combustion.framework.ble.scanning.DeviceScanner
-import inc.combustion.framework.service.CombustionProductType
+import inc.combustion.framework.service.dfu.DfuProductType
 import inc.combustion.framework.service.dfu.DfuState
 import inc.combustion.framework.service.dfu.DfuSystemState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -63,7 +63,7 @@ internal class DfuManager(
     private var context: Context,
     private var adapter: BluetoothAdapter, // TODO: Should this be nullable? Better to get from context?
     private val notificationTarget: Class<out Activity?>?,
-    private val latestFirmware: Map<CombustionProductType, Uri>,
+    private val latestFirmware: Map<DfuProductType, Uri>,
     private val analyticsTracker: AnalyticsTracker = AnalyticsTracker.instance,
 ) {
     private val devices = hashMapOf<DeviceID, DfuBleDevice>()
@@ -180,7 +180,7 @@ internal class DfuManager(
             dfuInProgress.set(true)
 
             analyticsTracker.trackStartDfu(
-                productType = currentDevice.state.value.device.productType,
+                productType = currentDevice.state.value.device.dfuProductType,
                 serialNumber = currentDevice.state.value.device.serialNumber,
             )
 
@@ -297,13 +297,13 @@ internal class DfuManager(
             val count = it.count + 1
             it.copy(
                 count = count,
-                productType = bootLoaderDevice.retryProductType(count),
+                dfuProductType = bootLoaderDevice.retryProductType(count),
             )
         } ?: RetryDfuContext(
             standardId = bootLoaderDevice.standardId,
-            productType = bootLoaderDevice.productType
+            dfuProductType = bootLoaderDevice.dfuProductType,
         )
-        latestFirmware[retryDfuContext.productType]?.let { firmwareFile ->
+        latestFirmware[retryDfuContext.dfuProductType]?.let { firmwareFile ->
             Log.i(
                 LOG_TAG,
                 "detected bootloader device $bootLoaderDevice is stuck in dfu - " +
@@ -313,7 +313,7 @@ internal class DfuManager(
             retryDfuHistory[standardId] = retryDfuContext
 
             analyticsTracker.trackRetryDfu(
-                productType = retryDfuContext.productType,
+                productType = retryDfuContext.dfuProductType,
                 serialNumber = bootLoaderDevice.performDfuDelegate.state.value.device.serialNumber,
             )
 
@@ -344,7 +344,7 @@ internal class DfuManager(
 
     private data class RetryDfuContext(
         val standardId: String,
-        val productType: CombustionProductType,
+        val dfuProductType: DfuProductType,
         val count: Int = 1,
     )
 }
