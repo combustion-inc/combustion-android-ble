@@ -122,13 +122,12 @@ class PerformDfuDelegate(
 
 //    private fun genDeviceName(): String {
 //        val unique5Digits = String.format("%05d", Random.nextInt(0, 100000))
-//        val product = when (state.value.device.productType) {
-//            CombustionProductType.PROBE -> "Thermom"
-//            CombustionProductType.DISPLAY -> "Display"
-//            CombustionProductType.CHARGER -> "Charger"
-//            // TODO : support "Gauge"
+//        val product = when (state.value.device.dfuProductType) {
+//            DfuProductType.PROBE -> "Thermom"
+//            DfuProductType.DISPLAY -> "Display"
+//            DfuProductType.CHARGER -> "Charger"
+//            DfuProductType.GAUGE -> "Gauge"
 //            else -> "Thermom"
-//
 //        }
 //        return "${product}_DFU_$unique5Digits"
 //    }

@@ -29,13 +29,14 @@
 package inc.combustion.framework.service
 
 import inc.combustion.framework.ble.device.DeviceID
+import inc.combustion.framework.service.dfu.DfuProductType
 
 data class FirmwareState(
     val nodes: List<Node>
 ) {
     data class Node(
         val id: DeviceID,
-        val type: CombustionProductType,
+        val type: DfuProductType,
         val firmwareVersion: FirmwareVersion,
     )
 }

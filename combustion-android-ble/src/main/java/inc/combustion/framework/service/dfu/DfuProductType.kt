@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: CombustionProductType.kt
+ * File: DfuProductType.kt
  * Author:
  *
  * MIT License
  *
- * Copyright (c) 2023. Combustion Inc.
+ * Copyright (c) 2025. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -26,38 +26,43 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.service
+package inc.combustion.framework.service.dfu
 
-enum class CombustionProductType(val type: UByte) {
-    UNKNOWN(0x00u),
-    PROBE(0x01u),
-    NODE(0x02u),
-    GAUGE(0x03u);
+import inc.combustion.framework.service.CombustionProductType
+
+enum class DfuProductType {
+    UNKNOWN,
+    PROBE,
+    DISPLAY,
+    CHARGER,
+    GAUGE;
 
     companion object {
-        fun fromUByte(byte: UByte): CombustionProductType {
-            return when (byte) {
-                PROBE.type -> PROBE
-                NODE.type -> NODE
-                GAUGE.type -> GAUGE
-                else -> UNKNOWN
-            }
-        }
 
         /**
-         * Returns the [CombustionProductType] according to the string in the DIS Model Number
+         * Returns the [DfuProductType] according to the string in the DIS Model Number
          * characteristic.
          */
-        fun fromModelString(model: String): CombustionProductType {
+        fun fromModelString(model: String): DfuProductType {
             return when (model) {
-                "Timer" -> NODE
-                "Charger" -> NODE
+                "Timer" -> DISPLAY
+                "Charger" -> CHARGER
                 "" -> PROBE
                 "Gauge" -> GAUGE
                 else -> UNKNOWN
             }
         }
-    }
 
-    val isRepeater: Boolean get() = (this != PROBE) && (this != UNKNOWN)
+        /**
+         * Returns the [DfuProductType] from [CombustionProductType].
+         * NB, not ideal since [CombustionProductType.NODE] can be either [CHARGER] or [DISPLAY]
+         */
+        fun fromCombustionProductType(productType: CombustionProductType): DfuProductType =
+            when (productType) {
+                CombustionProductType.NODE -> CHARGER // NB, could also be DISPLAY - not ideal!
+                CombustionProductType.PROBE -> PROBE
+                CombustionProductType.GAUGE -> GAUGE
+                else -> UNKNOWN
+            }
+    }
 }

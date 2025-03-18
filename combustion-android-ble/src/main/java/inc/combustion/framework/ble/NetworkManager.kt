@@ -616,11 +616,13 @@ internal class NetworkManager(
                     )
                 }
 
-                CombustionProductType.DISPLAY, CombustionProductType.CHARGER -> {
+                CombustionProductType.NODE -> {
                     val device = NodeBleDevice(advertisement.mac, owner, advertisement, adapter)
                     publishNodeFirmwareOnConnectedState(device.getDevice())
                     DeviceHolder.RepeaterHolder(device)
                 }
+
+                CombustionProductType.GAUGE -> TODO()
 
                 else -> NOT_IMPLEMENTED("Unknown type of advertising data")
             }
@@ -815,7 +817,7 @@ internal class NetworkManager(
                     device.firmwareVersion?.let { firmwareVersion ->
                         // Add to firmware state map
                         val node =
-                            FirmwareState.Node(device.id, device.productType, firmwareVersion)
+                            FirmwareState.Node(device.id, device.dfuProductType, firmwareVersion)
                         firmwareStateOfNetwork[device.id] = node
 
                         // publish the list of firmware details for the network

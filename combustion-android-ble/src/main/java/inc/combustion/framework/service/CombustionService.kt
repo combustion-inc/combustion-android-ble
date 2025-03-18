@@ -31,7 +31,9 @@ import android.app.Activity
 import android.app.Notification
 import android.app.NotificationManager
 import android.bluetooth.BluetoothManager
-import android.content.*
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
 import android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
 import android.net.Uri
 import android.os.Binder
@@ -40,9 +42,10 @@ import android.os.IBinder
 import android.util.Log
 import androidx.lifecycle.LifecycleService
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.*
+import inc.combustion.framework.ble.NetworkManager
 import inc.combustion.framework.ble.dfu.DfuManager
 import inc.combustion.framework.log.LogManager
+import inc.combustion.framework.service.dfu.DfuProductType
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import java.util.concurrent.ThreadLocalRandom
 import java.util.concurrent.atomic.AtomicBoolean
@@ -62,8 +65,8 @@ class CombustionService : LifecycleService() {
         private var dfuNotificationTarget: Class<out Activity?>? = null
         private val serviceIsStarted = AtomicBoolean(false)
         private val serviceIsStopping = AtomicBoolean(false)
-        private var latestFirmware: Map<CombustionProductType, Uri> = emptyMap()
-        var serviceNotification : Notification? = null
+        private var latestFirmware: Map<DfuProductType, Uri> = emptyMap()
+        var serviceNotification: Notification? = null
         var notificationId = 0
         lateinit var settings: DeviceManager.Settings
 
@@ -72,9 +75,9 @@ class CombustionService : LifecycleService() {
             notification: Notification?,
             dfuNotificationTarget: Class<out Activity?>?,
             serviceSettings: DeviceManager.Settings = DeviceManager.Settings(),
-            latestFirmware: Map<CombustionProductType, Uri>,
+            latestFirmware: Map<DfuProductType, Uri>,
         ): Int {
-            if(!serviceIsStarted.get() || serviceIsStopping.get()) {
+            if (!serviceIsStarted.get() || serviceIsStopping.get()) {
                 settings = serviceSettings
                 serviceNotification = notification
                 this.dfuNotificationTarget = dfuNotificationTarget
@@ -139,7 +142,7 @@ class CombustionService : LifecycleService() {
 
         val bluetooth = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
 
-        if(bluetooth.adapter != null) {
+        if (bluetooth.adapter != null) {
             // Note: Older versions of Android running on emulator (e.g. Pixel 4 API 29) do not
             // emulate a Bluetooth adapter.  In this case, the BLE isn't functional.  This is consistent
             // with our manifest file requiring BLE.  So we check for null, and do not initialize the
@@ -152,8 +155,9 @@ class CombustionService : LifecycleService() {
             NetworkManager.initialize(this, bluetooth.adapter, settings)
 
             // Allocate DFU Manager
-            if(dfuManager == null) {
-                dfuManager = DfuManager(this, this, bluetooth.adapter, dfuNotificationTarget, latestFirmware)
+            if (dfuManager == null) {
+                dfuManager =
+                    DfuManager(this, this, bluetooth.adapter, dfuNotificationTarget, latestFirmware)
             }
 
             // setup receiver to see when platform Bluetooth state changes
