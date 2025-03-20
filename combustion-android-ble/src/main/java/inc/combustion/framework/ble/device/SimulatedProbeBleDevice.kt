@@ -31,7 +31,8 @@ package inc.combustion.framework.ble.device
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.ble.ProbeStatus
-import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
+import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
+import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
 import inc.combustion.framework.ble.uart.LogResponse
 import inc.combustion.framework.service.CombustionProductType
 import inc.combustion.framework.service.DeviceConnectionState
@@ -74,7 +75,7 @@ internal class SimulatedProbeBleDevice(
     override val isConnectable: Boolean = true,
     override var isInDfuMode: Boolean = false,
     override val productType: CombustionProductType = CombustionProductType.PROBE,
-    override var advertisement: CombustionAdvertisingData? = randomAdvertisement(
+    override var advertisement: ProbeAdvertisingData? = randomAdvertisement(
         mac,
         productType,
         probeSerialNumber,
@@ -96,9 +97,9 @@ internal class SimulatedProbeBleDevice(
             hopCount: UInt,
             probeID: ProbeID,
             probeColor: ProbeColor
-        ): CombustionAdvertisingData {
+        ): ProbeAdvertisingData {
             val probeTemperatures = ProbeTemperatures.withRandomData()
-            return CombustionAdvertisingData(
+            return ProbeAdvertisingData(
                 mac,
                 "CP",
                 randomRSSI(),
@@ -119,7 +120,7 @@ internal class SimulatedProbeBleDevice(
 
     private var maxSequence = 0u
 
-    private var observeAdvertisingCallback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)? =
+    private var observeAdvertisingCallback: (suspend (advertisement: ProbeAdvertisingData) -> Unit)? =
         null
     private var observeRemoteRssiCallback: (suspend (rssi: Int) -> Unit)? = null
     private var observeConnectionStateCallback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)? =
@@ -245,7 +246,7 @@ internal class SimulatedProbeBleDevice(
     override fun observeAdvertisingPackets(
         serialNumberFilter: String,
         macFilter: String,
-        callback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)?
+        callback: (suspend (advertisement: DeviceAdvertisingData) -> Unit)?
     ) {
         observeAdvertisingCallback = callback
     }

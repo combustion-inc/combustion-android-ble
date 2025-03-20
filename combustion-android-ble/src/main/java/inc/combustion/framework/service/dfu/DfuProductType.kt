@@ -55,13 +55,13 @@ enum class DfuProductType {
 
         /**
          * Returns the [DfuProductType] from [CombustionProductType].
-         * NB, not ideal since [CombustionProductType.NODE] can be either [CHARGER] or [DISPLAY]
+         * NB, not ideal since [CombustionProductType.NODE] can be multiple types, eg [CHARGER], [DISPLAY], or [GAUGE]
          */
         fun fromCombustionProductType(productType: CombustionProductType): DfuProductType =
             when (productType) {
-                CombustionProductType.NODE -> CHARGER // NB, could also be DISPLAY - not ideal!
                 CombustionProductType.PROBE -> PROBE
                 CombustionProductType.GAUGE -> GAUGE
+                CombustionProductType.NODE -> UNKNOWN
                 else -> UNKNOWN
             }
     }

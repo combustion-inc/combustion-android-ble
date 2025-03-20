@@ -38,7 +38,7 @@ import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.device.ProbeBleDeviceBase
 import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
 import inc.combustion.framework.ble.device.SimulatedProbeBleDevice
-import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
+import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
 import inc.combustion.framework.ble.uart.LogResponse
 import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.service.DeviceManager
@@ -343,7 +343,7 @@ internal class ProbeManager(
     fun addProbe(
         probe: ProbeBleDevice,
         baseDevice: DeviceInformationBleDevice,
-        advertisement: CombustionAdvertisingData
+        advertisement: ProbeAdvertisingData
     ) {
         if (IGNORE_PROBES) return
 
@@ -357,7 +357,7 @@ internal class ProbeManager(
     fun addRepeatedProbe(
         repeatedProbe: RepeatedProbeBleDevice,
         repeater: DeviceInformationBleDevice,
-        advertisement: CombustionAdvertisingData
+        advertisement: ProbeAdvertisingData
     ) {
         if (IGNORE_REPEATERS) return
 
@@ -396,9 +396,11 @@ internal class ProbeManager(
 
             // process simulated advertising packets
             simProbe.observeAdvertisingPackets(serialNumber, simProbe.mac) { advertisement ->
-                updatedProbe = updateDataFromAdvertisement(advertisement, updatedProbe)
-                if (settings.autoReconnect && simProbe.shouldConnect) {
-                    simProbe.connect()
+                if (advertisement is ProbeAdvertisingData) {
+                    updatedProbe = updateDataFromAdvertisement(advertisement, updatedProbe)
+                    if (settings.autoReconnect && simProbe.shouldConnect) {
+                        simProbe.connect()
+                    }
                 }
             }
 
@@ -677,7 +679,9 @@ internal class ProbeManager(
         }
 
         base.observeAdvertisingPackets(serialNumber, base.mac) { advertisement ->
-            handleAdvertisingPackets(base, advertisement)
+            if (advertisement is ProbeAdvertisingData) {
+                handleAdvertisingPackets(base, advertisement)
+            }
         }
         base.observeConnectionState { state ->
             _probe.update { handleConnectionState(base, state, it) }
@@ -790,7 +794,7 @@ internal class ProbeManager(
 
     private fun handleAdvertisingPackets(
         device: ProbeBleDeviceBase,
-        advertisement: CombustionAdvertisingData
+        advertisement: ProbeAdvertisingData
     ) {
         Log.v(LOG_TAG, "ProbeManager.handleAdvertisingPackets($device, $advertisement)")
         val state = connectionState
@@ -1086,7 +1090,7 @@ internal class ProbeManager(
     }
 
     private fun updateDataFromAdvertisement(
-        advertisement: CombustionAdvertisingData,
+        advertisement: ProbeAdvertisingData,
         currentProbe: Probe,
     ): Probe {
         var updatedProbe = currentProbe.copy(

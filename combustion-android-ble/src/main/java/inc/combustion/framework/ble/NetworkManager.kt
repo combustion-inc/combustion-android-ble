@@ -37,38 +37,22 @@ import android.util.Log
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.device.DeviceID
-import inc.combustion.framework.ble.device.DeviceInformationBleDevice
-import inc.combustion.framework.ble.device.LinkID
-import inc.combustion.framework.ble.device.NodeBleDevice
-import inc.combustion.framework.ble.device.ProbeBleDevice
-import inc.combustion.framework.ble.device.ProbeBleDeviceBase
-import inc.combustion.framework.ble.device.ProximityDevice
-import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
-import inc.combustion.framework.ble.device.SimulatedProbeBleDevice
-import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
+import inc.combustion.framework.ble.device.*
+import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.DeviceScanner
+import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
+import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
 import inc.combustion.framework.ble.uart.meatnet.GenericNodeRequest
 import inc.combustion.framework.ble.uart.meatnet.GenericNodeResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.log.LogManager
 import inc.combustion.framework.service.*
+import inc.combustion.framework.service.CombustionProductType.*
 import inc.combustion.framework.service.utils.StateFlowMutableMap
-import kotlinx.coroutines.CoroutineName
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.*
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Semaphore
@@ -298,14 +282,14 @@ internal class NetworkManager(
                 )
                 when (state) {
                     BluetoothAdapter.STATE_OFF -> {
-                        if (scanningForProbes) {
+                        if (scanningForDevices) {
                             DeviceScanner.stop()
                         }
                         flowHolder.mutableNetworkState.value = NetworkState()
                     }
 
                     BluetoothAdapter.STATE_ON -> {
-                        if (scanningForProbes) {
+                        if (scanningForDevices) {
                             DeviceScanner.scan(owner)
                         }
                         flowHolder.mutableNetworkState.value =
@@ -326,7 +310,7 @@ internal class NetworkManager(
             return adapter.isEnabled
         }
 
-    internal var scanningForProbes: Boolean = false
+    internal var scanningForDevices: Boolean = false
         private set
 
     internal var dfuModeEnabled: Boolean = false
@@ -365,31 +349,31 @@ internal class NetworkManager(
         }
     }
 
-    fun startScanForProbes(): Boolean {
+    fun startScanForDevices(): Boolean {
         if (bluetoothIsEnabled) {
-            scanningForProbes = true
+            scanningForDevices = true
         }
 
-        if (scanningForProbes) {
+        if (scanningForDevices) {
             DeviceScanner.scan(owner)
             flowHolder.mutableNetworkState.value =
                 flowHolder.mutableNetworkState.value.copy(scanningOn = true)
         }
 
-        return scanningForProbes
+        return scanningForDevices
     }
 
-    fun stopScanForProbes(): Boolean {
+    fun stopScanForDevices(): Boolean {
         if (bluetoothIsEnabled) {
-            scanningForProbes = false
+            scanningForDevices = false
         }
 
-        if (!scanningForProbes) {
+        if (!scanningForDevices) {
             flowHolder.mutableNetworkState.value =
                 flowHolder.mutableNetworkState.value.copy(scanningOn = false)
         }
 
-        return scanningForProbes
+        return scanningForDevices
     }
 
     fun startDfuMode() {
@@ -397,7 +381,7 @@ internal class NetworkManager(
 
             // if MeatNet is managing network, then stop returning probe scan results
             if (settings.meatNetEnabled) {
-                stopScanForProbes()
+                stopScanForDevices()
             }
 
             // disconnect any active connection
@@ -429,7 +413,7 @@ internal class NetworkManager(
 
             // if MeatNet is managing network, then start returning probe scan results
             if (settings.meatNetEnabled) {
-                startScanForProbes()
+                startScanForDevices()
             }
 
             // take all of the devices out of DFU mode.  we will automatically reconnect to
@@ -606,29 +590,37 @@ internal class NetworkManager(
      */
     private fun trackDeviceIfNew(
         deviceId: String,
-        advertisement: CombustionAdvertisingData,
+        advertisement: DeviceAdvertisingData,
     ) {
         if (!devices.containsKey(deviceId)) {
-            val deviceHolder = when (advertisement.productType) {
-                CombustionProductType.PROBE -> {
+            val deviceHolder = when {
+                (advertisement is ProbeAdvertisingData) && advertisement.productType.isType(PROBE) -> {
                     DeviceHolder.ProbeHolder(
                         ProbeBleDevice(advertisement.mac, owner, advertisement, adapter)
                     )
                 }
 
-                CombustionProductType.NODE -> {
-                    val device = NodeBleDevice(advertisement.mac, owner, advertisement, adapter)
-                    publishNodeFirmwareOnConnectedState(device.getDevice())
-                    DeviceHolder.RepeaterHolder(device)
+                advertisement.productType.isType(NODE) -> {
+                    DeviceHolder.RepeaterHolder(createNodeBleDevice(advertisement))
                 }
 
-                CombustionProductType.GAUGE -> TODO()
+                (advertisement is GaugeAdvertisingData) && advertisement.productType.isType(GAUGE) -> {
+                    val device = createNodeBleDevice(advertisement)
+                    device.accessory = GaugeBle(device, advertisement)
+                    DeviceHolder.RepeaterHolder(device)
+                }
 
                 else -> NOT_IMPLEMENTED("Unknown type of advertising data")
             }
 
             devices[deviceId] = deviceHolder
         }
+    }
+
+    private fun createNodeBleDevice(advertisement: DeviceAdvertisingData): NodeBleDevice {
+        val device = NodeBleDevice(advertisement.mac, owner, advertisement, adapter)
+        publishNodeFirmwareOnConnectedState(device.getDevice())
+        return device
     }
 
     /**
@@ -672,7 +664,7 @@ internal class NetworkManager(
         linkId: LinkID,
         deviceId: String,
         probeSerialNumber: String,
-        advertisement: CombustionAdvertisingData
+        advertisement: ProbeAdvertisingData,
     ) {
         if (!meatNetLinks.containsKey(linkId)) {
             // get reference to the source device for this link
@@ -705,7 +697,7 @@ internal class NetworkManager(
 
     private fun createMeatNetLinkIfNewAndAddToProbelessDevicesManager(
         deviceId: String,
-        advertisement: CombustionAdvertisingData
+        advertisement: ProbeAdvertisingData,
     ) {
         createMeatNetLinkIfNewAndAddToProbeManager(
             linkId = ProbeBleDeviceBase.makeLinkId(advertisement),
@@ -716,7 +708,7 @@ internal class NetworkManager(
     }
 
     private fun manageMeatNetDeviceWithoutProbe(
-        advertisement: CombustionAdvertisingData,
+        advertisement: ProbeAdvertisingData,
     ) {
         // Not supported if MeatNet is disabled
         if (!settings.meatNetEnabled) {
@@ -734,15 +726,15 @@ internal class NetworkManager(
 
 
     private fun manageMeatNetDeviceWithProbe(
-        advertisement: CombustionAdvertisingData,
+        advertisement: ProbeAdvertisingData,
     ): Boolean {
         // if MeatNet isn't enabled and we see anything other than a probe, then return out now
         // because that product type isn't supported in this mode.
-        if (!settings.meatNetEnabled && advertisement.productType != CombustionProductType.PROBE) {
+        if (!settings.meatNetEnabled && advertisement.productType != PROBE) {
             return false
         }
 
-        val probeSerialNumber = advertisement.probeSerialNumber
+        val probeSerialNumber = advertisement.serialNumber
         val deviceId = advertisement.id
         val linkId = ProbeBleDeviceBase.makeLinkId(advertisement)
 
@@ -769,34 +761,47 @@ internal class NetworkManager(
 
     private suspend fun collectAdvertisingData() {
         DeviceScanner.advertisements.collect { advertisingData ->
-            if (scanningForProbes) {
-                val serialNumber = advertisingData.probeSerialNumber
-                if (serialNumber == REPEATER_NO_PROBES_SERIAL_NUMBER) {
+            if (scanningForDevices) {
+                val serialNumber = advertisingData.serialNumber
+                val productType = advertisingData.productType
+
+                if ((serialNumber == REPEATER_NO_PROBES_SERIAL_NUMBER) && (advertisingData is ProbeAdvertisingData)) {
                     manageMeatNetDeviceWithoutProbe(advertisingData)
-                } else if (manageMeatNetDeviceWithProbe(advertisingData)) {
+                } else if ((advertisingData is ProbeAdvertisingData) && manageMeatNetDeviceWithProbe(
+                        advertisingData
+                    )
+                ) {
                     flowHolder.mutableDiscoveredProbesFlow.emit(
                         ProbeDiscoveredEvent.ProbeDiscovered(serialNumber)
                     )
                 }
 
-                // Publish this device to the proximity flow if it's a probe.
-                if (advertisingData.productType == CombustionProductType.PROBE) {
-                    // If we haven't seen this probe before, then add it to our list of devices
-                    // that we track proximity for and publish the addition.
-                    if (!proximityDevices.contains(serialNumber)) {
-                        Log.i(LOG_TAG, "Adding $serialNumber to probes in proximity")
+                when (productType) {
+                    // Publish this device to the proximity flow if it's a probe.
+                    PROBE -> {
+                        // If we haven't seen this probe before, then add it to our list of devices
+                        // that we track proximity for and publish the addition.
+                        if (!proximityDevices.contains(serialNumber)) {
+                            Log.i(LOG_TAG, "Adding $serialNumber to probes in proximity")
 
-                        // Guarantee that the device has a valid RSSI value before flowing out
-                        // the discovery event.
-                        proximityDevices[serialNumber] = ProximityDevice()
-                        proximityDevices[serialNumber]?.handleRssiUpdate(advertisingData.rssi)
-                        flowHolder.mutableDeviceProximityFlow.emit(
-                            DeviceDiscoveredEvent.ProbeDiscovered(serialNumber)
-                        )
-                    } else {
-                        // Update the smoothed RSSI value for this device
-                        proximityDevices[serialNumber]?.handleRssiUpdate(advertisingData.rssi)
+                            // Guarantee that the device has a valid RSSI value before flowing out
+                            // the discovery event.
+                            proximityDevices[serialNumber] = ProximityDevice()
+                            proximityDevices[serialNumber]?.handleRssiUpdate(advertisingData.rssi)
+                            flowHolder.mutableDeviceProximityFlow.emit(
+                                DeviceDiscoveredEvent.ProbeDiscovered(serialNumber)
+                            )
+                        } else {
+                            // Update the smoothed RSSI value for this device
+                            proximityDevices[serialNumber]?.handleRssiUpdate(advertisingData.rssi)
+                        }
                     }
+
+                    GAUGE -> {
+                        trackDeviceIfNew(advertisingData.id, advertisingData)
+                    }
+
+                    else -> {}
                 }
             }
         }
@@ -817,7 +822,11 @@ internal class NetworkManager(
                     device.firmwareVersion?.let { firmwareVersion ->
                         // Add to firmware state map
                         val node =
-                            FirmwareState.Node(device.id, device.dfuProductType, firmwareVersion)
+                            FirmwareState.Node(
+                                device.id,
+                                device.dfuProductType,
+                                firmwareVersion
+                            )
                         firmwareStateOfNetwork[device.id] = node
 
                         // publish the list of firmware details for the network
@@ -850,11 +859,11 @@ internal class NetworkManager(
                     var bluetoothIsOn = false
                     networkStateFlow.collect {
                         if (!bluetoothIsOn && it.bluetoothOn) {
-                            startScanForProbes()
+                            startScanForDevices()
                         }
 
                         if (bluetoothIsOn && !it.bluetoothOn) {
-                            stopScanForProbes()
+                            stopScanForDevices()
                         }
 
                         bluetoothIsOn = it.bluetoothOn
@@ -870,7 +879,7 @@ internal class NetworkManager(
             if (settings.meatNetEnabled) {
                 // MeatNet automatically starts scanning without API call.
                 DeviceScanner.scan(owner)
-                startScanForProbes()
+                startScanForDevices()
             }
         } else {
             flowHolder.mutableNetworkState.value =

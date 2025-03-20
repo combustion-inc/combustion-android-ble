@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: BaseAdvertisingData.kt
+ * File: DeviceAdvertisingData.kt
  * Author:
  *
  * MIT License
@@ -28,16 +28,7 @@
 
 package inc.combustion.framework.ble.scanning
 
-import inc.combustion.framework.service.CombustionProductType
-
-internal open class BaseAdvertisingData(
-    override val mac: String,
-    override val name: String,
-    override val rssi: Int,
-    override val productType: CombustionProductType,
-    override val isConnectable: Boolean,
-) : AdvertisingData {
-    override fun toString(): String {
-        return "$mac $name $rssi $productType $isConnectable"
-    }
+internal interface DeviceAdvertisingData : AdvertisingData {
+    val serialNumber: String
+    val hopCount: UInt
 }

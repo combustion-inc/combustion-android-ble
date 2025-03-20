@@ -60,4 +60,6 @@ enum class CombustionProductType(val type: UByte) {
     }
 
     val isRepeater: Boolean get() = (this != PROBE) && (this != UNKNOWN)
+
+    fun isType(type: CombustionProductType) = this == type
 }

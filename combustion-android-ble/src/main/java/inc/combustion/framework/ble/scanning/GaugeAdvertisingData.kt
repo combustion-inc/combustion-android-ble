@@ -1,0 +1,99 @@
+/*
+ * Project: Combustion Inc. Android Framework
+ * File: GaugeAdvertisingData.kt
+ * Author:
+ *
+ * MIT License
+ *
+ * Copyright (c) 2025. Combustion Inc.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+package inc.combustion.framework.ble.scanning
+
+import com.juul.kable.Identifier
+import inc.combustion.framework.service.CombustionProductType
+import inc.combustion.framework.service.HopCount
+
+/**
+ * Advertises gauge data.
+ */
+internal class GaugeAdvertisingData(
+    mac: String,
+    name: String,
+    rssi: Int,
+    isConnectable: Boolean,
+    override val serialNumber: String,
+    override val hopCount: UInt = 0u,
+) : BaseAdvertisingData(
+    mac = mac,
+    name = name,
+    rssi = rssi,
+    productType = CombustionProductType.GAUGE,
+    isConnectable = isConnectable,
+), DeviceAdvertisingData {
+
+    companion object {
+        private val SERIAL_RANGE = 1..10
+        private val TEMPERATURE_RANGE = 11..12
+        private val STATUS_RANGE = 13..13
+        private val BATTERY_PERCENTAGE_RANGE = 14..14
+        private val HIGH_LOW_ALARM_RANGE = 15..18
+        private val NETWORK_INFO_RANGE = 19..19
+
+        fun create(
+            address: Identifier,
+            name: String,
+            rssi: Int,
+            isConnectable: Boolean,
+            manufacturerData: UByteArray,
+        ): GaugeAdvertisingData {
+            val serialNumber = String(
+                manufacturerData.copyOf().sliceArray(SERIAL_RANGE).toByteArray(),
+                Charsets.UTF_8,
+            )
+
+            // TODO : parse temperatures
+
+            // TODO : parse status
+
+            // TODO : parse battery percentage
+
+            // TODO : parse high/low alarm
+
+            val hopCount = if (manufacturerData.size >= NETWORK_INFO_RANGE.last) {
+                HopCount.fromUByte(
+                    manufacturerData.copyOf().sliceArray(NETWORK_INFO_RANGE)[0]
+                ).hopCount
+            } else {
+                0u
+            }
+
+            return GaugeAdvertisingData(
+                mac = address,
+                name = name,
+                rssi = rssi,
+                isConnectable = isConnectable,
+                serialNumber = serialNumber,
+                hopCount = hopCount,
+            )
+        }
+    }
+}

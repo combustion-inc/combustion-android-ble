@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: BaseAdvertisingData.kt
+ * File: Accessory.kt
  * Author:
  *
  * MIT License
@@ -26,18 +26,12 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble.scanning
+package inc.combustion.framework.ble.device
 
-import inc.combustion.framework.service.CombustionProductType
-
-internal open class BaseAdvertisingData(
-    override val mac: String,
-    override val name: String,
-    override val rssi: Int,
-    override val productType: CombustionProductType,
-    override val isConnectable: Boolean,
-) : AdvertisingData {
-    override fun toString(): String {
-        return "$mac $name $rssi $productType $isConnectable"
-    }
+/**
+ * Representation of a meatNet node's native abilities, such as [GaugeBle]
+ */
+internal interface Accessory {
+    val parent: NodeBleDevice
+    val id: DeviceID
 }

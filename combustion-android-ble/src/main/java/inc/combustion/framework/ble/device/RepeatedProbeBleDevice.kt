@@ -34,7 +34,8 @@ import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.IdleMonitor
 import inc.combustion.framework.ble.NOT_IMPLEMENTED
 import inc.combustion.framework.ble.ProbeStatus
-import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
+import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
+import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
 import inc.combustion.framework.ble.uart.LogResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeConfigureFoodSafeRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeConfigureFoodSafeResponse
@@ -86,11 +87,11 @@ import kotlinx.coroutines.launch
 internal class RepeatedProbeBleDevice (
     override val probeSerialNumber: String,
     private val uart: UartBleDevice,
-    advertisement: CombustionAdvertisingData,
+    advertisement: ProbeAdvertisingData,
 ) : ProbeBleDeviceBase() {
 
     // TODO: Why is this a map? I only see probeSerialNumber being set here.
-    private val advertisementForProbe = hashMapOf<String, CombustionAdvertisingData>()
+    private val advertisementForProbe = hashMapOf<String, ProbeAdvertisingData>()
 
     private var probeStatusCallback: (suspend (status: ProbeStatus, hopCount: UInt?) -> Unit)? = null
     private var logResponseCallback: (suspend (LogResponse) -> Unit)? = null
@@ -100,7 +101,7 @@ internal class RepeatedProbeBleDevice (
     private var _deviceInfoHardwareRevision: String? = null
     private var _deviceInfoModelInformation: ModelInformation? = null
 
-    override val advertisement: CombustionAdvertisingData?
+    override val advertisement: ProbeAdvertisingData?
         get() {
             return advertisementForProbe[probeSerialNumber]
         }
@@ -172,7 +173,7 @@ internal class RepeatedProbeBleDevice (
     private val meatNetNodeTimeoutMonitor = IdleMonitor()
 
     init {
-        advertisementForProbe[advertisement.probeSerialNumber] = advertisement
+        advertisementForProbe[advertisement.serialNumber] = advertisement
         processUartMessages()
     }
 
@@ -289,17 +290,19 @@ internal class RepeatedProbeBleDevice (
         sendUartRequest(NodeReadModelInfoRequest(probeSerialNumber, probeModelInfoHandler.requestId))
     }
 
-    override fun observeAdvertisingPackets(serialNumberFilter: String, macFilter: String, callback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)?) {
+    override fun observeAdvertisingPackets(serialNumberFilter: String, macFilter: String, callback: (suspend (advertisement: DeviceAdvertisingData) -> Unit)?) {
         uart.observeAdvertisingPackets(
             jobKey = serialNumberFilter,
             filter = { advertisement ->
-                macFilter == advertisement.mac && advertisement.probeSerialNumber == serialNumberFilter
+                macFilter == advertisement.mac && advertisement.serialNumber == serialNumberFilter
             }
         ) { advertisement ->
-            callback?.let {
-                advertisementForProbe[probeSerialNumber] = advertisement
-                _hopCount = advertisement.hopCount
-                it(advertisement)
+            if (advertisement is ProbeAdvertisingData) {
+                callback?.let {
+                    advertisementForProbe[probeSerialNumber] = advertisement
+                    _hopCount = advertisement.hopCount
+                    it(advertisement)
+                }
             }
         }
     }

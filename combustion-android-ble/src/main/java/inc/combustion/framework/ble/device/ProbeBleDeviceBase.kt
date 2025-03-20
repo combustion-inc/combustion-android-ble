@@ -28,7 +28,8 @@
 package inc.combustion.framework.ble.device
 
 import inc.combustion.framework.ble.ProbeStatus
-import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
+import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
+import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
 import inc.combustion.framework.ble.uart.LogResponse
 import inc.combustion.framework.service.*
 
@@ -40,8 +41,8 @@ internal abstract class ProbeBleDeviceBase {
         const val PROBE_MESSAGE_RESPONSE_TIMEOUT_MS = 5000L
         const val MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS = 30000L
 
-        fun makeLinkId(advertisement: CombustionAdvertisingData?): LinkID {
-            return "${advertisement?.id}_${advertisement?.probeSerialNumber}"
+        fun makeLinkId(advertisement: ProbeAdvertisingData?): LinkID {
+            return "${advertisement?.id}_${advertisement?.serialNumber}"
         }
     }
 
@@ -64,7 +65,7 @@ internal abstract class ProbeBleDeviceBase {
     abstract val probeSerialNumber: String
 
     // advertising
-    abstract val advertisement: CombustionAdvertisingData?
+    abstract val advertisement: ProbeAdvertisingData?
 
     // connection state
     abstract val rssi: Int
@@ -92,7 +93,7 @@ internal abstract class ProbeBleDeviceBase {
     abstract fun disconnect()
 
     // advertising updates
-    abstract fun observeAdvertisingPackets(serialNumberFilter: String, macFilter: String, callback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)? = null)
+    abstract fun observeAdvertisingPackets(serialNumberFilter: String, macFilter: String, callback: (suspend (advertisement: DeviceAdvertisingData) -> Unit)? = null)
 
     // connection state updates
     abstract fun observeRemoteRssi(callback: (suspend (rssi: Int) -> Unit)? = null)

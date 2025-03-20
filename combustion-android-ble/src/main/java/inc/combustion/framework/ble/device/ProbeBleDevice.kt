@@ -35,9 +35,38 @@ import androidx.lifecycle.lifecycleScope
 import com.juul.kable.characteristicOf
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.ProbeStatus
-import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
-import inc.combustion.framework.ble.uart.*
-import inc.combustion.framework.service.*
+import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
+import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
+import inc.combustion.framework.ble.uart.ConfigureFoodSafeRequest
+import inc.combustion.framework.ble.uart.ConfigureFoodSafeResponse
+import inc.combustion.framework.ble.uart.LogRequest
+import inc.combustion.framework.ble.uart.LogResponse
+import inc.combustion.framework.ble.uart.Request
+import inc.combustion.framework.ble.uart.ResetFoodSafeRequest
+import inc.combustion.framework.ble.uart.ResetFoodSafeResponse
+import inc.combustion.framework.ble.uart.ResetProbeRequest
+import inc.combustion.framework.ble.uart.ResetProbeResponse
+import inc.combustion.framework.ble.uart.Response
+import inc.combustion.framework.ble.uart.SessionInfoRequest
+import inc.combustion.framework.ble.uart.SessionInfoResponse
+import inc.combustion.framework.ble.uart.SetColorRequest
+import inc.combustion.framework.ble.uart.SetColorResponse
+import inc.combustion.framework.ble.uart.SetIDRequest
+import inc.combustion.framework.ble.uart.SetIDResponse
+import inc.combustion.framework.ble.uart.SetPowerModeRequest
+import inc.combustion.framework.ble.uart.SetPowerModeResponse
+import inc.combustion.framework.ble.uart.SetPredictionRequest
+import inc.combustion.framework.ble.uart.SetPredictionResponse
+import inc.combustion.framework.service.CombustionProductType
+import inc.combustion.framework.service.DebugSettings
+import inc.combustion.framework.service.DeviceConnectionState
+import inc.combustion.framework.service.FirmwareVersion
+import inc.combustion.framework.service.FoodSafeData
+import inc.combustion.framework.service.ModelInformation
+import inc.combustion.framework.service.ProbeColor
+import inc.combustion.framework.service.ProbeID
+import inc.combustion.framework.service.ProbePowerMode
+import inc.combustion.framework.service.ProbePredictionMode
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -55,7 +84,7 @@ import kotlinx.coroutines.launch
 internal class ProbeBleDevice (
     mac: String,
     owner: LifecycleOwner,
-    private var probeAdvertisingData: CombustionAdvertisingData,
+    private var probeAdvertisingData: ProbeAdvertisingData,
     adapter: BluetoothAdapter,
     private val uart: UartBleDevice = UartBleDevice(mac, probeAdvertisingData, owner, adapter),
 ) : ProbeBleDeviceBase() {
@@ -67,7 +96,7 @@ internal class ProbeBleDevice (
         )
     }
 
-    override val advertisement: CombustionAdvertisingData
+    override val advertisement: ProbeAdvertisingData
         get() {
             return probeAdvertisingData
         }
@@ -81,7 +110,7 @@ internal class ProbeBleDevice (
         }
     override val id = uart.id
 
-    override val probeSerialNumber: String = probeAdvertisingData.probeSerialNumber
+    override val probeSerialNumber: String = probeAdvertisingData.serialNumber
 
     // ble properties
     override val rssi: Int get() { return uart.rssi }
@@ -203,16 +232,18 @@ internal class ProbeBleDevice (
         }
     }
 
-    override fun observeAdvertisingPackets(serialNumberFilter: String, macFilter: String, callback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)?) {
+    override fun observeAdvertisingPackets(serialNumberFilter: String, macFilter: String, callback: (suspend (advertisement: DeviceAdvertisingData) -> Unit)?) {
         uart.observeAdvertisingPackets(
             jobKey = serialNumberFilter,
             filter = { advertisement ->
-                macFilter == advertisement.mac && advertisement.probeSerialNumber == serialNumberFilter
+                macFilter == advertisement.mac && advertisement.serialNumber == serialNumberFilter
             }
         ) { advertisement ->
-            callback?.let {
-                probeAdvertisingData = advertisement
-                it(advertisement)
+            if (advertisement is ProbeAdvertisingData) {
+                callback?.let {
+                    probeAdvertisingData = advertisement
+                    it(advertisement)
+                }
             }
         }
     }

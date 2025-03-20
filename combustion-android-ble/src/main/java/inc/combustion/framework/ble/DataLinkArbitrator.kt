@@ -36,7 +36,7 @@ import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.device.ProbeBleDeviceBase
 import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
 import inc.combustion.framework.ble.device.SimulatedProbeBleDevice
-import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
+import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
 import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.service.DeviceManager
 import inc.combustion.framework.service.ProbeMode
@@ -173,7 +173,7 @@ internal class DataLinkArbitrator(
 
     fun addRepeatedProbe(
         repeatedProbe: RepeatedProbeBleDevice,
-        repeater: DeviceInformationBleDevice
+        repeater: DeviceInformationBleDevice,
     ): Boolean {
         Log.d(
             LOG_TAG,
@@ -364,7 +364,7 @@ internal class DataLinkArbitrator(
 
     fun shouldUpdateDataFromAdvertisingPacket(
         device: ProbeBleDeviceBase,
-        advertisement: CombustionAdvertisingData
+        advertisement: ProbeAdvertisingData,
     ): Boolean {
         return if (!USE_STATIC_LINK) advertisingArbitrator.shouldUpdate(
             device,

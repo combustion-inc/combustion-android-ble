@@ -6,7 +6,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.NetworkManager
-import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
+import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.uart.meatnet.*
 import inc.combustion.framework.service.DebugSettings
 import inc.combustion.framework.service.DeviceConnectionState
@@ -18,7 +18,7 @@ import java.util.UUID
 internal class NodeBleDevice(
     mac: String,
     owner: LifecycleOwner,
-    nodeAdvertisingData: CombustionAdvertisingData,
+    nodeAdvertisingData: DeviceAdvertisingData,
     adapter: BluetoothAdapter,
     private val uart: UartBleDevice = UartBleDevice(mac, nodeAdvertisingData, owner, adapter)
 ) {
@@ -67,6 +67,11 @@ internal class NodeBleDevice(
         set(value) {
             uart.isInDfuMode = value
         }
+
+    /**
+     * Representation of a meatNet node's native abilities, such as [GaugeBle]
+     */
+    var accessory : Accessory? = null
 
     init {
         processUartMessages()

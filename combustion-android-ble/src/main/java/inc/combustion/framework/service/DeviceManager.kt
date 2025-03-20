@@ -235,7 +235,7 @@ class DeviceManager(
      */
     val scanningForProbes: Boolean
         get() {
-            return NetworkManager.instance.scanningForProbes
+            return NetworkManager.instance.scanningForDevices
         }
 
     /**
@@ -354,7 +354,7 @@ class DeviceManager(
      * @see ProbeDiscoveredEvent
      */
     fun startScanningForProbes(): Boolean {
-        return NetworkManager.instance.startScanForProbes()
+        return NetworkManager.instance.startScanForDevices()
     }
 
     /**
@@ -386,7 +386,7 @@ class DeviceManager(
      * @see ProbeDiscoveredEvent
      */
     fun stopScanningForProbes(): Boolean {
-        return NetworkManager.instance.stopScanForProbes()
+        return NetworkManager.instance.stopScanForDevices()
     }
 
     /**
