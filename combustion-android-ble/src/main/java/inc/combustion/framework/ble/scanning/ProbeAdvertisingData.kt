@@ -56,7 +56,7 @@ internal class ProbeAdvertisingData(
     val batteryStatus: ProbeBatteryStatus,
     val virtualSensors: ProbeVirtualSensors,
     val overheatingSensors: OverheatingSensors,
-    override val hopCount: UInt = 0u,
+    val hopCount: UInt = 0u,
 ) : BaseAdvertisingData(mac, name, rssi, productType, isConnectable), DeviceAdvertisingData {
 
     companion object {
@@ -139,7 +139,7 @@ internal class ProbeAdvertisingData(
                 batteryStatus = batteryStatus,
                 virtualSensors = virtualSensors,
                 overheatingSensors = overheatingSensors,
-                hopCount = hopCount
+                hopCount = hopCount,
             )
         }
     }

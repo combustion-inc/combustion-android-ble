@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: DeviceAdvertisingData.kt
+ * File: GaugeStatus.kt
  * Author:
  *
  * MIT License
@@ -26,8 +26,23 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble.scanning
+package inc.combustion.framework.service
 
-internal interface DeviceAdvertisingData : AdvertisingData {
-    val serialNumber: String
+import inc.combustion.framework.isBitSet
+
+data class GaugeStatus(
+    val sensorPresent: Boolean,
+    val sensorOverheating: Boolean,
+    val lowBattery: Boolean,
+) {
+
+    companion object {
+        fun fromRawByte(byte: UByte): GaugeStatus {
+            return GaugeStatus(
+                sensorPresent = byte.isBitSet(0),
+                sensorOverheating = byte.isBitSet(1),
+                lowBattery = byte.isBitSet(2),
+            )
+        }
+    }
 }

@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: DeviceAdvertisingData.kt
+ * File: GaugeTemperatures.kt
  * Author:
  *
  * MIT License
@@ -26,8 +26,34 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble.scanning
+package inc.combustion.framework.service
 
-internal interface DeviceAdvertisingData : AdvertisingData {
-    val serialNumber: String
+import inc.combustion.framework.ble.shl
+import inc.combustion.framework.ble.shr
+
+@JvmInline
+value class Temperature(
+    val value: Double,
+) {
+
+    companion object {
+        private fun UShort.temperatureFromRaw() =
+            (this.toDouble() * 0.05) - 20.0
+
+        internal fun fromRawDataStart(bytes: UByteArray): Temperature {
+            require(bytes.size >= 2) { "Temperature requires 2 bytes" }
+            val rawTemperature =
+                ((bytes[0] and 0xFF.toUByte()).toUShort() shl 5) or ((bytes[1] and 0xF8.toUByte()).toUShort() shr 3)
+            val temperature = rawTemperature.temperatureFromRaw()
+            return Temperature(temperature)
+        }
+
+        internal fun fromRawDataEnd(bytes: UByteArray): Temperature {
+            require(bytes.size >= 2) { "Temperature requires 2 bytes" }
+            val rawTemperature =
+                ((bytes[0] and 0x1F.toUByte()).toUShort() shl 8) or (bytes[1].toUShort())
+            val temperature = rawTemperature.temperatureFromRaw()
+            return Temperature(temperature)
+        }
+    }
 }

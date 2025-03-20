@@ -30,7 +30,10 @@ package inc.combustion.framework.ble.scanning
 
 import com.juul.kable.Identifier
 import inc.combustion.framework.service.CombustionProductType
-import inc.combustion.framework.service.HopCount
+import inc.combustion.framework.service.GaugeStatus
+import inc.combustion.framework.service.HighLowAlarmStatus
+import inc.combustion.framework.service.Temperature
+import inc.combustion.framework.toPercentage
 
 /**
  * Advertises gauge data.
@@ -41,7 +44,10 @@ internal class GaugeAdvertisingData(
     rssi: Int,
     isConnectable: Boolean,
     override val serialNumber: String,
-    override val hopCount: UInt = 0u,
+    val gaugeTemperature: Temperature,
+    val gaugeStatus: GaugeStatus,
+    val batteryPercentage: Int,
+    val highLowAlarmStatus: HighLowAlarmStatus,
 ) : BaseAdvertisingData(
     mac = mac,
     name = name,
@@ -56,9 +62,8 @@ internal class GaugeAdvertisingData(
         private val STATUS_RANGE = 13..13
         private val BATTERY_PERCENTAGE_RANGE = 14..14
         private val HIGH_LOW_ALARM_RANGE = 15..18
-        private val NETWORK_INFO_RANGE = 19..19
 
-        fun create(
+        internal fun create(
             address: Identifier,
             name: String,
             rssi: Int,
@@ -70,21 +75,20 @@ internal class GaugeAdvertisingData(
                 Charsets.UTF_8,
             )
 
-            // TODO : parse temperatures
+            val gaugeTemperature = Temperature.fromRawDataStart(
+                manufacturerData.copyOf().sliceArray(TEMPERATURE_RANGE)
+            )
 
-            // TODO : parse status
+            val gaugeStatus: GaugeStatus = GaugeStatus.fromRawByte(
+                manufacturerData.copyOf().sliceArray(STATUS_RANGE)[0]
+            )
 
-            // TODO : parse battery percentage
+            val batteryPercentage: Int = manufacturerData.copyOf()
+                .sliceArray(BATTERY_PERCENTAGE_RANGE)[0].toPercentage()
 
-            // TODO : parse high/low alarm
-
-            val hopCount = if (manufacturerData.size >= NETWORK_INFO_RANGE.last) {
-                HopCount.fromUByte(
-                    manufacturerData.copyOf().sliceArray(NETWORK_INFO_RANGE)[0]
-                ).hopCount
-            } else {
-                0u
-            }
+            val highLowAlarmStatus: HighLowAlarmStatus = HighLowAlarmStatus.fromRawData(
+                manufacturerData.copyOf().sliceArray(HIGH_LOW_ALARM_RANGE)
+            )
 
             return GaugeAdvertisingData(
                 mac = address,
@@ -92,7 +96,10 @@ internal class GaugeAdvertisingData(
                 rssi = rssi,
                 isConnectable = isConnectable,
                 serialNumber = serialNumber,
-                hopCount = hopCount,
+                gaugeTemperature = gaugeTemperature,
+                gaugeStatus = gaugeStatus,
+                batteryPercentage = batteryPercentage,
+                highLowAlarmStatus = highLowAlarmStatus,
             )
         }
     }
