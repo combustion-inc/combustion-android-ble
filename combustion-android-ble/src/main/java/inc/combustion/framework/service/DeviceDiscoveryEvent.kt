@@ -31,10 +31,44 @@ package inc.combustion.framework.service
  * Enumerates the asynchronous events that can be collected while the device is
  * scanning and producing events to the discovered probes flow.
  *
- * @see DeviceManager.discoveredProbesFlow
- *
- * TODO: This should probably have a more accurate name.
+ * @see DeviceManager.discoveredDevicesFlow
  */
+sealed class DeviceDiscoveryEvent {
+    /**
+     * Combustion probe discovered
+     * @property serialNumber serial number of the discovered device
+     */
+    data class ProbeDiscovered(
+        val serialNumber: String
+    ) : DeviceDiscoveryEvent()
+
+    /**
+     * Combustion gauge discovered
+     * @property serialNumber serial number of the discovered device
+     */
+    data class GaugeDiscovered(
+        val serialNumber: String
+    ) : DeviceDiscoveryEvent()
+
+    /**
+     * Combustion probe with serial number [serialNumber] was removed.
+     */
+    data class ProbeRemoved(
+        val serialNumber: String
+    ) : DeviceDiscoveryEvent()
+
+    /**
+     * The device cache was cleared.
+     */
+    data object DevicesCleared : DeviceDiscoveryEvent()
+}
+
+@Deprecated(
+    message = "ProbeDiscoveredEvent is deprecated, use DeviceDiscoveryEvent instead.",
+    replaceWith = ReplaceWith("DeviceDiscoveryEvent"),
+    level = DeprecationLevel.WARNING
+)
+@Suppress("DEPRECATION")
 sealed class ProbeDiscoveredEvent {
     /**
      * Combustion device discovered
@@ -55,5 +89,5 @@ sealed class ProbeDiscoveredEvent {
     /**
      * The device cache was cleared.
      */
-    object DevicesCleared: ProbeDiscoveredEvent()
+    data object DevicesCleared : ProbeDiscoveredEvent()
 }

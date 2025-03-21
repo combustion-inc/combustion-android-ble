@@ -51,9 +51,16 @@ import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.log.LogManager
 import inc.combustion.framework.service.dfu.DfuProductType
 import inc.combustion.framework.service.dfu.DfuSystemState
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.shareIn
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.*
@@ -94,6 +101,7 @@ class DeviceManager(
         private val initialized = AtomicBoolean(false)
         private val connected = AtomicBoolean(false)
         private val bindingCount = AtomicInteger(0)
+        private var coroutineScope: CoroutineScope? = null
 
         private val connection = object : ServiceConnection {
 
@@ -154,6 +162,7 @@ class DeviceManager(
             if (!connected.get()) {
                 if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
                     Log.d(LOG_TAG, "Start Service")
+                coroutineScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
                 return CombustionService.start(
                     app.applicationContext,
@@ -208,6 +217,9 @@ class DeviceManager(
             bindingCount.set(0)
             app.unbindService(connection)
 
+            coroutineScope?.cancel()
+            coroutineScope = null
+
             // we might run into situations where the service isn't fully started
             // by the time we reach this call since the operation is asynchronous.
             // do our best effort to stop the service, and log a message if we fall
@@ -246,26 +258,72 @@ class DeviceManager(
             return NetworkManager.instance.dfuModeEnabled
         }
 
-    /**
-     * Kotlin flow for collecting ProbeDiscoveredEvents that occur when the service
-     * is scanning for thermometers.  This is a hot flow.
-     *
-     * @see ProbeDiscoveredEvent
-     */
+    @Deprecated(
+        message = "discoveredProbesFlow is deprecated, use discoveredDevicesFlow instead.",
+        replaceWith = ReplaceWith("discoveredDevicesFlow"),
+        level = DeprecationLevel.WARNING
+    )
+    @Suppress("DEPRECATION")
     val discoveredProbesFlow: SharedFlow<ProbeDiscoveredEvent>
         get() {
-            return NetworkManager.discoveredProbesFlow
+            return discoveredDevicesFlow.mapNotNull {
+                when (it) {
+                    is DeviceDiscoveryEvent.ProbeDiscovered -> ProbeDiscoveredEvent.ProbeDiscovered(
+                        it.serialNumber
+                    )
+
+                    is DeviceDiscoveryEvent.ProbeRemoved -> ProbeDiscoveredEvent.ProbeRemoved(it.serialNumber)
+                    is DeviceDiscoveryEvent.DevicesCleared -> ProbeDiscoveredEvent.DevicesCleared
+                    else -> null
+                }
+            }.shareIn(requireNotNull(coroutineScope), SharingStarted.Lazily)
         }
 
     /**
-     * Kotlin flow for collecting [DeviceDiscoveredEvent]s that occur when the service encounters a
+     * Kotlin flow for collecting [DeviceDiscoveryEvent] that occur when the service
+     * is scanning for devices.  This is a hot flow.
+     *
+     * @see DeviceDiscoveryEvent
+     */
+    val discoveredDevicesFlow: SharedFlow<DeviceDiscoveryEvent>
+        get() {
+            return NetworkManager.discoveredDevicesFlow
+        }
+
+
+    @Deprecated(
+        message = "deviceProximityFlow is deprecated, use deviceInProximityFlow instead.",
+        replaceWith = ReplaceWith("deviceInProximityFlow"),
+        level = DeprecationLevel.WARNING
+    )
+    @Suppress("DEPRECATION")
+    val deviceProximityFlow: SharedFlow<DeviceDiscoveredEvent>
+        get() {
+            return deviceInProximityFlow.mapNotNull {
+                when (it) {
+                    is DeviceInProximityEvent.ProbeDiscovered -> DeviceDiscoveredEvent.ProbeDiscovered(
+                        it.serialNumber
+                    )
+
+                    is DeviceInProximityEvent.NodeDiscovered -> DeviceDiscoveredEvent.NodeDiscovered(
+                        it.serialNumber
+                    )
+
+                    is DeviceInProximityEvent.DevicesCleared -> DeviceDiscoveredEvent.DevicesCleared
+                    else -> null
+                }
+            }.shareIn(requireNotNull(coroutineScope), SharingStarted.Lazily)
+        }
+
+    /**
+     * Kotlin flow for collecting [DeviceInProximityEvent] that occur when the service encounters a
      * device that is in proximity. To receive updates to the proximity value, collect on the
      * [deviceSmoothedRssiFlow]. This is a hot flow.
      *
      * Note that this flow will emit events for all devices in proximity, disregarding any allowlist
      * information.
      */
-    val deviceProximityFlow: SharedFlow<DeviceDiscoveredEvent>
+    val deviceInProximityFlow: SharedFlow<DeviceInProximityEvent>
         get() {
             return NetworkManager.deviceProximityFlow
         }
@@ -289,12 +347,21 @@ class DeviceManager(
         }
 
     /**
-     * Returns a list of device serial numbers, consisting of all devices that have been
+     * Returns a list of device serial numbers, consisting of all probes that have been
      * discovered.
      */
     val discoveredProbes: List<String>
         get() {
             return NetworkManager.instance.discoveredProbes
+        }
+
+    /**
+     * Returns a list of device serial numbers, consisting of all gauges that have been
+     * discovered.
+     */
+    val discoveredGauges: List<String>
+        get() {
+            return NetworkManager.instance.discoveredGauges
         }
 
     /**
@@ -344,48 +411,80 @@ class DeviceManager(
         }
     }
 
+    @Deprecated(
+        message = "startScanningForProbes is deprecated, use startScanningForDevices instead.",
+        replaceWith = ReplaceWith("startScanningForDevices"),
+        level = DeprecationLevel.WARNING
+    )
+    fun startScanningForProbes(): Boolean = startScanningForDevices()
+
     /**
-     * Starts scanning for temperature probes.  Will generate a ProbeDiscoveredEvent
-     * to the discoveredProbesFlow property.
+     * Starts scanning for devices.  Will generate a [DeviceDiscoveryEvent]
+     * to the [discoveredDevicesFlow] property.
      *
      * @return true if scanning has started, false otherwise.
      *
      * @see discoveredProbesFlow
-     * @see ProbeDiscoveredEvent
+     * @see DeviceDiscoveryEvent
      */
-    fun startScanningForProbes(): Boolean {
+    fun startScanningForDevices(): Boolean {
         return NetworkManager.instance.startScanForDevices()
     }
 
-    /**
-     * Sets the list of probes that the framework will publish data for to [allowlist]. A
-     * discovery event will be emitted to [discoveredProbesFlow] for every probe in the list that
-     * isn't currently in the internal list maintained by the framework.
-     *
-     * Passing null for [allowlist] will cause all probes to be published.
-     */
+    @Deprecated(
+        message = "setProbeAllowlist is deprecated, use setDeviceAllowList instead.",
+        replaceWith = ReplaceWith("setDeviceAllowList"),
+        level = DeprecationLevel.WARNING
+    )
     fun setProbeAllowlist(allowlist: Set<String>?) {
-        NetworkManager.instance.setProbeAllowlist(allowlist)
+        setDeviceAllowList(allowlist)
     }
 
     /**
-     * Returns the current thermometer allowlist.
+     * Sets the list of devices that the framework will publish data for to [allowlist]. A
+     * discovery event will be emitted to [discoveredDevicesFlow] for every device in the list that
+     * isn't currently in the internal list maintained by the framework.
+     *
+     * Passing null for [allowlist] will cause all devices to be published.
      */
+    fun setDeviceAllowList(allowlist: Set<String>?) {
+        NetworkManager.instance.setDeviceAllowlist(allowlist)
+    }
+
+    @Deprecated(
+        message = "setProbeAllowlist is deprecated, use setDeviceAllowList instead.",
+        replaceWith = ReplaceWith("setDeviceAllowList"),
+        level = DeprecationLevel.WARNING
+    )
     val probeAllowlist: Set<String>?
-        get() {
-            return NetworkManager.instance.probeAllowlist
-        }
+        get() = deviceAllowlist
 
     /**
-     * Stops scanning for temperature probes.  Will generate a ProbeDiscoveredEvent
-     * to the discoveredProbFlow property.
+     * Returns the current device allowlist.
+     */
+    val deviceAllowlist: Set<String>?
+        get() {
+            return NetworkManager.instance.deviceAllowlist
+        }
+
+
+    @Deprecated(
+        message = "stopScanningForProbes is deprecated, use stopScanningForDevices instead.",
+        replaceWith = ReplaceWith("stopScanningForDevices"),
+        level = DeprecationLevel.WARNING
+    )
+    fun stopScanningForProbes(): Boolean = stopScanningForDevices()
+
+    /**
+     * Stops scanning for devices.  Will generate a [DeviceDiscoveryEvent]
+     * to the [discoveredDevicesFlow] property.
      *
      * @return true if scanning has stopped, false otherwise.
      *
-     * @see discoveredProbesFlow
-     * @see ProbeDiscoveredEvent
+     * @see discoveredDevicesFlow
+     * @see DeviceDiscoveryEvent
      */
-    fun stopScanningForProbes(): Boolean {
+    fun stopScanningForDevices(): Boolean {
         return NetworkManager.instance.stopScanForDevices()
     }
 
@@ -425,8 +524,8 @@ class DeviceManager(
      * advertising data, which can come in more or less frequently if the probe is in instant read
      * mode or not.
      *
-     * This flow is guaranteed to exist if a [DeviceDiscoveredEvent.ProbeDiscovered] event is flowed
-     * from [deviceProximityFlow] for [serialNumber].
+     * This flow is guaranteed to exist if a [DeviceInProximityEvent.ProbeDiscovered] event is flowed
+     * from [deviceInProximityFlow] for [serialNumber].
      */
     fun deviceSmoothedRssiFlow(serialNumber: String): StateFlow<Double?>? {
         return NetworkManager.instance.deviceSmoothedRssiFlow(serialNumber)
@@ -585,7 +684,7 @@ class DeviceManager(
      * discoveredProbesFlow.  The simulated probe has a state flow that can be collected
      * use the probeFlow method.
      *
-     * @see ProbeDiscoveredEvent
+     * @see DeviceDiscoveryEvent
      * @see discoveredProbesFlow
      * @see probeFlow
      */

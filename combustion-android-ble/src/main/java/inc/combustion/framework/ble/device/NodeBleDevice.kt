@@ -7,7 +7,12 @@ import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.NetworkManager
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
-import inc.combustion.framework.ble.uart.meatnet.*
+import inc.combustion.framework.ble.uart.meatnet.GenericNodeRequest
+import inc.combustion.framework.ble.uart.meatnet.GenericNodeResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.service.DebugSettings
 import inc.combustion.framework.service.DeviceConnectionState
 import kotlinx.coroutines.CoroutineName
@@ -71,11 +76,16 @@ internal class NodeBleDevice(
     /**
      * Representation of a meatNet node's native abilities, such as [GaugeBle]
      */
-    var accessory : Accessory? = null
+    var accessory: Accessory? = null
+        private set
 
     init {
         processUartMessages()
         processConnectionState()
+    }
+
+    fun assignToAccessory(accessory: Accessory) {
+        this.accessory = accessory
     }
 
     fun sendNodeRequest(request: GenericNodeRequest, callback: ((Boolean, Any?) -> Unit)?) {
