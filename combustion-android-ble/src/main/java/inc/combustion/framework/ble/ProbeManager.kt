@@ -119,7 +119,7 @@ internal class ProbeManager(
     private val predictionMonitor = IdleMonitor()
 
     // holds the current state and data for this probe
-    private var _probe = MutableStateFlow(Probe.create(serialNumber = serialNumber))
+    private val _probe = MutableStateFlow(Probe.create(serialNumber = serialNumber))
 
     // the flow that is consumed to get state and date updates
     val probeFlow = _probe.asStateFlow()

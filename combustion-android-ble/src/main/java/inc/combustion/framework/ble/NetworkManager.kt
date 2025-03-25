@@ -66,6 +66,7 @@ import inc.combustion.framework.service.DeviceInProximityEvent
 import inc.combustion.framework.service.DeviceManager
 import inc.combustion.framework.service.FirmwareState
 import inc.combustion.framework.service.FoodSafeData
+import inc.combustion.framework.service.Gauge
 import inc.combustion.framework.service.NetworkState
 import inc.combustion.framework.service.Probe
 import inc.combustion.framework.service.ProbeColor
@@ -113,7 +114,7 @@ internal class NetworkManager(
         val mutableDiscoveredDevicesFlow: MutableSharedFlow<DeviceDiscoveryEvent>,
         val mutableNetworkState: MutableStateFlow<NetworkState>,
         val mutableFirmwareUpdateState: MutableStateFlow<FirmwareState>,
-        val mutableDeviceProximityFlow: MutableSharedFlow<DeviceInProximityEvent>,
+        val mutableDeviceInProximityFlow: MutableSharedFlow<DeviceInProximityEvent>,
         val mutableGenericNodeMessageFlow: MutableSharedFlow<NodeUARTMessage>,
     )
 
@@ -234,7 +235,7 @@ internal class NetworkManager(
             ),
             mutableNetworkState = MutableStateFlow(NetworkState()),
             mutableFirmwareUpdateState = MutableStateFlow(FirmwareState(listOf())),
-            mutableDeviceProximityFlow = MutableSharedFlow(
+            mutableDeviceInProximityFlow = MutableSharedFlow(
                 FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.SUSPEND
             ),
             mutableGenericNodeMessageFlow = MutableSharedFlow(
@@ -286,7 +287,7 @@ internal class NetworkManager(
 
         val deviceProximityFlow: SharedFlow<DeviceInProximityEvent>
             get() {
-                return flowHolder.mutableDeviceProximityFlow.asSharedFlow()
+                return flowHolder.mutableDeviceInProximityFlow.asSharedFlow()
             }
 
         val genericNodeMessageFlow: SharedFlow<NodeUARTMessage>
@@ -504,6 +505,14 @@ internal class NetworkManager(
 
     internal fun probeState(serialNumber: String): Probe? {
         return probeManagers[serialNumber]?.probe
+    }
+
+    internal fun gaugeFlow(serialNumber: String): StateFlow<Gauge>? {
+        return gaugeManagers[serialNumber]?.gaugeFlow
+    }
+
+    internal fun gaugeState(serialNumber: String): Gauge? {
+        return gaugeManagers[serialNumber]?.gauge
     }
 
     internal fun deviceSmoothedRssiFlow(serialNumber: String): StateFlow<Double?>? {
@@ -871,7 +880,7 @@ internal class NetworkManager(
                 GAUGE -> DeviceInProximityEvent.GaugeDiscovered(serialNumber)
                 else -> null
             }?.let { inProximityEvent ->
-                flowHolder.mutableDeviceProximityFlow.emit(inProximityEvent)
+                flowHolder.mutableDeviceInProximityFlow.emit(inProximityEvent)
             }
         } else {
             // Update the smoothed RSSI value for this device

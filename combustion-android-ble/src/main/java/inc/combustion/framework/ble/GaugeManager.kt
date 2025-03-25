@@ -29,10 +29,24 @@
 package inc.combustion.framework.ble
 
 import androidx.lifecycle.LifecycleOwner
+import inc.combustion.framework.service.Gauge
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 internal class GaugeManager(
     serialNumber: String,
     val owner: LifecycleOwner
 ) {
+    // holds the current state and data for this probe
+    private val _gauge = MutableStateFlow(Gauge.create(serialNumber = serialNumber))
+
+    // the flow that is consumed to get state and date updates
+    val gaugeFlow = _gauge.asStateFlow()
+
+    val gauge: Gauge
+        get() {
+            return _gauge.value
+        }
+
     // TODO : implement
 }

@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: Accessory.kt
+ * File: Gauge.kt
  * Author:
  *
  * MIT License
@@ -26,12 +26,31 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble.device
+package inc.combustion.framework.service
 
-/**
- * Representation of a meatNet node's native abilities, such as [GaugeBle]
- */
-internal interface Accessory {
-    val parent: NodeBleDevice
-    val id: DeviceID
+import inc.combustion.framework.service.dfu.DfuProductType
+
+data class Gauge(
+    override val baseDevice: Device,
+    override val productType: CombustionProductType = CombustionProductType.GAUGE,
+    override val dfuProductType: DfuProductType = DfuProductType.GAUGE,
+    override val sessionInfo: SessionInformation? = null, // TODO
+    override val statusNotificationsStale: Boolean = false,
+    override val batteryStatus: ProbeBatteryStatus = ProbeBatteryStatus.OK,
+    override val uploadState: ProbeUploadState = ProbeUploadState.Unavailable,
+) : AccessoryDevice {
+
+    companion object {
+        fun create(serialNumber: String = "", mac: String = ""): Gauge {
+            return Gauge(
+                baseDevice = Device(
+                    serialNumber = serialNumber,
+                    mac = mac,
+                )
+            )
+        }
+    }
+
+    override val isOverheating: Boolean
+        get() = TODO("Not yet implemented")
 }

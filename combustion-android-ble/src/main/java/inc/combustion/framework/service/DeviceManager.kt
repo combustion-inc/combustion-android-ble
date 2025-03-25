@@ -157,7 +157,8 @@ class DeviceManager(
         fun startCombustionService(
             notification: Notification?,
             dfuNotificationTarget: Class<out Activity?>? = null,
-            latestFirmware: Map<DfuProductType, Uri> = emptyMap()
+            latestFirmware: Map<DfuProductType, Uri> = emptyMap(),
+            onServiceStarted: (() -> Unit)? = null,
         ): Int {
             if (!connected.get()) {
                 if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
@@ -170,6 +171,7 @@ class DeviceManager(
                     dfuNotificationTarget,
                     INSTANCE.settings,
                     latestFirmware,
+                    onServiceStarted,
                 )
             }
             return 0
@@ -511,6 +513,31 @@ class DeviceManager(
      */
     fun probe(serialNumber: String): Probe? {
         return NetworkManager.instance.probeState(serialNumber)
+    }
+
+    /**
+     * Retrieves the Kotlin flow for collecting Gauge state updates for the specified
+     * probe serial number.  Note, this is a hot flow.
+     *
+     * @param serialNumber the serial number of the gauge.
+     * @return Kotlin flow for collecting Gauge state updates.
+     *
+     * @see Gauge
+     */
+    fun gaugeFlow(serialNumber: String): StateFlow<Gauge>? {
+        return NetworkManager.instance.gaugeFlow(serialNumber)
+    }
+
+    /**
+     * Retrieves the current probe state for the specified probe serial number.
+     *
+     * @param serialNumber the serial number of the probe.
+     * @return current ProbeState of the probe.
+     *
+     * @see Gauge
+     */
+    fun gauge(serialNumber: String): Gauge? {
+        return NetworkManager.instance.gaugeState(serialNumber)
     }
 
     /**

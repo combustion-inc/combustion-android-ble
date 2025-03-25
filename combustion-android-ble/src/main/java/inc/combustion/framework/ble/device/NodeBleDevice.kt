@@ -76,7 +76,7 @@ internal class NodeBleDevice(
     /**
      * Representation of a meatNet node's native abilities, such as [GaugeBle]
      */
-    var accessory: Accessory? = null
+    var accessory: NodeAccessory? = null
         private set
 
     init {
@@ -84,7 +84,7 @@ internal class NodeBleDevice(
         processConnectionState()
     }
 
-    fun assignToAccessory(accessory: Accessory) {
+    fun assignToAccessory(accessory: NodeAccessory) {
         this.accessory = accessory
     }
 

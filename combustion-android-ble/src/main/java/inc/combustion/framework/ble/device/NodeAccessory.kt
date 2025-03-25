@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: GaugeBleDevice.kt
+ * File: Accessory.kt
  * Author:
  *
  * MIT License
@@ -28,11 +28,10 @@
 
 package inc.combustion.framework.ble.device
 
-import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
-
-internal class GaugeBle(
-    override val parent: NodeBleDevice,
-    gaugeAdvertisingData: GaugeAdvertisingData,
-) : NodeAccessory {
-    override val id: DeviceID = gaugeAdvertisingData.mac
+/**
+ * Representation of a meatNet node's native abilities, such as [GaugeBle]
+ */
+internal interface NodeAccessory {
+    val parent: NodeBleDevice
+    val id: DeviceID
 }

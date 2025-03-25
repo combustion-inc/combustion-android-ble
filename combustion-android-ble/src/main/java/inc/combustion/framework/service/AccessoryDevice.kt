@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: GaugeBleDevice.kt
+ * File: ConcreteDevice.kt
  * Author:
  *
  * MIT License
@@ -26,13 +26,33 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble.device
+package inc.combustion.framework.service
 
-import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
+import inc.combustion.framework.service.dfu.DfuProductType
 
-internal class GaugeBle(
-    override val parent: NodeBleDevice,
-    gaugeAdvertisingData: GaugeAdvertisingData,
-) : NodeAccessory {
-    override val id: DeviceID = gaugeAdvertisingData.mac
+interface AccessoryDevice {
+    val baseDevice: Device
+    val productType: CombustionProductType
+    val dfuProductType: DfuProductType
+    val sessionInfo: SessionInformation?
+    val statusNotificationsStale: Boolean
+    val batteryStatus: ProbeBatteryStatus
+    val uploadState: ProbeUploadState
+
+    val isOverheating: Boolean
+
+    val serialNumber: String
+        get() = baseDevice.serialNumber
+    val mac: String
+        get() = baseDevice.mac
+    val fwVersion: FirmwareVersion?
+        get() = baseDevice.fwVersion
+    val hwRevision: String?
+        get() = baseDevice.hwRevision
+    val modelInformation: ModelInformation?
+        get() = baseDevice.modelInformation
+    val rssi: Int
+        get() = baseDevice.rssi
+    val connectionState: DeviceConnectionState
+        get() = baseDevice.connectionState
 }
