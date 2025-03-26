@@ -58,6 +58,13 @@ sealed class DeviceDiscoveryEvent {
     ) : DeviceDiscoveryEvent()
 
     /**
+     * Combustion gauge with serial number [serialNumber] was removed.
+     */
+    data class GaugeRemoved(
+        val serialNumber: String
+    ) : DeviceDiscoveryEvent()
+
+    /**
      * The device cache was cleared.
      */
     data object DevicesCleared : DeviceDiscoveryEvent()

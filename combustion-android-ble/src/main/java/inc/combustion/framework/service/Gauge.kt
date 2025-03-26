@@ -38,6 +38,8 @@ data class Gauge(
     override val statusNotificationsStale: Boolean = false,
     override val batteryStatus: ProbeBatteryStatus = ProbeBatteryStatus.OK,
     override val uploadState: ProbeUploadState = ProbeUploadState.Unavailable,
+    override val minSequence: UInt? = null,
+    override val maxSequence: UInt? = null,
 ) : AccessoryDevice {
 
     companion object {

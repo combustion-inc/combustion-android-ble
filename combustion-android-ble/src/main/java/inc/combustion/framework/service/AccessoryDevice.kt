@@ -38,6 +38,8 @@ interface AccessoryDevice {
     val statusNotificationsStale: Boolean
     val batteryStatus: ProbeBatteryStatus
     val uploadState: ProbeUploadState
+    val minSequence: UInt?
+    val maxSequence: UInt?
 
     val isOverheating: Boolean
 

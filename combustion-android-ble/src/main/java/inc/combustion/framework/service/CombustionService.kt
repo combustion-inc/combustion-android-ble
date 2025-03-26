@@ -168,7 +168,6 @@ class CombustionService : LifecycleService() {
                 NetworkManager.instance.bluetoothAdapterStateReceiver,
                 NetworkManager.instance.bluetoothAdapterStateIntentFilter,
             )
-            DeviceManager.instance.addSimulatedProbe()
             onServiceStartedCallback?.invoke()
             onServiceStartedCallback = null
         }

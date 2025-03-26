@@ -87,8 +87,8 @@ data class Probe(
     val coreTemperatureCelsius: Double? = null,
     val surfaceTemperatureCelsius: Double? = null,
     val ambientTemperatureCelsius: Double? = null,
-    val minSequence: UInt? = null,
-    val maxSequence: UInt? = null,
+    override val minSequence: UInt? = null,
+    override val maxSequence: UInt? = null,
     @Deprecated(
       message = "This field will be removed in a future release",
       level = DeprecationLevel.WARNING
