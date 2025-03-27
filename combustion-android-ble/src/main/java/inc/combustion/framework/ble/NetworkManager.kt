@@ -46,6 +46,7 @@ import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.device.ProbeBleDeviceBase
 import inc.combustion.framework.ble.device.ProximityDevice
 import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
+import inc.combustion.framework.ble.device.SimulatedGaugeBleDevice
 import inc.combustion.framework.ble.device.SimulatedProbeBleDevice
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.DeviceScanner
@@ -488,13 +489,34 @@ internal class NetworkManager(
         )
 
         probeManagers[manager.serialNumber] = manager
-        LogManager.instance.manage(owner, manager)
+        LogManager.instance.manageProbe(owner, manager)
 
         manager.addSimulatedProbe(probe)
 
         owner.lifecycleScope.launch {
             flowHolder.mutableDiscoveredDevicesFlow.emit(
                 DeviceDiscoveryEvent.ProbeDiscovered(probe.probeSerialNumber)
+            )
+        }
+    }
+
+    fun addSimulatedGauge() {
+        val gauge = SimulatedGaugeBleDevice(owner)
+        val manager = GaugeManager(
+            serialNumber = gauge.serialNumber,
+            owner = owner,
+            settings = settings,
+//            dfuDisconnectedNodeCallback = { }
+        )
+
+        gaugeManagers[manager.serialNumber] = manager
+        LogManager.instance.manageGauge(owner, manager)
+
+        manager.addSimulatedGauge(gauge)
+
+        owner.lifecycleScope.launch {
+            flowHolder.mutableDiscoveredDevicesFlow.emit(
+                DeviceDiscoveryEvent.GaugeDiscovered(gauge.serialNumber)
             )
         }
     }
@@ -521,10 +543,12 @@ internal class NetworkManager(
 
     internal fun connect(serialNumber: String) {
         probeManagers[serialNumber]?.connect()
+        gaugeManagers[serialNumber]?.connect()
     }
 
     internal fun disconnect(serialNumber: String, canDisconnectMeatNetDevices: Boolean = false) {
         probeManagers[serialNumber]?.disconnect(canDisconnectMeatNetDevices)
+        gaugeManagers[serialNumber]?.disconnect()
     }
 
     internal fun setProbeColor(
@@ -657,7 +681,13 @@ internal class NetworkManager(
 
                 (advertisement is GaugeAdvertisingData) && advertisement.productType.isType(GAUGE) -> {
                     val device = createNodeBleDevice(advertisement)
-                    device.assignToAccessory(GaugeBle(device, advertisement))
+                    device.createAccessoryAndAssign { parent, uart ->
+                        GaugeBle(
+                            parent = parent,
+                            gaugeAdvertisingData = advertisement,
+                            uart = uart,
+                        )
+                    }
                     DeviceHolder.RepeaterHolder(device)
                 }
 
@@ -696,7 +726,7 @@ internal class NetworkManager(
             )
 
             probeManagers[probeSerialNumber] = manager
-            LogManager.instance.manage(owner, manager)
+            LogManager.instance.manageProbe(owner, manager)
 
             nodeDeviceManager.subscribeToNodeFlow(manager)
             true
@@ -713,6 +743,7 @@ internal class NetworkManager(
             val manager = GaugeManager(
                 serialNumber = gaugeSerialNumber,
                 owner = owner,
+                settings = settings,
             )
 
             gaugeManagers[gaugeSerialNumber] = manager

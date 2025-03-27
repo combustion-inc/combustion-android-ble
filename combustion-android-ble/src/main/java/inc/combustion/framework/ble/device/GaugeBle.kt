@@ -28,11 +28,39 @@
 
 package inc.combustion.framework.ble.device
 
+import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
 
 internal class GaugeBle(
     override val parent: NodeBleDevice,
-    gaugeAdvertisingData: GaugeAdvertisingData,
-) : NodeAccessory {
+    private var gaugeAdvertisingData: GaugeAdvertisingData,
+    private val uart: UartBleDevice,
+) : GaugeBleBase(), NodeAccessory {
     override val id: DeviceID = gaugeAdvertisingData.mac
+    override val serialNumber: String = gaugeAdvertisingData.serialNumber
+    override val isConnected: Boolean
+        get() = parent.isConnected
+
+    override fun connect() = parent.connect()
+    override fun disconnect() = parent.disconnect()
+
+    override fun observeAdvertisingPackets(
+        serialNumberFilter: String,
+        macFilter: String,
+        callback: (suspend (advertisement: DeviceAdvertisingData) -> Unit)?,
+    ) {
+        uart.observeAdvertisingPackets(
+            jobKey = serialNumberFilter,
+            filter = { advertisement ->
+                macFilter == advertisement.mac && advertisement.serialNumber == serialNumberFilter
+            }
+        ) { advertisement ->
+            if (advertisement is GaugeAdvertisingData) {
+                callback?.let {
+                    gaugeAdvertisingData = advertisement
+                    it(advertisement)
+                }
+            }
+        }
+    }
 }

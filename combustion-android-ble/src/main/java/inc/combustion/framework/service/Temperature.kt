@@ -30,6 +30,7 @@ package inc.combustion.framework.service
 
 import inc.combustion.framework.ble.shl
 import inc.combustion.framework.ble.shr
+import kotlin.random.Random
 
 @JvmInline
 value class Temperature(
@@ -54,6 +55,10 @@ value class Temperature(
                 ((bytes[0] and 0x1F.toUByte()).toUShort() shl 8) or (bytes[1].toUShort())
             val temperature = rawTemperature.temperatureFromRaw()
             return Temperature(temperature)
+        }
+
+        internal fun withRandomData(): Temperature {
+            return Temperature(Random.nextDouble(45.0, 60.0))
         }
     }
 }

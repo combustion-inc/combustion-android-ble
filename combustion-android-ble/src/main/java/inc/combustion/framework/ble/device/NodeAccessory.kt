@@ -33,5 +33,4 @@ package inc.combustion.framework.ble.device
  */
 internal interface NodeAccessory {
     val parent: NodeBleDevice
-    val id: DeviceID
 }

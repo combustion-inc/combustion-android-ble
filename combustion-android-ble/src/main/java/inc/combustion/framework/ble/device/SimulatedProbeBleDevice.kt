@@ -100,20 +100,20 @@ internal class SimulatedProbeBleDevice(
         ): ProbeAdvertisingData {
             val probeTemperatures = ProbeTemperatures.withRandomData()
             return ProbeAdvertisingData(
-                mac,
-                "CP",
-                randomRSSI(),
-                productType,
-                true,
-                probeSerialNumber,
-                probeTemperatures,
-                probeID,
-                probeColor,
-                ProbeMode.NORMAL,
-                ProbeBatteryStatus.OK,
-                ProbeVirtualSensors.DEFAULT,
-                OverheatingSensors.fromTemperatures(probeTemperatures),
-                hopCount,
+                mac = mac,
+                name = "CP",
+                rssi = randomRSSI(),
+                productType = productType,
+                isConnectable = true,
+                serialNumber = probeSerialNumber,
+                probeTemperatures = probeTemperatures,
+                probeID = probeID,
+                color = probeColor,
+                mode = ProbeMode.NORMAL,
+                batteryStatus = ProbeBatteryStatus.OK,
+                virtualSensors = ProbeVirtualSensors.DEFAULT,
+                overheatingSensors = OverheatingSensors.fromTemperatures(probeTemperatures),
+                hopCount = hopCount,
             )
         }
     }

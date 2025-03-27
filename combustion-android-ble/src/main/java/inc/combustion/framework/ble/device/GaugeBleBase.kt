@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: Gauge.kt
+ * File: GaugeBleBase.kt
  * Author:
  *
  * MIT License
@@ -26,33 +26,19 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.service
+package inc.combustion.framework.ble.device
 
-import inc.combustion.framework.service.dfu.DfuProductType
+import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 
-data class Gauge(
-    override val baseDevice: Device,
-    override val productType: CombustionProductType = CombustionProductType.GAUGE,
-    override val dfuProductType: DfuProductType = DfuProductType.GAUGE,
-    override val sessionInfo: SessionInformation? = null, // TODO
-    override val statusNotificationsStale: Boolean = false,
-    override val batteryStatus: ProbeBatteryStatus = ProbeBatteryStatus.OK,
-    override val uploadState: ProbeUploadState = ProbeUploadState.Unavailable,
-    override val minSequence: UInt? = null,
-    override val maxSequence: UInt? = null,
-) : AccessoryDevice {
+internal abstract class GaugeBleBase {
+    abstract val id: DeviceID
+    abstract val serialNumber: String
+    abstract val isConnected: Boolean
 
-    companion object {
-        fun create(serialNumber: String = "", mac: String = ""): Gauge {
-            return Gauge(
-                baseDevice = Device(
-                    serialNumber = serialNumber,
-                    mac = mac,
-                )
-            )
-        }
-    }
+    abstract fun connect()
+    abstract fun disconnect()
 
-    override val isOverheating: Boolean
-        get() = false // TODO : implement
+
+    // advertising updates
+    abstract fun observeAdvertisingPackets(serialNumberFilter: String, macFilter: String, callback: (suspend (advertisement: DeviceAdvertisingData) -> Unit)? = null)
 }

@@ -426,7 +426,7 @@ class DeviceManager(
      *
      * @return true if scanning has started, false otherwise.
      *
-     * @see discoveredProbesFlow
+     * @see discoveredDevicesFlow
      * @see DeviceDiscoveryEvent
      */
     fun startScanningForDevices(): Boolean {
@@ -708,15 +708,28 @@ class DeviceManager(
 
     /**
      * Creates a simulated probe.  The simulated probe will generate events to the
-     * discoveredProbesFlow.  The simulated probe has a state flow that can be collected
+     * discoveredDevicesFlow.  The simulated probe has a state flow that can be collected
      * use the probeFlow method.
      *
      * @see DeviceDiscoveryEvent
-     * @see discoveredProbesFlow
+     * @see discoveredDevicesFlow
      * @see probeFlow
      */
     fun addSimulatedProbe() {
         NetworkManager.instance.addSimulatedProbe()
+    }
+
+    /**
+     * Creates a simulated gauge. The simulated gauge will generate events to the
+     * discoveredDevicesFlow.  The simulated gauge has a state flow that can be collected
+     * use the gaugeFlow method.
+     *
+     * @see DeviceDiscoveryEvent
+     * @see discoveredDevicesFlow
+     * @see gaugeFlow
+     */
+    fun addSimulatedGauge() {
+        NetworkManager.instance.addSimulatedGauge()
     }
 
     /**

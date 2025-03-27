@@ -84,8 +84,8 @@ internal class NodeBleDevice(
         processConnectionState()
     }
 
-    fun assignToAccessory(accessory: NodeAccessory) {
-        this.accessory = accessory
+    fun createAccessoryAndAssign(create: (NodeBleDevice, UartBleDevice) -> NodeAccessory) {
+        this.accessory = create(this, uart)
     }
 
     fun sendNodeRequest(request: GenericNodeRequest, callback: ((Boolean, Any?) -> Unit)?) {
