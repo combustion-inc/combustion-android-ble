@@ -108,7 +108,7 @@ internal class ProbeManager(
     }
 
     // encapsulates logic for managing network data links
-    private val arbitrator = DataLinkArbitrator(settings)
+    private val arbitrator = ProbeDataLinkArbitrator(settings)
 
     // manages long-running coroutine scopes for data handling
     private val jobManager = JobManager()
@@ -200,7 +200,7 @@ internal class ProbeManager(
 
             // if not using meatnet, then we use the direct link
             if (!settings.meatNetEnabled) {
-                return arbitrator.probeBleDevice?.connectionState
+                return arbitrator.bleDevice?.connectionState
                     ?: DeviceConnectionState.OUT_OF_RANGE
             }
 
@@ -259,7 +259,7 @@ internal class ProbeManager(
         get() {
             simulatedProbe?.let { return it.deviceInfoFirmwareVersion }
 
-            arbitrator.probeBleDevice?.let {
+            arbitrator.bleDevice?.let {
                 if (it.deviceInfoFirmwareVersion != null) {
                     return it.deviceInfoFirmwareVersion
                 }
@@ -274,7 +274,7 @@ internal class ProbeManager(
         get() {
             simulatedProbe?.let { return it.deviceInfoHardwareRevision }
 
-            arbitrator.probeBleDevice?.let {
+            arbitrator.bleDevice?.let {
                 if (it.deviceInfoHardwareRevision != null) {
                     return it.deviceInfoHardwareRevision
                 }
@@ -289,7 +289,7 @@ internal class ProbeManager(
         get() {
             simulatedProbe?.let { return it.deviceInfoModelInformation }
 
-            arbitrator.probeBleDevice?.let {
+            arbitrator.bleDevice?.let {
                 if (it.deviceInfoModelInformation != null) {
                     return it.deviceInfoModelInformation
                 }
@@ -343,11 +343,11 @@ internal class ProbeManager(
     fun addProbe(
         probe: ProbeBleDevice,
         baseDevice: DeviceInformationBleDevice,
-        advertisement: ProbeAdvertisingData
+        advertisement: ProbeAdvertisingData,
     ) {
         if (IGNORE_PROBES) return
 
-        if (arbitrator.addProbe(probe, baseDevice)) {
+        if (arbitrator.addDevice(probe, baseDevice)) {
             handleAdvertisingPackets(probe, advertisement)
             observe(probe)
             Log.i(LOG_TAG, "PM($serialNumber) is managing link ${probe.linkId}")
@@ -907,7 +907,7 @@ internal class ProbeManager(
         if (_probe.value.fwVersion == null) {
 
             // if direct link, then get the probe version over that link
-            arbitrator.directLink?.readProbeFirmwareVersion { fwVersion ->
+            arbitrator.directLink?.readFirmwareVersionAsync { fwVersion ->
                 // update firmware version on completion of read
                 _probe.update {
                     it.copy(baseDevice = _probe.value.baseDevice.copy(fwVersion = fwVersion))
@@ -943,7 +943,7 @@ internal class ProbeManager(
         if (_probe.value.hwRevision == null) {
 
             // if direct link, then get the probe revision over that link
-            arbitrator.directLink?.readProbeHardwareRevision { hwRevision ->
+            arbitrator.directLink?.readHardwareRevisionAsync { hwRevision ->
 
                 // update firmware version on completion of read
                 _probe.update {
@@ -982,7 +982,7 @@ internal class ProbeManager(
         if (_probe.value.modelInformation == null) {
 
             // if direct link, then get the probe model info over that link
-            arbitrator.directLink?.readProbeModelInformation { info ->
+            arbitrator.directLink?.readModelInformationAsync { info ->
 
                 // update firmware version on completion of read
                 _probe.update {

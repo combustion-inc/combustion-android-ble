@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: Gauge.kt
+ * File: GaugeLogRequest.kt
  * Author:
  *
  * MIT License
@@ -26,33 +26,7 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.service
+package inc.combustion.framework.ble.uart
 
-import inc.combustion.framework.service.dfu.DfuProductType
-
-data class Gauge(
-    override val baseDevice: Device,
-    override val productType: CombustionProductType = CombustionProductType.GAUGE,
-    override val dfuProductType: DfuProductType = DfuProductType.GAUGE,
-    override val sessionInfo: SessionInformation? = null, // TODO
-    override val statusNotificationsStale: Boolean = false,
-    override val batteryStatus: ProbeBatteryStatus = ProbeBatteryStatus.OK, // TODO : rename class?
-    override val uploadState: ProbeUploadState = ProbeUploadState.Unavailable, // TODO : rename class?
-    override val minSequence: UInt? = null,
-    override val maxSequence: UInt? = null,
-) : SpecializedDevice {
-
-    companion object {
-        fun create(serialNumber: String = "", mac: String = ""): Gauge {
-            return Gauge(
-                baseDevice = Device(
-                    serialNumber = serialNumber,
-                    mac = mac,
-                )
-            )
-        }
-    }
-
-    override val isOverheating: Boolean
-        get() = false // TODO : implement
+class GaugeLogRequest {
 }

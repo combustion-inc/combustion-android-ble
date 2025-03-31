@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: ConcreteDevice.kt
+ * File: GaugeLogResponse.kt
  * Author:
  *
  * MIT License
@@ -26,35 +26,7 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.service
+package inc.combustion.framework.ble.uart
 
-import inc.combustion.framework.service.dfu.DfuProductType
-
-interface AccessoryDevice {
-    val baseDevice: Device
-    val productType: CombustionProductType
-    val dfuProductType: DfuProductType
-    val sessionInfo: SessionInformation?
-    val statusNotificationsStale: Boolean
-    val batteryStatus: ProbeBatteryStatus
-    val uploadState: ProbeUploadState
-    val minSequence: UInt?
-    val maxSequence: UInt?
-
-    val isOverheating: Boolean
-
-    val serialNumber: String
-        get() = baseDevice.serialNumber
-    val mac: String
-        get() = baseDevice.mac
-    val fwVersion: FirmwareVersion?
-        get() = baseDevice.fwVersion
-    val hwRevision: String?
-        get() = baseDevice.hwRevision
-    val modelInformation: ModelInformation?
-        get() = baseDevice.modelInformation
-    val rssi: Int
-        get() = baseDevice.rssi
-    val connectionState: DeviceConnectionState
-        get() = baseDevice.connectionState
+class GaugeLogResponse {
 }

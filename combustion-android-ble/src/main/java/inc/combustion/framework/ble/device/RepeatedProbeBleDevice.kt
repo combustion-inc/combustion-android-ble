@@ -34,6 +34,8 @@ import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.IdleMonitor
 import inc.combustion.framework.ble.NOT_IMPLEMENTED
 import inc.combustion.framework.ble.ProbeStatus
+import inc.combustion.framework.ble.device.UartCapableProbe.Companion.MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS
+import inc.combustion.framework.ble.device.UartCapableProbe.Companion.makeLinkId
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
 import inc.combustion.framework.ble.uart.LogResponse
@@ -80,12 +82,12 @@ import kotlinx.coroutines.launch
 /**
  * Class representing a probe connected through one or more MeatNet nodes.
  *
- * [probeSerialNumber] indicates the serial number of the probe. [advertisement] is the initial
+ * [serialNumber] indicates the serial number of the probe. [advertisement] is the initial
  * advertisement coming from a node that contains the probe's information. [uart] is the interface
  * for sending and receiving UART messages to and from the probe.
  */
 internal class RepeatedProbeBleDevice (
-    override val probeSerialNumber: String,
+    override val serialNumber: String,
     private val uart: UartBleDevice,
     advertisement: ProbeAdvertisingData,
 ) : ProbeBleDeviceBase() {
@@ -103,7 +105,7 @@ internal class RepeatedProbeBleDevice (
 
     override val advertisement: ProbeAdvertisingData?
         get() {
-            return advertisementForProbe[probeSerialNumber]
+            return advertisementForProbe[serialNumber]
         }
 
     override val linkId: LinkID
@@ -115,6 +117,7 @@ internal class RepeatedProbeBleDevice (
         get() {
             return uart.id
         }
+    override val isSimulated: Boolean = false
 
     override val mac: String
         get() {
@@ -146,6 +149,10 @@ internal class RepeatedProbeBleDevice (
     override val deviceInfoModelInformation: ModelInformation? get() { return _deviceInfoModelInformation }
 
     override val productType: CombustionProductType get() { return uart.productType}
+    override val isRepeater: Boolean = true
+    override var shouldAutoReconnect: Boolean
+        get() = TODO("Not yet implemented")
+        set(value) {}
 
     override var isInDfuMode: Boolean
         get() = uart.isInDfuMode
@@ -196,7 +203,7 @@ internal class RepeatedProbeBleDevice (
 
         // keep sending the request (using the same request ID) until the message is handled or it
         // exceeds the timeout.
-        sendUartRequest(NodeReadSessionInfoRequest(probeSerialNumber, sessionInfoHandler.requestId))
+        sendUartRequest(NodeReadSessionInfoRequest(serialNumber, sessionInfoHandler.requestId))
     }
 
     fun cancelSessionInfoRequest(reqId: UInt) {
@@ -207,22 +214,22 @@ internal class RepeatedProbeBleDevice (
 
     override fun sendSetPrediction(setPointTemperatureC: Double, mode: ProbePredictionMode, reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
         setPredictionHandler.wait(uart.owner, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
-        sendUartRequest(NodeSetPredictionRequest(probeSerialNumber, setPointTemperatureC, mode, reqId))
+        sendUartRequest(NodeSetPredictionRequest(serialNumber, setPointTemperatureC, mode, reqId))
     }
 
     override fun sendConfigureFoodSafe(foodSafeData: FoodSafeData, reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
         configureFoodSafeHandler.wait(uart.owner, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
-        sendUartRequest(NodeConfigureFoodSafeRequest(probeSerialNumber, foodSafeData, reqId))
+        sendUartRequest(NodeConfigureFoodSafeRequest(serialNumber, foodSafeData, reqId))
     }
 
     override fun sendResetFoodSafe(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
         resetFoodSafeHandler.wait(uart.owner, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
-        sendUartRequest(NodeResetFoodSafeRequest(probeSerialNumber, reqId))
+        sendUartRequest(NodeResetFoodSafeRequest(serialNumber, reqId))
     }
 
     override fun sendLogRequest(minSequence: UInt, maxSequence: UInt, callback: (suspend (LogResponse) -> Unit)?) {
         logResponseCallback = callback
-        sendUartRequest(NodeReadLogsRequest(probeSerialNumber, minSequence, maxSequence))
+        sendUartRequest(NodeReadLogsRequest(serialNumber, minSequence, maxSequence))
     }
 
     override fun sendSetPowerMode(
@@ -231,18 +238,48 @@ internal class RepeatedProbeBleDevice (
         callback: ((Boolean, Any?) -> Unit)?,
     ) {
         setPowerModeHandler.wait(uart.owner, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
-        sendUartRequest(NodeSetPowerModeRequest(probeSerialNumber, powerMode, reqId))
+        sendUartRequest(NodeSetPowerModeRequest(serialNumber, powerMode, reqId))
     }
 
     override fun sendResetProbe(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
         resetProbeHandler.wait(uart.owner, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
-        sendUartRequest(NodeResetProbeRequest(probeSerialNumber, reqId))
+        sendUartRequest(NodeResetProbeRequest(serialNumber, reqId))
     }
 
     override suspend fun readSerialNumber() = uart.readSerialNumber()
     override suspend fun readFirmwareVersion() = uart.readFirmwareVersion()
     override suspend fun readHardwareRevision() = uart.readHardwareRevision()
     override suspend fun readModelInformation() = uart.readModelInformation()
+
+    override fun readFirmwareVersionAsync(callback: (FirmwareVersion) -> Unit) {
+        uart.owner.lifecycleScope.launch {
+            readFirmwareVersion()
+        }.invokeOnCompletion {
+            deviceInfoFirmwareVersion?.let {
+                callback(it)
+            }
+        }
+    }
+
+    override fun readHardwareRevisionAsync(callback: (String) -> Unit) {
+        uart.owner.lifecycleScope.launch {
+            readHardwareRevision()
+        }.invokeOnCompletion {
+            deviceInfoHardwareRevision?.let {
+                callback(it)
+            }
+        }
+    }
+
+    override fun readModelInformationAsync(callback: (ModelInformation) -> Unit) {
+        uart.owner.lifecycleScope.launch {
+            readModelInformation()
+        }.invokeOnCompletion {
+            deviceInfoModelInformation?.let {
+                callback(it)
+            }
+        }
+    }
 
     override fun toString(): String {
         return "repeated$productType(${super.toString()})"
@@ -259,7 +296,7 @@ internal class RepeatedProbeBleDevice (
                 }
             }
         }
-        sendUartRequest(NodeReadFirmwareRevisionRequest(probeSerialNumber, probeFirmwareRevisionHandler.requestId))
+        sendUartRequest(NodeReadFirmwareRevisionRequest(serialNumber, probeFirmwareRevisionHandler.requestId))
     }
 
     fun readProbeHardwareRevision(reqId: UInt?, callback: (String) -> Unit) {
@@ -273,7 +310,7 @@ internal class RepeatedProbeBleDevice (
                 }
             }
         }
-        sendUartRequest(NodeReadHardwareRevisionRequest(probeSerialNumber, probeHardwareRevisionHandler.requestId))
+        sendUartRequest(NodeReadHardwareRevisionRequest(serialNumber, probeHardwareRevisionHandler.requestId))
     }
 
     fun readProbeModelInformation(reqId: UInt?, callback: (ModelInformation) -> Unit) {
@@ -287,7 +324,7 @@ internal class RepeatedProbeBleDevice (
                 }
             }
         }
-        sendUartRequest(NodeReadModelInfoRequest(probeSerialNumber, probeModelInfoHandler.requestId))
+        sendUartRequest(NodeReadModelInfoRequest(serialNumber, probeModelInfoHandler.requestId))
     }
 
     override fun observeAdvertisingPackets(serialNumberFilter: String, macFilter: String, callback: (suspend (advertisement: DeviceAdvertisingData) -> Unit)?) {
@@ -299,7 +336,7 @@ internal class RepeatedProbeBleDevice (
         ) { advertisement ->
             if (advertisement is ProbeAdvertisingData) {
                 callback?.let {
-                    advertisementForProbe[probeSerialNumber] = advertisement
+                    advertisementForProbe[serialNumber] = advertisement
                     _hopCount = advertisement.hopCount
                     it(advertisement)
                 }
@@ -335,9 +372,9 @@ internal class RepeatedProbeBleDevice (
      */
     fun observeMeatNetNodeTimeout(timeout: Long) {
         uart.jobManager.addJob(
-            key = probeSerialNumber,
+            key = serialNumber,
             job = uart.owner.lifecycleScope.launch(
-                CoroutineName("${probeSerialNumber}.observeMeatNetNodeTimeout")
+                CoroutineName("${serialNumber}.observeMeatNetNodeTimeout")
             ) {
                 while (isActive) {
                     delay(IDLE_POLL_RATE_MS)
@@ -350,9 +387,9 @@ internal class RepeatedProbeBleDevice (
 
     private fun observeUartMessages(callback: (suspend (responses: List<NodeUARTMessage>) -> Unit)? = null) {
         uart.jobManager.addJob(
-            key = probeSerialNumber,
+            key = serialNumber,
             job = uart.owner.lifecycleScope.launch(
-                CoroutineName("${probeSerialNumber}.observeUartMessages")
+                CoroutineName("${serialNumber}.observeUartMessages")
             ) {
                 uart.observeUartCharacteristic { data ->
 
@@ -380,7 +417,7 @@ internal class RepeatedProbeBleDevice (
     private fun sendUartRequest(request: NodeRequest) {
         if (INFO_LOG_MEATNET_TRACE) {
             MEATNET_TRACE_INCLUSION_FILTER.firstOrNull{it == request.messageId}?.let {
-                Log.i(LOG_TAG + "_MEATNET", "$probeSerialNumber: TX Node $id $request" )
+                Log.i(LOG_TAG + "_MEATNET", "$serialNumber: TX Node $id $request" )
 
                 if (INFO_LOG_MEATNET_UART_TRACE) {
                     val packet = request.data.joinToString("") {
@@ -424,8 +461,8 @@ internal class RepeatedProbeBleDevice (
                 if (INFO_LOG_MEATNET_TRACE) {
                     MEATNET_TRACE_INCLUSION_FILTER.firstOrNull{it == message.messageId}?.let {
                         when(message) {
-                            is NodeRequest -> Log.i(LOG_TAG + "_MEATNET", "$probeSerialNumber: RX Node $id $message")
-                            is NodeResponse -> Log.i(LOG_TAG + "_MEATNET", "$probeSerialNumber: RX Node $id $message")
+                            is NodeRequest -> Log.i(LOG_TAG + "_MEATNET", "$serialNumber: RX Node $id $message")
+                            is NodeResponse -> Log.i(LOG_TAG + "_MEATNET", "$serialNumber: RX Node $id $message")
                             else -> { }
                         }
                     }
@@ -434,7 +471,7 @@ internal class RepeatedProbeBleDevice (
                 when (message) {
                     // Repeated Responses
                     is NodeReadLogsResponse -> {
-                        if(message.serialNumber == probeSerialNumber) {
+                        if(message.serialNumber == serialNumber) {
                             handleLogResponse(message)
                         }
                     }
@@ -472,7 +509,7 @@ internal class RepeatedProbeBleDevice (
 
                     /// Async Requests that are Broadcast on certain events from a Node
                     is NodeProbeStatusRequest -> {
-                        if(message.serialNumber == probeSerialNumber) {
+                        if(message.serialNumber == serialNumber) {
                             handleProbeStatusRequest(message)
                         }
                     }

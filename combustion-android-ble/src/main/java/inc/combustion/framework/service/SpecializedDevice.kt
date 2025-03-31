@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: Gauge.kt
+ * File: ConcreteDevice.kt
  * Author:
  *
  * MIT License
@@ -30,29 +30,31 @@ package inc.combustion.framework.service
 
 import inc.combustion.framework.service.dfu.DfuProductType
 
-data class Gauge(
-    override val baseDevice: Device,
-    override val productType: CombustionProductType = CombustionProductType.GAUGE,
-    override val dfuProductType: DfuProductType = DfuProductType.GAUGE,
-    override val sessionInfo: SessionInformation? = null, // TODO
-    override val statusNotificationsStale: Boolean = false,
-    override val batteryStatus: ProbeBatteryStatus = ProbeBatteryStatus.OK, // TODO : rename class?
-    override val uploadState: ProbeUploadState = ProbeUploadState.Unavailable, // TODO : rename class?
-    override val minSequence: UInt? = null,
-    override val maxSequence: UInt? = null,
-) : SpecializedDevice {
+interface SpecializedDevice {
+    val baseDevice: Device
+    val productType: CombustionProductType
+    val dfuProductType: DfuProductType
+    val sessionInfo: SessionInformation?
+    val statusNotificationsStale: Boolean
+    val batteryStatus: ProbeBatteryStatus
+    val uploadState: ProbeUploadState
+    val minSequence: UInt?
+    val maxSequence: UInt?
 
-    companion object {
-        fun create(serialNumber: String = "", mac: String = ""): Gauge {
-            return Gauge(
-                baseDevice = Device(
-                    serialNumber = serialNumber,
-                    mac = mac,
-                )
-            )
-        }
-    }
+    val isOverheating: Boolean
 
-    override val isOverheating: Boolean
-        get() = false // TODO : implement
+    val serialNumber: String
+        get() = baseDevice.serialNumber
+    val mac: String
+        get() = baseDevice.mac
+    val fwVersion: FirmwareVersion?
+        get() = baseDevice.fwVersion
+    val hwRevision: String?
+        get() = baseDevice.hwRevision
+    val modelInformation: ModelInformation?
+        get() = baseDevice.modelInformation
+    val rssi: Int
+        get() = baseDevice.rssi
+    val connectionState: DeviceConnectionState
+        get() = baseDevice.connectionState
 }

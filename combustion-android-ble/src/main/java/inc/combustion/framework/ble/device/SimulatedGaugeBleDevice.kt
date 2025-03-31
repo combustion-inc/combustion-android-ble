@@ -32,26 +32,32 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
+import inc.combustion.framework.service.CombustionProductType
+import inc.combustion.framework.service.DeviceConnectionState
+import inc.combustion.framework.service.FirmwareVersion
 import inc.combustion.framework.service.GaugeStatus
 import inc.combustion.framework.service.HighLowAlarmStatus
+import inc.combustion.framework.service.ModelInformation
 import inc.combustion.framework.service.Temperature
+import inc.combustion.framework.service.dfu.DfuProductType
 import kotlinx.coroutines.launch
 import kotlin.concurrent.fixedRateTimer
 import kotlin.random.Random
 
 internal class SimulatedGaugeBleDevice(
     private val owner: LifecycleOwner,
-    val mac: String = "%02X:%02X:%02X:%02X:%02X:%02X".format(
+    override val mac: String = "%02X:%02X:%02X:%02X:%02X:%02X".format(
         Random.nextBytes(1).first(),
         Random.nextBytes(1).first(),
         Random.nextBytes(1).first(),
         Random.nextBytes(1).first(),
         Random.nextBytes(1).first(),
-        Random.nextBytes(1).first()
+        Random.nextBytes(1).first(),
     ),
     override val serialNumber: String = "%08X".format(Random.nextInt()),
-    var shouldConnect: Boolean = false
-) : GaugeBleBase() {
+    var shouldConnect: Boolean = false,
+    override val hopCount: UInt = 0u,
+) : UartCapableGauge {
 
     companion object {
         fun randomRSSI(): Int {
@@ -93,13 +99,53 @@ internal class SimulatedGaugeBleDevice(
         }
     }
 
-    override val id: DeviceID
-        get() = mac
+    override val id: DeviceID = mac
+
+    override val isSimulated: Boolean = true
+
+    override val productType: CombustionProductType = CombustionProductType.GAUGE
+
+    override val isRepeater: Boolean = false
+
+    override var shouldAutoReconnect: Boolean = false
+
+    override var rssi: Int = randomRSSI()
+        private set
+
+    override var connectionState: DeviceConnectionState =
+        DeviceConnectionState.ADVERTISING_CONNECTABLE
+        private set
 
     override var isConnected: Boolean = false
         private set
 
+    override var isDisconnected: Boolean = true
+        private set
+
+    override val isInRange: Boolean = true
+
+    override val isConnectable: Boolean = true
+
+    override var isInDfuMode: Boolean = false
+
+    override var deviceInfoSerialNumber: String? = null
+        private set
+
+    override var deviceInfoFirmwareVersion: FirmwareVersion? = null
+        private set
+
+    override var deviceInfoHardwareRevision: String? = null
+        private set
+
+    override var deviceInfoModelInformation: ModelInformation? = null
+        private set
+
     private var observeAdvertisingCallback: (suspend (advertisement: GaugeAdvertisingData) -> Unit)? =
+        null
+
+    private var observeRemoteRssiCallback: (suspend (rssi: Int) -> Unit)? = null
+
+    private var observeConnectionStateCallback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)? =
         null
 
     init {
@@ -120,35 +166,63 @@ internal class SimulatedGaugeBleDevice(
     }
 
     override fun connect() {
-//        isDisconnected = false
+        isDisconnected = false
         isConnected = true
-//        connectionState = DeviceConnectionState.CONNECTED
-//        deviceInfoSerialNumber = probeSerialNumber
-//        deviceInfoFirmwareVersion = FirmwareVersion(1, 2, 3, null, null)
-//        deviceInfoHardwareRevision = "v2.3.4"
-//        deviceInfoModelInformation = ModelInformation(
-//            productType = CombustionProductType.PROBE,
-//            dfuProductType = DfuProductType.PROBE,
-//            sku = "ABCDEF",
-//            manufacturingLot = "98765"
-//        )
-//        observeConnectionStateCallback?.let {
-//            owner.lifecycleScope.launch {
-//                it(connectionState)
-//            }
-//        }
-//        publishConnectionState()
+        connectionState = DeviceConnectionState.CONNECTED
+        deviceInfoSerialNumber = serialNumber
+        deviceInfoFirmwareVersion = FirmwareVersion(1, 2, 3, null, null)
+        deviceInfoHardwareRevision = "v2.3.4"
+        deviceInfoModelInformation = ModelInformation(
+            productType = CombustionProductType.GAUGE,
+            dfuProductType = DfuProductType.GAUGE,
+            sku = "ABCDEF",
+            manufacturingLot = "98765"
+        )
+        observeConnectionStateCallback?.let {
+            owner.lifecycleScope.launch {
+                it(connectionState)
+            }
+        }
+        publishConnectionState()
     }
 
     override fun disconnect() {
-//        isDisconnected = true
+        isDisconnected = true
         isConnected = false
-//        deviceInfoSerialNumber = null
-//        deviceInfoFirmwareVersion = null
-//        deviceInfoHardwareRevision = null
-//        deviceInfoModelInformation = null
-//        connectionState = DeviceConnectionState.ADVERTISING_CONNECTABLE
-//        publishConnectionState()
+        deviceInfoSerialNumber = null
+        deviceInfoFirmwareVersion = null
+        deviceInfoHardwareRevision = null
+        deviceInfoModelInformation = null
+        connectionState = DeviceConnectionState.ADVERTISING_CONNECTABLE
+        publishConnectionState()
+    }
+
+    override suspend fun readSerialNumber() {
+        // nothing to do -- handled on connect
+    }
+
+    override suspend fun readFirmwareVersion() {
+        // nothing to do -- handled on connect
+    }
+
+    override suspend fun readHardwareRevision() {
+        // nothing to do -- handled on connect
+    }
+
+    override suspend fun readModelInformation() {
+        // nothing to do -- handled on connect
+    }
+
+    override fun readFirmwareVersionAsync(callback: (FirmwareVersion) -> Unit) {
+        // nothing to do -- handled on connect
+    }
+
+    override fun readHardwareRevisionAsync(callback: (String) -> Unit) {
+        // nothing to do -- handled on connect
+    }
+
+    override fun readModelInformationAsync(callback: (ModelInformation) -> Unit) {
+        // nothing to do -- handled on connect
     }
 
     override fun observeAdvertisingPackets(
@@ -157,5 +231,26 @@ internal class SimulatedGaugeBleDevice(
         callback: (suspend (advertisement: DeviceAdvertisingData) -> Unit)?
     ) {
         observeAdvertisingCallback = callback
+    }
+
+    override fun observeRemoteRssi(callback: (suspend (rssi: Int) -> Unit)?) {
+        observeRemoteRssiCallback = callback
+    }
+
+    override fun observeOutOfRange(timeout: Long, callback: (suspend () -> Unit)?) {
+        // simulated probe does not go out of range
+    }
+
+    override fun observeConnectionState(callback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)?) {
+        observeConnectionStateCallback = callback
+        publishConnectionState()
+    }
+
+    private fun publishConnectionState() {
+        observeConnectionStateCallback?.let {
+            owner.lifecycleScope.launch {
+                it(connectionState)
+            }
+        }
     }
 }

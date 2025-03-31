@@ -35,6 +35,8 @@ import androidx.lifecycle.lifecycleScope
 import com.juul.kable.characteristicOf
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.ProbeStatus
+import inc.combustion.framework.ble.device.UartCapableProbe.Companion.PROBE_MESSAGE_RESPONSE_TIMEOUT_MS
+import inc.combustion.framework.ble.device.UartCapableProbe.Companion.makeLinkId
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
 import inc.combustion.framework.ble.uart.ConfigureFoodSafeRequest
@@ -110,7 +112,9 @@ internal class ProbeBleDevice (
         }
     override val id = uart.id
 
-    override val probeSerialNumber: String = probeAdvertisingData.serialNumber
+    override val serialNumber: String = probeAdvertisingData.serialNumber
+    override val isSimulated: Boolean = false
+    override val isRepeater: Boolean = false
 
     // ble properties
     override val rssi: Int get() { return uart.rssi }
@@ -133,7 +137,7 @@ internal class ProbeBleDevice (
         set(value) { uart.isInDfuMode = value }
 
     // auto-reconnect flag
-    var shouldAutoReconnect: Boolean = false
+    override var shouldAutoReconnect: Boolean = false
 
     // instance used for connection/disconnection
     var baseDevice: DeviceInformationBleDevice = uart
@@ -198,9 +202,11 @@ internal class ProbeBleDevice (
     }
 
     override suspend fun readSerialNumber() = uart.readSerialNumber()
-
     override suspend fun readFirmwareVersion() = uart.readFirmwareVersion()
-    fun readProbeFirmwareVersion(callback: (FirmwareVersion) -> Unit) {
+    override suspend fun readHardwareRevision() = uart.readHardwareRevision()
+    override suspend fun readModelInformation() = uart.readModelInformation()
+
+    override fun readFirmwareVersionAsync(callback: (FirmwareVersion) -> Unit) {
         uart.owner.lifecycleScope.launch {
             readFirmwareVersion()
         }.invokeOnCompletion {
@@ -210,8 +216,7 @@ internal class ProbeBleDevice (
         }
     }
 
-    override suspend fun readHardwareRevision() = uart.readHardwareRevision()
-    fun readProbeHardwareRevision(callback: (String) -> Unit) {
+    override fun readHardwareRevisionAsync(callback: (String) -> Unit) {
         uart.owner.lifecycleScope.launch {
             readHardwareRevision()
         }.invokeOnCompletion {
@@ -221,8 +226,7 @@ internal class ProbeBleDevice (
         }
     }
 
-    override suspend fun readModelInformation() = uart.readModelInformation()
-    fun readProbeModelInformation(callback: (ModelInformation) -> Unit) {
+    override fun readModelInformationAsync(callback: (ModelInformation) -> Unit) {
         uart.owner.lifecycleScope.launch {
             readModelInformation()
         }.invokeOnCompletion {
@@ -255,7 +259,7 @@ internal class ProbeBleDevice (
     override fun observeProbeStatusUpdates(hopCount: UInt?, callback: (suspend (status: ProbeStatus, hopCount: UInt?) -> Unit)?) {
         if (probeStatusJob?.isActive != true) {
             val job = uart.owner.lifecycleScope.launch(
-                CoroutineName("${probeSerialNumber}.observeProbeStatusUpdates")
+                CoroutineName("$serialNumber.observeProbeStatusUpdates")
             ) {
                 uart.peripheral.observe(DEVICE_STATUS_CHARACTERISTIC)
                     .onCompletion {
@@ -273,7 +277,7 @@ internal class ProbeBleDevice (
                     }
             }
             probeStatusJob = job
-            uart.jobManager.addJob(key = probeSerialNumber, job = job)
+            uart.jobManager.addJob(key = serialNumber, job = job)
         }
     }
 
@@ -283,9 +287,9 @@ internal class ProbeBleDevice (
 
     private fun observeUartResponses(callback: (suspend (responses: List<Response>) -> Unit)? = null) {
         uart.jobManager.addJob(
-            key = probeSerialNumber,
+            key = serialNumber,
             job = uart.owner.lifecycleScope.launch(
-                CoroutineName("${probeSerialNumber}.observeUartResponses")
+                CoroutineName("$serialNumber.observeUartResponses")
             ){
                 uart.observeUartCharacteristic { data ->
                     callback?.let {

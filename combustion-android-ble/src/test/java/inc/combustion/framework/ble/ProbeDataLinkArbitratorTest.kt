@@ -40,14 +40,14 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 @RunWith(JUnitParamsRunner::class)
-internal class DataLinkArbitratorTest {
+internal class ProbeDataLinkArbitratorTest {
 
     private val probStatus: ProbeStatus = mockk(relaxed = true)
     private val settings: DeviceManager.Settings = mockk(relaxed = true)
     private val instantReadIdleMonitor: IdleMonitor = mockk(relaxed = true)
 
-    private fun getTested(currentHopCount: UInt? = null): DataLinkArbitrator {
-        return DataLinkArbitrator(
+    private fun getTested(currentHopCount: UInt? = null): ProbeDataLinkArbitrator {
+        return ProbeDataLinkArbitrator(
             settings = settings,
             instantReadIdleMonitor = instantReadIdleMonitor,
             currentHopCount = currentHopCount,

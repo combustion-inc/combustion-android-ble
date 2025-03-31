@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: Gauge.kt
+ * File: UartCapable.kt
  * Author:
  *
  * MIT License
@@ -26,33 +26,26 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.service
+package inc.combustion.framework.ble.device
 
-import inc.combustion.framework.service.dfu.DfuProductType
+import inc.combustion.framework.service.DeviceConnectionState
 
-data class Gauge(
-    override val baseDevice: Device,
-    override val productType: CombustionProductType = CombustionProductType.GAUGE,
-    override val dfuProductType: DfuProductType = DfuProductType.GAUGE,
-    override val sessionInfo: SessionInformation? = null, // TODO
-    override val statusNotificationsStale: Boolean = false,
-    override val batteryStatus: ProbeBatteryStatus = ProbeBatteryStatus.OK, // TODO : rename class?
-    override val uploadState: ProbeUploadState = ProbeUploadState.Unavailable, // TODO : rename class?
-    override val minSequence: UInt? = null,
-    override val maxSequence: UInt? = null,
-) : SpecializedDevice {
+internal interface UartCapableDevice {
+    val isSimulated: Boolean
+    val isRepeater: Boolean
 
-    companion object {
-        fun create(serialNumber: String = "", mac: String = ""): Gauge {
-            return Gauge(
-                baseDevice = Device(
-                    serialNumber = serialNumber,
-                    mac = mac,
-                )
-            )
-        }
-    }
+    // connection state
+    val rssi: Int
+    val connectionState: DeviceConnectionState
+    val isConnected: Boolean
+    val isDisconnected: Boolean
+    val isInRange: Boolean
+    val isConnectable: Boolean
 
-    override val isOverheating: Boolean
-        get() = false // TODO : implement
+    // dfu
+    var isInDfuMode: Boolean
+
+    // connection management
+    fun connect()
+    fun disconnect()
 }

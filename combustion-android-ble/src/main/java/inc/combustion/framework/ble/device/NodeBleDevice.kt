@@ -26,7 +26,7 @@ internal class NodeBleDevice(
     nodeAdvertisingData: DeviceAdvertisingData,
     adapter: BluetoothAdapter,
     private val uart: UartBleDevice = UartBleDevice(mac, nodeAdvertisingData, owner, adapter)
-) {
+) : UartCapableDevice {
 
     private val genericRequestHandler = UartBleDevice.MessageCompletionHandler()
     private val readFeatureFlagsRequest = UartBleDevice.MessageCompletionHandler()
@@ -35,27 +35,30 @@ internal class NodeBleDevice(
         const val NODE_MESSAGE_RESPONSE_TIMEOUT_MS = 120000L
     }
 
-    val rssi: Int
+    override val isSimulated: Boolean = false
+    override val isRepeater: Boolean = true
+
+    override val rssi: Int
         get() {
             return uart.rssi
         }
-    val connectionState: DeviceConnectionState
+    override val connectionState: DeviceConnectionState
         get() {
             return uart.connectionState
         }
-    val isConnected: Boolean
+    override val isConnected: Boolean
         get() {
             return uart.isConnected.get()
         }
-    val isDisconnected: Boolean
+    override val isDisconnected: Boolean
         get() {
             return uart.isDisconnected.get()
         }
-    val isInRange: Boolean
+    override val isInRange: Boolean
         get() {
             return uart.isInRange.get()
         }
-    val isConnectable: Boolean
+    override val isConnectable: Boolean
         get() {
             return uart.isConnectable.get()
         }
@@ -67,16 +70,16 @@ internal class NodeBleDevice(
 
     private val disconnectedCallbacks = mutableMapOf<String, () -> Unit>()
 
-    var isInDfuMode: Boolean
+    override var isInDfuMode: Boolean
         get() = uart.isInDfuMode
         set(value) {
             uart.isInDfuMode = value
         }
 
     /**
-     * Representation of a meatNet node's native abilities, such as [GaugeBle]
+     * Representation of hybrid device's specialized abilities, device such as [GaugeBleDevice]
      */
-    var accessory: NodeAccessory? = null
+    var hybridDeviceChild: NodeHybridDevice? = null
         private set
 
     init {
@@ -84,8 +87,8 @@ internal class NodeBleDevice(
         processConnectionState()
     }
 
-    fun createAccessoryAndAssign(create: (NodeBleDevice, UartBleDevice) -> NodeAccessory) {
-        this.accessory = create(this, uart)
+    fun createAndAssignNodeHybridDevice(create: (NodeBleDevice, UartBleDevice) -> NodeHybridDevice) {
+        this.hybridDeviceChild = create(this, uart)
     }
 
     fun sendNodeRequest(request: GenericNodeRequest, callback: ((Boolean, Any?) -> Unit)?) {
@@ -105,8 +108,8 @@ internal class NodeBleDevice(
         sendUartRequest(NodeReadFeatureFlagsRequest(nodeSerialNumber, reqId))
     }
 
-    fun connect() = uart.connect()
-    fun disconnect() = uart.disconnect()
+    override fun connect() = uart.connect()
+    override fun disconnect() = uart.disconnect()
 
     fun getDevice() = uart
 

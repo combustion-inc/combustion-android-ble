@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: Accessory.kt
+ * File: GaugeUartCapable.kt
  * Author:
  *
  * MIT License
@@ -28,9 +28,6 @@
 
 package inc.combustion.framework.ble.device
 
-/**
- * Representation of a meatNet node's native abilities, such as [GaugeBle]
- */
-internal interface NodeAccessory {
-    val parent: NodeBleDevice
+internal interface UartCapableGauge : UartCapableSpecializedDevice {
+    // TODO : add specialized functionality here
 }

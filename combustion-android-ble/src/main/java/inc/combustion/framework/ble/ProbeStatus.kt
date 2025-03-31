@@ -50,7 +50,7 @@ internal data class ProbeStatus(
     val foodSafeStatus: FoodSafeStatus?,
     val overheatingSensors: OverheatingSensors,
     val thermometerPrefs: ThermometerPreferences,
-) {
+) : SpecializedDeviceStatus {
     val virtualCoreTemperature: Double
         get() {
             return virtualSensors.virtualCoreSensor.temperatureFrom(temperatures)

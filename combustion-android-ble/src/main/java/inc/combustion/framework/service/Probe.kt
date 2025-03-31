@@ -122,15 +122,7 @@ data class Probe(
     val foodSafeData: FoodSafeData? = null,
     val foodSafeStatus: FoodSafeStatus? = null,
     val thermometerPrefs: ThermometerPreferences? = null,
-) : AccessoryDevice {
-//    val serialNumber = baseDevice.serialNumber
-//    val mac = baseDevice.mac
-//    val fwVersion = baseDevice.fwVersion
-//    val hwRevision = baseDevice.hwRevision
-//    val modelInformation = baseDevice.modelInformation
-//    val rssi = baseDevice.rssi
-//    val connectionState = baseDevice.connectionState
-
+) : SpecializedDevice {
     val instantReadStale: Boolean get() { return instantReadCelsius == null }
 
     val predictionPercent: Double?

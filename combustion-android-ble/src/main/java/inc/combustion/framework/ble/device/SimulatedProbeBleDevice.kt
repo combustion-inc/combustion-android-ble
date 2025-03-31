@@ -68,8 +68,8 @@ internal class SimulatedProbeBleDevice(
         Random.nextBytes(1).first()
     ),
     override val id: DeviceID = mac,
-    override val probeSerialNumber: String = "%08X".format(Random.nextInt()),
-    override val linkId: LinkID = probeSerialNumber + "_" + mac,
+    override val serialNumber: String = "%08X".format(Random.nextInt()),
+    override val linkId: LinkID = serialNumber + "_" + mac,
     override val hopCount: UInt = 0u,
     override val isInRange: Boolean = true,
     override val isConnectable: Boolean = true,
@@ -78,7 +78,7 @@ internal class SimulatedProbeBleDevice(
     override var advertisement: ProbeAdvertisingData? = randomAdvertisement(
         mac,
         productType,
-        probeSerialNumber,
+        serialNumber,
         hopCount,
         ProbeID.ID1,
         ProbeColor.COLOR1
@@ -165,7 +165,7 @@ internal class SimulatedProbeBleDevice(
                             randomAdvertisement(
                                 mac,
                                 productType,
-                                probeSerialNumber,
+                                serialNumber,
                                 hopCount,
                                 probeID,
                                 probeColor
@@ -215,7 +215,7 @@ internal class SimulatedProbeBleDevice(
         isDisconnected = false
         isConnected = true
         connectionState = DeviceConnectionState.CONNECTED
-        deviceInfoSerialNumber = probeSerialNumber
+        deviceInfoSerialNumber = serialNumber
         deviceInfoFirmwareVersion = FirmwareVersion(1, 2, 3, null, null)
         deviceInfoHardwareRevision = "v2.3.4"
         deviceInfoModelInformation = ModelInformation(
@@ -280,6 +280,18 @@ internal class SimulatedProbeBleDevice(
         // nothing to do -- handled on connect
     }
 
+    override fun readFirmwareVersionAsync(callback: (FirmwareVersion) -> Unit) {
+        // nothing to do -- handled on connect
+    }
+
+    override fun readHardwareRevisionAsync(callback: (String) -> Unit) {
+        // nothing to do -- handled on connect
+    }
+
+    override fun readModelInformationAsync(callback: (ModelInformation) -> Unit) {
+        // nothing to do -- handled on connect
+    }
+
     override fun observeProbeStatusUpdates(
         hopCount: UInt?,
         callback: (suspend (status: ProbeStatus, hopCount: UInt?) -> Unit)?
@@ -334,6 +346,10 @@ internal class SimulatedProbeBleDevice(
     override fun sendResetProbe(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
         callback?.let { it(true, null) }
     }
+
+    override val isSimulated: Boolean = true
+    override val isRepeater: Boolean = false
+    override var shouldAutoReconnect: Boolean = false
 
     override fun sendSetPowerMode(
         powerMode: ProbePowerMode,

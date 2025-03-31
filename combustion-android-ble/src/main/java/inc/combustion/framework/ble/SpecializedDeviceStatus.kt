@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: GaugeBleBase.kt
+ * File: AccessoryDeviceStatus.kt
  * Author:
  *
  * MIT License
@@ -26,19 +26,6 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble.device
+package inc.combustion.framework.ble
 
-import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
-
-internal abstract class GaugeBleBase {
-    abstract val id: DeviceID
-    abstract val serialNumber: String
-    abstract val isConnected: Boolean
-
-    abstract fun connect()
-    abstract fun disconnect()
-
-
-    // advertising updates
-    abstract fun observeAdvertisingPackets(serialNumberFilter: String, macFilter: String, callback: (suspend (advertisement: DeviceAdvertisingData) -> Unit)? = null)
-}
+interface SpecializedDeviceStatus
