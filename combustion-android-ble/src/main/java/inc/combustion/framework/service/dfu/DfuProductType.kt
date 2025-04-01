@@ -29,7 +29,9 @@
 package inc.combustion.framework.service.dfu
 
 import inc.combustion.framework.service.CombustionProductType
+import kotlinx.serialization.Serializable
 
+@Serializable
 enum class DfuProductType {
     UNKNOWN,
     PROBE,

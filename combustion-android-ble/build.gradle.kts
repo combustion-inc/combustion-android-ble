@@ -5,6 +5,7 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 plugins {
     alias(frameworkLibs.plugins.android.library)
     alias(frameworkLibs.plugins.kotlin.android)
+    alias(frameworkLibs.plugins.kotlin.serialization)
     alias(frameworkLibs.plugins.maven.publish)
 }
 
@@ -100,6 +101,7 @@ dependencies {
     implementation(frameworkLibs.core.ktx)
     implementation(frameworkLibs.appcompat)
     implementation(frameworkLibs.lifecycle.runtime)
+    implementation(frameworkLibs.kotlinx.serialization.json)
     implementation(frameworkLibs.kable.core)
     implementation(frameworkLibs.lifecycle.service)
     implementation(frameworkLibs.nordicsemi.dfu)

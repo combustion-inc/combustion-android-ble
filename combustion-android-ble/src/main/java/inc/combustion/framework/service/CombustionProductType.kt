@@ -28,6 +28,9 @@
 
 package inc.combustion.framework.service
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 enum class CombustionProductType(val type: UByte) {
     UNKNOWN(0x00u),
     PROBE(0x01u),
