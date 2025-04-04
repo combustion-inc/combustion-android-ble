@@ -31,7 +31,7 @@ package inc.combustion.framework.ble.device
 import android.content.Context
 import android.net.Uri
 import inc.combustion.framework.ble.dfu.PerformDfuDelegate
-import inc.combustion.framework.ble.scanning.BaseAdvertisingData
+import inc.combustion.framework.ble.scanning.AdvertisingData
 import inc.combustion.framework.service.dfu.DfuProductType
 
 private const val LEGACY_PROBE_NAME = "CI Probe BL"
@@ -50,7 +50,7 @@ private val bootLoadingDevicePrefixes =
 
 class BootLoaderDevice(
     val performDfuDelegate: PerformDfuDelegate,
-    val advertisingData: BaseAdvertisingData,
+    val advertisingData: AdvertisingData,
 ) {
     val standardId: String = advertisingData.standardId()
 
@@ -75,7 +75,7 @@ class BootLoaderDevice(
 
     constructor(
         context: Context,
-        advertisingData: BaseAdvertisingData,
+        advertisingData: AdvertisingData,
     ) : this(
         PerformDfuDelegate(context, advertisingData, advertisingData.standardId()),
         advertisingData
@@ -103,16 +103,16 @@ class BootLoaderDevice(
     }
 }
 
-fun BaseAdvertisingData.standardId(): String =
+fun AdvertisingData.standardId(): String =
     if (this.isBootLoading) {
         this.id.decrementMacAddress()
     } else this.id
 
 
-private val BaseAdvertisingData.isLegacyBootLoading
+private val AdvertisingData.isLegacyBootLoading
     get() = legacyBootLoadingDeviceNames.contains(name)
 
-val BaseAdvertisingData.isBootLoading: Boolean
+val AdvertisingData.isBootLoading: Boolean
     get() = isLegacyBootLoading ||
             (bootLoadingDevicePrefixes.firstOrNull { name.startsWith(it) } != null)
 

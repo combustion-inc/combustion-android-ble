@@ -32,3 +32,14 @@ val Any.LOG_TAG: String
         val tag = "Combustion.${javaClass.simpleName}"
         return if (tag.length <= 23) tag else tag.substring(0, 23)
     }
+
+fun UByte.isBitSet(position: Int): Boolean {
+    require(position in 0..7) { "Bit position must be between 0 and 7" }
+    return (this.toInt() and (1 shl position)) != 0
+}
+
+fun UByte.toPercentage(): Int = (this * 100u / 255u).toInt()
+
+fun UByteArray.utf8StringFromRange(indices: IntRange): String =
+    String(this.copyOf().sliceArray(indices).toByteArray(), Charsets.UTF_8)
+

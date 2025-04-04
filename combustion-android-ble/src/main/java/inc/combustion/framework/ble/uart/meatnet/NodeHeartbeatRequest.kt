@@ -34,7 +34,7 @@ import inc.combustion.framework.ble.getLittleEndianUInt32At
 import inc.combustion.framework.service.CombustionProductType
 
 internal class NodeHeartbeatRequest (
-    val serialNumber: String,
+    serialNumber: String,
     val macAddress: String,
     val productType: CombustionProductType,
     val hopCount: UInt,
@@ -42,7 +42,7 @@ internal class NodeHeartbeatRequest (
     val connectionDetails: List<ConnectionDetail>,
     requestId: UInt,
     payloadLength: UByte
-) : NodeRequest(requestId, payloadLength, NodeMessageType.HEARTBEAT) {
+) : NodeRequest(requestId, payloadLength, NodeMessageType.HEARTBEAT, serialNumber) {
     class ConnectionDetail(
         val present: Boolean,
         val serialNumber: String = "",

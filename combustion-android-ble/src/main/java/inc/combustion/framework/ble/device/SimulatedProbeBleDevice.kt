@@ -31,7 +31,8 @@ package inc.combustion.framework.ble.device
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.ble.ProbeStatus
-import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
+import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
+import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
 import inc.combustion.framework.ble.uart.LogResponse
 import inc.combustion.framework.service.CombustionProductType
 import inc.combustion.framework.service.DeviceConnectionState
@@ -67,17 +68,17 @@ internal class SimulatedProbeBleDevice(
         Random.nextBytes(1).first()
     ),
     override val id: DeviceID = mac,
-    override val probeSerialNumber: String = "%08X".format(Random.nextInt()),
-    override val linkId: LinkID = probeSerialNumber + "_" + mac,
+    override val serialNumber: String = "%08X".format(Random.nextInt()),
+    override val linkId: LinkID = serialNumber + "_" + mac,
     override val hopCount: UInt = 0u,
     override val isInRange: Boolean = true,
     override val isConnectable: Boolean = true,
     override var isInDfuMode: Boolean = false,
     override val productType: CombustionProductType = CombustionProductType.PROBE,
-    override var advertisement: CombustionAdvertisingData? = randomAdvertisement(
+    override var advertisement: ProbeAdvertisingData? = randomAdvertisement(
         mac,
         productType,
-        probeSerialNumber,
+        serialNumber,
         hopCount,
         ProbeID.ID1,
         ProbeColor.COLOR1
@@ -96,30 +97,30 @@ internal class SimulatedProbeBleDevice(
             hopCount: UInt,
             probeID: ProbeID,
             probeColor: ProbeColor
-        ): CombustionAdvertisingData {
+        ): ProbeAdvertisingData {
             val probeTemperatures = ProbeTemperatures.withRandomData()
-            return CombustionAdvertisingData(
-                mac,
-                "CP",
-                randomRSSI(),
-                productType,
-                true,
-                probeSerialNumber,
-                probeTemperatures,
-                probeID,
-                probeColor,
-                ProbeMode.NORMAL,
-                ProbeBatteryStatus.OK,
-                ProbeVirtualSensors.DEFAULT,
-                OverheatingSensors.fromTemperatures(probeTemperatures),
-                hopCount,
+            return ProbeAdvertisingData(
+                mac = mac,
+                name = "CP",
+                rssi = randomRSSI(),
+                productType = productType,
+                isConnectable = true,
+                serialNumber = probeSerialNumber,
+                probeTemperatures = probeTemperatures,
+                probeID = probeID,
+                color = probeColor,
+                mode = ProbeMode.NORMAL,
+                batteryStatus = ProbeBatteryStatus.OK,
+                virtualSensors = ProbeVirtualSensors.DEFAULT,
+                overheatingSensors = OverheatingSensors.fromTemperatures(probeTemperatures),
+                hopCount = hopCount,
             )
         }
     }
 
     private var maxSequence = 0u
 
-    private var observeAdvertisingCallback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)? =
+    private var observeAdvertisingCallback: (suspend (advertisement: ProbeAdvertisingData) -> Unit)? =
         null
     private var observeRemoteRssiCallback: (suspend (rssi: Int) -> Unit)? = null
     private var observeConnectionStateCallback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)? =
@@ -164,7 +165,7 @@ internal class SimulatedProbeBleDevice(
                             randomAdvertisement(
                                 mac,
                                 productType,
-                                probeSerialNumber,
+                                serialNumber,
                                 hopCount,
                                 probeID,
                                 probeColor
@@ -214,7 +215,7 @@ internal class SimulatedProbeBleDevice(
         isDisconnected = false
         isConnected = true
         connectionState = DeviceConnectionState.CONNECTED
-        deviceInfoSerialNumber = probeSerialNumber
+        deviceInfoSerialNumber = serialNumber
         deviceInfoFirmwareVersion = FirmwareVersion(1, 2, 3, null, null)
         deviceInfoHardwareRevision = "v2.3.4"
         deviceInfoModelInformation = ModelInformation(
@@ -245,7 +246,7 @@ internal class SimulatedProbeBleDevice(
     override fun observeAdvertisingPackets(
         serialNumberFilter: String,
         macFilter: String,
-        callback: (suspend (advertisement: CombustionAdvertisingData) -> Unit)?
+        callback: (suspend (advertisement: DeviceAdvertisingData) -> Unit)?
     ) {
         observeAdvertisingCallback = callback
     }
@@ -276,6 +277,18 @@ internal class SimulatedProbeBleDevice(
     }
 
     override suspend fun readModelInformation() {
+        // nothing to do -- handled on connect
+    }
+
+    override fun readFirmwareVersionAsync(callback: (FirmwareVersion) -> Unit) {
+        // nothing to do -- handled on connect
+    }
+
+    override fun readHardwareRevisionAsync(callback: (String) -> Unit) {
+        // nothing to do -- handled on connect
+    }
+
+    override fun readModelInformationAsync(callback: (ModelInformation) -> Unit) {
         // nothing to do -- handled on connect
     }
 
@@ -333,6 +346,10 @@ internal class SimulatedProbeBleDevice(
     override fun sendResetProbe(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
         callback?.let { it(true, null) }
     }
+
+    override val isSimulated: Boolean = true
+    override val isRepeater: Boolean = false
+    override var shouldAutoReconnect: Boolean = false
 
     override fun sendSetPowerMode(
         powerMode: ProbePowerMode,

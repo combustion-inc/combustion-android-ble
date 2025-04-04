@@ -69,6 +69,7 @@ class CombustionService : LifecycleService() {
         var serviceNotification: Notification? = null
         var notificationId = 0
         lateinit var settings: DeviceManager.Settings
+        private var onServiceStartedCallback: (() -> Unit)? = null
 
         fun start(
             context: Context,
@@ -76,12 +77,14 @@ class CombustionService : LifecycleService() {
             dfuNotificationTarget: Class<out Activity?>?,
             serviceSettings: DeviceManager.Settings = DeviceManager.Settings(),
             latestFirmware: Map<DfuProductType, Uri>,
+            onServiceStartedCallback: (() -> Unit)?,
         ): Int {
             if (!serviceIsStarted.get() || serviceIsStopping.get()) {
                 settings = serviceSettings
                 serviceNotification = notification
                 this.dfuNotificationTarget = dfuNotificationTarget
                 this.latestFirmware = latestFirmware
+                this.onServiceStartedCallback = onServiceStartedCallback
                 notificationId = ThreadLocalRandom.current().asKotlinRandom().nextInt()
                 Intent(context, CombustionService::class.java).also { intent ->
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -165,6 +168,8 @@ class CombustionService : LifecycleService() {
                 NetworkManager.instance.bluetoothAdapterStateReceiver,
                 NetworkManager.instance.bluetoothAdapterStateIntentFilter,
             )
+            onServiceStartedCallback?.invoke()
+            onServiceStartedCallback = null
         }
 
         startForeground()

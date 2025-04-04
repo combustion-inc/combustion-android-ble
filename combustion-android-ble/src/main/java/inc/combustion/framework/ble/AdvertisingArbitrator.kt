@@ -28,7 +28,7 @@
 package inc.combustion.framework.ble
 
 import inc.combustion.framework.ble.device.ProbeBleDeviceBase
-import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
+import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
 import inc.combustion.framework.service.ProbeMode
 
 internal class AdvertisingArbitrator {
@@ -50,7 +50,7 @@ internal class AdvertisingArbitrator {
     private val instantReadMode: Preferred = Preferred()
     private val normalMode: Preferred = Preferred()
 
-    fun shouldUpdate(device: ProbeBleDeviceBase, advertisement: CombustionAdvertisingData): Boolean {
+    fun shouldUpdate(device: ProbeBleDeviceBase, advertisement: ProbeAdvertisingData): Boolean {
         return when (advertisement.mode) {
             ProbeMode.INSTANT_READ -> shouldUpdateForMode(device, instantReadMode, INSTANT_READ_IDLE_TIMEOUT)
             ProbeMode.NORMAL -> shouldUpdateForMode(device, normalMode, NORMAL_MODE_IDLE_TIMEOUT)

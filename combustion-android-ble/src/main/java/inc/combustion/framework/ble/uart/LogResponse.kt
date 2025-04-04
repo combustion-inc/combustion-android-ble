@@ -28,11 +28,8 @@
 package inc.combustion.framework.ble.uart
 
 import inc.combustion.framework.ble.getLittleEndianUInt32At
-import inc.combustion.framework.ble.shl
 import inc.combustion.framework.service.PredictionLog
-import inc.combustion.framework.service.ProbePredictionState
 import inc.combustion.framework.service.ProbeTemperatures
-import inc.combustion.framework.service.ProbeVirtualSensors
 
 /**
  * Response message to Log Request

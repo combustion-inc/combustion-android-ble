@@ -28,6 +28,9 @@
 
 package inc.combustion.framework.service
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 enum class CombustionProductType(val type: UByte) {
     UNKNOWN(0x00u),
     PROBE(0x01u),
@@ -60,4 +63,6 @@ enum class CombustionProductType(val type: UByte) {
     }
 
     val isRepeater: Boolean get() = (this != PROBE) && (this != UNKNOWN)
+
+    fun isType(type: CombustionProductType) = this == type
 }

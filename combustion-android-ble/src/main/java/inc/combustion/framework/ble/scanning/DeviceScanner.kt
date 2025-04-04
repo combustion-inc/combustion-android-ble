@@ -70,11 +70,11 @@ internal class DeviceScanner private constructor() {
                 .build()
         }
 
-        private val mutableAdvertisements = MutableSharedFlow<CombustionAdvertisingData>(5, 10, BufferOverflow.DROP_OLDEST)
-        val advertisements = mutableAdvertisements.asSharedFlow()
+        private val mutableAdvertisements = MutableSharedFlow<DeviceAdvertisingData>(5, 10, BufferOverflow.DROP_OLDEST)
+        val advertisements: SharedFlow<DeviceAdvertisingData> = mutableAdvertisements.asSharedFlow()
 
-        private val _bootloadingAdvertisements = MutableSharedFlow<BaseAdvertisingData>(5, 10, BufferOverflow.DROP_OLDEST)
-        val bootloadingAdvertisements: SharedFlow<BaseAdvertisingData> = _bootloadingAdvertisements.asSharedFlow()
+        private val _bootloadingAdvertisements = MutableSharedFlow<AdvertisingData>(5, 10, BufferOverflow.DROP_OLDEST)
+        val bootloadingAdvertisements: SharedFlow<AdvertisingData> = _bootloadingAdvertisements.asSharedFlow()
 
         fun scan(owner: LifecycleOwner) {
 
@@ -101,9 +101,9 @@ internal class DeviceScanner private constructor() {
                                 atomicIsScanning.set(false)
                             }
                             .collect { advertisement ->
-                                val advertisingData = BaseAdvertisingData.create(advertisement)
+                                val advertisingData = AdvertisingData.create(advertisement)
                                 when {
-                                    advertisingData is CombustionAdvertisingData -> mutableAdvertisements.tryEmit(advertisingData)
+                                    advertisingData is DeviceAdvertisingData -> mutableAdvertisements.tryEmit(advertisingData)
                                     advertisingData.isBootLoading -> _bootloadingAdvertisements.tryEmit(advertisingData)
                                     else -> {} // if just BaseAdvertisingData, then no need to produce to flow.
                                 }

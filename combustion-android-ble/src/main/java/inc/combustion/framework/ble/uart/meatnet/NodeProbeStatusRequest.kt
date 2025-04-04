@@ -36,10 +36,10 @@ import inc.combustion.framework.service.OverheatingSensors
 internal class NodeProbeStatusRequest(
     requestId : UInt,
     payloadLength : UByte,
-    val serialNumber: String,
+    serialNumber: String,
     val hopCount: HopCount,
     val probeStatus: ProbeStatus
-) : NodeRequest(requestId, payloadLength, NodeMessageType.PROBE_STATUS) {
+) : NodeRequest(requestId, payloadLength, NodeMessageType.PROBE_STATUS, serialNumber) {
 
     companion object {
         private const val SERIAL_NUMBER_LENGTH = 4

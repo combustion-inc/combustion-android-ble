@@ -60,7 +60,12 @@ internal enum class NodeMessageType(override val value: UByte) : NodeMessage {
     PROBE_FIRMWARE_REVISION(0X46u),
     PROBE_HARDWARE_REVISION(0X47u),
     PROBE_MODEL_INFORMATION(0X48u),
-    HEARTBEAT(0X49u);
+    HEARTBEAT(0X49u),
+
+    GAUGE_STATUS(0x60u),
+    SET_HIGH_LOW_ALARM(0x61u),
+    GAUGE_LOGS(0x62u),
+    ;
 
     companion object {
         fun fromUByte(value: UByte) = values().firstOrNull { it.value == value }

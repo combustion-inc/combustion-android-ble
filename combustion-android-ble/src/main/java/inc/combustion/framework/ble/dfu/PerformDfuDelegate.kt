@@ -33,7 +33,7 @@ import android.net.Uri
 import android.os.Build
 import android.util.Log
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.scanning.BaseAdvertisingData
+import inc.combustion.framework.ble.scanning.AdvertisingData
 import inc.combustion.framework.service.Device
 import inc.combustion.framework.service.dfu.DfuProgress
 import inc.combustion.framework.service.dfu.DfuState
@@ -47,7 +47,7 @@ import no.nordicsemi.android.error.SecureDfuError
 
 class PerformDfuDelegate(
     private val context: Context,
-    advertisingData: BaseAdvertisingData,
+    advertisingData: AdvertisingData,
     mac: String,
 ) : DfuProgressListener {
     private val _state = MutableStateFlow<DfuState>(

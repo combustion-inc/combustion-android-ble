@@ -38,7 +38,7 @@ import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.device.ProbeBleDeviceBase
 import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
 import inc.combustion.framework.ble.device.SimulatedProbeBleDevice
-import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
+import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
 import inc.combustion.framework.ble.uart.LogResponse
 import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.service.DeviceManager
@@ -108,7 +108,7 @@ internal class ProbeManager(
     }
 
     // encapsulates logic for managing network data links
-    private val arbitrator = DataLinkArbitrator(settings)
+    private val arbitrator = ProbeDataLinkArbitrator(settings)
 
     // manages long-running coroutine scopes for data handling
     private val jobManager = JobManager()
@@ -119,7 +119,7 @@ internal class ProbeManager(
     private val predictionMonitor = IdleMonitor()
 
     // holds the current state and data for this probe
-    private var _probe = MutableStateFlow(Probe.create(serialNumber = serialNumber))
+    private val _probe = MutableStateFlow(Probe.create(serialNumber = serialNumber))
 
     // the flow that is consumed to get state and date updates
     val probeFlow = _probe.asStateFlow()
@@ -200,7 +200,7 @@ internal class ProbeManager(
 
             // if not using meatnet, then we use the direct link
             if (!settings.meatNetEnabled) {
-                return arbitrator.probeBleDevice?.connectionState
+                return arbitrator.bleDevice?.connectionState
                     ?: DeviceConnectionState.OUT_OF_RANGE
             }
 
@@ -259,7 +259,7 @@ internal class ProbeManager(
         get() {
             simulatedProbe?.let { return it.deviceInfoFirmwareVersion }
 
-            arbitrator.probeBleDevice?.let {
+            arbitrator.bleDevice?.let {
                 if (it.deviceInfoFirmwareVersion != null) {
                     return it.deviceInfoFirmwareVersion
                 }
@@ -274,7 +274,7 @@ internal class ProbeManager(
         get() {
             simulatedProbe?.let { return it.deviceInfoHardwareRevision }
 
-            arbitrator.probeBleDevice?.let {
+            arbitrator.bleDevice?.let {
                 if (it.deviceInfoHardwareRevision != null) {
                     return it.deviceInfoHardwareRevision
                 }
@@ -289,7 +289,7 @@ internal class ProbeManager(
         get() {
             simulatedProbe?.let { return it.deviceInfoModelInformation }
 
-            arbitrator.probeBleDevice?.let {
+            arbitrator.bleDevice?.let {
                 if (it.deviceInfoModelInformation != null) {
                     return it.deviceInfoModelInformation
                 }
@@ -343,11 +343,11 @@ internal class ProbeManager(
     fun addProbe(
         probe: ProbeBleDevice,
         baseDevice: DeviceInformationBleDevice,
-        advertisement: CombustionAdvertisingData
+        advertisement: ProbeAdvertisingData,
     ) {
         if (IGNORE_PROBES) return
 
-        if (arbitrator.addProbe(probe, baseDevice)) {
+        if (arbitrator.addDevice(probe, baseDevice)) {
             handleAdvertisingPackets(probe, advertisement)
             observe(probe)
             Log.i(LOG_TAG, "PM($serialNumber) is managing link ${probe.linkId}")
@@ -357,7 +357,7 @@ internal class ProbeManager(
     fun addRepeatedProbe(
         repeatedProbe: RepeatedProbeBleDevice,
         repeater: DeviceInformationBleDevice,
-        advertisement: CombustionAdvertisingData
+        advertisement: ProbeAdvertisingData
     ) {
         if (IGNORE_REPEATERS) return
 
@@ -396,9 +396,11 @@ internal class ProbeManager(
 
             // process simulated advertising packets
             simProbe.observeAdvertisingPackets(serialNumber, simProbe.mac) { advertisement ->
-                updatedProbe = updateDataFromAdvertisement(advertisement, updatedProbe)
-                if (settings.autoReconnect && simProbe.shouldConnect) {
-                    simProbe.connect()
+                if (advertisement is ProbeAdvertisingData) {
+                    updatedProbe = updateDataFromAdvertisement(advertisement, updatedProbe)
+                    if (settings.autoReconnect && simProbe.shouldConnect) {
+                        simProbe.connect()
+                    }
                 }
             }
 
@@ -677,7 +679,9 @@ internal class ProbeManager(
         }
 
         base.observeAdvertisingPackets(serialNumber, base.mac) { advertisement ->
-            handleAdvertisingPackets(base, advertisement)
+            if (advertisement is ProbeAdvertisingData) {
+                handleAdvertisingPackets(base, advertisement)
+            }
         }
         base.observeConnectionState { state ->
             _probe.update { handleConnectionState(base, state, it) }
@@ -735,7 +739,7 @@ internal class ProbeManager(
     }
 
     private suspend fun handleProbeStatus(status: ProbeStatus, hopCount: UInt?) {
-        if (arbitrator.shouldUpdateDataFromProbeStatus(status, sessionInfo, hopCount)) {
+        if (arbitrator.shouldUpdateDataFromStatus(status, sessionInfo, hopCount)) {
             Log.v(LOG_TAG, "ProbeManager.handleProbeStatus: $serialNumber $status")
 
             var updatedProbe = _probe.value
@@ -790,7 +794,7 @@ internal class ProbeManager(
 
     private fun handleAdvertisingPackets(
         device: ProbeBleDeviceBase,
-        advertisement: CombustionAdvertisingData
+        advertisement: ProbeAdvertisingData
     ) {
         Log.v(LOG_TAG, "ProbeManager.handleAdvertisingPackets($device, $advertisement)")
         val state = connectionState
@@ -825,7 +829,7 @@ internal class ProbeManager(
     private fun handleConnectionState(
         device: ProbeBleDeviceBase,
         state: DeviceConnectionState,
-        currentProbe: Probe
+        currentProbe: Probe,
     ): Probe {
         val isConnected = state == DeviceConnectionState.CONNECTED
         val isDisconnected = state == DeviceConnectionState.DISCONNECTED
@@ -903,7 +907,7 @@ internal class ProbeManager(
         if (_probe.value.fwVersion == null) {
 
             // if direct link, then get the probe version over that link
-            arbitrator.directLink?.readProbeFirmwareVersion { fwVersion ->
+            arbitrator.directLink?.readFirmwareVersionAsync { fwVersion ->
                 // update firmware version on completion of read
                 _probe.update {
                     it.copy(baseDevice = _probe.value.baseDevice.copy(fwVersion = fwVersion))
@@ -939,7 +943,7 @@ internal class ProbeManager(
         if (_probe.value.hwRevision == null) {
 
             // if direct link, then get the probe revision over that link
-            arbitrator.directLink?.readProbeHardwareRevision { hwRevision ->
+            arbitrator.directLink?.readHardwareRevisionAsync { hwRevision ->
 
                 // update firmware version on completion of read
                 _probe.update {
@@ -978,7 +982,7 @@ internal class ProbeManager(
         if (_probe.value.modelInformation == null) {
 
             // if direct link, then get the probe model info over that link
-            arbitrator.directLink?.readProbeModelInformation { info ->
+            arbitrator.directLink?.readModelInformationAsync { info ->
 
                 // update firmware version on completion of read
                 _probe.update {
@@ -1086,7 +1090,7 @@ internal class ProbeManager(
     }
 
     private fun updateDataFromAdvertisement(
-        advertisement: CombustionAdvertisingData,
+        advertisement: ProbeAdvertisingData,
         currentProbe: Probe,
     ): Probe {
         var updatedProbe = currentProbe.copy(

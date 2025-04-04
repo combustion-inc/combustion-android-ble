@@ -6,8 +6,13 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.NetworkManager
-import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
-import inc.combustion.framework.ble.uart.meatnet.*
+import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
+import inc.combustion.framework.ble.uart.meatnet.GenericNodeRequest
+import inc.combustion.framework.ble.uart.meatnet.GenericNodeResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.service.DebugSettings
 import inc.combustion.framework.service.DeviceConnectionState
 import kotlinx.coroutines.CoroutineName
@@ -18,10 +23,14 @@ import java.util.UUID
 internal class NodeBleDevice(
     mac: String,
     owner: LifecycleOwner,
-    nodeAdvertisingData: CombustionAdvertisingData,
+    nodeAdvertisingData: DeviceAdvertisingData,
     adapter: BluetoothAdapter,
     private val uart: UartBleDevice = UartBleDevice(mac, nodeAdvertisingData, owner, adapter)
-) {
+) : UartCapableDevice {
+
+
+    override val id: DeviceID
+        get() = uart.id
 
     private val genericRequestHandler = UartBleDevice.MessageCompletionHandler()
     private val readFeatureFlagsRequest = UartBleDevice.MessageCompletionHandler()
@@ -30,27 +39,30 @@ internal class NodeBleDevice(
         const val NODE_MESSAGE_RESPONSE_TIMEOUT_MS = 120000L
     }
 
-    val rssi: Int
+    override val isSimulated: Boolean = false
+    override val isRepeater: Boolean = true
+
+    override val rssi: Int
         get() {
             return uart.rssi
         }
-    val connectionState: DeviceConnectionState
+    override val connectionState: DeviceConnectionState
         get() {
             return uart.connectionState
         }
-    val isConnected: Boolean
+    override val isConnected: Boolean
         get() {
             return uart.isConnected.get()
         }
-    val isDisconnected: Boolean
+    override val isDisconnected: Boolean
         get() {
             return uart.isDisconnected.get()
         }
-    val isInRange: Boolean
+    override val isInRange: Boolean
         get() {
             return uart.isInRange.get()
         }
-    val isConnectable: Boolean
+    override val isConnectable: Boolean
         get() {
             return uart.isConnectable.get()
         }
@@ -62,15 +74,25 @@ internal class NodeBleDevice(
 
     private val disconnectedCallbacks = mutableMapOf<String, () -> Unit>()
 
-    var isInDfuMode: Boolean
+    override var isInDfuMode: Boolean
         get() = uart.isInDfuMode
         set(value) {
             uart.isInDfuMode = value
         }
 
+    /**
+     * Representation of hybrid device's specialized abilities, device such as [GaugeBleDevice]
+     */
+    var hybridDeviceChild: NodeHybridDevice? = null
+        private set
+
     init {
         processUartMessages()
         processConnectionState()
+    }
+
+    fun createAndAssignNodeHybridDevice(create: (NodeBleDevice) -> NodeHybridDevice) {
+        this.hybridDeviceChild = create(this)
     }
 
     fun sendNodeRequest(request: GenericNodeRequest, callback: ((Boolean, Any?) -> Unit)?) {
@@ -79,7 +101,7 @@ internal class NodeBleDevice(
             uart.owner,
             NODE_MESSAGE_RESPONSE_TIMEOUT_MS,
             nodeRequest.requestId,
-            callback
+            callback,
         )
         sendUartRequest(nodeRequest)
     }
@@ -90,8 +112,13 @@ internal class NodeBleDevice(
         sendUartRequest(NodeReadFeatureFlagsRequest(nodeSerialNumber, reqId))
     }
 
-    fun connect() = uart.connect()
-    fun disconnect() = uart.disconnect()
+    override fun connect() {
+        uart.connect()
+    }
+
+    override fun disconnect() {
+        uart.disconnect()
+    }
 
     fun getDevice() = uart
 
@@ -142,12 +169,12 @@ internal class NodeBleDevice(
     private fun processUartMessages() {
         observeUartMessages { messages ->
             messages.forEach { message ->
-                when (message) {
-                    is NodeReadFeatureFlagsResponse -> {
+                when {
+                    message is NodeReadFeatureFlagsResponse -> {
                         readFeatureFlagsRequest.handled(message.success, message, message.requestId)
                     }
 
-                    is GenericNodeResponse -> {
+                    message is GenericNodeResponse -> {
                         val handled = genericRequestHandler.handled(
                             message.success,
                             message,
@@ -163,10 +190,15 @@ internal class NodeBleDevice(
                         }
                     }
 
-                    is GenericNodeRequest -> {
+                    message is GenericNodeRequest -> {
                         // Publish the request to the flow so it can be handled by the user.
                         NetworkManager.flowHolder.mutableGenericNodeMessageFlow.emit(message)
                     }
+
+                    (message is NodeRequest) && (message.serialNumber == hybridDeviceChild?.serialNumber) -> {
+                        hybridDeviceChild?.processNodeRequest(message)
+                    }
+
 
                     else -> {
                         // drop the message

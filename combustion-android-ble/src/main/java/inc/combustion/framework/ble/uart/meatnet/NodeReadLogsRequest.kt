@@ -42,7 +42,8 @@ internal class NodeReadLogsRequest(
         maxSequence
     ),
     NodeMessageType.LOG,
-    requestId
+    requestId,
+    serialNumber,
 ) {
     companion object {
         /// payload length 12 = serial number (4 bytes) + min sequence (4 bytes) + max sequence (4 bytes)

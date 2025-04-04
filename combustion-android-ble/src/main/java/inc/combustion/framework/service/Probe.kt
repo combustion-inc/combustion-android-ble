@@ -27,6 +27,8 @@
  */
 package inc.combustion.framework.service
 
+import inc.combustion.framework.service.dfu.DfuProductType
+
 /**
  * Data class for the current state of a probe.
  *
@@ -74,8 +76,10 @@ package inc.combustion.framework.service
  * @see ProbeMode
  */
 data class Probe(
-    val baseDevice: Device,
-    val sessionInfo: SessionInformation? = null,
+    override val baseDevice: Device,
+    override val sessionInfo: SessionInformation? = null,
+    override val productType: CombustionProductType = CombustionProductType.PROBE,
+    override val dfuProductType: DfuProductType = DfuProductType.PROBE,
     val temperaturesCelsius: ProbeTemperatures? = null,
     val instantReadCelsius: Double? = null,
     val instantReadFahrenheit: Double? = null,
@@ -83,8 +87,8 @@ data class Probe(
     val coreTemperatureCelsius: Double? = null,
     val surfaceTemperatureCelsius: Double? = null,
     val ambientTemperatureCelsius: Double? = null,
-    val minSequence: UInt? = null,
-    val maxSequence: UInt? = null,
+    override val minSequence: UInt? = null,
+    override val maxSequence: UInt? = null,
     @Deprecated(
       message = "This field will be removed in a future release",
       level = DeprecationLevel.WARNING
@@ -95,10 +99,10 @@ data class Probe(
         level = DeprecationLevel.WARNING
     )
     val maxSequenceNumber: UInt = maxSequence ?: 0u,
-    val uploadState: ProbeUploadState = ProbeUploadState.Unavailable,
+    override val uploadState: ProbeUploadState = ProbeUploadState.Unavailable,
     val id: ProbeID = ProbeID.ID1,
     val color: ProbeColor = ProbeColor.COLOR1,
-    val batteryStatus: ProbeBatteryStatus = ProbeBatteryStatus.OK,
+    override val batteryStatus: ProbeBatteryStatus = ProbeBatteryStatus.OK,
     val virtualSensors: ProbeVirtualSensors = ProbeVirtualSensors(),
     val predictionState: ProbePredictionState? = null,
     val predictionMode: ProbePredictionMode? = null,
@@ -109,7 +113,7 @@ data class Probe(
     val rawPredictionSeconds: UInt? = null,
     val estimatedCoreCelsius: Double? = null,
     val hopCount: UInt? = null,
-    val statusNotificationsStale: Boolean = false,
+    override val statusNotificationsStale: Boolean = false,
     val predictionStale: Boolean = false,
     val overheatingSensors: List<Int> = listOf(),
     val recordsDownloaded: Int = 0,
@@ -118,15 +122,7 @@ data class Probe(
     val foodSafeData: FoodSafeData? = null,
     val foodSafeStatus: FoodSafeStatus? = null,
     val thermometerPrefs: ThermometerPreferences? = null,
-) {
-    val serialNumber = baseDevice.serialNumber
-    val mac = baseDevice.mac
-    val fwVersion = baseDevice.fwVersion
-    val hwRevision = baseDevice.hwRevision
-    val modelInformation = baseDevice.modelInformation
-    val rssi = baseDevice.rssi
-    val connectionState = baseDevice.connectionState
-
+) : SpecializedDevice {
     val instantReadStale: Boolean get() { return instantReadCelsius == null }
 
     val predictionPercent: Double?
@@ -150,7 +146,7 @@ data class Probe(
             return null
         }
 
-    val isOverheating: Boolean
+    override val isOverheating: Boolean
         get() = overheatingSensors.isNotEmpty()
 
     val isPredicting: Boolean
@@ -167,7 +163,7 @@ data class Probe(
         fun create(serialNumber: String = "", mac: String = "") : Probe {
             return Probe(baseDevice = Device(
                 serialNumber = serialNumber,
-                mac = mac
+                mac = mac,
             ))
         }
     }

@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: DeviceDiscoveredEvent.kt
- * Author: Nick Helseth <nick@combustion.inc>
+ * File: GaugeLogResponse.kt
+ * Author:
  *
  * MIT License
  *
- * Copyright (c) 2023. Combustion Inc.
+ * Copyright (c) 2025. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -26,25 +26,7 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.service
+package inc.combustion.framework.ble.uart
 
-sealed class DeviceDiscoveredEvent {
-    /**
-     * Combustion probe discovered with serial number [serialNumber].
-     */
-    data class ProbeDiscovered(
-        val serialNumber: String
-    ) : DeviceDiscoveredEvent()
-
-    /**
-     * Combustion node discovered with serial number [serialNumber].
-     */
-    data class NodeDiscovered(
-        val serialNumber: String
-    ) : DeviceDiscoveredEvent()
-
-    /**
-     * The device cache was cleared.
-     */
-    object DevicesCleared: DeviceDiscoveredEvent()
+class GaugeLogResponse {
 }

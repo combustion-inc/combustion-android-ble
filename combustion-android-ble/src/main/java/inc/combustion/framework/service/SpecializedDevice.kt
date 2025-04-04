@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: ProbeDiscoveredEvent.kt
- * Author: https://github.com/miwright2
+ * File: ConcreteDevice.kt
+ * Author:
  *
  * MIT License
  *
- * Copyright (c) 2022. Combustion Inc.
+ * Copyright (c) 2025. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,35 +25,36 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+
 package inc.combustion.framework.service
 
-/**
- * Enumerates the asynchronous events that can be collected while the device is
- * scanning and producing events to the discovered probes flow.
- *
- * @see DeviceManager.discoveredProbesFlow
- *
- * TODO: This should probably have a more accurate name.
- */
-sealed class ProbeDiscoveredEvent {
-    /**
-     * Combustion device discovered
-     *
-     * @property serialNumber serial number of the discovered device
-     */
-    data class ProbeDiscovered(
-        val serialNumber: String
-    ) : ProbeDiscoveredEvent()
+import inc.combustion.framework.service.dfu.DfuProductType
 
-    /**
-     * Combustion device with serial number [serialNumber] was removed.
-     */
-    data class ProbeRemoved(
-        val serialNumber: String
-    ) : ProbeDiscoveredEvent()
+interface SpecializedDevice {
+    val baseDevice: Device
+    val productType: CombustionProductType
+    val dfuProductType: DfuProductType
+    val sessionInfo: SessionInformation?
+    val statusNotificationsStale: Boolean
+    val batteryStatus: ProbeBatteryStatus
+    val uploadState: ProbeUploadState
+    val minSequence: UInt?
+    val maxSequence: UInt?
 
-    /**
-     * The device cache was cleared.
-     */
-    object DevicesCleared: ProbeDiscoveredEvent()
+    val isOverheating: Boolean
+
+    val serialNumber: String
+        get() = baseDevice.serialNumber
+    val mac: String
+        get() = baseDevice.mac
+    val fwVersion: FirmwareVersion?
+        get() = baseDevice.fwVersion
+    val hwRevision: String?
+        get() = baseDevice.hwRevision
+    val modelInformation: ModelInformation?
+        get() = baseDevice.modelInformation
+    val rssi: Int
+        get() = baseDevice.rssi
+    val connectionState: DeviceConnectionState
+        get() = baseDevice.connectionState
 }

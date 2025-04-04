@@ -30,11 +30,6 @@ package inc.combustion.framework.ble.uart.meatnet
 import android.util.Log
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.*
-import inc.combustion.framework.ble.getCRC16CCITT
-import inc.combustion.framework.ble.getLittleEndianUInt32At
-import inc.combustion.framework.ble.putLittleEndianUInt32At
-import inc.combustion.framework.ble.putLittleEndianUShortAt
-import inc.combustion.framework.ble.uart.MessageType
 import inc.combustion.framework.service.DeviceManager
 
 /**
@@ -42,7 +37,8 @@ import inc.combustion.framework.service.DeviceManager
  */
 internal open class NodeRequest(
     messageId: NodeMessage,
-    payloadLength: UByte
+    payloadLength: UByte,
+    val serialNumber: String,
 ) : NodeUARTMessage(
     messageId,
     payloadLength
@@ -122,6 +118,13 @@ internal open class NodeRequest(
                         payloadLength
                     )
                 }
+                NodeMessageType.GAUGE_STATUS -> {
+                    NodeGaugeStatusRequest.fromRaw(
+                        data,
+                        requestId,
+                        payloadLength
+                    )
+                }
                 else -> {
                     DeviceManager.instance.settings.messageTypeCallback(rawMessageType)?.let {
                         return GenericNodeRequest.fromRaw(
@@ -155,10 +158,12 @@ internal open class NodeRequest(
     constructor(
         outgoingPayload: UByteArray,
         messageType: NodeMessage,
-        requestId: UInt? = null
+        requestId: UInt? = null,
+        serialNumber: String,
     ) : this(
         messageType,
-        outgoingPayload.size.toUByte()
+        outgoingPayload.size.toUByte(),
+        serialNumber = serialNumber,
     ) {
         // Sync Bytes { 0xCA, 0xFE }
         data += 0xCAu
@@ -199,10 +204,12 @@ internal open class NodeRequest(
     constructor(
         requestId: UInt,
         payloadLength: UByte,
-        messageId: NodeMessage
+        messageId: NodeMessage,
+        serialNumber: String,
     ) : this(
         messageId,
-        payloadLength
+        payloadLength,
+        serialNumber = serialNumber,
     ) {
         this.requestId = requestId
     }
