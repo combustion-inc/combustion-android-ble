@@ -32,14 +32,15 @@ import inc.combustion.framework.ble.putLittleEndianUInt32At
 import inc.combustion.framework.service.ProbePredictionMode
 
 internal class NodeSetPredictionRequest(
-    val serialNumber: String,
+    serialNumber: String,
     private val setPointTemperatureC: Double,
     val mode: ProbePredictionMode,
     requestId: UInt? = null
 ) : NodeRequest(
     populatePayload(serialNumber, setPointTemperatureC, mode),
     NodeMessageType.SET_PREDICTION,
-    requestId
+    requestId,
+    serialNumber,
 ) {
     override fun toString(): String {
         return "${super.toString()} $serialNumber $setPointTemperatureC $mode"

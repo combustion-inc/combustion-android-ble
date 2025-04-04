@@ -145,6 +145,6 @@ internal class ProbeAdvertisingData(
     }
 
     override fun toString(): String {
-        return "${super.toString()} | $serialNumber $mode $hopCount"
+        return "${ProbeAdvertisingData::class.simpleName}: ${super.toString()} | $serialNumber $mode $hopCount"
     }
 }

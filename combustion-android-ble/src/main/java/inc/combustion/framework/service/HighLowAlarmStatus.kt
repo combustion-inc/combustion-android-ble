@@ -35,13 +35,17 @@ data class HighLowAlarmStatus(
     val lowStatus: AlarmStatus,
 ) {
     data class AlarmStatus(
-        val set: Boolean,
-        val tripped: Boolean,
-        val alarming: Boolean,
-        val temperature: Temperature,
+        val set: Boolean = false,
+        val tripped: Boolean = false,
+        val alarming: Boolean = false,
+        val temperature: Temperature? = null,
     )
 
     companion object {
+        val DEFAULT = HighLowAlarmStatus(
+            highStatus = AlarmStatus(),
+            lowStatus = AlarmStatus(),
+        )
 
         private fun alarmStatusFromBytes(bytes: UByteArray): AlarmStatus {
             require(bytes.size >= 2) { "AlarmStatus requires 2 bytes" }

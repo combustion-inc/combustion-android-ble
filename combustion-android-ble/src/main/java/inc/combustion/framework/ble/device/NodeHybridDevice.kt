@@ -28,9 +28,14 @@
 
 package inc.combustion.framework.ble.device
 
+import inc.combustion.framework.ble.uart.meatnet.NodeRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
+
 /**
  * Representation of a specialized device that is also a meatNet node hybrid, such as [GaugeBleDevice]
  */
 internal interface NodeHybridDevice {
     val nodeParent: NodeBleDevice
+    val serialNumber: String
+    suspend fun processNodeRequest(request: NodeRequest): Boolean
 }

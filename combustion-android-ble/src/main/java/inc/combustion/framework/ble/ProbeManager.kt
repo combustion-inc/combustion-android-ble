@@ -739,7 +739,7 @@ internal class ProbeManager(
     }
 
     private suspend fun handleProbeStatus(status: ProbeStatus, hopCount: UInt?) {
-        if (arbitrator.shouldUpdateDataFromProbeStatus(status, sessionInfo, hopCount)) {
+        if (arbitrator.shouldUpdateDataFromStatus(status, sessionInfo, hopCount)) {
             Log.v(LOG_TAG, "ProbeManager.handleProbeStatus: $serialNumber $status")
 
             var updatedProbe = _probe.value
@@ -829,7 +829,7 @@ internal class ProbeManager(
     private fun handleConnectionState(
         device: ProbeBleDeviceBase,
         state: DeviceConnectionState,
-        currentProbe: Probe
+        currentProbe: Probe,
     ): Probe {
         val isConnected = state == DeviceConnectionState.CONNECTED
         val isDisconnected = state == DeviceConnectionState.DISCONNECTED

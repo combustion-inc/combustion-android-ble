@@ -52,10 +52,12 @@ internal open class DeviceInformationBleDevice(
         )
 
     override fun disconnect() {
-        serialNumber = null
-        firmwareVersion = null
-        hardwareRevision = null
-        super.disconnect()
+        if (isConnected.get()) {
+            serialNumber = null
+            firmwareVersion = null
+            hardwareRevision = null
+            super.disconnect()
+        }
     }
 
     suspend fun readSerialNumber() {

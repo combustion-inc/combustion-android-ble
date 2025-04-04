@@ -28,6 +28,9 @@
 
 package inc.combustion.framework.ble.device
 
+import inc.combustion.framework.ble.GaugeStatus
+
 internal interface UartCapableGauge : UartCapableSpecializedDevice {
-    // TODO : add specialized functionality here
+    // gauge status updates
+    fun observeGaugeStatusUpdates(callback: (suspend (status: GaugeStatus) -> Unit)? = null)
 }

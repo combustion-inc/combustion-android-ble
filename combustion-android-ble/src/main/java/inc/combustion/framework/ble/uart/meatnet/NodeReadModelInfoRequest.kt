@@ -36,7 +36,8 @@ internal class NodeReadModelInfoRequest (
 ) : NodeRequest(
     populatePayload(serialNumber),
     NodeMessageType.PROBE_MODEL_INFORMATION,
-    requestId
+    requestId,
+    serialNumber,
 ) {
     companion object {
         const val PAYLOAD_LENGTH: UByte = 4u

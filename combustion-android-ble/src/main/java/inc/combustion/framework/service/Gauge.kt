@@ -34,15 +34,21 @@ data class Gauge(
     override val baseDevice: Device,
     override val productType: CombustionProductType = CombustionProductType.GAUGE,
     override val dfuProductType: DfuProductType = DfuProductType.GAUGE,
-    override val sessionInfo: SessionInformation? = null, // TODO
+    override val sessionInfo: SessionInformation? = null,
     override val statusNotificationsStale: Boolean = false,
     override val batteryStatus: ProbeBatteryStatus = ProbeBatteryStatus.OK, // TODO : rename class?
     override val uploadState: ProbeUploadState = ProbeUploadState.Unavailable, // TODO : rename class?
     override val minSequence: UInt? = null,
     override val maxSequence: UInt? = null,
+    val batteryPercentage: Int? = null,
+    val highLowAlarmStatus: HighLowAlarmStatus = HighLowAlarmStatus.DEFAULT,
+    val gaugeStatusFlags: GaugeStatusFlags = GaugeStatusFlags(),
+    val temperature: Temperature? = null,
 ) : SpecializedDevice {
 
     companion object {
+        const val GAUGE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS = 15000L
+
         fun create(serialNumber: String = "", mac: String = ""): Gauge {
             return Gauge(
                 baseDevice = Device(
@@ -54,5 +60,5 @@ data class Gauge(
     }
 
     override val isOverheating: Boolean
-        get() = false // TODO : implement
+        get() = gaugeStatusFlags.sensorOverheating
 }

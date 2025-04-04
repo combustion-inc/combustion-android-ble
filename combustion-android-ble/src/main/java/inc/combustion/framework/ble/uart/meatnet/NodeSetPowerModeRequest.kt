@@ -32,13 +32,14 @@ import inc.combustion.framework.ble.putLittleEndianUInt32At
 import inc.combustion.framework.service.ProbePowerMode
 
 internal class NodeSetPowerModeRequest(
-    val serialNumber: String,
+    serialNumber: String,
     private val powerMode: ProbePowerMode,
     requestId: UInt? = null
 ) : NodeRequest(
     populatePayload(serialNumber, powerMode),
     NodeMessageType.SET_POWER_MODE,
     requestId,
+    serialNumber,
 ) {
     override fun toString(): String {
         return "${super.toString()} $serialNumber $powerMode"

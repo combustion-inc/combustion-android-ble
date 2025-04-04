@@ -30,15 +30,15 @@ package inc.combustion.framework.service
 
 import inc.combustion.framework.isBitSet
 
-data class GaugeStatus(
-    val sensorPresent: Boolean,
-    val sensorOverheating: Boolean,
-    val lowBattery: Boolean,
+data class GaugeStatusFlags(
+    val sensorPresent: Boolean = false,
+    val sensorOverheating: Boolean = false,
+    val lowBattery: Boolean = false,
 ) {
 
     companion object {
-        fun fromRawByte(byte: UByte): GaugeStatus {
-            return GaugeStatus(
+        fun fromRawByte(byte: UByte): GaugeStatusFlags {
+            return GaugeStatusFlags(
                 sensorPresent = byte.isBitSet(0),
                 sensorOverheating = byte.isBitSet(1),
                 lowBattery = byte.isBitSet(2),

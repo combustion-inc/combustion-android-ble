@@ -31,6 +31,8 @@ package inc.combustion.framework.ble.device
 import inc.combustion.framework.service.DeviceConnectionState
 
 internal interface UartCapableDevice {
+    val id: DeviceID
+
     val isSimulated: Boolean
     val isRepeater: Boolean
 

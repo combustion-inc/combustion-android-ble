@@ -71,7 +71,7 @@ internal class ProbeDataLinkArbitratorTest {
         // when / then
         assertEquals(
             expectedValue,
-            tested.shouldUpdateDataFromProbeStatus(
+            tested.shouldUpdateDataFromStatus(
                 status = probStatus,
                 sessionInfo = null,
                 hopCount = givenHopCount

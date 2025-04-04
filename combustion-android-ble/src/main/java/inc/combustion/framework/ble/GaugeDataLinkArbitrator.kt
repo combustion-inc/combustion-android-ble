@@ -38,8 +38,10 @@ import inc.combustion.framework.ble.device.SimulatedProbeBleDevice
 import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
 import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.service.DeviceManager
+import inc.combustion.framework.service.SessionInformation
 
-internal class GaugeDataLinkArbitrator : DataLinkArbitrator<GaugeBleDevice, GaugeAdvertisingData> {
+internal class GaugeDataLinkArbitrator :
+    DataLinkArbitrator<GaugeBleDevice, GaugeAdvertisingData> {
 
     // direct ble link to probe
     override var bleDevice: GaugeBleDevice? = null
@@ -53,6 +55,9 @@ internal class GaugeDataLinkArbitrator : DataLinkArbitrator<GaugeBleDevice, Gaug
 
     override val meatNetIsOutOfRange: Boolean
         get() = bleDevice?.isInRange ?: true
+
+    private var currentStatus: SpecializedDeviceStatus? = null
+    private var currentSessionInfo: SessionInformation? = null
 
     /**
      * Cleans up all resources associated with this arbitrator.
@@ -68,8 +73,7 @@ internal class GaugeDataLinkArbitrator : DataLinkArbitrator<GaugeBleDevice, Gaug
         nodeAction: (DeviceInformationBleDevice) -> Unit,
         directConnectionAction: (GaugeBleDevice) -> Unit,
     ) {
-        Log.d(LOG_TAG, "DataLinkArbitrator.finish()")
-
+        Log.d(LOG_TAG, "GaugeDataLinkArbitrator.finish()")
         directLink?.let {
             directConnectionAction(it)
         }
@@ -77,11 +81,14 @@ internal class GaugeDataLinkArbitrator : DataLinkArbitrator<GaugeBleDevice, Gaug
         bleDevice = null
     }
 
-    override fun addDevice(device: GaugeBleDevice, baseDevice: DeviceInformationBleDevice): Boolean {
+    override fun addDevice(
+        device: GaugeBleDevice,
+        baseDevice: DeviceInformationBleDevice,
+    ): Boolean {
         if (bleDevice == null) {
             Log.d(
                 LOG_TAG,
-                "DataLinkArbitrator.addProbe(${device.serialNumber}, ${baseDevice.serialNumber}: ${baseDevice.id})"
+                "GaugeDataLinkArbitrator.addDevice(${device.serialNumber}, ${baseDevice.serialNumber}: ${baseDevice.id})"
             )
             bleDevice = device
             return true
@@ -94,8 +101,31 @@ internal class GaugeDataLinkArbitrator : DataLinkArbitrator<GaugeBleDevice, Gaug
         return bleDevice.takeIf { it?.connectionState == state }
     }
 
+    override fun getNodesNeedingConnection(fromApiCall: Boolean): List<DeviceInformationBleDevice> {
+        return bleDevice?.let {
+            if (shouldConnect(it, fromApiCall)) {
+                listOf(it.baseDevice)
+            } else {
+                emptyList()
+            }
+        } ?: emptyList()
+    }
+
     override fun shouldConnect(device: GaugeBleDevice, fromApiCall: Boolean): Boolean {
         return device.isDisconnected && device.isConnectable && !device.isInDfuMode
+    }
+
+    override fun getNodesNeedingDisconnect(
+        canDisconnectFromMeatNetDevices: Boolean,
+    ): List<DeviceInformationBleDevice> {
+        // Should disconnect from a direct connection to the probe
+        return bleDevice?.let {
+            if (shouldDisconnect(it)) {
+                listOf(it.baseDevice)
+            } else {
+                emptyList()
+            }
+        } ?: emptyList()
     }
 
     /**
@@ -119,6 +149,33 @@ internal class GaugeDataLinkArbitrator : DataLinkArbitrator<GaugeBleDevice, Gaug
      */
     override fun setShouldAutoReconnect(shouldAutoReconnect: Boolean) {
         bleDevice?.shouldAutoReconnect = shouldAutoReconnect
+    }
+
+    override fun shouldUpdateDataFromStatusForNormalMode(
+        status: SpecializedDeviceStatus,
+        sessionInfo: SessionInformation?,
+    ): Boolean {
+        currentSessionInfo?.let {
+            if (it != sessionInfo) {
+                currentSessionInfo = sessionInfo
+                currentStatus = status
+                return true
+            }
+
+            // if status.max > current.max, then we want to update
+            val shouldUpdate =
+                status.maxSequenceNumber > (currentStatus?.maxSequenceNumber ?: UInt.MAX_VALUE)
+
+            currentStatus = status
+
+            return shouldUpdate
+        } ?: run {
+            currentSessionInfo = sessionInfo
+            currentStatus = status
+        }
+
+        // don't yet have a session info, so want to update data
+        return true
     }
 
     override fun shouldUpdateDataFromAdvertisingPacket(

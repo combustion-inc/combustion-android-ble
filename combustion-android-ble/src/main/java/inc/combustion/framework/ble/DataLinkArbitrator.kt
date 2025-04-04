@@ -32,8 +32,9 @@ import inc.combustion.framework.ble.device.DeviceInformationBleDevice
 import inc.combustion.framework.ble.device.UartCapableSpecializedDevice
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.service.DeviceConnectionState
+import inc.combustion.framework.service.SessionInformation
 
-internal interface DataLinkArbitrator<T : UartCapableSpecializedDevice, S : DeviceAdvertisingData> {
+internal interface DataLinkArbitrator<T : UartCapableSpecializedDevice, D : DeviceAdvertisingData> {
     companion object {
         const val USE_STATIC_LINK: Boolean = false
         const val USE_SIMPLE_MEATNET_CONNECTION_SCHEME = false
@@ -53,6 +54,16 @@ internal interface DataLinkArbitrator<T : UartCapableSpecializedDevice, S : Devi
 
     val meatNetIsOutOfRange: Boolean
 
+    /**
+     * Cleans up all resources associated with this arbitrator.
+     *
+     * In an effort to decouple BLE connection and disconnection functionality from the arbitrator
+     * class, this method takes two lambdas as parameters: [nodeAction] and
+     * [directConnectionAction]. These lambdas are called for each node and the direct connection,
+     * and are expected to handle the cleanup/disconnection of each device. The caller may want to
+     * consider calling [DeviceInformationBleDevice.finish] on each node, and
+     * [UartCapableSpecializedDevice.disconnect] on the direct connection.
+     */
     fun finish(
         nodeAction: (DeviceInformationBleDevice) -> Unit,
         directConnectionAction: (T) -> Unit,
@@ -64,12 +75,23 @@ internal interface DataLinkArbitrator<T : UartCapableSpecializedDevice, S : Devi
 
     fun shouldConnect(device: T, fromApiCall: Boolean = false): Boolean
 
+    fun getNodesNeedingConnection(fromApiCall: Boolean = false): List<DeviceInformationBleDevice>
+
+    fun getNodesNeedingDisconnect(
+        canDisconnectFromMeatNetDevices: Boolean = false,
+    ): List<DeviceInformationBleDevice>
+
     fun setShouldAutoReconnect(shouldAutoReconnect: Boolean)
 
     fun shouldUpdateDataFromAdvertisingPacket(
         device: T,
-        advertisement: S,
+        advertisement: D,
     ): Boolean
 
     fun shouldUpdateOnRemoteRssi(device: T): Boolean
+
+    fun shouldUpdateDataFromStatusForNormalMode(
+        status: SpecializedDeviceStatus,
+        sessionInfo: SessionInformation?,
+    ): Boolean
 }

@@ -30,12 +30,13 @@ package inc.combustion.framework.ble
 
 import android.util.Log
 import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.ProbeManager.Companion.OUT_OF_RANGE_TIMEOUT
 import inc.combustion.framework.ble.device.DeviceID
 import inc.combustion.framework.ble.device.DeviceInformationBleDevice
 import inc.combustion.framework.ble.device.GaugeBleDevice
 import inc.combustion.framework.ble.device.SimulatedGaugeBleDevice
+import inc.combustion.framework.ble.device.UartCapableGauge
 import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
 import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.service.DeviceManager
@@ -44,9 +45,14 @@ import inc.combustion.framework.service.Gauge
 import inc.combustion.framework.service.ModelInformation
 import inc.combustion.framework.service.ProbeUploadState
 import inc.combustion.framework.service.SessionInformation
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 internal class GaugeManager(
     mac: String,
@@ -56,11 +62,22 @@ internal class GaugeManager(
     private val dfuDisconnectedNodeCallback: (DeviceID) -> Unit,
 ) {
     companion object {
+        private const val OUT_OF_RANGE_TIMEOUT = 15000L
         private const val IGNORE_GAUGES = false
+        private const val GAUGE_STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS = 1000L
+        private const val GAUGE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS =
+            Gauge.GAUGE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS
+        private const val GAUGE_STATUS_NOTIFICATIONS_POLL_DELAY_MS = 30000L
     }
 
     // encapsulates logic for managing network data links
     private val arbitrator = GaugeDataLinkArbitrator()
+
+    // manages long-running coroutine scopes for data handling
+    private val jobManager = JobManager()
+
+    // idle monitors
+    private val statusNotificationsMonitor = IdleMonitor()
 
     // holds the current state and data for this probe
     private val _gauge = MutableStateFlow(Gauge.create(serialNumber = serialNumber, mac = mac))
@@ -90,66 +107,7 @@ internal class GaugeManager(
 
     val connectionState: DeviceConnectionState
         get() {
-            // if this is a simulated probe, no need to arbitrate
-            simulatedGauge?.let {
-                return it.connectionState
-            }
-
-            // if not using meatnet, then we use the direct link
-            if (!settings.meatNetEnabled) {
-                return arbitrator.bleDevice?.connectionState
-                    ?: DeviceConnectionState.OUT_OF_RANGE
-            }
-
-            // if the MeatNet preferred link is the direct link, then just use the direct link's state.
-            if (arbitrator.directLink == arbitrator.preferredMeatNetLink) {
-                arbitrator.directLink?.let {
-                    return it.connectionState
-                }
-            }
-
-            // if all devices are out of range, then connection state is Out of Range
-            if (arbitrator.meatNetIsOutOfRange) {
-                return DeviceConnectionState.OUT_OF_RANGE
-            }
-
-            // else, if there is any device that is connected
-            arbitrator.getPreferredConnectionState(DeviceConnectionState.CONNECTED)?.let {
-                // and we have run into a session info message timeout condition, then we are
-                // in a NO_ROUTE scenario.  exclude when we are actively uploading, because we know that
-                // can saturate the network and responses might be dropped.
-                if (sessionInfoTimeout && (uploadState !is ProbeUploadState.ProbeUploadInProgress)) {
-                    return DeviceConnectionState.NO_ROUTE
-                }
-
-                // otherwise, we are connected
-                return DeviceConnectionState.CONNECTED
-            }
-
-            // else, if there is any device that is connecting
-            arbitrator.getPreferredConnectionState(DeviceConnectionState.CONNECTING)?.let {
-                return DeviceConnectionState.CONNECTING
-            }
-
-            // else, if there is any device that is connecting
-            arbitrator.getPreferredConnectionState(DeviceConnectionState.DISCONNECTING)?.let {
-                return DeviceConnectionState.DISCONNECTING
-            }
-
-            // else, if there is any device that is advertising connectable.
-            arbitrator.getPreferredConnectionState(DeviceConnectionState.ADVERTISING_CONNECTABLE)
-                ?.let {
-                    return DeviceConnectionState.ADVERTISING_CONNECTABLE
-                }
-
-            // else, if there is any device that is advertising not connectable
-            arbitrator.getPreferredConnectionState(DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE)
-                ?.let {
-                    return DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE
-                }
-
-            // else, all MeatNet devices are connected with no route, then the state is no route
-            return DeviceConnectionState.NO_ROUTE
+            return arbitrator.bleDevice?.connectionState ?: DeviceConnectionState.NO_ROUTE
         }
 
     private val fwVersion: FirmwareVersion?
@@ -184,27 +142,58 @@ internal class GaugeManager(
 
     private var simulatedGauge: SimulatedGaugeBleDevice? = null
 
-    fun connect() {
-//        arbitrator.getNodesNeedingConnection(true).forEach { node ->
-//            node.connect()
-//        }
+    init {
+        monitorStatusNotifications()
+    }
 
+    private fun monitorStatusNotifications() {
+        jobManager.addJob(
+            key = serialNumber,
+            job = owner.lifecycleScope.launch(
+                CoroutineName("${serialNumber}.monitorStatusNotifications") + Dispatchers.IO
+            ) {
+                // Wait before starting to monitor prediction status, this allows for initial
+                // connection time
+                delay(GAUGE_STATUS_NOTIFICATIONS_POLL_DELAY_MS)
+
+                while (isActive) {
+                    delay(GAUGE_STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS)
+
+                    val statusNotificationsStale =
+                        statusNotificationsMonitor.isIdle(GAUGE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS)
+                    val shouldUpdate =
+                        statusNotificationsStale != _gauge.value.statusNotificationsStale
+
+                    if (shouldUpdate) {
+                        _gauge.update {
+                            it.copy(
+                                statusNotificationsStale = statusNotificationsStale,
+                            )
+                        }
+                    }
+                }
+            }
+        )
+    }
+
+    fun connect() {
+        arbitrator.getNodesNeedingConnection(true).forEach { node ->
+            node.connect()
+        }
         simulatedGauge?.shouldConnect = true
         simulatedGauge?.connect()
     }
 
     fun disconnect(canDisconnectFromMeatNetDevices: Boolean = false) {
-//        arbitrator.getNodesNeedingDisconnect(
-////            canDisconnectFromMeatNetDevices = canDisconnectFromMeatNetDevices
-////        ).forEach { node ->
-////            Log.d(LOG_TAG, "ProbeManager: disconnecting $node")
-////
-////            // Since this is an explicit disconnect, we want to also disable the auto-reconnect flag
-////            arbitrator.setShouldAutoReconnect(false)
-////            node.disconnect()
-////        }
+        arbitrator.getNodesNeedingDisconnect(
+            canDisconnectFromMeatNetDevices = canDisconnectFromMeatNetDevices
+        ).forEach { node ->
+            // Since this is an explicit disconnect, we want to also disable the auto-reconnect flag
+            arbitrator.setShouldAutoReconnect(false)
+            node.disconnect()
+        }
 
-//        arbitrator.directLinkDiscoverTimestamp = null
+        arbitrator.directLinkDiscoverTimestamp = null
 
         simulatedGauge?.shouldConnect = false
         simulatedGauge?.disconnect()
@@ -218,10 +207,15 @@ internal class GaugeManager(
             baseDevice = _gauge.value.baseDevice.copy(rssi = advertisement.rssi),
         )
 
-        // TODO
-
-        return updatedGauge
+        return updatedGauge.copy(
+            gaugeStatusFlags = advertisement.gaugeStatusFlags,
+            temperature = if (advertisement.gaugeStatusFlags.sensorPresent) advertisement.gaugeTemperature else null,
+            batteryPercentage = advertisement.batteryPercentage,
+            highLowAlarmStatus = advertisement.highLowAlarmStatus,
+        )
     }
+
+    fun hasGauge(): Boolean = arbitrator.bleDevice != null
 
     fun addGauge(
         gauge: GaugeBleDevice,
@@ -233,7 +227,6 @@ internal class GaugeManager(
         if (arbitrator.addDevice(gauge, baseDevice)) {
             handleAdvertisingPackets(gauge, advertisement)
             observe(gauge)
-//            Log.i(LOG_TAG, "PM($serialNumber) is managing link ${gauge.linkId}")
         }
     }
 
@@ -242,14 +235,14 @@ internal class GaugeManager(
         var updatedGauge = _gauge.value
 
         // process simulated connection state changes
-//        simGauge.observeConnectionState { state ->
-//            updatedGauge = handleConnectionState(simProbe, state, updatedProbe)
-//        }
+        simGauge.observeConnectionState { state ->
+            updatedGauge = handleConnectionState(simGauge, state, updatedGauge)
+        }
 
         // process simulated out of range
-//        simGauge.observeOutOfRange(OUT_OF_RANGE_TIMEOUT) {
-//            updatedGauge = handleOutOfRange(updatedProbe)
-//        }
+        simGauge.observeOutOfRange(OUT_OF_RANGE_TIMEOUT) {
+            updatedGauge = handleOutOfRange(updatedGauge)
+        }
 
         // process simulated advertising packets
         simGauge.observeAdvertisingPackets(serialNumber, simGauge.mac) { advertisement ->
@@ -272,7 +265,6 @@ internal class GaugeManager(
         device: GaugeBleDevice,
         advertisement: GaugeAdvertisingData,
     ) {
-        Log.v(LOG_TAG, "GaugeManager.handleAdvertisingPackets($device, $advertisement)")
         val state = connectionState
         val networkIsAdvertisingAndNotConnected =
             (state == DeviceConnectionState.ADVERTISING_CONNECTABLE || state == DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE ||
@@ -288,7 +280,7 @@ internal class GaugeManager(
 
             _gauge.update {
                 updatedDevice.copy(
-                    baseDevice = _gauge.value.baseDevice.copy(connectionState = state)
+                    baseDevice = _gauge.value.baseDevice.copy(connectionState = state),
                 )
             }
         }
@@ -303,7 +295,7 @@ internal class GaugeManager(
     }
 
     private fun handleConnectionState(
-        device: GaugeBleDevice,
+        device: UartCapableGauge,
         state: DeviceConnectionState,
         currentGauge: Gauge,
     ): Gauge {
@@ -447,37 +439,76 @@ internal class GaugeManager(
         }
     }
 
-    private fun observe(base: GaugeBleDevice) {
+    private fun handleStatus(status: GaugeStatus) {
+        if (arbitrator.shouldUpdateDataFromStatusForNormalMode(status, sessionInfo)) {
+            statusNotificationsMonitor.activity()
+
+            var updatedGauge = _gauge.value
+
+            updatedGauge = updateSequenceNumbers(
+                status.minSequenceNumber,
+                status.maxSequenceNumber,
+                updatedGauge,
+            )
+
+            updatedGauge = updatedGauge.copy(
+                sessionInfo = status.sessionInformation,
+                batteryPercentage = status.batteryPercentage,
+                highLowAlarmStatus = status.highLowAlarmStatus,
+                gaugeStatusFlags = status.gaugeStatusFlags,
+                temperature = if (status.gaugeStatusFlags.sensorPresent) status.temperature else null,
+            )
+
+            // redundantly check for device information
+            fetchDeviceInfo()
+
+            // These log-related items can be updated outside of this function--specifically, these
+            // are updated by the LogManager when we emit a new status to the
+            // normalModeProbeStatusFlow.
+            _gauge.update { updatedGauge }
+        }
+    }
+
+    private fun updateSequenceNumbers(
+        minSequenceNumber: UInt,
+        maxSequenceNumber: UInt,
+        currentGauge: Gauge,
+    ): Gauge {
+        return currentGauge.copy(
+            minSequence = minSequenceNumber,
+            maxSequence = maxSequenceNumber
+        )
+    }
+
+    private fun observe(guage: GaugeBleDevice) {
         _gauge.update {
             it.copy(
-                baseDevice = it.baseDevice
+                baseDevice = it.baseDevice.copy(
+                    mac = guage.mac,
+                )
             )
         }
 
-        base.observeAdvertisingPackets(serialNumber, base.mac) { advertisement ->
+        guage.observeAdvertisingPackets(serialNumber, guage.mac) { advertisement ->
             if (advertisement is GaugeAdvertisingData) {
-                handleAdvertisingPackets(base, advertisement)
+                handleAdvertisingPackets(guage, advertisement)
             }
         }
 
-        base.observeConnectionState { state ->
-            _gauge.update { handleConnectionState(base, state, it) }
+        guage.observeConnectionState { state ->
+            _gauge.update { handleConnectionState(guage, state, it) }
         }
 
-        base.observeOutOfRange(OUT_OF_RANGE_TIMEOUT) {
+        guage.observeOutOfRange(OUT_OF_RANGE_TIMEOUT) {
             _gauge.update { handleOutOfRange(it) }
         }
 
-        // TODO
-//        base.observeProbeStatusUpdates(hopCount = base.hopCount) { status, hopCount ->
-//            handleProbeStatus(
-//                status,
-//                hopCount
-//            )
-//        }
+        guage.observeGaugeStatusUpdates { status ->
+            handleStatus(status)
+        }
 
-        base.observeRemoteRssi { rssi ->
-            _gauge.update { handleRemoteRssi(base, rssi, it) }
+        guage.observeRemoteRssi { rssi ->
+            _gauge.update { handleRemoteRssi(guage, rssi, it) }
         }
     }
 }

@@ -30,10 +30,11 @@ package inc.combustion.framework.ble.scanning
 
 import com.juul.kable.Identifier
 import inc.combustion.framework.service.CombustionProductType
-import inc.combustion.framework.service.GaugeStatus
+import inc.combustion.framework.service.GaugeStatusFlags
 import inc.combustion.framework.service.HighLowAlarmStatus
 import inc.combustion.framework.service.Temperature
 import inc.combustion.framework.toPercentage
+import inc.combustion.framework.utf8StringFromRange
 
 /**
  * Advertises gauge data.
@@ -45,7 +46,7 @@ internal class GaugeAdvertisingData(
     isConnectable: Boolean,
     override val serialNumber: String,
     val gaugeTemperature: Temperature,
-    val gaugeStatus: GaugeStatus,
+    val gaugeStatusFlags: GaugeStatusFlags,
     val batteryPercentage: Int,
     val highLowAlarmStatus: HighLowAlarmStatus,
 ) : BaseAdvertisingData(
@@ -59,7 +60,7 @@ internal class GaugeAdvertisingData(
     companion object {
         private val SERIAL_RANGE = 1..10
         private val TEMPERATURE_RANGE = 11..12
-        private val STATUS_RANGE = 13..13
+        private val STATUS_FLAGS_RANGE = 13..13
         private val BATTERY_PERCENTAGE_RANGE = 14..14
         private val HIGH_LOW_ALARM_RANGE = 15..18
 
@@ -70,17 +71,14 @@ internal class GaugeAdvertisingData(
             isConnectable: Boolean,
             manufacturerData: UByteArray,
         ): GaugeAdvertisingData {
-            val serialNumber = String(
-                manufacturerData.copyOf().sliceArray(SERIAL_RANGE).toByteArray(),
-                Charsets.UTF_8,
-            )
+            val serialNumber = manufacturerData.utf8StringFromRange(SERIAL_RANGE)
 
             val gaugeTemperature = Temperature.fromRawDataStart(
                 manufacturerData.copyOf().sliceArray(TEMPERATURE_RANGE)
             )
 
-            val gaugeStatus: GaugeStatus = GaugeStatus.fromRawByte(
-                manufacturerData.copyOf().sliceArray(STATUS_RANGE)[0]
+            val gaugeStatusFlags: GaugeStatusFlags = GaugeStatusFlags.fromRawByte(
+                manufacturerData.copyOf().sliceArray(STATUS_FLAGS_RANGE)[0]
             )
 
             val batteryPercentage: Int = manufacturerData.copyOf()
@@ -97,10 +95,14 @@ internal class GaugeAdvertisingData(
                 isConnectable = isConnectable,
                 serialNumber = serialNumber,
                 gaugeTemperature = gaugeTemperature,
-                gaugeStatus = gaugeStatus,
+                gaugeStatusFlags = gaugeStatusFlags,
                 batteryPercentage = batteryPercentage,
                 highLowAlarmStatus = highLowAlarmStatus,
             )
         }
+    }
+
+    override fun toString(): String {
+        return "${GaugeAdvertisingData::class.simpleName}: ${super.toString()} | $serialNumber"
     }
 }

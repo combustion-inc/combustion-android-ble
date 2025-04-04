@@ -28,6 +28,10 @@ internal class NodeBleDevice(
     private val uart: UartBleDevice = UartBleDevice(mac, nodeAdvertisingData, owner, adapter)
 ) : UartCapableDevice {
 
+
+    override val id: DeviceID
+        get() = uart.id
+
     private val genericRequestHandler = UartBleDevice.MessageCompletionHandler()
     private val readFeatureFlagsRequest = UartBleDevice.MessageCompletionHandler()
 
@@ -87,8 +91,8 @@ internal class NodeBleDevice(
         processConnectionState()
     }
 
-    fun createAndAssignNodeHybridDevice(create: (NodeBleDevice, UartBleDevice) -> NodeHybridDevice) {
-        this.hybridDeviceChild = create(this, uart)
+    fun createAndAssignNodeHybridDevice(create: (NodeBleDevice) -> NodeHybridDevice) {
+        this.hybridDeviceChild = create(this)
     }
 
     fun sendNodeRequest(request: GenericNodeRequest, callback: ((Boolean, Any?) -> Unit)?) {
@@ -97,7 +101,7 @@ internal class NodeBleDevice(
             uart.owner,
             NODE_MESSAGE_RESPONSE_TIMEOUT_MS,
             nodeRequest.requestId,
-            callback
+            callback,
         )
         sendUartRequest(nodeRequest)
     }
@@ -108,8 +112,13 @@ internal class NodeBleDevice(
         sendUartRequest(NodeReadFeatureFlagsRequest(nodeSerialNumber, reqId))
     }
 
-    override fun connect() = uart.connect()
-    override fun disconnect() = uart.disconnect()
+    override fun connect() {
+        uart.connect()
+    }
+
+    override fun disconnect() {
+        uart.disconnect()
+    }
 
     fun getDevice() = uart
 
@@ -160,12 +169,12 @@ internal class NodeBleDevice(
     private fun processUartMessages() {
         observeUartMessages { messages ->
             messages.forEach { message ->
-                when (message) {
-                    is NodeReadFeatureFlagsResponse -> {
+                when {
+                    message is NodeReadFeatureFlagsResponse -> {
                         readFeatureFlagsRequest.handled(message.success, message, message.requestId)
                     }
 
-                    is GenericNodeResponse -> {
+                    message is GenericNodeResponse -> {
                         val handled = genericRequestHandler.handled(
                             message.success,
                             message,
@@ -181,10 +190,15 @@ internal class NodeBleDevice(
                         }
                     }
 
-                    is GenericNodeRequest -> {
+                    message is GenericNodeRequest -> {
                         // Publish the request to the flow so it can be handled by the user.
                         NetworkManager.flowHolder.mutableGenericNodeMessageFlow.emit(message)
                     }
+
+                    (message is NodeRequest) && (message.serialNumber == hybridDeviceChild?.serialNumber) -> {
+                        hybridDeviceChild?.processNodeRequest(message)
+                    }
+
 
                     else -> {
                         // drop the message

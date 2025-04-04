@@ -29,8 +29,11 @@
 package inc.combustion.framework.ble.device
 
 import androidx.lifecycle.lifecycleScope
+import inc.combustion.framework.ble.GaugeStatus
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
+import inc.combustion.framework.ble.uart.meatnet.NodeGaugeStatusRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeRequest
 import inc.combustion.framework.service.CombustionProductType
 import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.service.FirmwareVersion
@@ -40,8 +43,9 @@ import kotlinx.coroutines.launch
 internal class GaugeBleDevice(
     override val nodeParent: NodeBleDevice,
     private var gaugeAdvertisingData: GaugeAdvertisingData,
-    private val uart: UartBleDevice,
 ) : UartCapableGauge, NodeHybridDevice {
+    private val uart: UartBleDevice = nodeParent.getDevice()
+
     override val id: DeviceID = gaugeAdvertisingData.mac
     override val serialNumber: String = gaugeAdvertisingData.serialNumber
     override val productType: CombustionProductType = CombustionProductType.GAUGE
@@ -107,6 +111,8 @@ internal class GaugeBleDevice(
         get() {
             return uart.modelInformation
         }
+
+    private var observeGaugeStatusCallback: (suspend (status: GaugeStatus) -> Unit)? = null
 
     // connection management
     override fun connect() = uart.connect()
@@ -176,6 +182,27 @@ internal class GaugeBleDevice(
                     it(advertisement)
                 }
             }
+        }
+    }
+
+    override fun observeGaugeStatusUpdates(callback: (suspend (status: GaugeStatus) -> Unit)?) {
+        this.observeGaugeStatusCallback = callback
+    }
+
+    private suspend fun handleGaugeStatusRequest(message: NodeGaugeStatusRequest) {
+        GaugeStatus.fromRawData(message.data.toUByteArray())?.let { status ->
+            observeGaugeStatusCallback?.invoke(status)
+        }
+    }
+
+    override suspend fun processNodeRequest(request: NodeRequest): Boolean {
+        return when (request) {
+            is NodeGaugeStatusRequest -> {
+                handleGaugeStatusRequest(request)
+                true
+            }
+
+            else -> false
         }
     }
 }

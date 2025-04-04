@@ -137,7 +137,7 @@ internal class ProbeDataLinkArbitrator(
         nodeAction: (DeviceInformationBleDevice) -> Unit,
         directConnectionAction: (ProbeBleDeviceBase) -> Unit,
     ) {
-        Log.d(LOG_TAG, "DataLinkArbitrator.finish()")
+        Log.d(LOG_TAG, "ProbeDataLinkArbitrator.finish()")
         networkNodes.values
             .forEach { nodeAction(it) }
 
@@ -154,7 +154,7 @@ internal class ProbeDataLinkArbitrator(
         if (bleDevice == null) {
             Log.d(
                 LOG_TAG,
-                "DataLinkArbitrator.addProbe(${device.serialNumber}, ${baseDevice.serialNumber}: ${baseDevice.id})"
+                "ProbeDataLinkArbitrator.addDevice(${device.serialNumber}, ${baseDevice.serialNumber}: ${baseDevice.id})"
             )
             bleDevice = device
             networkNodes[baseDevice.id] = baseDevice
@@ -170,7 +170,7 @@ internal class ProbeDataLinkArbitrator(
     ): Boolean {
         Log.d(
             LOG_TAG,
-            "DataLinkArbitrator.addRepeatedProbe(${repeatedProbe.serialNumber}, ${repeater.id})"
+            "ProbeDataLinkArbitrator.addRepeatedProbe(${repeatedProbe.serialNumber}, ${repeater.id})"
         )
         repeatedProbeBleDevices.add(repeatedProbe)
         if (!networkNodes.containsKey(repeater.id)) {
@@ -207,7 +207,7 @@ internal class ProbeDataLinkArbitrator(
         }
     }
 
-    fun getNodesNeedingConnection(fromApiCall: Boolean = false): List<DeviceInformationBleDevice> {
+    override fun getNodesNeedingConnection(fromApiCall: Boolean): List<DeviceInformationBleDevice> {
         val connectable = mutableListOf<DeviceID>()
         // for meatnet links
         repeatedProbeBleDevices.forEach {
@@ -233,8 +233,8 @@ internal class ProbeDataLinkArbitrator(
         }.values.toList()
     }
 
-    fun getNodesNeedingDisconnect(
-        canDisconnectFromMeatNetDevices: Boolean = false,
+    override fun getNodesNeedingDisconnect(
+        canDisconnectFromMeatNetDevices: Boolean,
     ): List<DeviceInformationBleDevice> {
         val nodesToDisconnect = repeatedProbeBleDevices
             .filter { shouldDisconnect(it, canDisconnectFromMeatNetDevices) }
@@ -248,7 +248,7 @@ internal class ProbeDataLinkArbitrator(
             }
         }
 
-        Log.d(LOG_TAG, "DataLinkArbitrator.getNodesNeedingDisconnect: $nodesToDisconnect")
+        Log.d(LOG_TAG, "ProbeDataLinkArbitrator.getNodesNeedingDisconnect: $nodesToDisconnect")
 
         return networkNodes.filter { entry: Map.Entry<DeviceID, DeviceInformationBleDevice> ->
             nodesToDisconnect.contains(entry.key)
@@ -337,7 +337,7 @@ internal class ProbeDataLinkArbitrator(
             }
 
             is RepeatedProbeBleDevice -> {
-                return (canDisconnectFromMeatNetDevices || !settings.meatNetEnabled)
+                return !device.isHybridDevice && (canDisconnectFromMeatNetDevices || !settings.meatNetEnabled)
             }
 
             is SimulatedProbeBleDevice -> {
@@ -365,20 +365,20 @@ internal class ProbeDataLinkArbitrator(
         ) else debuggingWithStaticLink(device)
     }
 
-    private var currentStatus: ProbeStatus? = null
+    private var currentStatus: SpecializedDeviceStatus? = null
     private var currentSessionInfo: SessionInformation? = null
 
-    fun shouldUpdateDataFromProbeStatus(
+    fun shouldUpdateDataFromStatus(
         status: ProbeStatus,
         sessionInfo: SessionInformation?,
         hopCount: UInt?,
     ): Boolean = when (status.mode) {
         ProbeMode.INSTANT_READ -> shouldUpdateDataFromProbeStatusForInstantReadMode(hopCount)
-        else -> shouldUpdateDataFromProbeStatusForNormalMode(status, sessionInfo)
+        else -> shouldUpdateDataFromStatusForNormalMode(status, sessionInfo)
     }
 
-    private fun shouldUpdateDataFromProbeStatusForNormalMode(
-        status: ProbeStatus,
+    override fun shouldUpdateDataFromStatusForNormalMode(
+        status: SpecializedDeviceStatus,
         sessionInfo: SessionInformation?,
     ): Boolean {
         currentSessionInfo?.let {

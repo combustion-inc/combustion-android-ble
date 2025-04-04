@@ -32,13 +32,14 @@ import inc.combustion.framework.ble.putLittleEndianUInt32At
 import inc.combustion.framework.service.FoodSafeData
 
 internal class NodeConfigureFoodSafeRequest(
-    val serialNumber: String,
+    serialNumber: String,
     foodSafeData: FoodSafeData,
     requestId: UInt? = null,
 ) : NodeRequest(
     outgoingPayload = populatePayload(serialNumber = serialNumber, foodSafeData = foodSafeData),
     messageType = NodeMessageType.CONFIGURE_FOOD_SAFE,
     requestId = requestId,
+    serialNumber,
 ) {
     companion object {
         val PAYLOAD_LENGTH: UByte = (4 + FoodSafeData.SIZE_BYTES).toUByte()

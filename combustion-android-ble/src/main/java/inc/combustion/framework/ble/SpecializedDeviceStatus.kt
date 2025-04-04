@@ -28,4 +28,16 @@
 
 package inc.combustion.framework.ble
 
-interface SpecializedDeviceStatus
+import inc.combustion.framework.service.ProbeMode
+
+/**
+ * Data object for the Specialized Device's status packet.
+ *
+ * @property minSequenceNumber minimum sequence number available for probe.
+ * @property maxSequenceNumber maximum/current sequence number available for probe.
+ */
+interface SpecializedDeviceStatus {
+    val minSequenceNumber: UInt
+    val maxSequenceNumber: UInt
+    val mode: ProbeMode
+}

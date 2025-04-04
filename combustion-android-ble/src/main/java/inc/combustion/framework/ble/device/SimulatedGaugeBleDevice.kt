@@ -30,12 +30,14 @@ package inc.combustion.framework.ble.device
 
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import inc.combustion.framework.ble.GaugeStatus
+import inc.combustion.framework.ble.ProbeStatus
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
 import inc.combustion.framework.service.CombustionProductType
 import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.service.FirmwareVersion
-import inc.combustion.framework.service.GaugeStatus
+import inc.combustion.framework.service.GaugeStatusFlags
 import inc.combustion.framework.service.HighLowAlarmStatus
 import inc.combustion.framework.service.ModelInformation
 import inc.combustion.framework.service.Temperature
@@ -75,7 +77,7 @@ internal class SimulatedGaugeBleDevice(
                 isConnectable = true,
                 serialNumber = serialNumber,
                 gaugeTemperature = Temperature.withRandomData(),
-                gaugeStatus = GaugeStatus(
+                gaugeStatusFlags = GaugeStatusFlags(
                     sensorPresent = true,
                     sensorOverheating = true,
                     lowBattery = true
@@ -147,6 +149,8 @@ internal class SimulatedGaugeBleDevice(
 
     private var observeConnectionStateCallback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)? =
         null
+
+    private var observeStatusUpdatesCallback: (suspend (status: GaugeStatus) -> Unit)? = null
 
     init {
         fixedRateTimer(name = "SimAdvertising", initialDelay = 1000, period = 1000) {
@@ -252,5 +256,9 @@ internal class SimulatedGaugeBleDevice(
                 it(connectionState)
             }
         }
+    }
+
+    override fun observeGaugeStatusUpdates(callback: (suspend (status: GaugeStatus) -> Unit)?) {
+        observeStatusUpdatesCallback = callback
     }
 }

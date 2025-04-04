@@ -42,6 +42,7 @@ import inc.combustion.framework.ble.device.DeviceInformationBleDevice
 import inc.combustion.framework.ble.device.GaugeBleDevice
 import inc.combustion.framework.ble.device.LinkID
 import inc.combustion.framework.ble.device.NodeBleDevice
+import inc.combustion.framework.ble.device.NodeHybridDevice
 import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.device.ProximityDevice
 import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
@@ -664,37 +665,43 @@ internal class NetworkManager(
     /**
      * If we have not seen this device by its uid [deviceId], then track in the device map.
      */
-    private fun trackDeviceIfNew(
+    private fun trackProbeAdvertisingDeviceIfNew(
         deviceId: String,
-        advertisement: DeviceAdvertisingData,
+        advertisement: ProbeAdvertisingData,
     ) {
         if (!devices.containsKey(deviceId)) {
-            val deviceHolder = when {
-                (advertisement is ProbeAdvertisingData) && advertisement.productType.isType(PROBE) -> {
+            val deviceHolder = when (advertisement.productType) {
+                PROBE -> {
                     DeviceHolder.ProbeHolder(
                         ProbeBleDevice(advertisement.mac, owner, advertisement, adapter)
                     )
                 }
 
-                advertisement.productType.isType(NODE) -> {
+                NODE -> {
                     DeviceHolder.RepeaterHolder(createNodeBleDevice(advertisement))
                 }
 
-                (advertisement is GaugeAdvertisingData) && advertisement.productType.isType(GAUGE) -> {
-                    val device = createNodeBleDevice(advertisement)
-                    device.createAndAssignNodeHybridDevice { parent, uart ->
-                        GaugeBleDevice(
-                            nodeParent = parent,
-                            gaugeAdvertisingData = advertisement,
-                            uart = uart,
-                        )
-                    }
-                    DeviceHolder.RepeaterHolder(device)
-                }
-
-                else -> NOT_IMPLEMENTED("Unknown type of advertising data")
+                else -> NOT_IMPLEMENTED("Unknown product type")
             }
 
+            devices[deviceId] = deviceHolder
+        }
+    }
+
+    private fun trackGaugeDeviceIfNew(
+        deviceId: String,
+        advertisement: GaugeAdvertisingData,
+    ) {
+        if (devices[deviceId].hybridDeviceChild == null) {
+            val device = (devices[deviceId] as? DeviceHolder.RepeaterHolder)?.repeater
+                ?: createNodeBleDevice(advertisement)
+            device.createAndAssignNodeHybridDevice { nodeParent ->
+                GaugeBleDevice(
+                    nodeParent = nodeParent,
+                    gaugeAdvertisingData = advertisement,
+                )
+            }
+            val deviceHolder = DeviceHolder.RepeaterHolder(device)
             devices[deviceId] = deviceHolder
         }
     }
@@ -788,14 +795,14 @@ internal class NetworkManager(
                     probeManger?.addProbe(
                         deviceHolder.probe,
                         deviceHolder.probe.baseDevice,
-                        advertisement
+                        advertisement,
                     )
                 }
 
                 is DeviceHolder.RepeaterHolder -> {
                     val repeatedProbe = RepeatedProbeBleDevice(
                         probeSerialNumber,
-                        deviceHolder.repeater.getDevice(),
+                        deviceHolder.repeater,
                         advertisement,
                     )
                     meatNetLinks[linkId] = LinkHolder.RepeatedProbeHolder(repeatedProbe)
@@ -832,7 +839,7 @@ internal class NetworkManager(
         }
 
         val deviceId = advertisement.id
-        trackDeviceIfNew(deviceId, advertisement)
+        trackProbeAdvertisingDeviceIfNew(deviceId, advertisement)
         createManagerForDevicesWithoutProbeIfItDoesNotExist()
         createMeatNetLinkIfNewAndAddToProbelessDevicesManager(
             deviceId = deviceId,
@@ -840,37 +847,55 @@ internal class NetworkManager(
         )
     }
 
-    private fun manageSpecializedDeviceOrNodeWithProbe(
-        advertisement: DeviceAdvertisingData,
+    private fun manageMeatNetDeviceWithProbe(
+        advertisement: ProbeAdvertisingData,
     ): Boolean {
-        // if MeatNet isn't enabled and we see anything other than a probe or gauge, then return out now
+        // if MeatNet isn't enabled and we see anything other than a probe, then return out now
         // because that product type isn't supported in this mode.
-        if (!settings.meatNetEnabled && !SPECIALIZED_DEVICES.contains(advertisement.productType)) {
+        if (!settings.meatNetEnabled && advertisement.productType != PROBE) {
             return false
         }
 
-        val productType = advertisement.productType
-        val serialNumber = advertisement.serialNumber
+        val probeSerialNumber = advertisement.serialNumber
         val deviceId = advertisement.id
-        val linkId = if (advertisement is ProbeAdvertisingData) {
-            UartCapableProbe.makeLinkId(advertisement)
-        } else null
+        val linkId = UartCapableProbe.makeLinkId(advertisement)
 
         // If the advertised probe isn't in the subscriber list, don't bother connecting
+        deviceAllowlist?.let {
+            if (!it.contains(probeSerialNumber)) {
+                return false
+            }
+        }
+
+        trackProbeAdvertisingDeviceIfNew(deviceId, advertisement)
+
+        val isNewlyDiscovered = createProbeManagerIfNew(probeSerialNumber)
+
+        createMeatNetLinkIfNewAndAddToProbeManager(
+            linkId = linkId,
+            deviceId = deviceId,
+            probeSerialNumber = probeSerialNumber,
+            advertisement = advertisement,
+        )
+
+        return isNewlyDiscovered
+    }
+
+    private fun manageGaugeDevice(
+        advertisement: GaugeAdvertisingData,
+    ): Boolean {
+        val serialNumber = advertisement.serialNumber
+        val deviceId = advertisement.id
         deviceAllowlist?.let {
             if (!it.contains(serialNumber)) {
                 return false
             }
         }
 
-        trackDeviceIfNew(deviceId, advertisement)
+        trackGaugeDeviceIfNew(deviceId, advertisement)
+        val isNewlyDiscovered = createGaugeManagerIfNew(advertisement.mac, serialNumber)
 
-        val isNewlyDiscovered = when (productType) {
-            GAUGE -> createGaugeManagerIfNew(advertisement.mac, serialNumber)
-            else -> createProbeManagerIfNew(serialNumber)
-        }
-
-        if (isNewlyDiscovered && (productType == GAUGE) && (advertisement is GaugeAdvertisingData)) {
+        if (gaugeManagers[serialNumber]?.hasGauge() == false) {
             (devices[deviceId] as? DeviceHolder.RepeaterHolder)?.gauge?.let { gaugeBleDevice ->
                 gaugeManagers[serialNumber]?.addGauge(
                     gauge = gaugeBleDevice,
@@ -878,13 +903,6 @@ internal class NetworkManager(
                     advertisement = advertisement,
                 )
             }
-        } else if ((linkId != null) && (advertisement is ProbeAdvertisingData)) {
-            createMeatNetLinkIfNewAndAddToProbeManager(
-                linkId = linkId,
-                deviceId = deviceId,
-                probeSerialNumber = serialNumber,
-                advertisement = advertisement,
-            )
         }
 
         return isNewlyDiscovered
@@ -896,15 +914,24 @@ internal class NetworkManager(
                 val serialNumber = advertisingData.serialNumber
                 val productType = advertisingData.productType
 
-                if ((serialNumber == REPEATER_NO_PROBES_SERIAL_NUMBER) && (advertisingData is ProbeAdvertisingData)) {
-                    manageNodeWithoutProbe(advertisingData)
-                } else if (manageSpecializedDeviceOrNodeWithProbe(advertisingData)) {
-                    flowHolder.mutableDiscoveredDevicesFlow.emit(
-                        when (productType) {
-                            GAUGE -> DeviceDiscoveryEvent.GaugeDiscovered(serialNumber)
-                            else -> DeviceDiscoveryEvent.ProbeDiscovered(serialNumber)
-                        }
-                    )
+                when (advertisingData) {
+                    is ProbeAdvertisingData -> if (serialNumber == REPEATER_NO_PROBES_SERIAL_NUMBER) {
+                        manageNodeWithoutProbe(advertisingData)
+                    } else if (manageMeatNetDeviceWithProbe(advertisingData)) {
+                        flowHolder.mutableDiscoveredDevicesFlow.emit(
+                            DeviceDiscoveryEvent.ProbeDiscovered(
+                                serialNumber
+                            )
+                        )
+                    }
+
+                    is GaugeAdvertisingData -> if (manageGaugeDevice(advertisingData)) {
+                        flowHolder.mutableDiscoveredDevicesFlow.emit(
+                            DeviceDiscoveryEvent.GaugeDiscovered(
+                                serialNumber
+                            )
+                        )
+                    }
                 }
 
                 if (SPECIALIZED_DEVICES.contains(productType)) {
@@ -1110,4 +1137,7 @@ internal class NetworkManager(
 
     private val DeviceHolder.RepeaterHolder.gauge: GaugeBleDevice?
         get() = repeater.gaugeHybridDevice
+
+    private val DeviceHolder?.hybridDeviceChild: NodeHybridDevice?
+        get() = (this as? DeviceHolder.RepeaterHolder)?.repeater?.hybridDeviceChild
 }

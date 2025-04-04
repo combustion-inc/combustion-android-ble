@@ -35,7 +35,6 @@ import inc.combustion.framework.service.FirmwareVersion
 import inc.combustion.framework.service.ModelInformation
 
 internal interface UartCapableSpecializedDevice : UartCapableDevice {
-    val id: DeviceID
     val serialNumber: String
 
     // mac
