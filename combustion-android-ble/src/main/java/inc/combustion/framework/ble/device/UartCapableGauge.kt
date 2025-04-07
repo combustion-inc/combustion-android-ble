@@ -29,6 +29,7 @@
 package inc.combustion.framework.ble.device
 
 import inc.combustion.framework.ble.GaugeStatus
+import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
 import inc.combustion.framework.service.HighLowAlarmStatus
 
 internal interface UartCapableGauge : UartCapableSpecializedDevice {
@@ -39,5 +40,11 @@ internal interface UartCapableGauge : UartCapableSpecializedDevice {
         highLowAlarmStatus: HighLowAlarmStatus,
         reqId: UInt?,
         callback: ((Boolean, Any?) -> Unit)?,
+    )
+
+    fun sendGaugeLogRequest(
+        minSequence: UInt,
+        maxSequence: UInt,
+        callback: (suspend (NodeReadGaugeLogsResponse) -> Unit)?,
     )
 }

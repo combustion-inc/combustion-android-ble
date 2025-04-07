@@ -33,6 +33,7 @@ import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.ble.GaugeStatus
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
+import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
 import inc.combustion.framework.service.CombustionProductType
 import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.service.FirmwareVersion
@@ -267,5 +268,13 @@ internal class SimulatedGaugeBleDevice(
         callback: ((Boolean, Any?) -> Unit)?
     ) {
         callback?.let { it(true, null) }
+    }
+
+    override fun sendGaugeLogRequest(
+        minSequence: UInt,
+        maxSequence: UInt,
+        callback: (suspend (NodeReadGaugeLogsResponse) -> Unit)?
+    ) {
+        // do nothing
     }
 }

@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: NodeReadLogsResponse.kt
- * Author: https://github.com/angrygorilla
+ * File: NodeReadGaugeLogsResponse.kt
+ * Author:
  *
  * MIT License
  *
- * Copyright (c) 2023. Combustion Inc.
+ * Copyright (c) 2025. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -28,64 +28,73 @@
 
 package inc.combustion.framework.ble.uart.meatnet
 
+import inc.combustion.framework.Constants.UTF8_SERIAL_NUMBER_LENGTH
 import inc.combustion.framework.ble.getLittleEndianUInt32At
-import inc.combustion.framework.ble.uart.MessageType
-import inc.combustion.framework.service.PredictionLog
-import inc.combustion.framework.service.ProbeTemperatures
+import inc.combustion.framework.getUtf8SerialNumber
+import inc.combustion.framework.isBitSet
+import inc.combustion.framework.service.Temperature
 
-internal class NodeReadLogsResponse(
+internal class NodeReadGaugeLogsResponse(
     override val serialNumber: String,
     val sequenceNumber: UInt,
-    val temperatures: ProbeTemperatures,
-    val predictionLog: PredictionLog,
+    val temperature: Temperature,
+    val isSensorPresent: Boolean,
     success: Boolean,
     requestId: UInt,
     responseId: UInt,
-    payLoadLength: UByte
+    payLoadLength: UByte,
 ) : NodeResponse(
     success,
     requestId,
     responseId,
     payLoadLength,
-    NodeMessageType.LOG
+    NodeMessageType.GAUGE_LOGS,
 ), TargetedNodeResponse {
     override fun toString(): String {
         return "${super.toString()} $success $serialNumber $sequenceNumber"
     }
 
     companion object {
-        private const val MIN_PAYLOAD_LENGTH: UByte = 28u
+        private const val MIN_PAYLOAD_LENGTH: UByte = 17u
+        private const val SEQUENCE_NUMBER_LENGTH = 4
+        private const val RAW_TEMP_LENGTH = 2
+        private const val SENSOR_PRESENT_LENGTH = 1
+        private val SERIAL_NUMBER_IDX = HEADER_SIZE.toInt()
+        private val SEQ_NUMBER_IDX = SERIAL_NUMBER_IDX + UTF8_SERIAL_NUMBER_LENGTH
+        private val RAW_TEMP_IDX = SEQ_NUMBER_IDX + SEQUENCE_NUMBER_LENGTH
+        private val SENSOR_PRESENT_IDX = RAW_TEMP_IDX + RAW_TEMP_LENGTH
+
 
         fun fromData(
             payload: UByteArray,
             success: Boolean,
             requestId: UInt,
             responseId: UInt,
-            payloadLength: UByte
-        ) : NodeReadLogsResponse? {
+            payloadLength: UByte,
+        ): NodeReadGaugeLogsResponse? {
             if (payloadLength < MIN_PAYLOAD_LENGTH) {
                 return null
             }
 
-            val serialNumber = payload.getLittleEndianUInt32At(HEADER_SIZE.toInt()).toString(radix = 16).uppercase()
-            val sequenceNumber = payload.getLittleEndianUInt32At((HEADER_SIZE + 4u).toInt())
-            val rawTemperatures =
-                payload.sliceArray((HEADER_SIZE + 8u).toInt() .. (HEADER_SIZE + 20u).toInt())
-            val rawPredictionLog =
-                payload.sliceArray((HEADER_SIZE + 21u ).toInt().. (HEADER_SIZE + 27u).toInt())
+            val serialNumber = payload.getUtf8SerialNumber(SERIAL_NUMBER_IDX)
+            val sequenceNumber = payload.getLittleEndianUInt32At(SEQ_NUMBER_IDX)
+            val temperature = Temperature.fromRawDataStart(
+                payload.sliceArray(RAW_TEMP_IDX until (RAW_TEMP_IDX + RAW_TEMP_LENGTH))
+            )
+            val isSensorPresent =
+                payload.sliceArray(
+                    SENSOR_PRESENT_IDX until (SENSOR_PRESENT_IDX + SENSOR_PRESENT_LENGTH)
+                )[0].isBitSet(0)
 
-            val temperatures = ProbeTemperatures.fromRawData(rawTemperatures)
-            val predictionLog = PredictionLog.fromRawData(rawPredictionLog)
-
-            return NodeReadLogsResponse(
+            return NodeReadGaugeLogsResponse(
                 serialNumber,
                 sequenceNumber,
-                temperatures,
-                predictionLog,
+                temperature,
+                isSensorPresent,
                 success,
                 requestId,
                 responseId,
-                payloadLength
+                payloadLength,
             )
         }
     }

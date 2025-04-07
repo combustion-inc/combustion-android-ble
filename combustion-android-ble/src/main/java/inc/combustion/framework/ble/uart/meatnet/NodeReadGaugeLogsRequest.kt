@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: NodeSetHighLowAlarmRequest.kt
+ * File: NodeReadGaugeLogsRequest.kt
  * Author:
  *
  * MIT License
@@ -28,47 +28,44 @@
 
 package inc.combustion.framework.ble.uart.meatnet
 
+import inc.combustion.framework.ble.putLittleEndianUInt32At
 import inc.combustion.framework.copyInUtf8SerialNumber
-import inc.combustion.framework.service.HighLowAlarmStatus
 
-internal class NodeSetHighLowAlarmRequest(
+internal class NodeReadGaugeLogsRequest(
     serialNumber: String,
-    private val highLowAlarmStatus: HighLowAlarmStatus,
-    requestId: UInt? = null
+    minSequence: UInt,
+    maxSequence: UInt,
+    requestId: UInt? = null,
 ) : NodeRequest(
-    populatePayload(serialNumber, highLowAlarmStatus),
-    NodeMessageType.SET_HIGH_LOW_ALARM,
+    populatePayload(
+        serialNumber,
+        minSequence,
+        maxSequence,
+    ),
+    NodeMessageType.GAUGE_LOGS,
     requestId,
     serialNumber,
 ) {
-    override fun toString(): String {
-        return "${super.toString()} $serialNumber $highLowAlarmStatus"
-    }
-
     companion object {
-        private const val PAYLOAD_LENGTH: UByte = 14u
+        /// payload length 18 = serial number (10 bytes) + min sequence (4 bytes) + max sequence (4 bytes)
+        private const val PAYLOAD_LENGTH: UByte = 18u
+
         private const val MAX_SERIAL_LENGTH = 10
+        private const val SEQUENCE_NUMBER_LENGTH = 4
 
         /**
          * Helper function that builds up payload of request.
          */
         fun populatePayload(
             serialNumber: String,
-            highLowAlarmStatus: HighLowAlarmStatus,
+            minSequence: UInt,
+            maxSequence: UInt
         ): UByteArray {
+            val payload = UByteArray(PAYLOAD_LENGTH.toInt()) { 0u }
 
-            val payload = UByteArray(PAYLOAD_LENGTH.toInt())
-
-            // Add serial number to payload
             payload.copyInUtf8SerialNumber(serialNumber, 0)
-
-            // Encode alarm status in payload
-            val rawHighLowAlarmStatus = highLowAlarmStatus.toRawData()
-            rawHighLowAlarmStatus.copyInto(
-                destination = payload,
-                destinationOffset = payload.size - rawHighLowAlarmStatus.size
-            )
-
+            payload.putLittleEndianUInt32At(MAX_SERIAL_LENGTH, minSequence)
+            payload.putLittleEndianUInt32At(MAX_SERIAL_LENGTH + SEQUENCE_NUMBER_LENGTH, maxSequence)
             return payload
         }
     }

@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: NodeHybridDevice.kt
+ * File: TargetedNodeResponse.kt
  * Author:
  *
  * MIT License
@@ -26,18 +26,8 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble.device
+package inc.combustion.framework.ble.uart.meatnet
 
-import inc.combustion.framework.ble.uart.meatnet.NodeRequest
-import inc.combustion.framework.ble.uart.meatnet.NodeResponse
-import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
-
-/**
- * Representation of a specialized device that is also a meatNet node hybrid, such as [GaugeBleDevice]
- */
-internal interface NodeHybridDevice {
-    val nodeParent: NodeBleDevice
+interface TargetedNodeResponse {
     val serialNumber: String
-    suspend fun processNodeRequest(request: NodeRequest): Boolean
-    suspend fun processNodeResponse(response: NodeResponse): Boolean
 }

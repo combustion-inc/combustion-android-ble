@@ -33,7 +33,9 @@ import inc.combustion.framework.ble.GaugeStatus
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
 import inc.combustion.framework.ble.uart.meatnet.NodeGaugeStatusRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeResponse
 import inc.combustion.framework.service.CombustionProductType
 import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.service.FirmwareVersion
@@ -114,6 +116,7 @@ internal class GaugeBleDevice(
         }
 
     private var observeGaugeStatusCallback: (suspend (status: GaugeStatus) -> Unit)? = null
+    private var logResponseCallback: (suspend (status: NodeReadGaugeLogsResponse) -> Unit)? = null
 
     // connection management
     override fun connect() = uart.connect()
@@ -207,6 +210,21 @@ internal class GaugeBleDevice(
         }
     }
 
+    private suspend fun handleLogResponse(message: NodeReadGaugeLogsResponse) {
+        logResponseCallback?.invoke(message)
+    }
+
+    override suspend fun processNodeResponse(response: NodeResponse): Boolean {
+        return when (response) {
+            is NodeReadGaugeLogsResponse -> {
+                handleLogResponse(response)
+                true
+            }
+
+            else -> false
+        }
+    }
+
     override fun sendSetHighLowAlarmStatus(
         highLowAlarmStatus: HighLowAlarmStatus,
         reqId: UInt?,
@@ -217,6 +235,19 @@ internal class GaugeBleDevice(
             highLowAlarmStatus,
             reqId,
             callback,
+        )
+    }
+
+    override fun sendGaugeLogRequest(
+        minSequence: UInt,
+        maxSequence: UInt,
+        callback: (suspend (NodeReadGaugeLogsResponse) -> Unit)?,
+    ) {
+        this.logResponseCallback = callback
+        nodeParent.sendGaugeLogRequest(
+            serialNumber,
+            minSequence,
+            maxSequence,
         )
     }
 }

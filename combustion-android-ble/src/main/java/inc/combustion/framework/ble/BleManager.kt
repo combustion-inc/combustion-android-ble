@@ -41,4 +41,6 @@ abstract class BleManager {
     protected fun makeRequestId(): UInt {
         return (0u..UInt.MAX_VALUE).random()
     }
+
+    abstract fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt)
 }

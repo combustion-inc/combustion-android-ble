@@ -12,9 +12,12 @@ import inc.combustion.framework.ble.uart.meatnet.GenericNodeRequest
 import inc.combustion.framework.ble.uart.meatnet.GenericNodeResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeReadLogsRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeSetHighLowAlarmRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
+import inc.combustion.framework.ble.uart.meatnet.TargetedNodeResponse
 import inc.combustion.framework.service.DebugSettings
 import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.service.HighLowAlarmStatus
@@ -38,6 +41,7 @@ internal class NodeBleDevice(
     private val genericRequestHandler = UartBleDevice.MessageCompletionHandler()
     private val readFeatureFlagsRequest = UartBleDevice.MessageCompletionHandler()
     private val setHighLowAlarmStatusHandler = UartBleDevice.MessageCompletionHandler()
+    private val readGaugeLogsHandler = UartBleDevice.MessageCompletionHandler()
 
     companion object {
         const val NODE_MESSAGE_RESPONSE_TIMEOUT_MS = 120000L
@@ -131,6 +135,14 @@ internal class NodeBleDevice(
         sendUartRequest(NodeSetHighLowAlarmRequest(serialNumber, highLowAlarmStatus, reqId))
     }
 
+    fun sendGaugeLogRequest(
+        serialNumber: String,
+        minSequence: UInt,
+        maxSequence: UInt,
+    ) {
+        sendUartRequest(NodeReadLogsRequest(serialNumber, minSequence, maxSequence))
+    }
+
     override fun connect() {
         uart.connect()
     }
@@ -218,6 +230,9 @@ internal class NodeBleDevice(
                         hybridDeviceChild?.processNodeRequest(message)
                     }
 
+                    (message is NodeResponse) && (message is TargetedNodeResponse) && (message.serialNumber == hybridDeviceChild?.serialNumber) -> {
+                        hybridDeviceChild?.processNodeResponse(message)
+                    }
 
                     else -> {
                         // drop the message

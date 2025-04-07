@@ -624,7 +624,7 @@ internal class ProbeManager(
         }
     }
 
-    fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt) {
+    override fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt) {
         simulatedProbe?.sendLogRequest(startSequenceNumber, endSequenceNumber) {
             _logResponseFlow.emit(it)
         } ?: run {

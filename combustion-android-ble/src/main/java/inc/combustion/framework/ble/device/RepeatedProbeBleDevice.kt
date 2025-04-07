@@ -31,7 +31,6 @@ package inc.combustion.framework.ble.device
 import android.util.Log
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.GaugeStatus
 import inc.combustion.framework.ble.IdleMonitor
 import inc.combustion.framework.ble.NOT_IMPLEMENTED
 import inc.combustion.framework.ble.ProbeStatus
@@ -106,7 +105,6 @@ internal class RepeatedProbeBleDevice(
 
     private var probeStatusCallback: (suspend (status: ProbeStatus, hopCount: UInt?) -> Unit)? =
         null
-    private var gaugeStatusCallback: (suspend (status: GaugeStatus) -> Unit)? = null
     private var logResponseCallback: (suspend (LogResponse) -> Unit)? = null
 
     private var _deviceInfoSerialNumber: String? = null

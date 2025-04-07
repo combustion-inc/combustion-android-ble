@@ -38,6 +38,7 @@ import inc.combustion.framework.ble.device.GaugeBleDevice
 import inc.combustion.framework.ble.device.SimulatedGaugeBleDevice
 import inc.combustion.framework.ble.device.UartCapableGauge
 import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
+import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
 import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.service.DeviceManager
 import inc.combustion.framework.service.FirmwareVersion
@@ -48,8 +49,11 @@ import inc.combustion.framework.service.ProbeUploadState
 import inc.combustion.framework.service.SessionInformation
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -88,6 +92,15 @@ internal class GaugeManager(
         get() {
             return _gauge.value
         }
+
+    // the flow that produces LogResponses from MeatNet
+    private val _logResponseFlow = MutableSharedFlow<NodeReadGaugeLogsResponse>(
+        replay = 0, extraBufferCapacity = 50, BufferOverflow.SUSPEND
+    )
+
+    // the flow that is consumed to get LogResponses from MeatNet
+    val logResponseFlow = _logResponseFlow.asSharedFlow()
+
 
     // current session information for the probe
     var sessionInfo: SessionInformation? = null
@@ -539,6 +552,14 @@ internal class GaugeManager(
             } ?: run {
                 onCompletion(false)
             }
+        }
+    }
+
+    override fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt) {
+        simulatedGauge?.sendGaugeLogRequest(startSequenceNumber, endSequenceNumber) {
+            _logResponseFlow.emit(it)
+        } ?: arbitrator.directLink?.sendGaugeLogRequest(startSequenceNumber, endSequenceNumber) {
+            _logResponseFlow.emit(it)
         }
     }
 }
