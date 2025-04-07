@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: GaugeUartCapable.kt
+ * File: TemperatureTest.kt
  * Author:
  *
  * MIT License
@@ -26,18 +26,26 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble.device
+package inc.combustion.framework.service
 
-import inc.combustion.framework.ble.GaugeStatus
-import inc.combustion.framework.service.HighLowAlarmStatus
+import junitparams.JUnitParamsRunner
+import junitparams.Parameters
+import org.junit.Test
+import org.junit.runner.RunWith
+import kotlin.test.assertEquals
 
-internal interface UartCapableGauge : UartCapableSpecializedDevice {
-    // gauge status updates
-    fun observeGaugeStatusUpdates(callback: (suspend (status: GaugeStatus) -> Unit)? = null)
+@RunWith(JUnitParamsRunner::class)
+class TemperatureTest {
 
-    fun sendSetHighLowAlarmStatus(
-        highLowAlarmStatus: HighLowAlarmStatus,
-        reqId: UInt?,
-        callback: ((Boolean, Any?) -> Unit)?,
+    @Test
+    @Parameters(method = "tempRawDataParams")
+    fun mew(givenTempValue: Double) {
+        val givenTemp = Temperature(givenTempValue)
+        assertEquals(Temperature.fromRawDataEnd(givenTemp.toRawDataEnd()), givenTemp)
+    }
+
+    fun tempRawDataParams() = arrayOf(
+        arrayOf(-20.0),
+        arrayOf(100.0)
     )
 }

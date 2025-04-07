@@ -69,6 +69,7 @@ import inc.combustion.framework.service.DeviceManager
 import inc.combustion.framework.service.FirmwareState
 import inc.combustion.framework.service.FoodSafeData
 import inc.combustion.framework.service.Gauge
+import inc.combustion.framework.service.HighLowAlarmStatus
 import inc.combustion.framework.service.NetworkState
 import inc.combustion.framework.service.Probe
 import inc.combustion.framework.service.ProbeColor
@@ -627,6 +628,17 @@ internal class NetworkManager(
         probeManagers[serialNumber]?.resetProbe(completionHandler) ?: run {
             completionHandler(false)
         }
+    }
+
+    internal fun setHighLowAlarmStatus(
+        serialNumber: String,
+        highLowAlarmStatus: HighLowAlarmStatus,
+        completionHandler: (Boolean) -> Unit,
+    ) {
+        gaugeManagers[serialNumber]?.setHighLowAlarmStatus(highLowAlarmStatus, completionHandler)
+            ?: run {
+                completionHandler(false)
+            }
     }
 
     internal fun sendNodeRequest(

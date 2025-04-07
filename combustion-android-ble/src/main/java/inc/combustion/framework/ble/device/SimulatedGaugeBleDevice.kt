@@ -31,7 +31,6 @@ package inc.combustion.framework.ble.device
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.ble.GaugeStatus
-import inc.combustion.framework.ble.ProbeStatus
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
 import inc.combustion.framework.service.CombustionProductType
@@ -260,5 +259,13 @@ internal class SimulatedGaugeBleDevice(
 
     override fun observeGaugeStatusUpdates(callback: (suspend (status: GaugeStatus) -> Unit)?) {
         observeStatusUpdatesCallback = callback
+    }
+
+    override fun sendSetHighLowAlarmStatus(
+        highLowAlarmStatus: HighLowAlarmStatus,
+        reqId: UInt?,
+        callback: ((Boolean, Any?) -> Unit)?
+    ) {
+        callback?.let { it(true, null) }
     }
 }

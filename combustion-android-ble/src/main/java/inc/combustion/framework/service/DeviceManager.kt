@@ -843,6 +843,19 @@ class DeviceManager(
     }
 
     /**
+     * Set highLowAlarmStatus on gauge with the serial number [serialNumber] to
+     * [highLowAlarmStatus], calling [completionHandler] with the success value on completion.
+     */
+    fun setHighLowAlarmStatus(
+        serialNumber: String,
+        highLowAlarmStatus: HighLowAlarmStatus,
+        completionHandler: (Boolean) -> Unit
+    ) {
+        Log.i(LOG_TAG, "Setting guage $serialNumber's highLowAlarmStatus to $highLowAlarmStatus")
+        NetworkManager.instance.setHighLowAlarmStatus(serialNumber, highLowAlarmStatus, completionHandler)
+    }
+
+    /**
      * State flow containing the firmware details for all nodes on the network.
      */
     fun getNetworkFirmwareState(): StateFlow<FirmwareState> {

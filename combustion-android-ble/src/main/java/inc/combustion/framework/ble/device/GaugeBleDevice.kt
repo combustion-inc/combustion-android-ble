@@ -37,6 +37,7 @@ import inc.combustion.framework.ble.uart.meatnet.NodeRequest
 import inc.combustion.framework.service.CombustionProductType
 import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.service.FirmwareVersion
+import inc.combustion.framework.service.HighLowAlarmStatus
 import inc.combustion.framework.service.ModelInformation
 import kotlinx.coroutines.launch
 
@@ -204,5 +205,18 @@ internal class GaugeBleDevice(
 
             else -> false
         }
+    }
+
+    override fun sendSetHighLowAlarmStatus(
+        highLowAlarmStatus: HighLowAlarmStatus,
+        reqId: UInt?,
+        callback: ((Boolean, Any?) -> Unit)?,
+    ) {
+        nodeParent.sendSetHighLowAlarmStatus(
+            serialNumber,
+            highLowAlarmStatus,
+            reqId,
+            callback,
+        )
     }
 }

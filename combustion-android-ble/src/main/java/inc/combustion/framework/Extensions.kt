@@ -38,8 +38,9 @@ fun UByte.isBitSet(position: Int): Boolean {
     return (this.toInt() and (1 shl position)) != 0
 }
 
+fun Int.setBit(bit: Int): Int = this or (1 shl bit)
+
 fun UByte.toPercentage(): Int = (this * 100u / 255u).toInt()
 
 fun UByteArray.utf8StringFromRange(indices: IntRange): String =
     String(this.copyOf().sliceArray(indices).toByteArray(), Charsets.UTF_8)
-

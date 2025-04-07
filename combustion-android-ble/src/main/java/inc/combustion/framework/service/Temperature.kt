@@ -37,6 +37,22 @@ value class Temperature(
     val value: Double,
 ) {
 
+    fun toRawUShort(): UShort {
+        return (((value + 20.0) / 0.05).toInt().coerceIn(0, 0xFFFF)).toUShort()
+    }
+
+    fun toRawDataEnd(): UByteArray {
+        val raw = this.toRawUShort() // temperature to 13-bit value
+
+        val high = (raw.toInt() shr 8) and 0x1F       // get top 5 bits
+        val low = raw.toInt() and 0xFF                // lower 8 bits
+
+        val byte0 = (high shl 3).toUByte()            // shift into bits 3–7
+        val byte1 = low.toUByte()
+
+        return ubyteArrayOf(byte0, byte1)
+    }
+
     companion object {
         private fun UShort.temperatureFromRaw() =
             (this.toDouble() * 0.05) - 20.0
@@ -51,9 +67,13 @@ value class Temperature(
 
         internal fun fromRawDataEnd(bytes: UByteArray): Temperature {
             require(bytes.size >= 2) { "Temperature requires 2 bytes" }
-            val rawTemperature =
-                ((bytes[0] and 0x1F.toUByte()).toUShort() shl 8) or (bytes[1].toUShort())
-            val temperature = rawTemperature.temperatureFromRaw()
+
+            val high = (bytes[0].toInt() shr 3) and 0x1F
+            val low = bytes[1].toInt()
+
+            val raw = ((high shl 8) or low).toUShort()
+            val temperature = raw.temperatureFromRaw()
+
             return Temperature(temperature)
         }
 

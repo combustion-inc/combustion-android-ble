@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: GaugeUartCapable.kt
+ * File: NodeSetHighLowAlarmResponse.kt
  * Author:
  *
  * MIT License
@@ -26,18 +26,42 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble.device
+package inc.combustion.framework.ble.uart.meatnet
 
-import inc.combustion.framework.ble.GaugeStatus
-import inc.combustion.framework.service.HighLowAlarmStatus
+internal class NodeSetHighLowAlarmResponse(success: Boolean,
+                                  requestId: UInt,
+                                  responseId: UInt,
+                                  payloadLength: UByte,
+) : NodeResponse(
+    success,
+    requestId,
+    responseId,
+    payloadLength,
+    NodeMessageType.SET_HIGH_LOW_ALARM,
+) {
+    override fun toString(): String {
+        return "${super.toString()} $success"
+    }
 
-internal interface UartCapableGauge : UartCapableSpecializedDevice {
-    // gauge status updates
-    fun observeGaugeStatusUpdates(callback: (suspend (status: GaugeStatus) -> Unit)? = null)
+    companion object {
+        private const val PAYLOAD_LENGTH: UByte = 0u
 
-    fun sendSetHighLowAlarmStatus(
-        highLowAlarmStatus: HighLowAlarmStatus,
-        reqId: UInt?,
-        callback: ((Boolean, Any?) -> Unit)?,
-    )
+        fun fromData(
+            success: Boolean,
+            requestId: UInt,
+            responseId: UInt,
+            payloadLength: UByte,
+        ): NodeSetPowerModeResponse? {
+            if (payloadLength < PAYLOAD_LENGTH) {
+                return null
+            }
+
+            return NodeSetPowerModeResponse(
+                success,
+                requestId,
+                responseId,
+                payloadLength
+            )
+        }
+    }
 }

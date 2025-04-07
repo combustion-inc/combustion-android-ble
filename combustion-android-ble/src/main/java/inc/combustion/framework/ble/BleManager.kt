@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: GaugeUartCapable.kt
+ * File: DeviceManager.kt
  * Author:
  *
  * MIT License
@@ -26,18 +26,19 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble.device
+package inc.combustion.framework.ble
 
-import inc.combustion.framework.ble.GaugeStatus
-import inc.combustion.framework.service.HighLowAlarmStatus
+abstract class BleManager {
 
-internal interface UartCapableGauge : UartCapableSpecializedDevice {
-    // gauge status updates
-    fun observeGaugeStatusUpdates(callback: (suspend (status: GaugeStatus) -> Unit)? = null)
+    companion object {
+        const val IGNORE_PROBES = false
+        const val IGNORE_REPEATERS = false
+        const val IGNORE_GAUGES = false
 
-    fun sendSetHighLowAlarmStatus(
-        highLowAlarmStatus: HighLowAlarmStatus,
-        reqId: UInt?,
-        callback: ((Boolean, Any?) -> Unit)?,
-    )
+        const val OUT_OF_RANGE_TIMEOUT = 15000L
+    }
+
+    protected fun makeRequestId(): UInt {
+        return (0u..UInt.MAX_VALUE).random()
+    }
 }

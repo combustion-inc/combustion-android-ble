@@ -93,9 +93,8 @@ internal class ProbeManager(
     private val owner: LifecycleOwner,
     private val settings: DeviceManager.Settings,
     private val dfuDisconnectedNodeCallback: (DeviceID) -> Unit
-) {
+) : BleManager() {
     companion object {
-        const val OUT_OF_RANGE_TIMEOUT = 15000L
         private const val PROBE_STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS = 1000L
         private const val PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS =
             Probe.PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS
@@ -103,8 +102,6 @@ internal class ProbeManager(
         private const val PREDICTION_IDLE_TIMEOUT_MS = Probe.PREDICTION_IDLE_TIMEOUT_MS
         private const val PROBE_STATUS_NOTIFICATIONS_POLL_DELAY_MS = 30000L
         private const val PROBE_INSTANT_READ_IDLE_TIMEOUT_MS = 5000L
-        private const val IGNORE_PROBES = false
-        private const val IGNORE_REPEATERS = false
     }
 
     // encapsulates logic for managing network data links
@@ -1276,9 +1273,5 @@ internal class ProbeManager(
             minSequence = minSequenceNumber,
             maxSequence = maxSequenceNumber
         )
-    }
-
-    private fun makeRequestId(): UInt {
-        return (0u..UInt.MAX_VALUE).random()
     }
 }

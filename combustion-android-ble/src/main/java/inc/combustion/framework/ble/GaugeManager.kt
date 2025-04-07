@@ -42,6 +42,7 @@ import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.service.DeviceManager
 import inc.combustion.framework.service.FirmwareVersion
 import inc.combustion.framework.service.Gauge
+import inc.combustion.framework.service.HighLowAlarmStatus
 import inc.combustion.framework.service.ModelInformation
 import inc.combustion.framework.service.ProbeUploadState
 import inc.combustion.framework.service.SessionInformation
@@ -60,10 +61,8 @@ internal class GaugeManager(
     val owner: LifecycleOwner,
     private val settings: DeviceManager.Settings,
     private val dfuDisconnectedNodeCallback: (DeviceID) -> Unit,
-) {
+) : BleManager() {
     companion object {
-        private const val OUT_OF_RANGE_TIMEOUT = 15000L
-        private const val IGNORE_GAUGES = false
         private const val GAUGE_STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS = 1000L
         private const val GAUGE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS =
             Gauge.GAUGE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS
@@ -509,6 +508,37 @@ internal class GaugeManager(
 
         guage.observeRemoteRssi { rssi ->
             _gauge.update { handleRemoteRssi(guage, rssi, it) }
+        }
+    }
+
+    fun setHighLowAlarmStatus(
+        highLowAlarmStatus: HighLowAlarmStatus,
+        completionHandler: (Boolean) -> Unit
+    ) {
+        val onCompletion: (Boolean) -> Unit = { success ->
+            if (success) {
+                _gauge.update {
+                    _gauge.value.copy(
+                        highLowAlarmStatus = highLowAlarmStatus,
+                    )
+                }
+            }
+            completionHandler(success)
+        }
+        val requestId = makeRequestId()
+
+        simulatedGauge?.sendSetHighLowAlarmStatus(highLowAlarmStatus, requestId) { status, _ ->
+            onCompletion(status)
+        } ?: run {
+            // if there is a direct link to the probe, then use that
+            arbitrator.directLink?.sendSetHighLowAlarmStatus(
+                highLowAlarmStatus,
+                requestId,
+            ) { status, _ ->
+                onCompletion(status)
+            } ?: run {
+                onCompletion(false)
+            }
         }
     }
 }

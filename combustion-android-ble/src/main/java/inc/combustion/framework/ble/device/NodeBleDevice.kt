@@ -6,15 +6,18 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.NetworkManager
+import inc.combustion.framework.ble.device.UartCapableProbe.Companion.MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.uart.meatnet.GenericNodeRequest
 import inc.combustion.framework.ble.uart.meatnet.GenericNodeResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeSetHighLowAlarmRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.service.DebugSettings
 import inc.combustion.framework.service.DeviceConnectionState
+import inc.combustion.framework.service.HighLowAlarmStatus
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -34,6 +37,7 @@ internal class NodeBleDevice(
 
     private val genericRequestHandler = UartBleDevice.MessageCompletionHandler()
     private val readFeatureFlagsRequest = UartBleDevice.MessageCompletionHandler()
+    private val setHighLowAlarmStatusHandler = UartBleDevice.MessageCompletionHandler()
 
     companion object {
         const val NODE_MESSAGE_RESPONSE_TIMEOUT_MS = 120000L
@@ -110,6 +114,21 @@ internal class NodeBleDevice(
         val nodeSerialNumber = deviceInfoSerialNumber ?: return
         readFeatureFlagsRequest.wait(uart.owner, NODE_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
         sendUartRequest(NodeReadFeatureFlagsRequest(nodeSerialNumber, reqId))
+    }
+
+    fun sendSetHighLowAlarmStatus(
+        serialNumber: String,
+        highLowAlarmStatus: HighLowAlarmStatus,
+        reqId: UInt?,
+        callback: ((Boolean, Any?) -> Unit)?,
+    ) {
+        setHighLowAlarmStatusHandler.wait(
+            uart.owner,
+            MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS,
+            reqId,
+            callback,
+        )
+        sendUartRequest(NodeSetHighLowAlarmRequest(serialNumber, highLowAlarmStatus, reqId))
     }
 
     override fun connect() {

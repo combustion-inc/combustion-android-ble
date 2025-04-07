@@ -29,6 +29,7 @@
 package inc.combustion.framework.service
 
 import inc.combustion.framework.isBitSet
+import inc.combustion.framework.setBit
 
 data class HighLowAlarmStatus(
     val highStatus: AlarmStatus,
@@ -38,8 +39,26 @@ data class HighLowAlarmStatus(
         val set: Boolean = false,
         val tripped: Boolean = false,
         val alarming: Boolean = false,
-        val temperature: Temperature? = null,
-    )
+        val temperature: Temperature = Temperature(-20.0),
+    ) {
+
+        fun toBytes(): UByteArray {
+            var flagBits = 0
+            if (set) flagBits = flagBits.setBit(0)
+            if (tripped) flagBits = flagBits.setBit(1)
+            if (alarming) flagBits = flagBits.setBit(2)
+
+            val rawTemp = temperature.toRawUShort()
+            val tempByte0 = ((rawTemp.toInt() shr 8) and 0x1F) // only low 5 bits
+            val tempByte1 = rawTemp.toInt() and 0xFF
+
+            // Safely merge flags (bits 0–2) with top 5 temp bits (bits 3–7)
+            val combinedByte0 = ((tempByte0 shl 3) or flagBits).toUByte()
+            val byte1 = tempByte1.toUByte()
+
+            return ubyteArrayOf(combinedByte0, byte1)
+        }
+    }
 
     companion object {
         val DEFAULT = HighLowAlarmStatus(
@@ -65,5 +84,11 @@ data class HighLowAlarmStatus(
                 lowStatus = alarmStatusFromBytes(bytes.sliceArray(2..3)),
             )
         }
+    }
+
+    fun toRawData(): UByteArray {
+        val highBytes = highStatus.toBytes()
+        val lowBytes = lowStatus.toBytes()
+        return highBytes + lowBytes
     }
 }
