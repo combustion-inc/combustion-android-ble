@@ -39,7 +39,7 @@ import inc.combustion.framework.ble.device.ProbeBleDeviceBase
 import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
 import inc.combustion.framework.ble.device.SimulatedProbeBleDevice
 import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
-import inc.combustion.framework.ble.uart.LogResponse
+import inc.combustion.framework.ble.uart.ProbeLogResponse
 import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.service.DeviceManager
 import inc.combustion.framework.service.FirmwareVersion
@@ -63,7 +63,6 @@ import inc.combustion.framework.service.utils.DefaultLinearizationTimerImpl
 import inc.combustion.framework.service.utils.PredictionManager
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -105,10 +104,7 @@ internal class ProbeManager(
     }
 
     // encapsulates logic for managing network data links
-    private val arbitrator = ProbeDataLinkArbitrator(settings)
-
-    // manages long-running coroutine scopes for data handling
-    private val jobManager = JobManager()
+    override val arbitrator = ProbeDataLinkArbitrator(settings)
 
     // idle monitors
     private val instantReadMonitor = IdleMonitor()
@@ -127,10 +123,10 @@ internal class ProbeManager(
     )
 
     // the flow that is consumed to get ProbeStatus updates from MeatNet
-    val normalModeProbeStatusFlow = _normalModeProbeStatusFlow.asSharedFlow()
+    override val normalModeStatusFlow = _normalModeProbeStatusFlow.asSharedFlow()
 
     // the flow that produces LogResponses from MeatNet
-    private val _logResponseFlow = MutableSharedFlow<LogResponse>(
+    private val _logResponseFlow = MutableSharedFlow<ProbeLogResponse>(
         replay = 0, extraBufferCapacity = 50, BufferOverflow.SUSPEND
     )
 
@@ -142,10 +138,10 @@ internal class ProbeManager(
     private var sessionInfoTimeout: Boolean = false
 
     // the flow that is consumed to get LogResponses from MeatNet
-    val logResponseFlow = _logResponseFlow.asSharedFlow()
+    override val logResponseFlow = _logResponseFlow.asSharedFlow()
 
     // serial number of the probe that is being managed by this manager
-    val serialNumber: String
+    override val serialNumber: String
         get() {
             return _probe.value.serialNumber
         }
@@ -158,7 +154,7 @@ internal class ProbeManager(
     val nodeConnectionFlow = _nodeConnectionFlow.asSharedFlow()
 
     // current upload state for this probe, determined by LogManager
-    var uploadState: ProbeUploadState
+    override var uploadState: ProbeUploadState
         get() {
             return _probe.value.uploadState
         }
@@ -168,7 +164,7 @@ internal class ProbeManager(
             }
         }
 
-    var recordsDownloaded: Int
+    override var recordsDownloaded: Int
         get() {
             return _probe.value.recordsDownloaded
         }
@@ -178,7 +174,7 @@ internal class ProbeManager(
             }
         }
 
-    var logUploadPercent: UInt
+    override var logUploadPercent: UInt
         get() {
             return _probe.value.logUploadPercent
         }
@@ -302,24 +298,21 @@ internal class ProbeManager(
             return _probe.value
         }
 
-    // current session information for the probe
-    var sessionInfo: SessionInformation? = null
-        private set
+//    // current session information for the probe
+//    var sessionInfo: SessionInformation? = null
+//        private set
 
     // current minimum sequence number for the probe
-    val minSequenceNumber: UInt?
+    override val minSequenceNumber: UInt?
         get() {
             return _probe.value.minSequence
         }
 
     // current maximum sequence number for the probe
-    val maxSequenceNumber: UInt?
+    override val maxSequenceNumber: UInt?
         get() {
             return _probe.value.maxSequence
         }
-
-    // signals when logs are no longer being added to LogManager.
-    var logTransferCompleteCallback: () -> Unit = { }
 
     private val predictionManager = PredictionManager(DefaultLinearizationTimerImpl())
 
@@ -335,7 +328,7 @@ internal class ProbeManager(
         monitorStatusNotifications()
     }
 
-    fun addJob(serialNumber: String, job: Job) = jobManager.addJob(serialNumber, job)
+//    fun addJob(serialNumber: String, job: Job) = jobManager.addJob(serialNumber, job)
 
     fun addProbe(
         probe: ProbeBleDevice,
@@ -635,33 +628,33 @@ internal class ProbeManager(
         }
     }
 
-    fun finish(deviceIdsToDisconnect: Set<DeviceID>? = null) {
-        Log.d(LOG_TAG, "ProbeManager.finish($deviceIdsToDisconnect) for ($serialNumber)")
-
-        arbitrator.finish(
-            nodeAction = {
-                // There's a couple specific things that come out of unlinking a probe that need to
-                // be addressed here:
-                //
-                // - Jobs are created on repeated probes (nodes) that need to be cancelled so that
-                //   we don't continue to obtain data for probes that we're disconnected from. If
-                //   all jobs on a node are blindly cancelled, then we'll likely cancel jobs that
-                //   are still needed for other probes connected to this node. The [jobKey]
-                //   parameter allows for selective cancellation of jobs.
-                // - On a related note, we need to be able to selectively disconnect from nodes as
-                //   some are still providing data from other probes.
-                it.finish(
-                    jobKey = serialNumber,
-                    disconnect = deviceIdsToDisconnect?.contains(it.id) ?: true
-                )
-            },
-            directConnectionAction = {
-                it.disconnect()
-            }
-        )
-
-        jobManager.cancelJobs()
-    }
+//    fun finish(deviceIdsToDisconnect: Set<DeviceID>? = null) {
+//        Log.d(LOG_TAG, "ProbeManager.finish($deviceIdsToDisconnect) for ($serialNumber)")
+//
+//        arbitrator.finish(
+//            nodeAction = {
+//                // There's a couple specific things that come out of unlinking a probe that need to
+//                // be addressed here:
+//                //
+//                // - Jobs are created on repeated probes (nodes) that need to be cancelled so that
+//                //   we don't continue to obtain data for probes that we're disconnected from. If
+//                //   all jobs on a node are blindly cancelled, then we'll likely cancel jobs that
+//                //   are still needed for other probes connected to this node. The [jobKey]
+//                //   parameter allows for selective cancellation of jobs.
+//                // - On a related note, we need to be able to selectively disconnect from nodes as
+//                //   some are still providing data from other probes.
+//                it.finish(
+//                    jobKey = serialNumber,
+//                    disconnect = deviceIdsToDisconnect?.contains(it.id) ?: true
+//                )
+//            },
+//            directConnectionAction = {
+//                it.disconnect()
+//            }
+//        )
+//
+//        jobManager.cancelJobs()
+//    }
 
     private fun observe(base: ProbeBleDeviceBase) {
         if (base is ProbeBleDevice) {
@@ -702,9 +695,9 @@ internal class ProbeManager(
     }
 
     private fun monitorStatusNotifications() {
-        jobManager.addJob(
-            key = serialNumber,
-            job = owner.lifecycleScope.launch(
+        addJob(
+            serialNumber,
+            owner.lifecycleScope.launch(
                 CoroutineName("${serialNumber}.monitorStatusNotifications") + Dispatchers.IO
             ) {
                 // Wait before starting to monitor prediction status, this allows for initial

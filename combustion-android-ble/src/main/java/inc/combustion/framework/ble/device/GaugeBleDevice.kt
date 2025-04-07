@@ -194,9 +194,7 @@ internal class GaugeBleDevice(
     }
 
     private suspend fun handleGaugeStatusRequest(message: NodeGaugeStatusRequest) {
-        GaugeStatus.fromRawData(message.data.toUByteArray())?.let { status ->
-            observeGaugeStatusCallback?.invoke(status)
-        }
+        observeGaugeStatusCallback?.invoke(message.gaugeStatus)
     }
 
     override suspend fun processNodeRequest(request: NodeRequest): Boolean {

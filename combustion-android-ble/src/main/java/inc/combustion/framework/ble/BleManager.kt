@@ -28,7 +28,16 @@
 
 package inc.combustion.framework.ble
 
-abstract class BleManager {
+import android.util.Log
+import inc.combustion.framework.LOG_TAG
+import inc.combustion.framework.ble.device.DeviceID
+import inc.combustion.framework.ble.uart.LogResponse
+import inc.combustion.framework.service.ProbeUploadState
+import inc.combustion.framework.service.SessionInformation
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.SharedFlow
+
+internal abstract class BleManager {
 
     companion object {
         const val IGNORE_PROBES = false
@@ -38,9 +47,71 @@ abstract class BleManager {
         const val OUT_OF_RANGE_TIMEOUT = 15000L
     }
 
+    abstract val serialNumber: String
+
+    abstract val normalModeStatusFlow: SharedFlow<SpecializedDeviceStatus>
+
+    // current minimum sequence number for the probe
+    abstract val minSequenceNumber: UInt?
+
+
+    // current maximum sequence number for the probe
+    abstract val maxSequenceNumber: UInt?
+
+    // the flow that is consumed to get LogResponses from MeatNet
+    abstract val logResponseFlow: SharedFlow<LogResponse>
+
+    // manages long-running coroutine scopes for data handling
+    private val jobManager = JobManager()
+
+    protected abstract val arbitrator: DataLinkArbitrator<*,*>
+
+    // signals when logs are no longer being added to LogManager.
+    var logTransferCompleteCallback: () -> Unit = { }
+
+    abstract var uploadState: ProbeUploadState
+
+    abstract var recordsDownloaded: Int
+
+    abstract var logUploadPercent: UInt
+
+    // current session information for the probe
+    var sessionInfo: SessionInformation? = null
+        protected set
+
+    fun addJob(serialNumber: String, job: Job) = jobManager.addJob(serialNumber, job)
+
     protected fun makeRequestId(): UInt {
         return (0u..UInt.MAX_VALUE).random()
     }
 
     abstract fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt)
+
+    fun finish(deviceIdsToDisconnect: Set<DeviceID>? = null) {
+        Log.d(LOG_TAG, "ProbeManager.finish($deviceIdsToDisconnect) for ($serialNumber)")
+
+        arbitrator.finish(
+            nodeAction = {
+                // There's a couple specific things that come out of unlinking a probe that need to
+                // be addressed here:
+                //
+                // - Jobs are created on repeated probes (nodes) that need to be cancelled so that
+                //   we don't continue to obtain data for probes that we're disconnected from. If
+                //   all jobs on a node are blindly cancelled, then we'll likely cancel jobs that
+                //   are still needed for other probes connected to this node. The [jobKey]
+                //   parameter allows for selective cancellation of jobs.
+                // - On a related note, we need to be able to selectively disconnect from nodes as
+                //   some are still providing data from other probes.
+                it.finish(
+                    jobKey = serialNumber,
+                    disconnect = deviceIdsToDisconnect?.contains(it.id) ?: true
+                )
+            },
+            directConnectionAction = {
+                it.disconnect()
+            }
+        )
+
+        jobManager.cancelJobs()
+    }
 }

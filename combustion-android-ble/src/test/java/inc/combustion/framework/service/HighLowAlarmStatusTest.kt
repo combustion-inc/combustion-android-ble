@@ -59,13 +59,13 @@ class HighLowAlarmStatusTest {
                     set = true,
                     tripped = true,
                     alarming = true,
-                    Temperature(100.0),
+                    SensorTemperature(100.0),
                 ),
                 AlarmStatus(
                     set = true,
                     tripped = true,
                     alarming = true,
-                    Temperature(100.0),
+                    SensorTemperature(100.0),
                 ),
             )
         ),

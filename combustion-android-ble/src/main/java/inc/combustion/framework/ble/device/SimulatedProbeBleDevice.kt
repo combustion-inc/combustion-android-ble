@@ -33,7 +33,7 @@ import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.ble.ProbeStatus
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
-import inc.combustion.framework.ble.uart.LogResponse
+import inc.combustion.framework.ble.uart.ProbeLogResponse
 import inc.combustion.framework.service.CombustionProductType
 import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.service.FirmwareVersion
@@ -338,7 +338,7 @@ internal class SimulatedProbeBleDevice(
     override fun sendLogRequest(
         minSequence: UInt,
         maxSequence: UInt,
-        callback: (suspend (LogResponse) -> Unit)?
+        callback: (suspend (ProbeLogResponse) -> Unit)?
     ) {
         // do nothing
     }

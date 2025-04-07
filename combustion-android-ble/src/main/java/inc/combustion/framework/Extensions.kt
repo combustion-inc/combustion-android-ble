@@ -28,6 +28,7 @@
 package inc.combustion.framework
 
 import inc.combustion.framework.Constants.UTF8_SERIAL_NUMBER_LENGTH
+import kotlin.reflect.KClass
 
 val Any.LOG_TAG: String
     get() {
@@ -42,7 +43,7 @@ fun UByte.isBitSet(position: Int): Boolean {
 
 fun Int.setBit(bit: Int): Int = this or (1 shl bit)
 
-fun UByte.toPercentage(): Int = (this * 100u / 255u).toInt()
+fun UByte.toPercentage(): Int = this.toInt()
 
 fun UByteArray.utf8StringFromRange(indices: IntRange): String =
     String(this.copyOf().sliceArray(indices).toByteArray(), Charsets.UTF_8).uppercase()
@@ -58,4 +59,11 @@ fun UByteArray.copyInUtf8SerialNumber(serialNumber: String, startIdx: Int) {
         endIndex = minOf(serialBytes.size, UTF8_SERIAL_NUMBER_LENGTH),
         destinationOffset = startIdx,
     )
+}
+
+fun <X : Any, Y : X> List<X>.castToSubTypeOrNull(kClass: KClass<Y>): List<Y>? {
+    return if (all { kClass.isInstance(it) }) {
+        @Suppress("UNCHECKED_CAST")
+        this as List<Y>
+    } else null
 }

@@ -32,7 +32,7 @@ import com.juul.kable.Identifier
 import inc.combustion.framework.service.CombustionProductType
 import inc.combustion.framework.service.GaugeStatusFlags
 import inc.combustion.framework.service.HighLowAlarmStatus
-import inc.combustion.framework.service.Temperature
+import inc.combustion.framework.service.SensorTemperature
 import inc.combustion.framework.toPercentage
 import inc.combustion.framework.utf8StringFromRange
 
@@ -45,7 +45,7 @@ internal class GaugeAdvertisingData(
     rssi: Int,
     isConnectable: Boolean,
     override val serialNumber: String,
-    val gaugeTemperature: Temperature,
+    val gaugeTemperature: SensorTemperature,
     val gaugeStatusFlags: GaugeStatusFlags,
     val batteryPercentage: Int,
     val highLowAlarmStatus: HighLowAlarmStatus,
@@ -73,7 +73,7 @@ internal class GaugeAdvertisingData(
         ): GaugeAdvertisingData {
             val serialNumber = manufacturerData.utf8StringFromRange(SERIAL_RANGE)
 
-            val gaugeTemperature = Temperature.fromRawDataStart(
+            val gaugeTemperature = SensorTemperature.fromRawDataStart(
                 manufacturerData.copyOf().sliceArray(TEMPERATURE_RANGE)
             )
 

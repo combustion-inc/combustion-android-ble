@@ -39,7 +39,7 @@ data class HighLowAlarmStatus(
         val set: Boolean = false,
         val tripped: Boolean = false,
         val alarming: Boolean = false,
-        val temperature: Temperature = Temperature(-20.0),
+        val temperature: SensorTemperature = SensorTemperature(-20.0),
     ) {
 
         fun toBytes(): UByteArray {
@@ -73,7 +73,7 @@ data class HighLowAlarmStatus(
                 set = firstByte.isBitSet(0),
                 tripped = firstByte.isBitSet(1),
                 alarming = firstByte.isBitSet(2),
-                temperature = Temperature.fromRawDataEnd(bytes)
+                temperature = SensorTemperature.fromRawDataEnd(bytes)
             )
         }
 

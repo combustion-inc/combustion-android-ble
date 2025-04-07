@@ -127,8 +127,8 @@ internal open class NodeResponse(
             }
 
             return when (messageType) {
-                NodeMessageType.LOG -> {
-                    NodeReadLogsResponse.fromData(
+                NodeMessageType.PROBE_LOG -> {
+                    NodeReadProbeLogsResponse.fromData(
                         data,
                         success,
                         requestId,
@@ -233,7 +233,7 @@ internal open class NodeResponse(
                     )
                 }
 
-                NodeMessageType.GAUGE_LOGS -> {
+                NodeMessageType.GAUGE_LOG -> {
                     NodeReadGaugeLogsResponse.fromData(
                         data,
                         success,

@@ -53,6 +53,7 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -74,10 +75,7 @@ internal class GaugeManager(
     }
 
     // encapsulates logic for managing network data links
-    private val arbitrator = GaugeDataLinkArbitrator()
-
-    // manages long-running coroutine scopes for data handling
-    private val jobManager = JobManager()
+    override val arbitrator = GaugeDataLinkArbitrator()
 
     // idle monitors
     private val statusNotificationsMonitor = IdleMonitor()
@@ -99,21 +97,36 @@ internal class GaugeManager(
     )
 
     // the flow that is consumed to get LogResponses from MeatNet
-    val logResponseFlow = _logResponseFlow.asSharedFlow()
+    override val logResponseFlow = _logResponseFlow.asSharedFlow()
 
-
-    // current session information for the probe
-    var sessionInfo: SessionInformation? = null
-        private set
 
     // current upload state for this probe, determined by LogManager
-    var uploadState: ProbeUploadState
+    override var uploadState: ProbeUploadState
         get() {
             return _gauge.value.uploadState
         }
         set(value) {
             if (value != _gauge.value.uploadState) {
                 _gauge.update { it.copy(uploadState = value) }
+            }
+        }
+    override var recordsDownloaded: Int
+        get() {
+            return _gauge.value.recordsDownloaded
+        }
+        set(value) {
+            if (value != _gauge.value.recordsDownloaded) {
+                _gauge.update { it.copy(recordsDownloaded = value) }
+            }
+        }
+
+    override var logUploadPercent: UInt
+        get() {
+            return _gauge.value.logUploadPercent
+        }
+        set(value) {
+            if (value != _gauge.value.logUploadPercent) {
+                _gauge.update { it.copy(logUploadPercent = value) }
             }
         }
 
@@ -141,16 +154,32 @@ internal class GaugeManager(
         }
 
     // serial number of the probe that is being managed by this manager
-    val serialNumber: String
+    override val serialNumber: String
         get() {
             return _gauge.value.serialNumber
+        }
+
+    // the flow that produces ProbeStatus updates from MeatNet
+    private val _normalModeProbeStatusFlow = MutableSharedFlow<GaugeStatus>(
+        replay = 0, extraBufferCapacity = 10, BufferOverflow.DROP_OLDEST
+    )
+
+    override val normalModeStatusFlow: SharedFlow<SpecializedDeviceStatus> =
+        _normalModeProbeStatusFlow.asSharedFlow()
+
+    override val minSequenceNumber: UInt?
+        get() {
+            return _gauge.value.minSequence
+        }
+
+    override val maxSequenceNumber: UInt?
+        get() {
+            return _gauge.value.maxSequence
         }
 
     // tracks if we've run into a message timeout condition getting
     // session info
     private var sessionInfoTimeout: Boolean = false
-
-    // TODO : implement
 
     private var simulatedGauge: SimulatedGaugeBleDevice? = null
 
@@ -159,9 +188,9 @@ internal class GaugeManager(
     }
 
     private fun monitorStatusNotifications() {
-        jobManager.addJob(
-            key = serialNumber,
-            job = owner.lifecycleScope.launch(
+        addJob(
+            serialNumber,
+            owner.lifecycleScope.launch(
                 CoroutineName("${serialNumber}.monitorStatusNotifications") + Dispatchers.IO
             ) {
                 // Wait before starting to monitor prediction status, this allows for initial
@@ -215,13 +244,13 @@ internal class GaugeManager(
         advertisement: GaugeAdvertisingData,
         currentGauge: Gauge,
     ): Gauge {
-        var updatedGauge = currentGauge.copy(
+        val updatedGauge = currentGauge.copy(
             baseDevice = _gauge.value.baseDevice.copy(rssi = advertisement.rssi),
         )
 
         return updatedGauge.copy(
             gaugeStatusFlags = advertisement.gaugeStatusFlags,
-            temperature = if (advertisement.gaugeStatusFlags.sensorPresent) advertisement.gaugeTemperature else null,
+            temperatureCelsius = if (advertisement.gaugeStatusFlags.sensorPresent) advertisement.gaugeTemperature else null,
             batteryPercentage = advertisement.batteryPercentage,
             highLowAlarmStatus = advertisement.highLowAlarmStatus,
         )
@@ -349,7 +378,6 @@ internal class GaugeManager(
     }
 
     private fun fetchDeviceInfo() {
-        fetchSessionInfo()
         fetchFirmwareVersion()
         fetchHardwareRevision()
         fetchModelInformation()
@@ -401,20 +429,6 @@ internal class GaugeManager(
         }
     }
 
-    private fun fetchSessionInfo() {
-        // TODO
-//        simulatedGauge?.let { device ->
-//            if (sessionInfo == null) {
-//                device.sendSessionInformationRequest { status, info ->
-//                    if (status && info is SessionInformation) {
-//                        sessionInfo = info
-//                        _gauge.update { it.copy(sessionInfo = info) }
-//                    }
-//                }
-//            }
-//        }
-    }
-
     private fun updateConnectionState(currentGauge: Gauge): Gauge {
         return currentGauge.copy(
             baseDevice = _gauge.value.baseDevice.copy(
@@ -451,24 +465,49 @@ internal class GaugeManager(
         }
     }
 
+    private fun handleSessionInfo(
+        info: SessionInformation,
+        minSequenceNumber: UInt,
+        maxSequenceNumber: UInt,
+    ): Gauge {
+        sessionInfoTimeout = false
+        var minSequence: UInt? = minSequenceNumber
+        var maxSequence: UInt? = maxSequenceNumber
+
+        // if the session information has changed, then we need to finish the previous log session.
+        if (sessionInfo != info) {
+            logTransferCompleteCallback()
+            uploadState = ProbeUploadState.Unavailable
+
+            minSequence = null
+            maxSequence = null
+
+            Log.i(LOG_TAG, "PM($serialNumber): finished log transfer.")
+        }
+
+        sessionInfo = info
+        return _gauge.value.copy(
+            minSequence = minSequence,
+            maxSequence = maxSequence,
+            sessionInfo = info,
+        )
+    }
+
     private fun handleStatus(status: GaugeStatus) {
         if (arbitrator.shouldUpdateDataFromStatusForNormalMode(status, sessionInfo)) {
             statusNotificationsMonitor.activity()
 
-            var updatedGauge = _gauge.value
-
-            updatedGauge = updateSequenceNumbers(
-                status.minSequenceNumber,
-                status.maxSequenceNumber,
-                updatedGauge,
+            var updatedGauge = handleSessionInfo(
+                status.sessionInformation,
+                minSequenceNumber = status.minSequenceNumber,
+                maxSequenceNumber = status.maxSequenceNumber,
             )
 
             updatedGauge = updatedGauge.copy(
-                sessionInfo = status.sessionInformation,
                 batteryPercentage = status.batteryPercentage,
                 highLowAlarmStatus = status.highLowAlarmStatus,
                 gaugeStatusFlags = status.gaugeStatusFlags,
-                temperature = if (status.gaugeStatusFlags.sensorPresent) status.temperature else null,
+                temperatureCelsius = if (status.gaugeStatusFlags.sensorPresent) status.temperature else null,
             )
 
             // redundantly check for device information
@@ -479,17 +518,6 @@ internal class GaugeManager(
             // normalModeProbeStatusFlow.
             _gauge.update { updatedGauge }
         }
-    }
-
-    private fun updateSequenceNumbers(
-        minSequenceNumber: UInt,
-        maxSequenceNumber: UInt,
-        currentGauge: Gauge,
-    ): Gauge {
-        return currentGauge.copy(
-            minSequence = minSequenceNumber,
-            maxSequence = maxSequenceNumber
-        )
     }
 
     private fun observe(guage: GaugeBleDevice) {

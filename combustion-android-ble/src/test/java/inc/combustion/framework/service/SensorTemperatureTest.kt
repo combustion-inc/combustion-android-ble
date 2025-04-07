@@ -35,13 +35,13 @@ import org.junit.runner.RunWith
 import kotlin.test.assertEquals
 
 @RunWith(JUnitParamsRunner::class)
-class TemperatureTest {
+class SensorTemperatureTest {
 
     @Test
     @Parameters(method = "tempRawDataParams")
     fun mew(givenTempValue: Double) {
-        val givenTemp = Temperature(givenTempValue)
-        assertEquals(Temperature.fromRawDataEnd(givenTemp.toRawDataEnd()), givenTemp)
+        val givenTemp = SensorTemperature(givenTempValue)
+        assertEquals(SensorTemperature.fromRawDataEnd(givenTemp.toRawDataEnd()), givenTemp)
     }
 
     fun tempRawDataParams() = arrayOf(

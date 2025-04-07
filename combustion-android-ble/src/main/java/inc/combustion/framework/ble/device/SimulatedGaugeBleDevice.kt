@@ -40,7 +40,7 @@ import inc.combustion.framework.service.FirmwareVersion
 import inc.combustion.framework.service.GaugeStatusFlags
 import inc.combustion.framework.service.HighLowAlarmStatus
 import inc.combustion.framework.service.ModelInformation
-import inc.combustion.framework.service.Temperature
+import inc.combustion.framework.service.SensorTemperature
 import inc.combustion.framework.service.dfu.DfuProductType
 import kotlinx.coroutines.launch
 import kotlin.concurrent.fixedRateTimer
@@ -76,7 +76,7 @@ internal class SimulatedGaugeBleDevice(
                 rssi = randomRSSI(),
                 isConnectable = true,
                 serialNumber = serialNumber,
-                gaugeTemperature = Temperature.withRandomData(),
+                gaugeTemperature = SensorTemperature.withRandomData(),
                 gaugeStatusFlags = GaugeStatusFlags(
                     sensorPresent = true,
                     sensorOverheating = true,
@@ -88,13 +88,13 @@ internal class SimulatedGaugeBleDevice(
                         set = false,
                         tripped = false,
                         alarming = false,
-                        temperature = Temperature(100.0),
+                        temperature = SensorTemperature(100.0),
                     ),
                     HighLowAlarmStatus.AlarmStatus(
                         set = false,
                         tripped = false,
                         alarming = false,
-                        temperature = Temperature(100.0),
+                        temperature = SensorTemperature(100.0),
                     )
                 ),
             )

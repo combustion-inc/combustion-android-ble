@@ -30,7 +30,7 @@ package inc.combustion.framework.ble.uart.meatnet
 
 import inc.combustion.framework.ble.putLittleEndianUInt32At
 
-internal class NodeReadLogsRequest(
+internal class NodeReadProbeLogsRequest(
     serialNumber: String,
     minSequence: UInt,
     maxSequence: UInt,
@@ -41,7 +41,7 @@ internal class NodeReadLogsRequest(
         minSequence,
         maxSequence
     ),
-    NodeMessageType.LOG,
+    NodeMessageType.PROBE_LOG,
     requestId,
     serialNumber,
 ) {

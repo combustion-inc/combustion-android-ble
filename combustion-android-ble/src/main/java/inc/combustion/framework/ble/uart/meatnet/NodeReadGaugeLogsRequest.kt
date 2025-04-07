@@ -42,7 +42,7 @@ internal class NodeReadGaugeLogsRequest(
         minSequence,
         maxSequence,
     ),
-    NodeMessageType.GAUGE_LOGS,
+    NodeMessageType.GAUGE_LOG,
     requestId,
     serialNumber,
 ) {

@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: ProbeTemperatureLog.kt
- * Author: https://github.com/miwright2
+ * File: GaugeTemperatureLog.kt
+ * Author:
  *
  * MIT License
  *
- * Copyright (c) 2022. Combustion Inc.
+ * Copyright (c) 2025. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,26 +25,28 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+
 package inc.combustion.framework.log
 
 import inc.combustion.framework.castToSubTypeOrNull
-import inc.combustion.framework.service.LoggedProbeDataPoint
+import inc.combustion.framework.service.LoggedGaugeDataPoint
 
 /**
- * Session log for a single probe.
+ * Session log for a single gauge.
  *
- * @property serialNumber Probe's serial number.
+ * @property serialNumber Gauge's serial number.
  */
-internal class ProbeTemperatureLog(
+internal class GaugeTemperatureLog(
     serialNumber: String,
-) : TemperatureLog<LoggedProbeDataPoint>(serialNumber) {
-    override val dataPointsBySession: List<List<LoggedProbeDataPoint>>
+) : TemperatureLog<LoggedGaugeDataPoint>(serialNumber) {
+
+    override val dataPointsBySession: List<List<LoggedGaugeDataPoint>>
         get() {
             return sessions.map { it.dataPoints }.mapNotNull {
-                it.castToSubTypeOrNull(LoggedProbeDataPoint::class)
+                it.castToSubTypeOrNull(LoggedGaugeDataPoint::class)
             }
         }
 
-    override val dataPoints: List<LoggedProbeDataPoint>
+    override val dataPoints: List<LoggedGaugeDataPoint>
         get() = dataPointsBySession.flatten()
 }

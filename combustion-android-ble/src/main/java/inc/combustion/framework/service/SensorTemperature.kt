@@ -33,12 +33,12 @@ import inc.combustion.framework.ble.shr
 import kotlin.random.Random
 
 @JvmInline
-value class Temperature(
+value class SensorTemperature(
     val value: Double,
-) {
+) : DeviceTemperature {
 
     fun toRawUShort(): UShort {
-        return (((value + 20.0) / 0.05).toInt().coerceIn(0, 0xFFFF)).toUShort()
+        return (((value + 20.0) / 0.1).toInt().coerceIn(0, 0xFFFF)).toUShort()
     }
 
     fun toRawDataEnd(): UByteArray {
@@ -55,17 +55,15 @@ value class Temperature(
 
     companion object {
         private fun UShort.temperatureFromRaw() =
-            (this.toDouble() * 0.05) - 20.0
+            (this.toDouble() * 0.1) - 20.0
 
-        internal fun fromRawDataStart(bytes: UByteArray): Temperature {
+        internal fun fromRawDataStart(bytes: UByteArray): SensorTemperature {
             require(bytes.size >= 2) { "Temperature requires 2 bytes" }
-            val rawTemperature =
-                ((bytes[0] and 0xFF.toUByte()).toUShort() shl 5) or ((bytes[1] and 0xF8.toUByte()).toUShort() shr 3)
-            val temperature = rawTemperature.temperatureFromRaw()
-            return Temperature(temperature)
+            val raw16 = bytes[0].toUShort() or (bytes[1].toUShort() shl 8)
+            return SensorTemperature(raw16.temperatureFromRaw())
         }
 
-        internal fun fromRawDataEnd(bytes: UByteArray): Temperature {
+        internal fun fromRawDataEnd(bytes: UByteArray): SensorTemperature {
             require(bytes.size >= 2) { "Temperature requires 2 bytes" }
 
             val high = (bytes[0].toInt() shr 3) and 0x1F
@@ -74,11 +72,11 @@ value class Temperature(
             val raw = ((high shl 8) or low).toUShort()
             val temperature = raw.temperatureFromRaw()
 
-            return Temperature(temperature)
+            return SensorTemperature(temperature)
         }
 
-        internal fun withRandomData(): Temperature {
-            return Temperature(Random.nextDouble(45.0, 60.0))
+        internal fun withRandomData(): SensorTemperature {
+            return SensorTemperature(Random.nextDouble(45.0, 60.0))
         }
     }
 }

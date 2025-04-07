@@ -30,14 +30,15 @@ package inc.combustion.framework.ble.uart.meatnet
 
 import inc.combustion.framework.Constants.UTF8_SERIAL_NUMBER_LENGTH
 import inc.combustion.framework.ble.getLittleEndianUInt32At
+import inc.combustion.framework.ble.uart.LogResponse
 import inc.combustion.framework.getUtf8SerialNumber
 import inc.combustion.framework.isBitSet
-import inc.combustion.framework.service.Temperature
+import inc.combustion.framework.service.SensorTemperature
 
 internal class NodeReadGaugeLogsResponse(
     override val serialNumber: String,
-    val sequenceNumber: UInt,
-    val temperature: Temperature,
+    override val sequenceNumber: UInt,
+    override val temperature: SensorTemperature,
     val isSensorPresent: Boolean,
     success: Boolean,
     requestId: UInt,
@@ -48,8 +49,8 @@ internal class NodeReadGaugeLogsResponse(
     requestId,
     responseId,
     payLoadLength,
-    NodeMessageType.GAUGE_LOGS,
-), TargetedNodeResponse {
+    NodeMessageType.GAUGE_LOG,
+), TargetedNodeResponse, LogResponse {
     override fun toString(): String {
         return "${super.toString()} $success $serialNumber $sequenceNumber"
     }
@@ -78,7 +79,7 @@ internal class NodeReadGaugeLogsResponse(
 
             val serialNumber = payload.getUtf8SerialNumber(SERIAL_NUMBER_IDX)
             val sequenceNumber = payload.getLittleEndianUInt32At(SEQ_NUMBER_IDX)
-            val temperature = Temperature.fromRawDataStart(
+            val temperature = SensorTemperature.fromRawDataStart(
                 payload.sliceArray(RAW_TEMP_IDX until (RAW_TEMP_IDX + RAW_TEMP_LENGTH))
             )
             val isSensorPresent =

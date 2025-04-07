@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
  * File: LogResponse.kt
- * Author: https://github.com/miwright2
+ * Author:
  *
  * MIT License
  *
- * Copyright (c) 2022. Combustion Inc.
+ * Copyright (c) 2025. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,45 +25,12 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+
 package inc.combustion.framework.ble.uart
 
-import inc.combustion.framework.ble.getLittleEndianUInt32At
-import inc.combustion.framework.service.PredictionLog
-import inc.combustion.framework.service.ProbeTemperatures
+import inc.combustion.framework.service.DeviceTemperature
 
-/**
- * Response message to Log Request
- *
- * @constructor
- * Constructs the response from the byte array received over BLE from the UART service.
- *
- * @param data Data received over BLE
- * @param success Base response status code.
- */
-internal class LogResponse(
-    val sequenceNumber: UInt,
-    val temperatures: ProbeTemperatures,
-    val predictionLog: PredictionLog,
-    success: Boolean,
-    payLoadLength: UInt
-) : Response(success, payLoadLength) {
-
-    companion object {
-        private const val MIN_PAYLOAD_LENGTH: UInt = 24u
-
-        fun fromData(data: UByteArray, success: Boolean, payloadLength: UInt): LogResponse? {
-            if(payloadLength < MIN_PAYLOAD_LENGTH) {
-                return null
-            }
-
-            val sequenceNumber: UInt = data.getLittleEndianUInt32At(HEADER_SIZE.toInt())
-            val rawTemperatures = data.sliceArray((HEADER_SIZE + 4u).toInt()..(HEADER_SIZE + 16u).toInt())
-            val rawPredictionLog = data.sliceArray((HEADER_SIZE + 17u).toInt()..(HEADER_SIZE + 23u).toInt())
-
-            val temperatures = ProbeTemperatures.fromRawData(rawTemperatures)
-            val predictionLog = PredictionLog.fromRawData(rawPredictionLog)
-
-            return LogResponse(sequenceNumber, temperatures, predictionLog, success, payloadLength)
-        }
-    }
+interface LogResponse {
+    val sequenceNumber: UInt
+    val temperature: DeviceTemperature
 }

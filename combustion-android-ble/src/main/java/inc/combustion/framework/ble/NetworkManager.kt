@@ -776,9 +776,7 @@ internal class NetworkManager(
             )
 
             gaugeManagers[gaugeSerialNumber] = manager
-            // TODO : LogManager?
-//            LogManager.instance.manage(owner, manager)
-//            nodeDeviceManager.subscribeToNodeFlow(manager)
+            LogManager.instance.manageGauge(owner, manager)
             true
         } else {
             false
