@@ -43,20 +43,13 @@ data class HighLowAlarmStatus(
     ) {
 
         fun toBytes(): UByteArray {
-            var flagBits = 0
+            val bytes = temperature.toRawDataEnd()
+            var flagBits = bytes[0]
             if (set) flagBits = flagBits.setBit(0)
             if (tripped) flagBits = flagBits.setBit(1)
             if (alarming) flagBits = flagBits.setBit(2)
-
-            val rawTemp = temperature.toRawUShort()
-            val tempByte0 = ((rawTemp.toInt() shr 8) and 0x1F) // only low 5 bits
-            val tempByte1 = rawTemp.toInt() and 0xFF
-
-            // Safely merge flags (bits 0–2) with top 5 temp bits (bits 3–7)
-            val combinedByte0 = ((tempByte0 shl 3) or flagBits).toUByte()
-            val byte1 = tempByte1.toUByte()
-
-            return ubyteArrayOf(combinedByte0, byte1)
+            bytes[0] = flagBits
+            return bytes
         }
     }
 

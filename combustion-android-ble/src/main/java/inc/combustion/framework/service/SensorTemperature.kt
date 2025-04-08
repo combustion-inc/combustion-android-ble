@@ -29,7 +29,6 @@
 package inc.combustion.framework.service
 
 import inc.combustion.framework.ble.shl
-import inc.combustion.framework.ble.shr
 import kotlin.random.Random
 
 @JvmInline
@@ -37,20 +36,18 @@ value class SensorTemperature(
     val value: Double,
 ) : DeviceTemperature {
 
-    fun toRawUShort(): UShort {
-        return (((value + 20.0) / 0.1).toInt().coerceIn(0, 0xFFFF)).toUShort()
-    }
-
     fun toRawDataEnd(): UByteArray {
-        val raw = this.toRawUShort() // temperature to 13-bit value
+        // Convert temperature to 13-bit raw value
+        val raw13 = ((this.value + 20.0) / 0.1).toInt().coerceIn(0, 0x1FFF)
 
-        val high = (raw.toInt() shr 8) and 0x1F       // get top 5 bits
-        val low = raw.toInt() and 0xFF                // lower 8 bits
+        // Shift left to place raw13 into bits 3–15 (leave bits 0–2 as 0)
+        val raw16 = (raw13 shl 3).toUShort()
 
-        val byte0 = (high shl 3).toUByte()            // shift into bits 3–7
-        val byte1 = low.toUByte()
+        // Split into little-endian bytes
+        val lowByte = (raw16.toUInt() and 0xFFu).toUByte()
+        val highByte = ((raw16.toUInt() shr 8) and 0xFFu).toUByte()
 
-        return ubyteArrayOf(byte0, byte1)
+        return ubyteArrayOf(lowByte, highByte)
     }
 
     companion object {
@@ -66,13 +63,13 @@ value class SensorTemperature(
         internal fun fromRawDataEnd(bytes: UByteArray): SensorTemperature {
             require(bytes.size >= 2) { "Temperature requires 2 bytes" }
 
-            val high = (bytes[0].toInt() shr 3) and 0x1F
-            val low = bytes[1].toInt()
+            // Combine bytes into a 16-bit value (little-endian)
+            val raw16: UShort = (bytes[0].toUInt() or (bytes[1].toUInt() shl 8)).toUShort()
 
-            val raw = ((high shl 8) or low).toUShort()
-            val temperature = raw.temperatureFromRaw()
+            // Shift to discard first 3 bits, and keep 13 bits
+            val raw13: UShort = ((raw16.toUInt() shr 3) and 0x1FFFu).toUShort()
 
-            return SensorTemperature(temperature)
+            return SensorTemperature(raw13.temperatureFromRaw())
         }
 
         internal fun withRandomData(): SensorTemperature {

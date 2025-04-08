@@ -43,6 +43,11 @@ fun UByte.isBitSet(position: Int): Boolean {
 
 fun Int.setBit(bit: Int): Int = this or (1 shl bit)
 
+fun UByte.setBit(bit: Int): UByte {
+    require(bit in 0..7) { "Bit index must be between 0 and 7" }
+    return (this.toInt().setBit(bit)).toUByte()
+}
+
 fun UByte.toPercentage(): Int = this.toInt()
 
 fun UByteArray.utf8StringFromRange(indices: IntRange): String =
