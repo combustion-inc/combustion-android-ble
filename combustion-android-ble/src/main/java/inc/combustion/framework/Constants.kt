@@ -30,5 +30,5 @@ package inc.combustion.framework
 
 object Constants {
     const val MIN_RSSI = Byte.MIN_VALUE.toInt()
-    const val UTF8_SERIAL_NUMBER_LENGTH = 8
+    const val UTF8_SERIAL_NUMBER_LENGTH = 10
 }
