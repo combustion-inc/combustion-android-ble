@@ -47,7 +47,6 @@ internal class NodeSetHighLowAlarmRequest(
 
     companion object {
         private const val PAYLOAD_LENGTH: UByte = 14u
-        private const val MAX_SERIAL_LENGTH = 10
 
         /**
          * Helper function that builds up payload of request.
