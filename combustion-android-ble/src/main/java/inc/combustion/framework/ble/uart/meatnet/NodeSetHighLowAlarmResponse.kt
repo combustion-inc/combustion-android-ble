@@ -28,10 +28,11 @@
 
 package inc.combustion.framework.ble.uart.meatnet
 
-internal class NodeSetHighLowAlarmResponse(success: Boolean,
-                                  requestId: UInt,
-                                  responseId: UInt,
-                                  payloadLength: UByte,
+internal class NodeSetHighLowAlarmResponse(
+    success: Boolean,
+    requestId: UInt,
+    responseId: UInt,
+    payloadLength: UByte,
 ) : NodeResponse(
     success,
     requestId,
@@ -51,12 +52,12 @@ internal class NodeSetHighLowAlarmResponse(success: Boolean,
             requestId: UInt,
             responseId: UInt,
             payloadLength: UByte,
-        ): NodeSetPowerModeResponse? {
+        ): NodeSetHighLowAlarmResponse? {
             if (payloadLength < PAYLOAD_LENGTH) {
                 return null
             }
 
-            return NodeSetPowerModeResponse(
+            return NodeSetHighLowAlarmResponse(
                 success,
                 requestId,
                 responseId,

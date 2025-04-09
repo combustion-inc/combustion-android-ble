@@ -566,8 +566,8 @@ internal class GaugeManager(
             }
             completionHandler(success)
         }
-        val requestId = makeRequestId()
 
+        val requestId = makeRequestId()
         simulatedGauge?.sendSetHighLowAlarmStatus(highLowAlarmStatus, requestId) { status, _ ->
             onCompletion(status)
         } ?: run {

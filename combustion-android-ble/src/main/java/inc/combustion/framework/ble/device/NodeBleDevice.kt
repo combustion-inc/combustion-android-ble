@@ -16,6 +16,7 @@ import inc.combustion.framework.ble.uart.meatnet.NodeReadProbeLogsRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeSetHighLowAlarmRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeSetHighLowAlarmResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.ble.uart.meatnet.TargetedNodeResponse
 import inc.combustion.framework.service.DebugSettings
@@ -41,7 +42,6 @@ internal class NodeBleDevice(
     private val genericRequestHandler = UartBleDevice.MessageCompletionHandler()
     private val readFeatureFlagsRequest = UartBleDevice.MessageCompletionHandler()
     private val setHighLowAlarmStatusHandler = UartBleDevice.MessageCompletionHandler()
-    private val readGaugeLogsHandler = UartBleDevice.MessageCompletionHandler()
 
     companion object {
         const val NODE_MESSAGE_RESPONSE_TIMEOUT_MS = 120000L
@@ -224,6 +224,14 @@ internal class NodeBleDevice(
                     message is GenericNodeRequest -> {
                         // Publish the request to the flow so it can be handled by the user.
                         NetworkManager.flowHolder.mutableGenericNodeMessageFlow.emit(message)
+                    }
+
+                    message is NodeSetHighLowAlarmResponse -> {
+                        setHighLowAlarmStatusHandler.handled(
+                            message.success,
+                            null,
+                            message.requestId
+                        )
                     }
 
                     (message is NodeRequest) && (message.serialNumber == hybridDeviceChild?.serialNumber) -> {
