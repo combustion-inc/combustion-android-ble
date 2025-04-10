@@ -35,7 +35,10 @@ import inc.combustion.framework.ble.uart.LogResponse
 import inc.combustion.framework.service.ProbeUploadState
 import inc.combustion.framework.service.SessionInformation
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 
 internal abstract class BleManager {
 
@@ -65,6 +68,13 @@ internal abstract class BleManager {
     private val jobManager = JobManager()
 
     protected abstract val arbitrator: DataLinkArbitrator<*,*>
+
+    // provides a set of all the nodes that are currently connected
+    protected val _nodeConnectionFlow = MutableSharedFlow<Set<String>>(
+        replay = 0, extraBufferCapacity = 10, BufferOverflow.DROP_OLDEST
+    )
+
+    val nodeConnectionFlow = _nodeConnectionFlow.asSharedFlow()
 
     // signals when logs are no longer being added to LogManager.
     var logTransferCompleteCallback: () -> Unit = { }
@@ -104,7 +114,7 @@ internal abstract class BleManager {
                 //   some are still providing data from other probes.
                 it.finish(
                     jobKey = serialNumber,
-                    disconnect = deviceIdsToDisconnect?.contains(it.id) ?: true
+                    disconnect = deviceIdsToDisconnect?.contains(it.id) != false
                 )
             },
             directConnectionAction = {

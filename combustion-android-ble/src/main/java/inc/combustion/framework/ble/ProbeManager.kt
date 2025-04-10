@@ -146,13 +146,6 @@ internal class ProbeManager(
             return _probe.value.serialNumber
         }
 
-    // provides a set of all the nodes that are currently connected
-    private val _nodeConnectionFlow = MutableSharedFlow<Set<String>>(
-        replay = 0, extraBufferCapacity = 10, BufferOverflow.DROP_OLDEST
-    )
-
-    val nodeConnectionFlow = _nodeConnectionFlow.asSharedFlow()
-
     // current upload state for this probe, determined by LogManager
     override var uploadState: ProbeUploadState
         get() {
@@ -525,7 +518,7 @@ internal class ProbeManager(
             completionHandler(status)
         } ?: run {
             // if there is a direct link to the probe, then use that
-            arbitrator.directLink?.sendResetFoodSafe() { status, _ ->
+            arbitrator.directLink?.sendResetFoodSafe { status, _ ->
                 completionHandler(status)
             } ?: run {
                 val nodeLinks = arbitrator.connectedNodeLinks
@@ -680,9 +673,9 @@ internal class ProbeManager(
         base.observeOutOfRange(OUT_OF_RANGE_TIMEOUT) {
             _probe.update { handleOutOfRange(it) }
         }
-        (base as? RepeatedProbeBleDevice)?.let {
-            it.observeMeatNetNodeTimeout(MEATNET_STATUS_NOTIFICATIONS_TIMEOUT_MS)
-        }
+        (base as? RepeatedProbeBleDevice)?.observeMeatNetNodeTimeout(
+            MEATNET_STATUS_NOTIFICATIONS_TIMEOUT_MS
+        )
         base.observeProbeStatusUpdates(hopCount = base.hopCount) { status, hopCount ->
             handleProbeStatus(
                 status,

@@ -162,7 +162,7 @@ internal class NetworkManager(
             }
         }
 
-        fun subscribeToNodeFlow(probeManager: ProbeManager) {
+        fun subscribeToNodeFlow(probeManager: BleManager) {
             owner.lifecycleScope.launch(
                 CoroutineName("NodeConnectionFlow")
             ) {
@@ -777,6 +777,8 @@ internal class NetworkManager(
 
             gaugeManagers[gaugeSerialNumber] = manager
             LogManager.instance.manageGauge(owner, manager)
+
+            nodeDeviceManager.subscribeToNodeFlow(manager)
             true
         } else {
             false

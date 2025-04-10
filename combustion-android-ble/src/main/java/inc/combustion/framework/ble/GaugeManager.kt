@@ -537,6 +537,9 @@ internal class GaugeManager(
 
         guage.observeConnectionState { state ->
             _gauge.update { handleConnectionState(guage, state, it) }
+            if (state == DeviceConnectionState.CONNECTED) {
+                _nodeConnectionFlow.emit(setOf(guage.nodeParent.id))
+            }
         }
 
         guage.observeOutOfRange(OUT_OF_RANGE_TIMEOUT) {
