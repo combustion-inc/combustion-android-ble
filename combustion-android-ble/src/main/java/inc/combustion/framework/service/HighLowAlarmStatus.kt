@@ -84,4 +84,10 @@ data class HighLowAlarmStatus(
         val lowBytes = lowStatus.toBytes()
         return highBytes + lowBytes
     }
+
+    val isSet: Boolean
+        get() = highStatus.set || lowStatus.set
+
+    val isTripped: Boolean
+        get() = highStatus.tripped || lowStatus.tripped
 }
