@@ -54,7 +54,7 @@ data class LoggedProbeDataPoint(
     val predictionSetPointTemperature: Double,
     val predictionValueSeconds: UInt,
     val estimatedCoreTemperature: Double
-) : Comparable<LoggedProbeDataPoint>, LoggedDataPoint {
+) : LoggedDataPoint {
 
     val virtualCoreTemperature: Double
         get() {
@@ -70,14 +70,6 @@ data class LoggedProbeDataPoint(
         get() {
             return virtualAmbientSensor.temperatureFrom(temperatures)
         }
-
-    override fun compareTo(other: LoggedProbeDataPoint): Int {
-        return when {
-            this.sequenceNumber > other.sequenceNumber -> 1
-            this.sequenceNumber < other.sequenceNumber -> -1
-            else -> 0
-        }
-    }
 
     internal companion object {
         fun fromDeviceStatus(
