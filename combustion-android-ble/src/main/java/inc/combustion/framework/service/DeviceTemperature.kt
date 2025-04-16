@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: GaugeLogResponse.kt
+ * File: DeviceTemperature.kt
  * Author:
  *
  * MIT License
@@ -26,7 +26,6 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble.uart
+package inc.combustion.framework.service
 
-class GaugeLogResponse {
-}
+interface DeviceTemperature

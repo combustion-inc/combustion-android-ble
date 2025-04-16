@@ -41,8 +41,8 @@ import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
 import inc.combustion.framework.ble.uart.ConfigureFoodSafeRequest
 import inc.combustion.framework.ble.uart.ConfigureFoodSafeResponse
-import inc.combustion.framework.ble.uart.LogRequest
-import inc.combustion.framework.ble.uart.LogResponse
+import inc.combustion.framework.ble.uart.ProbeLogRequest
+import inc.combustion.framework.ble.uart.ProbeLogResponse
 import inc.combustion.framework.ble.uart.Request
 import inc.combustion.framework.ble.uart.ResetFoodSafeRequest
 import inc.combustion.framework.ble.uart.ResetFoodSafeResponse
@@ -83,7 +83,7 @@ import kotlinx.coroutines.launch
  * obtained for this probe--after construction, this can be obtained from [advertisement]. [uart]
  * is the interface used for sending and receiving UART messages to and from the probe.
  */
-internal class ProbeBleDevice (
+internal class ProbeBleDevice(
     mac: String,
     owner: LifecycleOwner,
     private var probeAdvertisingData: ProbeAdvertisingData,
@@ -117,24 +117,59 @@ internal class ProbeBleDevice (
     override val isRepeater: Boolean = false
 
     // ble properties
-    override val rssi: Int get() { return uart.rssi }
-    override val connectionState: DeviceConnectionState get() { return uart.connectionState }
-    override val isConnected: Boolean get() { return uart.isConnected.get() }
-    override val isDisconnected: Boolean get() { return uart.isDisconnected.get() }
-    override val isInRange: Boolean get() { return uart.isInRange.get() }
-    override val isConnectable: Boolean get() { return uart.isConnectable.get() }
+    override val rssi: Int
+        get() {
+            return uart.rssi
+        }
+    override val connectionState: DeviceConnectionState
+        get() {
+            return uart.connectionState
+        }
+    override val isConnected: Boolean
+        get() {
+            return uart.isConnected.get()
+        }
+    override val isDisconnected: Boolean
+        get() {
+            return uart.isDisconnected.get()
+        }
+    override val isInRange: Boolean
+        get() {
+            return uart.isInRange.get()
+        }
+    override val isConnectable: Boolean
+        get() {
+            return uart.isConnectable.get()
+        }
 
     // device information service values from the probe
-    override val deviceInfoSerialNumber: String? get() { return uart.serialNumber }
-    override val deviceInfoFirmwareVersion: FirmwareVersion? get() { return uart.firmwareVersion }
-    override val deviceInfoHardwareRevision: String? get() { return uart.hardwareRevision }
-    override val deviceInfoModelInformation: ModelInformation? get() { return uart.modelInformation }
+    override val deviceInfoSerialNumber: String?
+        get() {
+            return uart.serialNumber
+        }
+    override val deviceInfoFirmwareVersion: FirmwareVersion?
+        get() {
+            return uart.firmwareVersion
+        }
+    override val deviceInfoHardwareRevision: String?
+        get() {
+            return uart.hardwareRevision
+        }
+    override val deviceInfoModelInformation: ModelInformation?
+        get() {
+            return uart.modelInformation
+        }
 
-    override val productType: CombustionProductType get() { return uart.productType}
+    override val productType: CombustionProductType
+        get() {
+            return uart.productType
+        }
 
     override var isInDfuMode: Boolean
         get() = uart.isInDfuMode
-        set(value) { uart.isInDfuMode = value }
+        set(value) {
+            uart.isInDfuMode = value
+        }
 
     // auto-reconnect flag
     override var shouldAutoReconnect: Boolean = false
@@ -146,7 +181,7 @@ internal class ProbeBleDevice (
 
     private var probeStatusJob: Job? = null
 
-    private var logResponseCallback: (suspend (LogResponse) -> Unit)? = null
+    private var logResponseCallback: (suspend (ProbeLogResponse) -> Unit)? = null
 
     init {
         processUartResponses()
@@ -156,7 +191,7 @@ internal class ProbeBleDevice (
     override fun connect() = uart.connect()
     override fun disconnect() = uart.disconnect()
 
-    override fun sendSessionInformationRequest(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?)  {
+    override fun sendSessionInformationRequest(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
         sessionInfoHandler.wait(uart.owner, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
         sendUartRequest(SessionInfoRequest())
     }
@@ -171,12 +206,21 @@ internal class ProbeBleDevice (
         sendUartRequest(SetIDRequest(id))
     }
 
-    override fun sendSetPrediction(setPointTemperatureC: Double, mode: ProbePredictionMode, reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
+    override fun sendSetPrediction(
+        setPointTemperatureC: Double,
+        mode: ProbePredictionMode,
+        reqId: UInt?,
+        callback: ((Boolean, Any?) -> Unit)?
+    ) {
         setPredictionHandler.wait(uart.owner, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
         sendUartRequest(SetPredictionRequest(setPointTemperatureC, mode))
     }
 
-    override fun sendConfigureFoodSafe(foodSafeData: FoodSafeData, reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
+    override fun sendConfigureFoodSafe(
+        foodSafeData: FoodSafeData,
+        reqId: UInt?,
+        callback: ((Boolean, Any?) -> Unit)?
+    ) {
         configureFoodSafeHandler.wait(uart.owner, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
         sendUartRequest(ConfigureFoodSafeRequest(foodSafeData = foodSafeData))
     }
@@ -191,14 +235,22 @@ internal class ProbeBleDevice (
         sendUartRequest(ResetProbeRequest())
     }
 
-    override fun sendSetPowerMode(powerMode: ProbePowerMode, reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
+    override fun sendSetPowerMode(
+        powerMode: ProbePowerMode,
+        reqId: UInt?,
+        callback: ((Boolean, Any?) -> Unit)?
+    ) {
         setPowerModeHandler.wait(uart.owner, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
         sendUartRequest(SetPowerModeRequest(powerMode))
     }
 
-    override fun sendLogRequest(minSequence: UInt, maxSequence: UInt, callback: (suspend (LogResponse) -> Unit)?) {
+    override fun sendLogRequest(
+        minSequence: UInt,
+        maxSequence: UInt,
+        callback: (suspend (ProbeLogResponse) -> Unit)?
+    ) {
         logResponseCallback = callback
-        sendUartRequest(LogRequest(minSequence, maxSequence))
+        sendUartRequest(ProbeLogRequest(minSequence, maxSequence))
     }
 
     override suspend fun readSerialNumber() = uart.readSerialNumber()
@@ -236,7 +288,11 @@ internal class ProbeBleDevice (
         }
     }
 
-    override fun observeAdvertisingPackets(serialNumberFilter: String, macFilter: String, callback: (suspend (advertisement: DeviceAdvertisingData) -> Unit)?) {
+    override fun observeAdvertisingPackets(
+        serialNumberFilter: String,
+        macFilter: String,
+        callback: (suspend (advertisement: DeviceAdvertisingData) -> Unit)?
+    ) {
         uart.observeAdvertisingPackets(
             jobKey = serialNumberFilter,
             filter = { advertisement ->
@@ -252,11 +308,19 @@ internal class ProbeBleDevice (
         }
     }
 
-    override fun observeRemoteRssi(callback: (suspend (rssi: Int) -> Unit)?) = uart.observeRemoteRssi(callback)
-    override fun observeOutOfRange(timeout: Long, callback: (suspend () -> Unit)?) = uart.observeOutOfRange(timeout, callback)
-    override fun observeConnectionState(callback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)?) = uart.observeConnectionState(callback)
+    override fun observeRemoteRssi(callback: (suspend (rssi: Int) -> Unit)?) =
+        uart.observeRemoteRssi(callback)
 
-    override fun observeProbeStatusUpdates(hopCount: UInt?, callback: (suspend (status: ProbeStatus, hopCount: UInt?) -> Unit)?) {
+    override fun observeOutOfRange(timeout: Long, callback: (suspend () -> Unit)?) =
+        uart.observeOutOfRange(timeout, callback)
+
+    override fun observeConnectionState(callback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)?) =
+        uart.observeConnectionState(callback)
+
+    override fun observeProbeStatusUpdates(
+        hopCount: UInt?,
+        callback: (suspend (status: ProbeStatus, hopCount: UInt?) -> Unit)?
+    ) {
         if (probeStatusJob?.isActive != true) {
             val job = uart.owner.lifecycleScope.launch(
                 CoroutineName("$serialNumber.observeProbeStatusUpdates")
@@ -290,7 +354,7 @@ internal class ProbeBleDevice (
             key = serialNumber,
             job = uart.owner.lifecycleScope.launch(
                 CoroutineName("$serialNumber.observeUartResponses")
-            ){
+            ) {
                 uart.observeUartCharacteristic { data ->
                     callback?.let {
                         it(Response.fromData(data.toUByteArray()))
@@ -316,12 +380,20 @@ internal class ProbeBleDevice (
         observeUartResponses { responses ->
             for (response in responses) {
                 when (response) {
-                    is LogResponse -> logResponseCallback?.let { it(response) }
-                    is SessionInfoResponse -> sessionInfoHandler.handled(response.success, response.sessionInformation)
+                    is ProbeLogResponse -> logResponseCallback?.let { it(response) }
+                    is SessionInfoResponse -> sessionInfoHandler.handled(
+                        response.success,
+                        response.sessionInformation
+                    )
+
                     is SetColorResponse -> setColorHandler.handled(response.success, null)
                     is SetIDResponse -> setIdHandler.handled(response.success, null)
                     is SetPredictionResponse -> setPredictionHandler.handled(response.success, null)
-                    is ConfigureFoodSafeResponse -> configureFoodSafeHandler.handled(response.success, null)
+                    is ConfigureFoodSafeResponse -> configureFoodSafeHandler.handled(
+                        response.success,
+                        null
+                    )
+
                     is ResetFoodSafeResponse -> resetFoodSafeHandler.handled(response.success, null)
                     is SetPowerModeResponse -> setPowerModeHandler.handled(response.success, null)
                     is ResetProbeResponse -> resetProbeHandler.handled(response.success, null)

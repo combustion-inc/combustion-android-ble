@@ -30,7 +30,7 @@ package inc.combustion.framework.ble.device
 
 import inc.combustion.framework.ble.ProbeStatus
 import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
-import inc.combustion.framework.ble.uart.LogResponse
+import inc.combustion.framework.ble.uart.ProbeLogResponse
 import inc.combustion.framework.service.FoodSafeData
 import inc.combustion.framework.service.ProbeColor
 import inc.combustion.framework.service.ProbeID
@@ -65,7 +65,7 @@ internal interface UartCapableProbe : UartCapableSpecializedDevice {
     fun sendSetPrediction(setPointTemperatureC: Double, mode: ProbePredictionMode, reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)? = null)
     fun sendConfigureFoodSafe(foodSafeData: FoodSafeData, reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)? = null)
     fun sendResetFoodSafe(reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)? = null)
-    fun sendLogRequest(minSequence: UInt, maxSequence: UInt, callback: (suspend (LogResponse) -> Unit)? = null)
+    fun sendLogRequest(minSequence: UInt, maxSequence: UInt, callback: (suspend (ProbeLogResponse) -> Unit)? = null)
     fun sendSetPowerMode(powerMode: ProbePowerMode, reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)?)
     fun sendResetProbe(reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)?)
 

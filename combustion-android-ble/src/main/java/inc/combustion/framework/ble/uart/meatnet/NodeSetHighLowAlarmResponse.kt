@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: Constants.kt
- * Author: Nick Helseth <nick@combustion.inc>
+ * File: NodeSetHighLowAlarmResponse.kt
+ * Author:
  *
  * MIT License
  *
- * Copyright (c) 2024. Combustion Inc.
+ * Copyright (c) 2025. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -26,9 +26,43 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework
+package inc.combustion.framework.ble.uart.meatnet
 
-object Constants {
-    const val MIN_RSSI = Byte.MIN_VALUE.toInt()
-    const val UTF8_SERIAL_NUMBER_LENGTH = 10
+internal class NodeSetHighLowAlarmResponse(
+    success: Boolean,
+    requestId: UInt,
+    responseId: UInt,
+    payloadLength: UByte,
+) : NodeResponse(
+    success,
+    requestId,
+    responseId,
+    payloadLength,
+    NodeMessageType.SET_HIGH_LOW_ALARM,
+) {
+    override fun toString(): String {
+        return "${super.toString()} $success"
+    }
+
+    companion object {
+        private const val PAYLOAD_LENGTH: UByte = 0u
+
+        fun fromData(
+            success: Boolean,
+            requestId: UInt,
+            responseId: UInt,
+            payloadLength: UByte,
+        ): NodeSetHighLowAlarmResponse? {
+            if (payloadLength < PAYLOAD_LENGTH) {
+                return null
+            }
+
+            return NodeSetHighLowAlarmResponse(
+                success,
+                requestId,
+                responseId,
+                payloadLength
+            )
+        }
+    }
 }

@@ -33,10 +33,13 @@ import inc.combustion.framework.ble.GaugeStatus
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
 import inc.combustion.framework.ble.uart.meatnet.NodeGaugeStatusRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeResponse
 import inc.combustion.framework.service.CombustionProductType
 import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.service.FirmwareVersion
+import inc.combustion.framework.service.HighLowAlarmStatus
 import inc.combustion.framework.service.ModelInformation
 import kotlinx.coroutines.launch
 
@@ -113,6 +116,7 @@ internal class GaugeBleDevice(
         }
 
     private var observeGaugeStatusCallback: (suspend (status: GaugeStatus) -> Unit)? = null
+    private var logResponseCallback: (suspend (status: NodeReadGaugeLogsResponse) -> Unit)? = null
 
     // connection management
     override fun connect() = uart.connect()
@@ -190,9 +194,7 @@ internal class GaugeBleDevice(
     }
 
     private suspend fun handleGaugeStatusRequest(message: NodeGaugeStatusRequest) {
-        GaugeStatus.fromRawData(message.data.toUByteArray())?.let { status ->
-            observeGaugeStatusCallback?.invoke(status)
-        }
+        observeGaugeStatusCallback?.invoke(message.gaugeStatus)
     }
 
     override suspend fun processNodeRequest(request: NodeRequest): Boolean {
@@ -204,5 +206,46 @@ internal class GaugeBleDevice(
 
             else -> false
         }
+    }
+
+    private suspend fun handleLogResponse(message: NodeReadGaugeLogsResponse) {
+        logResponseCallback?.invoke(message)
+    }
+
+    override suspend fun processNodeResponse(response: NodeResponse): Boolean {
+        return when (response) {
+            is NodeReadGaugeLogsResponse -> {
+                handleLogResponse(response)
+                true
+            }
+
+            else -> false
+        }
+    }
+
+    override fun sendSetHighLowAlarmStatus(
+        highLowAlarmStatus: HighLowAlarmStatus,
+        reqId: UInt?,
+        callback: ((Boolean, Any?) -> Unit)?,
+    ) {
+        nodeParent.sendSetHighLowAlarmStatus(
+            serialNumber,
+            highLowAlarmStatus,
+            reqId,
+            callback,
+        )
+    }
+
+    override fun sendGaugeLogRequest(
+        minSequence: UInt,
+        maxSequence: UInt,
+        callback: (suspend (NodeReadGaugeLogsResponse) -> Unit)?,
+    ) {
+        this.logResponseCallback = callback
+        nodeParent.sendGaugeLogRequest(
+            serialNumber,
+            minSequence,
+            maxSequence,
+        )
     }
 }

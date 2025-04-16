@@ -127,8 +127,8 @@ internal open class NodeResponse(
             }
 
             return when (messageType) {
-                NodeMessageType.LOG -> {
-                    NodeReadLogsResponse.fromData(
+                NodeMessageType.PROBE_LOG -> {
+                    NodeReadProbeLogsResponse.fromData(
                         data,
                         success,
                         requestId,
@@ -226,6 +226,25 @@ internal open class NodeResponse(
 
                 NodeMessageType.RESET_PROBE -> {
                     NodeResetProbeResponse.fromData(
+                        success,
+                        requestId,
+                        responseId,
+                        payloadLength,
+                    )
+                }
+
+                NodeMessageType.GAUGE_LOG -> {
+                    NodeReadGaugeLogsResponse.fromData(
+                        data,
+                        success,
+                        requestId,
+                        responseId,
+                        payloadLength,
+                    )
+                }
+
+                NodeMessageType.SET_HIGH_LOW_ALARM -> {
+                    NodeSetHighLowAlarmResponse.fromData(
                         success,
                         requestId,
                         responseId,

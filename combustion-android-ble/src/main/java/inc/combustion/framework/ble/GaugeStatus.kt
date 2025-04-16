@@ -28,17 +28,13 @@
 
 package inc.combustion.framework.ble
 
-import inc.combustion.framework.service.GaugeStatusFlags
-import inc.combustion.framework.service.HighLowAlarmStatus
-import inc.combustion.framework.service.ProbeMode
-import inc.combustion.framework.service.SessionInformation
-import inc.combustion.framework.service.Temperature
+import inc.combustion.framework.service.*
 import inc.combustion.framework.toPercentage
 
 data class GaugeStatus(
     val sessionInformation: SessionInformation,
     val samplePeriod: UInt,
-    val temperature: Temperature,
+    val temperature: SensorTemperature,
     val gaugeStatusFlags: GaugeStatusFlags,
     override val minSequenceNumber: UInt,
     override val maxSequenceNumber: UInt,
@@ -70,7 +66,7 @@ data class GaugeStatus(
             val sessionInformation =
                 SessionInformation(sessionID = sessionID, samplePeriod = samplePeriod)
 
-            val temperature = Temperature.fromRawDataStart(data.sliceArray(RAW_TEMP_RANGE))
+            val temperature = SensorTemperature.fromRawDataStart(data.sliceArray(RAW_TEMP_RANGE))
             val gaugeStatusFlags =
                 GaugeStatusFlags.fromRawByte(data.sliceArray(STATUS_FLAGS_RANGE)[0])
 

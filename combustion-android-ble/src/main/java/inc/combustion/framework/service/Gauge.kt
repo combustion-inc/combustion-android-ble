@@ -43,7 +43,9 @@ data class Gauge(
     val batteryPercentage: Int? = null,
     val highLowAlarmStatus: HighLowAlarmStatus = HighLowAlarmStatus.DEFAULT,
     val gaugeStatusFlags: GaugeStatusFlags = GaugeStatusFlags(),
-    val temperature: Temperature? = null,
+    val temperatureCelsius: SensorTemperature? = null,
+    val recordsDownloaded: Int = 0,
+    val logUploadPercent: UInt = 0u,
 ) : SpecializedDevice {
 
     companion object {

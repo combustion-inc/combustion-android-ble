@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: GaugeTemperatures.kt
+ * File: TemperatureTest.kt
  * Author:
  *
  * MIT License
@@ -28,37 +28,24 @@
 
 package inc.combustion.framework.service
 
-import inc.combustion.framework.ble.shl
-import inc.combustion.framework.ble.shr
-import kotlin.random.Random
+import junitparams.JUnitParamsRunner
+import junitparams.Parameters
+import org.junit.Test
+import org.junit.runner.RunWith
+import kotlin.test.assertEquals
 
-@JvmInline
-value class Temperature(
-    val value: Double,
-) {
+@RunWith(JUnitParamsRunner::class)
+class SensorTemperatureTest {
 
-    companion object {
-        private fun UShort.temperatureFromRaw() =
-            (this.toDouble() * 0.05) - 20.0
-
-        internal fun fromRawDataStart(bytes: UByteArray): Temperature {
-            require(bytes.size >= 2) { "Temperature requires 2 bytes" }
-            val rawTemperature =
-                ((bytes[0] and 0xFF.toUByte()).toUShort() shl 5) or ((bytes[1] and 0xF8.toUByte()).toUShort() shr 3)
-            val temperature = rawTemperature.temperatureFromRaw()
-            return Temperature(temperature)
-        }
-
-        internal fun fromRawDataEnd(bytes: UByteArray): Temperature {
-            require(bytes.size >= 2) { "Temperature requires 2 bytes" }
-            val rawTemperature =
-                ((bytes[0] and 0x1F.toUByte()).toUShort() shl 8) or (bytes[1].toUShort())
-            val temperature = rawTemperature.temperatureFromRaw()
-            return Temperature(temperature)
-        }
-
-        internal fun withRandomData(): Temperature {
-            return Temperature(Random.nextDouble(45.0, 60.0))
-        }
+    @Test
+    @Parameters(method = "tempRawDataParams")
+    fun mew(givenTempValue: Double) {
+        val givenTemp = SensorTemperature(givenTempValue)
+        assertEquals(SensorTemperature.fromRawDataEnd(givenTemp.toRawDataEnd()), givenTemp)
     }
+
+    fun tempRawDataParams() = arrayOf(
+        arrayOf(-20.0),
+        arrayOf(100.0)
+    )
 }

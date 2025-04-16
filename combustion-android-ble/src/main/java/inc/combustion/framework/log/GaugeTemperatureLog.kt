@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: Constants.kt
- * Author: Nick Helseth <nick@combustion.inc>
+ * File: GaugeTemperatureLog.kt
+ * Author:
  *
  * MIT License
  *
- * Copyright (c) 2024. Combustion Inc.
+ * Copyright (c) 2025. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -26,9 +26,27 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework
+package inc.combustion.framework.log
 
-object Constants {
-    const val MIN_RSSI = Byte.MIN_VALUE.toInt()
-    const val UTF8_SERIAL_NUMBER_LENGTH = 10
+import inc.combustion.framework.castToSubTypeOrNull
+import inc.combustion.framework.service.LoggedGaugeDataPoint
+
+/**
+ * Session log for a single gauge.
+ *
+ * @property serialNumber Gauge's serial number.
+ */
+internal class GaugeTemperatureLog(
+    serialNumber: String,
+) : TemperatureLog<LoggedGaugeDataPoint>(serialNumber) {
+
+    override val dataPointsBySession: List<List<LoggedGaugeDataPoint>>
+        get() {
+            return sessions.map { it.dataPoints }.mapNotNull {
+                it.castToSubTypeOrNull(LoggedGaugeDataPoint::class)
+            }
+        }
+
+    override val dataPoints: List<LoggedGaugeDataPoint>
+        get() = dataPointsBySession.flatten()
 }

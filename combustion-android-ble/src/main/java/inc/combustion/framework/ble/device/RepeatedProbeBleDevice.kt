@@ -31,7 +31,6 @@ package inc.combustion.framework.ble.device
 import android.util.Log
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.GaugeStatus
 import inc.combustion.framework.ble.IdleMonitor
 import inc.combustion.framework.ble.NOT_IMPLEMENTED
 import inc.combustion.framework.ble.ProbeStatus
@@ -39,7 +38,7 @@ import inc.combustion.framework.ble.device.UartCapableProbe.Companion.MEATNET_ME
 import inc.combustion.framework.ble.device.UartCapableProbe.Companion.makeLinkId
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
-import inc.combustion.framework.ble.uart.LogResponse
+import inc.combustion.framework.ble.uart.ProbeLogResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeConfigureFoodSafeRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeConfigureFoodSafeResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeGaugeStatusRequest
@@ -50,8 +49,8 @@ import inc.combustion.framework.ble.uart.meatnet.NodeReadFirmwareRevisionRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeReadFirmwareRevisionResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeReadHardwareRevisionRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeReadHardwareRevisionResponse
-import inc.combustion.framework.ble.uart.meatnet.NodeReadLogsRequest
-import inc.combustion.framework.ble.uart.meatnet.NodeReadLogsResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeReadProbeLogsRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeReadProbeLogsResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeReadModelInfoRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeReadModelInfoResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeReadSessionInfoRequest
@@ -106,8 +105,7 @@ internal class RepeatedProbeBleDevice(
 
     private var probeStatusCallback: (suspend (status: ProbeStatus, hopCount: UInt?) -> Unit)? =
         null
-    private var gaugeStatusCallback: (suspend (status: GaugeStatus) -> Unit)? = null
-    private var logResponseCallback: (suspend (LogResponse) -> Unit)? = null
+    private var logResponseCallback: (suspend (ProbeLogResponse) -> Unit)? = null
 
     private var _deviceInfoSerialNumber: String? = null
     private var _deviceInfoFirmwareVersion: FirmwareVersion? = null
@@ -312,10 +310,10 @@ internal class RepeatedProbeBleDevice(
     override fun sendLogRequest(
         minSequence: UInt,
         maxSequence: UInt,
-        callback: (suspend (LogResponse) -> Unit)?
+        callback: (suspend (ProbeLogResponse) -> Unit)?
     ) {
         logResponseCallback = callback
-        sendUartRequest(NodeReadLogsRequest(serialNumber, minSequence, maxSequence))
+        sendUartRequest(NodeReadProbeLogsRequest(serialNumber, minSequence, maxSequence))
     }
 
     override fun sendSetPowerMode(
@@ -561,11 +559,11 @@ internal class RepeatedProbeBleDevice(
         }
     }
 
-    private suspend fun handleLogResponse(message: NodeReadLogsResponse) {
+    private suspend fun handleLogResponse(message: NodeReadProbeLogsResponse) {
         // Send log response to callback
         logResponseCallback?.let {
             it(
-                LogResponse(
+                ProbeLogResponse(
                     message.sequenceNumber,
                     message.temperatures,
                     message.predictionLog,
@@ -599,7 +597,7 @@ internal class RepeatedProbeBleDevice(
 
                 when (message) {
                     // Repeated Responses
-                    is NodeReadLogsResponse -> {
+                    is NodeReadProbeLogsResponse -> {
                         if (message.serialNumber == serialNumber) {
                             handleLogResponse(message)
                         }

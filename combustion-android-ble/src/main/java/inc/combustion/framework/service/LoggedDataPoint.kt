@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: GaugeLogRequest.kt
+ * File: LoggedDataPoint.kt
  * Author:
  *
  * MIT License
@@ -26,7 +26,23 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble.uart
+package inc.combustion.framework.service
 
-class GaugeLogRequest {
+import java.util.Date
+
+interface LoggedDataPoint {
+    val sessionId: UInt
+    val sequenceNumber: UInt
+    val timestamp: Date
+
+    companion object {
+        fun getTimestamp(
+            sessionStart: Date?,
+            sequenceNumber: UInt,
+            samplePeriod: UInt,
+        ): Date {
+            val start = (sessionStart ?: Date()).time
+            return Date(start + (sequenceNumber * samplePeriod).toLong())
+        }
+    }
 }

@@ -69,6 +69,7 @@ import inc.combustion.framework.service.DeviceManager
 import inc.combustion.framework.service.FirmwareState
 import inc.combustion.framework.service.FoodSafeData
 import inc.combustion.framework.service.Gauge
+import inc.combustion.framework.service.HighLowAlarmStatus
 import inc.combustion.framework.service.NetworkState
 import inc.combustion.framework.service.Probe
 import inc.combustion.framework.service.ProbeColor
@@ -161,7 +162,7 @@ internal class NetworkManager(
             }
         }
 
-        fun subscribeToNodeFlow(probeManager: ProbeManager) {
+        fun subscribeToNodeFlow(probeManager: BleManager) {
             owner.lifecycleScope.launch(
                 CoroutineName("NodeConnectionFlow")
             ) {
@@ -629,6 +630,17 @@ internal class NetworkManager(
         }
     }
 
+    internal fun setHighLowAlarmStatus(
+        serialNumber: String,
+        highLowAlarmStatus: HighLowAlarmStatus,
+        completionHandler: (Boolean) -> Unit,
+    ) {
+        gaugeManagers[serialNumber]?.setHighLowAlarmStatus(highLowAlarmStatus, completionHandler)
+            ?: run {
+                completionHandler(false)
+            }
+    }
+
     internal fun sendNodeRequest(
         deviceId: String,
         request: GenericNodeRequest,
@@ -764,9 +776,9 @@ internal class NetworkManager(
             )
 
             gaugeManagers[gaugeSerialNumber] = manager
-            // TODO : LogManager?
-//            LogManager.instance.manage(owner, manager)
-//            nodeDeviceManager.subscribeToNodeFlow(manager)
+            LogManager.instance.manageGauge(owner, manager)
+
+            nodeDeviceManager.subscribeToNodeFlow(manager)
             true
         } else {
             false

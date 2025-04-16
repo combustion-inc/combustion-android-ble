@@ -29,6 +29,7 @@
 package inc.combustion.framework.ble.device
 
 import inc.combustion.framework.ble.uart.meatnet.NodeRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 
 /**
@@ -38,4 +39,5 @@ internal interface NodeHybridDevice {
     val nodeParent: NodeBleDevice
     val serialNumber: String
     suspend fun processNodeRequest(request: NodeRequest): Boolean
+    suspend fun processNodeResponse(response: NodeResponse): Boolean
 }

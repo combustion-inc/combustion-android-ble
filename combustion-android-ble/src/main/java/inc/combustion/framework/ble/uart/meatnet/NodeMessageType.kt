@@ -41,7 +41,7 @@ internal enum class NodeMessageType(override val value: UByte) : NodeMessage {
     SET_ID(0x1u),
     SET_COLOR(0x2u),
     SESSION_INFO(0x3u),
-    LOG(0x4u),
+    PROBE_LOG(0x4u),
     SET_PREDICTION(0x5u),
     READ_OVER_TEMPERATURE(0x6u),
     CONFIGURE_FOOD_SAFE(0x7u),
@@ -64,7 +64,7 @@ internal enum class NodeMessageType(override val value: UByte) : NodeMessage {
 
     GAUGE_STATUS(0x60u),
     SET_HIGH_LOW_ALARM(0x61u),
-    GAUGE_LOGS(0x62u),
+    GAUGE_LOG(0x62u),
     ;
 
     companion object {
