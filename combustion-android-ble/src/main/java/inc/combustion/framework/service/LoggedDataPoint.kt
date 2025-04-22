@@ -30,10 +30,18 @@ package inc.combustion.framework.service
 
 import java.util.Date
 
-interface LoggedDataPoint {
+interface LoggedDataPoint : Comparable<LoggedDataPoint> {
     val sessionId: UInt
     val sequenceNumber: UInt
     val timestamp: Date
+
+    override fun compareTo(other: LoggedDataPoint): Int {
+        return when {
+            this.sequenceNumber > other.sequenceNumber -> 1
+            this.sequenceNumber < other.sequenceNumber -> -1
+            else -> 0
+        }
+    }
 
     companion object {
         fun getTimestamp(

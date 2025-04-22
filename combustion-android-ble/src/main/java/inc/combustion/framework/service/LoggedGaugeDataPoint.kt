@@ -38,15 +38,8 @@ class LoggedGaugeDataPoint(
     override val sequenceNumber: UInt,
     override val timestamp: Date,
     val temperature: SensorTemperature,
-) : Comparable<LoggedGaugeDataPoint>, LoggedDataPoint {
-
-    override fun compareTo(other: LoggedGaugeDataPoint): Int {
-        return when {
-            this.sequenceNumber > other.sequenceNumber -> 1
-            this.sequenceNumber < other.sequenceNumber -> -1
-            else -> 0
-        }
-    }
+    val sensorPresent: Boolean,
+) : LoggedDataPoint {
 
     internal companion object {
         fun fromDeviceStatus(
@@ -61,6 +54,7 @@ class LoggedGaugeDataPoint(
                 status.maxSequenceNumber,
                 timestamp,
                 status.temperature,
+                status.gaugeStatusFlags.sensorPresent,
             )
         }
 
@@ -76,6 +70,7 @@ class LoggedGaugeDataPoint(
                 response.sequenceNumber,
                 timestamp,
                 response.temperature,
+                response.isSensorPresent,
             )
         }
     }

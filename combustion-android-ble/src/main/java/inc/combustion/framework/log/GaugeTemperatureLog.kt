@@ -28,7 +28,6 @@
 
 package inc.combustion.framework.log
 
-import inc.combustion.framework.castToSubTypeOrNull
 import inc.combustion.framework.service.LoggedGaugeDataPoint
 
 /**
@@ -42,8 +41,8 @@ internal class GaugeTemperatureLog(
 
     override val dataPointsBySession: List<List<LoggedGaugeDataPoint>>
         get() {
-            return sessions.map { it.dataPoints }.mapNotNull {
-                it.castToSubTypeOrNull(LoggedGaugeDataPoint::class)
+            return sessions.map { it.dataPoints }.map {
+                it.filterIsInstance<LoggedGaugeDataPoint>()
             }
         }
 

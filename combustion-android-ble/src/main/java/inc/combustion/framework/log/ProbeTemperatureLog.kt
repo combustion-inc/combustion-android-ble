@@ -27,7 +27,6 @@
  */
 package inc.combustion.framework.log
 
-import inc.combustion.framework.castToSubTypeOrNull
 import inc.combustion.framework.service.LoggedProbeDataPoint
 
 /**
@@ -40,8 +39,8 @@ internal class ProbeTemperatureLog(
 ) : TemperatureLog<LoggedProbeDataPoint>(serialNumber) {
     override val dataPointsBySession: List<List<LoggedProbeDataPoint>>
         get() {
-            return sessions.map { it.dataPoints }.mapNotNull {
-                it.castToSubTypeOrNull(LoggedProbeDataPoint::class)
+            return sessions.map { it.dataPoints }.map {
+                it.filterIsInstance<LoggedProbeDataPoint>()
             }
         }
 
