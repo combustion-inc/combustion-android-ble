@@ -168,13 +168,14 @@ class CombustionService : LifecycleService() {
                 NetworkManager.instance.bluetoothAdapterStateReceiver,
                 NetworkManager.instance.bluetoothAdapterStateIntentFilter,
             )
-            onServiceStartedCallback?.invoke()
-            onServiceStartedCallback = null
         }
 
         startForeground()
 
         serviceIsStarted.set(true)
+
+        onServiceStartedCallback?.invoke()
+        onServiceStartedCallback = null
 
         Log.d(LOG_TAG, "Combustion Android Service Started...")
 

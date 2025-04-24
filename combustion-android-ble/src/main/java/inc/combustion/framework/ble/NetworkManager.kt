@@ -37,18 +37,7 @@ import android.util.Log
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.device.DeviceID
-import inc.combustion.framework.ble.device.DeviceInformationBleDevice
-import inc.combustion.framework.ble.device.GaugeBleDevice
-import inc.combustion.framework.ble.device.LinkID
-import inc.combustion.framework.ble.device.NodeBleDevice
-import inc.combustion.framework.ble.device.NodeHybridDevice
-import inc.combustion.framework.ble.device.ProbeBleDevice
-import inc.combustion.framework.ble.device.ProximityDevice
-import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
-import inc.combustion.framework.ble.device.SimulatedGaugeBleDevice
-import inc.combustion.framework.ble.device.SimulatedProbeBleDevice
-import inc.combustion.framework.ble.device.UartCapableProbe
+import inc.combustion.framework.ble.device.*
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.DeviceScanner
 import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
@@ -58,39 +47,12 @@ import inc.combustion.framework.ble.uart.meatnet.GenericNodeResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.log.LogManager
-import inc.combustion.framework.service.CombustionProductType
-import inc.combustion.framework.service.CombustionProductType.GAUGE
-import inc.combustion.framework.service.CombustionProductType.NODE
-import inc.combustion.framework.service.CombustionProductType.PROBE
-import inc.combustion.framework.service.DeviceConnectionState
-import inc.combustion.framework.service.DeviceDiscoveryEvent
-import inc.combustion.framework.service.DeviceInProximityEvent
-import inc.combustion.framework.service.DeviceManager
-import inc.combustion.framework.service.FirmwareState
-import inc.combustion.framework.service.FoodSafeData
-import inc.combustion.framework.service.Gauge
-import inc.combustion.framework.service.HighLowAlarmStatus
-import inc.combustion.framework.service.NetworkState
-import inc.combustion.framework.service.Probe
-import inc.combustion.framework.service.ProbeColor
-import inc.combustion.framework.service.ProbeID
-import inc.combustion.framework.service.ProbePowerMode
-import inc.combustion.framework.service.ProbePredictionMode
+import inc.combustion.framework.service.*
+import inc.combustion.framework.service.CombustionProductType.*
 import inc.combustion.framework.service.utils.StateFlowMutableMap
-import kotlinx.coroutines.CoroutineName
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.*
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Semaphore
@@ -253,6 +215,7 @@ internal class NetworkManager(
         ) {
             if (!initialized.getAndSet(true)) {
                 INSTANCE = NetworkManager(owner, adapter, settings)
+                _instanceFlow.value = INSTANCE
             } else {
                 // assumption is that CombustionService will correctly manage things as part of its
                 // lifecycle, clearing this manager when the service is stopped.
@@ -272,6 +235,9 @@ internal class NetworkManager(
 
                 return INSTANCE
             }
+
+        private val _instanceFlow = MutableStateFlow<NetworkManager?>(null)
+        val instanceFlow: StateFlow<NetworkManager?> = _instanceFlow.asStateFlow()
 
         val discoveredDevicesFlow: SharedFlow<DeviceDiscoveryEvent>
             get() {
@@ -367,6 +333,11 @@ internal class NetworkManager(
             return gaugeManagers.keys.toList()
         }
 
+    internal val discoveredSpecializedDevices: List<String>
+        get() {
+            return discoveredProbes + discoveredGauges
+        }
+
     internal val discoveredNodes: List<String>
         get() {
             return nodeDeviceManager.discoveredNodes()
@@ -388,10 +359,10 @@ internal class NetworkManager(
         }
 
         // We want to remove probes that are in the discoveredProbes list but not the allowlist.
-        discoveredProbes.filterNot {
+        discoveredSpecializedDevices.filterNot {
             allowlist.contains(it)
         }.forEach { serialNumber ->
-            unlinkProbe(serialNumber)
+            unlinkDevice(serialNumber)
         }
     }
 
@@ -1060,13 +1031,14 @@ internal class NetworkManager(
         }
     }
 
-    private fun unlinkProbe(serialNumber: String) {
-        Log.i(LOG_TAG, "Unlinking probe: $serialNumber")
+    private fun unlinkDevice(serialNumber: String) {
+        Log.i(LOG_TAG, "Unlinking device: $serialNumber")
 
         // Remove the probe from the discoveredProbes list
-        val probeManager = probeManagers.remove(serialNumber)
+        val deviceManager = probeManagers.remove(serialNumber) ?: gaugeManagers.remove(serialNumber)
 
-        val deviceId = probeManager?.probe?.baseDevice?.id
+        val deviceId =
+            if (deviceManager is ProbeManager) deviceManager.probe.baseDevice.id else null
 
         // We need to figure out which repeated probe devices (nodes, essentially) are solely
         // repeating the probe that we want to disconnect from. So, for example, from the following
@@ -1130,7 +1102,7 @@ internal class NetworkManager(
         // Clean up the probe manager's resources, disconnecting only those nodes that are sole
         // providers.
         LogManager.instance.finish(serialNumber)
-        probeManager?.finish(soleProviders.map { it.repeatedProbe.id }.toSet())
+        deviceManager?.finish(soleProviders.map { it.repeatedProbe.id }.toSet())
 
         // Remove the probe from the device list--this should be the last reference to the held
         // device.
@@ -1140,7 +1112,10 @@ internal class NetworkManager(
 
         // Event out the removal
         flowHolder.mutableDiscoveredDevicesFlow.tryEmit(
-            DeviceDiscoveryEvent.ProbeRemoved(serialNumber)
+            when (deviceManager) {
+                is GaugeManager -> DeviceDiscoveryEvent.GaugeRemoved(serialNumber)
+                else -> DeviceDiscoveryEvent.ProbeRemoved(serialNumber)
+            }
         )
     }
 
