@@ -112,7 +112,7 @@ data class Probe(
     val predictionSeconds: UInt? = null,
     val rawPredictionSeconds: UInt? = null,
     val estimatedCoreCelsius: Double? = null,
-    val hopCount: UInt? = null,
+    override val hopCount: UInt? = null,
     override val statusNotificationsStale: Boolean = false,
     val predictionStale: Boolean = false,
     val overheatingSensors: List<Int> = listOf(),

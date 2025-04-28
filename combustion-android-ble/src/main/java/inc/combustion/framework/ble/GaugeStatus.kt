@@ -41,6 +41,7 @@ data class GaugeStatus(
     val batteryPercentage: Int,
     val highLowAlarmStatus: HighLowAlarmStatus,
     val isNewRecord: Boolean,
+    val hopCount: HopCount,
 ) : SpecializedDeviceStatus {
 
     override val mode: ProbeMode = ProbeMode.NORMAL
@@ -55,6 +56,7 @@ data class GaugeStatus(
         private val BATTERY_PERCENTAGE_RANGE = 17..17
         private val HIGH_LOW_ALARM_RANGE = 18..21
         private val NEW_RECORD_FLAG_RANGE = 22..22
+        private val HOP_COUNT_RANGE = 23..23
 
         val RAW_SIZE = NEW_RECORD_FLAG_RANGE.last + 1
 
@@ -82,6 +84,8 @@ data class GaugeStatus(
             val isNewRecord: Boolean =
                 data.getLittleEndianUShortAt(NEW_RECORD_FLAG_RANGE.first).toInt() == 1
 
+            val hopCount: HopCount = HopCount.fromUByte(data.sliceArray(HOP_COUNT_RANGE)[0])
+
             return GaugeStatus(
                 sessionInformation = sessionInformation,
                 samplePeriod = samplePeriod,
@@ -92,6 +96,7 @@ data class GaugeStatus(
                 batteryPercentage = batteryPercentage,
                 highLowAlarmStatus = highLowAlarmStatus,
                 isNewRecord = isNewRecord,
+                hopCount = hopCount,
             )
         }
     }
