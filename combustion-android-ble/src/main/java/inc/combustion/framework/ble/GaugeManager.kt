@@ -32,13 +32,33 @@ import android.util.Log
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.device.*
+import inc.combustion.framework.ble.device.DeviceID
+import inc.combustion.framework.ble.device.DeviceInformationBleDevice
+import inc.combustion.framework.ble.device.GaugeBleDevice
+import inc.combustion.framework.ble.device.SimulatedGaugeBleDevice
+import inc.combustion.framework.ble.device.UartCapableGauge
 import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
 import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
-import inc.combustion.framework.service.*
-import kotlinx.coroutines.*
+import inc.combustion.framework.service.DeviceConnectionState
+import inc.combustion.framework.service.DeviceManager
+import inc.combustion.framework.service.FirmwareVersion
+import inc.combustion.framework.service.Gauge
+import inc.combustion.framework.service.HighLowAlarmStatus
+import inc.combustion.framework.service.ModelInformation
+import inc.combustion.framework.service.ProbeUploadState
+import inc.combustion.framework.service.SessionInformation
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 internal class GaugeManager(
     mac: String,
@@ -254,6 +274,13 @@ internal class GaugeManager(
     fun addSimulatedGauge(simGauge: SimulatedGaugeBleDevice) {
         if (simulatedGauge != null) return
         var updatedGauge = _gauge.value
+
+        // process simulated device status notifications
+        simGauge.observeGaugeStatusUpdates() { status ->
+            // TODO : implement for simulated gauge
+            // updatedProbe = updateNormalMode(status, updatedProbe)
+            _normalModeProbeStatusFlow.emit(status)
+        }
 
         // process simulated connection state changes
         simGauge.observeConnectionState { state ->
@@ -473,7 +500,7 @@ internal class GaugeManager(
         )
     }
 
-    private fun handleStatus(status: GaugeStatus) {
+    private suspend fun handleStatus(status: GaugeStatus) {
         if (arbitrator.shouldUpdateDataFromStatusForNormalMode(status, sessionInfo)) {
             statusNotificationsMonitor.activity()
 
@@ -491,6 +518,8 @@ internal class GaugeManager(
                 newRecordFlag = status.isNewRecord,
                 hopCount = status.hopCount.hopCount,
             )
+
+            _normalModeProbeStatusFlow.emit(status)
 
             // redundantly check for device information
             fetchDeviceInfo()
