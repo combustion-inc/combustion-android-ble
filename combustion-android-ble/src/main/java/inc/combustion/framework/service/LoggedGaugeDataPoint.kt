@@ -33,7 +33,7 @@ import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
 import inc.combustion.framework.service.LoggedDataPoint.Companion.getTimestamp
 import java.util.Date
 
-class LoggedGaugeDataPoint(
+data class LoggedGaugeDataPoint(
     override val sessionId: UInt,
     override val sequenceNumber: UInt,
     override val timestamp: Date,
