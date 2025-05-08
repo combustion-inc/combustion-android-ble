@@ -108,7 +108,7 @@ internal open class NodeResponse(
             var crcData = data.drop(4).toUByteArray()
             // prevent index out of bounds or negative value
             if (crcData.size < crcDataLength) {
-                Log.w(LOG_TAG, "Invalid crc data length")
+                Log.w(LOG_TAG, "Invalid crc data length for response of messageType $messageType")
                 return null
             }
             crcData = crcData.dropLast(crcData.size - crcDataLength).toUByteArray()

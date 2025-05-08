@@ -43,6 +43,8 @@ interface LoggedDataPoint : Comparable<LoggedDataPoint> {
         }
     }
 
+    fun copyWith(sessionId: UInt = this.sessionId, sequenceNumber: UInt = this.sequenceNumber, timestamp: Date = this.timestamp) : LoggedDataPoint
+
     companion object {
         fun getTimestamp(
             sessionStart: Date?,
