@@ -43,27 +43,16 @@ import inc.combustion.framework.analytics.ExceptionEvent
 import inc.combustion.framework.ble.NetworkManager
 import inc.combustion.framework.ble.device.DeviceID
 import inc.combustion.framework.ble.dfu.DfuManager
-import inc.combustion.framework.ble.uart.meatnet.GenericNodeRequest
-import inc.combustion.framework.ble.uart.meatnet.GenericNodeResponse
-import inc.combustion.framework.ble.uart.meatnet.NodeMessage
-import inc.combustion.framework.ble.uart.meatnet.NodeMessageType
-import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
+import inc.combustion.framework.ble.uart.meatnet.*
 import inc.combustion.framework.log.LogManager
 import inc.combustion.framework.service.dfu.DfuProductType
 import inc.combustion.framework.service.dfu.DfuSystemState
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.mapNotNull
-import kotlinx.coroutines.flow.shareIn
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import java.util.*
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -101,7 +90,8 @@ class DeviceManager(
         private val initialized = AtomicBoolean(false)
         private val connected = AtomicBoolean(false)
         private val bindingCount = AtomicInteger(0)
-        private var coroutineScope: CoroutineScope? = null
+        private var defaultCoroutineScope: CoroutineScope? = null
+        private var mainCoroutineScope: CoroutineScope? = null
 
         private val connection = object : ServiceConnection {
 
@@ -163,7 +153,8 @@ class DeviceManager(
             if (!connected.get()) {
                 if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
                     Log.d(LOG_TAG, "Start Service")
-                coroutineScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+                defaultCoroutineScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+                mainCoroutineScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
                 return CombustionService.start(
                     app.applicationContext,
@@ -219,8 +210,10 @@ class DeviceManager(
             bindingCount.set(0)
             app.unbindService(connection)
 
-            coroutineScope?.cancel()
-            coroutineScope = null
+            defaultCoroutineScope?.cancel()
+            defaultCoroutineScope = null
+            mainCoroutineScope?.cancel()
+            mainCoroutineScope = null
 
             // we might run into situations where the service isn't fully started
             // by the time we reach this call since the operation is asynchronous.
@@ -278,7 +271,7 @@ class DeviceManager(
                     is DeviceDiscoveryEvent.DevicesCleared -> ProbeDiscoveredEvent.DevicesCleared
                     else -> null
                 }
-            }.shareIn(requireNotNull(coroutineScope), SharingStarted.Lazily)
+            }.shareIn(requireNotNull(defaultCoroutineScope), SharingStarted.Lazily)
         }
 
     /**
@@ -314,7 +307,7 @@ class DeviceManager(
                     is DeviceInProximityEvent.DevicesCleared -> DeviceDiscoveredEvent.DevicesCleared
                     else -> null
                 }
-            }.shareIn(requireNotNull(coroutineScope), SharingStarted.Lazily)
+            }.shareIn(requireNotNull(defaultCoroutineScope), SharingStarted.Lazily)
         }
 
     /**
@@ -396,6 +389,16 @@ class DeviceManager(
     val analyticsExceptionsFlow: SharedFlow<ExceptionEvent>
         get() = AnalyticsTracker.instance.exceptionEventFlow
 
+    private fun doWhenNetworkManagerInitialized(onInitialized: (NetworkManager) -> Unit) {
+        mainCoroutineScope?.launch {
+            NetworkManager.instanceFlow.first { it != null }?.let {
+                onInitialized(it)
+            } ?: run {
+                throw IllegalStateException("NetworkManager was not initialized")
+            }
+        }
+    }
+
     /**
      * Registers a lambda to be called by the DeviceManager upon binding with the
      * Combustion Service and completing initialization.
@@ -450,7 +453,9 @@ class DeviceManager(
      * Passing null for [allowlist] will cause all devices to be published.
      */
     fun setDeviceAllowList(allowlist: Set<String>?) {
-        NetworkManager.instance.setDeviceAllowlist(allowlist)
+        doWhenNetworkManagerInitialized {
+            it.setDeviceAllowlist(allowlist)
+        }
     }
 
     @Deprecated(
@@ -573,7 +578,9 @@ class DeviceManager(
      * @see probeFlow
      */
     fun connect(serialNumber: String) {
-        NetworkManager.instance.connect(serialNumber)
+        doWhenNetworkManagerInitialized {
+            it.connect(serialNumber)
+        }
     }
 
     /**
@@ -591,7 +598,9 @@ class DeviceManager(
      * @see probeFlow
      */
     fun disconnect(serialNumber: String) {
-        NetworkManager.instance.disconnect(serialNumber)
+        doWhenNetworkManagerInitialized {
+            it.disconnect(serialNumber)
+        }
     }
 
     /**
@@ -702,8 +711,10 @@ class DeviceManager(
      * and disposes related resources.
      */
     fun clearDevices() {
-        NetworkManager.instance.clearDevices()
-        LogManager.instance.clear()
+        doWhenNetworkManagerInitialized {
+            it.clearDevices()
+            LogManager.instance.clear()
+        }
     }
 
     /**
@@ -716,7 +727,9 @@ class DeviceManager(
      * @see probeFlow
      */
     fun addSimulatedProbe() {
-        NetworkManager.instance.addSimulatedProbe()
+        doWhenNetworkManagerInitialized {
+            it.addSimulatedProbe()
+        }
     }
 
     /**
@@ -729,7 +742,9 @@ class DeviceManager(
      * @see gaugeFlow
      */
     fun addSimulatedGauge() {
-        NetworkManager.instance.addSimulatedGauge()
+        doWhenNetworkManagerInitialized {
+            it.addSimulatedGauge()
+        }
     }
 
     /**
@@ -746,7 +761,9 @@ class DeviceManager(
         color: ProbeColor,
         completionHandler: (Boolean) -> Unit
     ) {
-        NetworkManager.instance.setProbeColor(serialNumber, color, completionHandler)
+        doWhenNetworkManagerInitialized {
+            it.setProbeColor(serialNumber, color, completionHandler)
+        }
     }
 
     /**
@@ -759,7 +776,9 @@ class DeviceManager(
      *
      */
     fun setProbeID(serialNumber: String, id: ProbeID, completionHandler: (Boolean) -> Unit) {
-        NetworkManager.instance.setProbeID(serialNumber, id, completionHandler)
+        doWhenNetworkManagerInitialized {
+            it.setProbeID(serialNumber, id, completionHandler)
+        }
     }
 
     /**
@@ -781,11 +800,13 @@ class DeviceManager(
             completionHandler(false)
             return
         }
-        NetworkManager.instance.setRemovalPrediction(
-            serialNumber,
-            removalTemperatureC,
-            completionHandler
-        )
+        doWhenNetworkManagerInitialized {
+            it.setRemovalPrediction(
+                serialNumber,
+                removalTemperatureC,
+                completionHandler
+            )
+        }
     }
 
     /**
@@ -795,7 +816,9 @@ class DeviceManager(
      * @param completionHandler completion handler to be called operation is complete
      */
     fun cancelPrediction(serialNumber: String, completionHandler: (Boolean) -> Unit) {
-        NetworkManager.instance.cancelPrediction(serialNumber, completionHandler)
+        doWhenNetworkManagerInitialized {
+            it.cancelPrediction(serialNumber, completionHandler)
+        }
     }
 
     /**
@@ -808,7 +831,9 @@ class DeviceManager(
         completionHandler: (Boolean) -> Unit
     ) {
         Log.i(LOG_TAG, "Setting food safe configuration: $foodSafeData")
-        NetworkManager.instance.configureFoodSafe(serialNumber, foodSafeData, completionHandler)
+        doWhenNetworkManagerInitialized {
+            it.configureFoodSafe(serialNumber, foodSafeData, completionHandler)
+        }
     }
 
     /**
@@ -817,7 +842,9 @@ class DeviceManager(
      */
     fun resetFoodSafe(serialNumber: String, completionHandler: (Boolean) -> Unit) {
         Log.i(LOG_TAG, "Resetting food safe configuration")
-        NetworkManager.instance.resetFoodSafe(serialNumber, completionHandler)
+        doWhenNetworkManagerInitialized {
+            it.resetFoodSafe(serialNumber, completionHandler)
+        }
     }
 
     /**
@@ -830,7 +857,9 @@ class DeviceManager(
         completionHandler: (Boolean) -> Unit
     ) {
         Log.i(LOG_TAG, "Setting probe $serialNumber's powerMode to $powerMode")
-        NetworkManager.instance.setPowerMode(serialNumber, powerMode, completionHandler)
+        doWhenNetworkManagerInitialized {
+            it.setPowerMode(serialNumber, powerMode, completionHandler)
+        }
     }
 
     /**
@@ -839,7 +868,9 @@ class DeviceManager(
      */
     fun resetProbe(serialNumber: String, completionHandler: (Boolean) -> Unit) {
         Log.i(LOG_TAG, "Resetting probe $serialNumber")
-        NetworkManager.instance.resetProbe(serialNumber, completionHandler)
+        doWhenNetworkManagerInitialized {
+            it.resetProbe(serialNumber, completionHandler)
+        }
     }
 
     /**
@@ -852,7 +883,9 @@ class DeviceManager(
         completionHandler: (Boolean) -> Unit
     ) {
         Log.i(LOG_TAG, "Setting guage $serialNumber's highLowAlarmStatus to $highLowAlarmStatus")
-        NetworkManager.instance.setHighLowAlarmStatus(serialNumber, highLowAlarmStatus, completionHandler)
+        doWhenNetworkManagerInitialized {
+            it.setHighLowAlarmStatus(serialNumber, highLowAlarmStatus, completionHandler)
+        }
     }
 
     /**
@@ -909,7 +942,9 @@ class DeviceManager(
         request: GenericNodeRequest,
         completionHandler: (Boolean, GenericNodeResponse?) -> Unit
     ) {
-        NetworkManager.instance.sendNodeRequest(deviceId, request, completionHandler)
+        doWhenNetworkManagerInitialized {
+            it.sendNodeRequest(deviceId, request, completionHandler)
+        }
     }
 
     private fun probeDataToCsv(

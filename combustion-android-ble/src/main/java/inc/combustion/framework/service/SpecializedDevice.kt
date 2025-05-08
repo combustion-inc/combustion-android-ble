@@ -40,6 +40,7 @@ interface SpecializedDevice {
     val uploadState: ProbeUploadState
     val minSequence: UInt?
     val maxSequence: UInt?
+    val hopCount: UInt?
 
     val isOverheating: Boolean
 

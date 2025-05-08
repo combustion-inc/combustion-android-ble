@@ -33,13 +33,23 @@ import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
 import inc.combustion.framework.service.LoggedDataPoint.Companion.getTimestamp
 import java.util.Date
 
-class LoggedGaugeDataPoint(
+data class LoggedGaugeDataPoint(
     override val sessionId: UInt,
     override val sequenceNumber: UInt,
     override val timestamp: Date,
     val temperature: SensorTemperature,
     val sensorPresent: Boolean,
 ) : LoggedDataPoint {
+
+    override fun copyWith(
+        sessionId: UInt,
+        sequenceNumber: UInt,
+        timestamp: Date
+    ): LoggedDataPoint = this.copy(
+        sessionId = sessionId,
+        sequenceNumber = sequenceNumber,
+        timestamp = timestamp
+    )
 
     internal companion object {
         fun fromDeviceStatus(

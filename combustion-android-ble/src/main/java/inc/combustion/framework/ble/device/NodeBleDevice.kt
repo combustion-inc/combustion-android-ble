@@ -12,7 +12,7 @@ import inc.combustion.framework.ble.uart.meatnet.GenericNodeRequest
 import inc.combustion.framework.ble.uart.meatnet.GenericNodeResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsResponse
-import inc.combustion.framework.ble.uart.meatnet.NodeReadProbeLogsRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeSetHighLowAlarmRequest
@@ -140,7 +140,7 @@ internal class NodeBleDevice(
         minSequence: UInt,
         maxSequence: UInt,
     ) {
-        sendUartRequest(NodeReadProbeLogsRequest(serialNumber, minSequence, maxSequence))
+        sendUartRequest(NodeReadGaugeLogsRequest(serialNumber, minSequence, maxSequence))
     }
 
     override fun connect() {

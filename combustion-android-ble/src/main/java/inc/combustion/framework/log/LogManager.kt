@@ -323,14 +323,18 @@ internal class LogManager {
         minSequenceNumber: UInt? = null,
         maxSequenceNumber: UInt? = null,
     ) {
-        val probeManager = probes[serialNumber] ?: return
-        val log = probeTemperatureLogs[serialNumber] ?: return
-        val sessionInfo = probeManager.sessionInfo ?: return
+        val deviceManager = probes[serialNumber] ?: gauges[serialNumber] ?: return
+        val log = when (deviceManager) {
+            is ProbeManager -> probeTemperatureLogs[serialNumber]
+            is GaugeManager -> gaugeTemperatureLogs[serialNumber]
+            else -> null
+        } ?: return
+        val sessionInfo = deviceManager.sessionInfo ?: return
 
         // prepare log for the request and determine the needed range
         val range = log.prepareForLogRequest(
-            minSequenceNumber ?: probeManager.minSequenceNumber ?: 0u,
-            maxSequenceNumber ?: probeManager.maxSequenceNumber ?: 0u,
+            minSequenceNumber ?: deviceManager.minSequenceNumber ?: 0u,
+            maxSequenceNumber ?: deviceManager.maxSequenceNumber ?: 0u,
             sessionInfo
         )
 
@@ -347,7 +351,7 @@ internal class LogManager {
         val progress = log.startLogRequest(range)
 
         // update the probe's upload state with the progress.
-        probeManager.uploadState = progress.toProbeUploadState()
+        deviceManager.uploadState = progress.toProbeUploadState()
 
         Log.i(
             LOG_TAG,
@@ -355,7 +359,7 @@ internal class LogManager {
         )
 
         // send the request to the device to start the upload
-        probeManager.sendLogRequest(range.minSeq, range.maxSeq)
+        deviceManager.sendLogRequest(range.minSeq, range.maxSeq)
 
         // processing the resulting LogRequest flow happens in the coroutine above.
     }

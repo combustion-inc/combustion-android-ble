@@ -71,6 +71,16 @@ data class LoggedProbeDataPoint(
             return virtualAmbientSensor.temperatureFrom(temperatures)
         }
 
+    override fun copyWith(
+        sessionId: UInt,
+        sequenceNumber: UInt,
+        timestamp: Date
+    ): LoggedDataPoint = this.copy(
+        sessionId = sessionId,
+        sequenceNumber = sequenceNumber,
+        timestamp = timestamp
+    )
+
     internal companion object {
         fun fromDeviceStatus(
             sessionId: UInt,

@@ -90,4 +90,7 @@ data class HighLowAlarmStatus(
 
     val isTripped: Boolean
         get() = highStatus.tripped || lowStatus.tripped
+
+    val isAlarming: Boolean
+        get() = highStatus.alarming || lowStatus.alarming
 }

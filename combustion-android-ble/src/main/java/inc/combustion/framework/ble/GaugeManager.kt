@@ -275,6 +275,13 @@ internal class GaugeManager(
         if (simulatedGauge != null) return
         var updatedGauge = _gauge.value
 
+        // process simulated device status notifications
+        simGauge.observeGaugeStatusUpdates() { status ->
+            // TODO : implement for simulated gauge
+            // updatedProbe = updateNormalMode(status, updatedProbe)
+            _normalModeProbeStatusFlow.emit(status)
+        }
+
         // process simulated connection state changes
         simGauge.observeConnectionState { state ->
             updatedGauge = handleConnectionState(simGauge, state, updatedGauge)
@@ -493,7 +500,7 @@ internal class GaugeManager(
         )
     }
 
-    private fun handleStatus(status: GaugeStatus) {
+    private suspend fun handleStatus(status: GaugeStatus) {
         if (arbitrator.shouldUpdateDataFromStatusForNormalMode(status, sessionInfo)) {
             statusNotificationsMonitor.activity()
 
@@ -508,7 +515,11 @@ internal class GaugeManager(
                 highLowAlarmStatus = status.highLowAlarmStatus,
                 gaugeStatusFlags = status.gaugeStatusFlags,
                 temperatureCelsius = if (status.gaugeStatusFlags.sensorPresent) status.temperature else null,
+                newRecordFlag = status.isNewRecord,
+                hopCount = status.hopCount.hopCount,
             )
+
+            _normalModeProbeStatusFlow.emit(status)
 
             // redundantly check for device information
             fetchDeviceInfo()
