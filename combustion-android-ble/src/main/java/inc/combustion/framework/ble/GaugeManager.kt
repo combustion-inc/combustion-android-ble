@@ -478,45 +478,33 @@ internal class GaugeManager(
         maxSequenceNumber: UInt,
     ): Gauge {
         sessionInfoTimeout = false
-        var minSequence: UInt? = minSequenceNumber
-        var maxSequence: UInt? = maxSequenceNumber
 
         // if the session information has changed, then we need to finish the previous log session.
         if (sessionInfo != info) {
             logTransferCompleteCallback()
             uploadState = ProbeUploadState.Unavailable
 
-            minSequence = null
-            maxSequence = null
-
             Log.i(LOG_TAG, "PM($serialNumber): finished log transfer.")
         }
 
         sessionInfo = info
-        return _gauge.value.copy(
-            minSequence = minSequence,
-            maxSequence = maxSequence,
+        val updatedGauge = _gauge.value.copy(
+            minSequence = minSequenceNumber,
+            maxSequence = maxSequenceNumber,
             sessionInfo = info,
         )
+        _gauge.update { updatedGauge }
+        return updatedGauge
     }
 
     private suspend fun handleStatus(status: GaugeStatus) {
         if (arbitrator.shouldUpdateDataFromStatusForNormalMode(status, sessionInfo)) {
             statusNotificationsMonitor.activity()
 
-            var updatedGauge = handleSessionInfo(
+            handleSessionInfo(
                 status.sessionInformation,
                 minSequenceNumber = status.minSequenceNumber,
                 maxSequenceNumber = status.maxSequenceNumber,
-            )
-
-            updatedGauge = updatedGauge.copy(
-                batteryPercentage = status.batteryPercentage,
-                highLowAlarmStatus = status.highLowAlarmStatus,
-                gaugeStatusFlags = status.gaugeStatusFlags,
-                temperatureCelsius = if (status.gaugeStatusFlags.sensorPresent) status.temperature else null,
-                newRecordFlag = status.isNewRecord,
-                hopCount = status.hopCount.hopCount,
             )
 
             _normalModeProbeStatusFlow.emit(status)
@@ -527,7 +515,16 @@ internal class GaugeManager(
             // These log-related items can be updated outside of this function--specifically, these
             // are updated by the LogManager when we emit a new status to the
             // normalModeProbeStatusFlow.
-            _gauge.update { updatedGauge }
+            _gauge.update {
+                _gauge.value.copy(
+                    batteryPercentage = status.batteryPercentage,
+                    highLowAlarmStatus = status.highLowAlarmStatus,
+                    gaugeStatusFlags = status.gaugeStatusFlags,
+                    temperatureCelsius = if (status.gaugeStatusFlags.sensorPresent) status.temperature else null,
+                    newRecordFlag = status.isNewRecord,
+                    hopCount = status.hopCount.hopCount,
+                )
+            }
         }
     }
 

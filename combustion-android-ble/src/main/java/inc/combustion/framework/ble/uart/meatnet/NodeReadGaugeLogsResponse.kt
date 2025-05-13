@@ -52,7 +52,7 @@ internal class NodeReadGaugeLogsResponse(
     NodeMessageType.GAUGE_LOG,
 ), TargetedNodeResponse, LogResponse {
     override fun toString(): String {
-        return "${super.toString()} $success $serialNumber $sequenceNumber"
+        return "NodeReadGaugeLogsResponse(success=$success, serialNumber=$serialNumber, sequenceNumber=$sequenceNumber, temperature=$temperature)"
     }
 
     companion object {

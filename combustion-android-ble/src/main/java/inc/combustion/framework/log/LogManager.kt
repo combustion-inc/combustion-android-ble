@@ -110,7 +110,7 @@ internal class LogManager {
                             Log.d(LOG_TAG, "Gauge Status Flow Complete")
                         }
                         .catch {
-                            Log.i(LOG_TAG, "Gauge Status Flow Catch: $it")
+                            Log.w(LOG_TAG, "Gauge Status Flow Catch: $it")
                         }
                         .collect { deviceStatus ->
                             // LogManager only operates on Normal mode status updates, only
@@ -241,7 +241,7 @@ internal class LogManager {
                             Log.d(LOG_TAG, "Log Response Flow Complete")
                         }
                         .catch {
-                            Log.i(LOG_TAG, "Log Response Flow Catch: $it")
+                            Log.w(LOG_TAG, "Log Response Flow Catch: $it")
                         }
                         .collect { response ->
 

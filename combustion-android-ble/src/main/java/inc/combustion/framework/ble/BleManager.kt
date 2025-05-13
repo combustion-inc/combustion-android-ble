@@ -85,7 +85,7 @@ internal abstract class BleManager {
 
     abstract var logUploadPercent: UInt
 
-    // current session information for the probe
+    // current session information for the device
     var sessionInfo: SessionInformation? = null
         protected set
 
