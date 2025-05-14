@@ -67,6 +67,7 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -112,10 +113,10 @@ internal class ProbeManager(
     private val predictionMonitor = IdleMonitor()
 
     // holds the current state and data for this probe
-    private val _probe = MutableStateFlow(Probe.create(serialNumber = serialNumber))
+    private val _deviceFlow = MutableStateFlow(Probe.create(serialNumber = serialNumber))
 
     // the flow that is consumed to get state and date updates
-    val probeFlow = _probe.asStateFlow()
+    override val deviceFlow: StateFlow<Probe> = _deviceFlow.asStateFlow()
 
     // the flow that produces ProbeStatus updates from MeatNet
     private val _normalModeProbeStatusFlow = MutableSharedFlow<ProbeStatus>(
@@ -143,37 +144,37 @@ internal class ProbeManager(
     // serial number of the probe that is being managed by this manager
     override val serialNumber: String
         get() {
-            return _probe.value.serialNumber
+            return _deviceFlow.value.serialNumber
         }
 
     // current upload state for this probe, determined by LogManager
     override var uploadState: ProbeUploadState
         get() {
-            return _probe.value.uploadState
+            return _deviceFlow.value.uploadState
         }
         set(value) {
-            if (value != _probe.value.uploadState) {
-                _probe.update { it.copy(uploadState = value) }
+            if (value != _deviceFlow.value.uploadState) {
+                _deviceFlow.update { it.copy(uploadState = value) }
             }
         }
 
     override var recordsDownloaded: Int
         get() {
-            return _probe.value.recordsDownloaded
+            return _deviceFlow.value.recordsDownloaded
         }
         set(value) {
-            if (value != _probe.value.recordsDownloaded) {
-                _probe.update { it.copy(recordsDownloaded = value) }
+            if (value != _deviceFlow.value.recordsDownloaded) {
+                _deviceFlow.update { it.copy(recordsDownloaded = value) }
             }
         }
 
     override var logUploadPercent: UInt
         get() {
-            return _probe.value.logUploadPercent
+            return _deviceFlow.value.logUploadPercent
         }
         set(value) {
-            if (value != _probe.value.logUploadPercent) {
-                _probe.update { it.copy(logUploadPercent = value) }
+            if (value != _deviceFlow.value.logUploadPercent) {
+                _deviceFlow.update { it.copy(logUploadPercent = value) }
             }
         }
 
@@ -288,19 +289,19 @@ internal class ProbeManager(
 
     override val device: Probe
         get() {
-            return _probe.value
+            return _deviceFlow.value
         }
 
     // current minimum sequence number for the probe
     override val minSequenceNumber: UInt?
         get() {
-            return _probe.value.minSequence
+            return _deviceFlow.value.minSequence
         }
 
     // current maximum sequence number for the probe
     override val maxSequenceNumber: UInt?
         get() {
-            return _probe.value.maxSequence
+            return _deviceFlow.value.maxSequence
         }
 
     private val predictionManager = PredictionManager(DefaultLinearizationTimerImpl())
@@ -310,7 +311,7 @@ internal class ProbeManager(
     init {
         predictionManager.setPredictionCallback { prediction, shouldUpdateStatus ->
             if (shouldUpdateStatus) {
-                _probe.update { updatePredictionInfo(prediction, it) }
+                _deviceFlow.update { updatePredictionInfo(prediction, it) }
             }
         }
 
@@ -351,7 +352,7 @@ internal class ProbeManager(
 
     fun addSimulatedProbe(simProbe: SimulatedProbeBleDevice) {
         simulatedProbe ?: run {
-            var updatedProbe = _probe.value
+            var updatedProbe = _deviceFlow.value
 
             // process simulated device status notifications
             simProbe.observeProbeStatusUpdates(hopCount = null) { status, _ ->
@@ -386,12 +387,12 @@ internal class ProbeManager(
             // process simulated rssi
             simProbe.observeRemoteRssi { rssi ->
                 updatedProbe =
-                    updatedProbe.copy(baseDevice = _probe.value.baseDevice.copy(rssi = rssi))
+                    updatedProbe.copy(baseDevice = _deviceFlow.value.baseDevice.copy(rssi = rssi))
             }
 
             simulatedProbe = simProbe
 
-            _probe.update {
+            _deviceFlow.update {
                 updatedProbe.copy(baseDevice = it.baseDevice.copy(mac = simProbe.mac))
             }
         }
@@ -540,8 +541,8 @@ internal class ProbeManager(
     fun setPowerMode(powerMode: ProbePowerMode, completionHandler: (Boolean) -> Unit) {
         val onCompletion: (Boolean) -> Unit = { success ->
             if (success) {
-                val probeVal = _probe.value
-                _probe.update {
+                val probeVal = _deviceFlow.value
+                _deviceFlow.update {
                     probeVal.copy(
                         thermometerPrefs = probeVal.thermometerPrefs?.copy(
                             powerMode = powerMode,
@@ -647,7 +648,7 @@ internal class ProbeManager(
 
     private fun observe(base: ProbeBleDeviceBase) {
         if (base is ProbeBleDevice) {
-            _probe.update {
+            _deviceFlow.update {
                 it.copy(
                     baseDevice = it.baseDevice.copy(
                         mac = base.mac,
@@ -663,11 +664,11 @@ internal class ProbeManager(
             }
         }
         base.observeConnectionState { state ->
-            _probe.update { handleConnectionState(base, state, it) }
+            _deviceFlow.update { handleConnectionState(base, state, it) }
             _nodeConnectionFlow.emit(arbitrator.connectedNodeLinks.map { it.id }.toSet())
         }
         base.observeOutOfRange(OUT_OF_RANGE_TIMEOUT) {
-            _probe.update { handleOutOfRange(it) }
+            _deviceFlow.update { handleOutOfRange(it) }
         }
         (base as? RepeatedProbeBleDevice)?.observeMeatNetNodeTimeout(
             MEATNET_STATUS_NOTIFICATIONS_TIMEOUT_MS
@@ -679,7 +680,7 @@ internal class ProbeManager(
             )
         }
         base.observeRemoteRssi { rssi ->
-            _probe.update { handleRemoteRssi(base, rssi, it) }
+            _deviceFlow.update { handleRemoteRssi(base, rssi, it) }
         }
     }
 
@@ -699,13 +700,13 @@ internal class ProbeManager(
                     val statusNotificationsStale =
                         statusNotificationsMonitor.isIdle(PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS)
                     val predictionStale =
-                        predictionMonitor.isIdle(PREDICTION_IDLE_TIMEOUT_MS) && _probe.value.isPredicting
+                        predictionMonitor.isIdle(PREDICTION_IDLE_TIMEOUT_MS) && _deviceFlow.value.isPredicting
                     val shouldUpdate =
-                        statusNotificationsStale != _probe.value.statusNotificationsStale ||
-                                predictionStale != _probe.value.predictionStale
+                        statusNotificationsStale != _deviceFlow.value.statusNotificationsStale ||
+                                predictionStale != _deviceFlow.value.predictionStale
 
                     if (shouldUpdate) {
-                        _probe.update {
+                        _deviceFlow.update {
                             it.copy(
                                 statusNotificationsStale = statusNotificationsStale,
                                 predictionStale = predictionStale
@@ -721,7 +722,7 @@ internal class ProbeManager(
         if (arbitrator.shouldUpdateDataFromStatus(status, sessionInfo, hopCount)) {
             Log.v(LOG_TAG, "ProbeManager.handleProbeStatus: $serialNumber $status")
 
-            var updatedProbe = _probe.value
+            var updatedProbe = _deviceFlow.value
 
             updatedProbe = updateLink(updatedProbe)
             updatedProbe =
@@ -747,7 +748,7 @@ internal class ProbeManager(
             // These log-related items can be updated outside of this function--specifically, these
             // are updated by the LogManager when we emit a new status to the
             // normalModeProbeStatusFlow.
-            _probe.update {
+            _deviceFlow.update {
                 updatedProbe.copy(
                     uploadState = it.uploadState,
                     recordsDownloaded = it.recordsDownloaded,
@@ -784,14 +785,14 @@ internal class ProbeManager(
         if (networkIsAdvertisingAndNotConnected) {
             val updatedProbe =
                 if (arbitrator.shouldUpdateDataFromAdvertisingPacket(device, advertisement)) {
-                    updateDataFromAdvertisement(advertisement, _probe.value)
+                    updateDataFromAdvertisement(advertisement, _deviceFlow.value)
                 } else {
-                    _probe.value
+                    _deviceFlow.value
                 }
 
-            _probe.update {
+            _deviceFlow.update {
                 updatedProbe.copy(
-                    baseDevice = _probe.value.baseDevice.copy(connectionState = state)
+                    baseDevice = _deviceFlow.value.baseDevice.copy(connectionState = state)
                 )
             }
         }
@@ -853,7 +854,7 @@ internal class ProbeManager(
         // if the arbitrated connection state is out of range, then update.
         return if (connectionState == DeviceConnectionState.OUT_OF_RANGE) {
             currentProbe.copy(
-                baseDevice = _probe.value.baseDevice.copy(
+                baseDevice = _deviceFlow.value.baseDevice.copy(
                     connectionState = DeviceConnectionState.OUT_OF_RANGE
                 )
             )
@@ -883,13 +884,13 @@ internal class ProbeManager(
 
     private fun fetchFirmwareVersion() {
         // if we don't know the probe's firmware version
-        if (_probe.value.fwVersion == null) {
+        if (_deviceFlow.value.fwVersion == null) {
 
             // if direct link, then get the probe version over that link
             arbitrator.directLink?.readFirmwareVersionAsync { fwVersion ->
                 // update firmware version on completion of read
-                _probe.update {
-                    it.copy(baseDevice = _probe.value.baseDevice.copy(fwVersion = fwVersion))
+                _deviceFlow.update {
+                    it.copy(baseDevice = _deviceFlow.value.baseDevice.copy(fwVersion = fwVersion))
                 }
             } ?: run {
 
@@ -906,7 +907,7 @@ internal class ProbeManager(
                             // on first response from network, use the value
                             if (!handled) {
                                 handled = true
-                                _probe.update {
+                                _deviceFlow.update {
                                     it.copy(baseDevice = it.baseDevice.copy(fwVersion = version))
                                 }
                             }
@@ -919,13 +920,13 @@ internal class ProbeManager(
 
     private fun fetchHardwareRevision() {
         // if we don't know the probe's hardware revision
-        if (_probe.value.hwRevision == null) {
+        if (_deviceFlow.value.hwRevision == null) {
 
             // if direct link, then get the probe revision over that link
             arbitrator.directLink?.readHardwareRevisionAsync { hwRevision ->
 
                 // update firmware version on completion of read
-                _probe.update {
+                _deviceFlow.update {
                     it.copy(baseDevice = it.baseDevice.copy(hwRevision = hwRevision))
                 }
             } ?: run {
@@ -943,7 +944,7 @@ internal class ProbeManager(
                             // on first response from network, use the value
                             if (!handled) {
                                 handled = true
-                                _probe.update {
+                                _deviceFlow.update {
                                     it.copy(
                                         baseDevice = it.baseDevice.copy(hwRevision = revision)
                                     )
@@ -958,13 +959,13 @@ internal class ProbeManager(
 
     private fun fetchModelInformation() {
         // if we don't know the probe's model information
-        if (_probe.value.modelInformation == null) {
+        if (_deviceFlow.value.modelInformation == null) {
 
             // if direct link, then get the probe model info over that link
             arbitrator.directLink?.readModelInformationAsync { info ->
 
                 // update firmware version on completion of read
-                _probe.update {
+                _deviceFlow.update {
                     it.copy(
                         baseDevice = it.baseDevice.copy(modelInformation = info)
                     )
@@ -984,7 +985,7 @@ internal class ProbeManager(
                             // on first response from network, use the value
                             if (!handled) {
                                 handled = true
-                                _probe.update {
+                                _deviceFlow.update {
                                     it.copy(baseDevice = it.baseDevice.copy(modelInformation = info))
                                 }
                             }
@@ -1001,7 +1002,7 @@ internal class ProbeManager(
                 device.sendSessionInformationRequest { status, info ->
                     if (status && info is SessionInformation) {
                         sessionInfo = info
-                        _probe.update { it.copy(sessionInfo = info) }
+                        _deviceFlow.update { it.copy(sessionInfo = info) }
                     }
                 }
             }
@@ -1059,7 +1060,7 @@ internal class ProbeManager(
         }
 
         sessionInfo = info
-        _probe.update {
+        _deviceFlow.update {
             it.copy(
                 minSequence = minSequence,
                 maxSequence = maxSequence,
@@ -1073,7 +1074,7 @@ internal class ProbeManager(
         currentProbe: Probe,
     ): Probe {
         var updatedProbe = currentProbe.copy(
-            baseDevice = _probe.value.baseDevice.copy(rssi = advertisement.rssi),
+            baseDevice = _deviceFlow.value.baseDevice.copy(rssi = advertisement.rssi),
         )
 
         updatedProbe = when (advertisement.mode) {
@@ -1130,7 +1131,7 @@ internal class ProbeManager(
 
     private fun updateConnectionState(currentProbe: Probe): Probe {
         return currentProbe.copy(
-            baseDevice = _probe.value.baseDevice.copy(
+            baseDevice = _deviceFlow.value.baseDevice.copy(
                 connectionState = connectionState,
                 fwVersion = fwVersion,
                 hwRevision = hwRevision,

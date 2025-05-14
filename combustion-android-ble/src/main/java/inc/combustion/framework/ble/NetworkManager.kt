@@ -496,7 +496,7 @@ internal class NetworkManager(
     }
 
     internal fun probeFlow(serialNumber: String): StateFlow<Probe>? {
-        return probeManagers[serialNumber]?.probeFlow
+        return probeManagers[serialNumber]?.deviceFlow
     }
 
     internal fun probeState(serialNumber: String): Probe? {
@@ -504,7 +504,7 @@ internal class NetworkManager(
     }
 
     internal fun gaugeFlow(serialNumber: String): StateFlow<Gauge>? {
-        return gaugeManagers[serialNumber]?.gaugeFlow
+        return gaugeManagers[serialNumber]?.deviceFlow
     }
 
     internal fun gaugeState(serialNumber: String): Gauge? {

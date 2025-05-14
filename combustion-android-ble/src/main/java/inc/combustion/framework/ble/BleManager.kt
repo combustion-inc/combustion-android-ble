@@ -39,6 +39,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 
 internal abstract class BleManager {
@@ -55,13 +56,15 @@ internal abstract class BleManager {
 
     abstract val device: SpecializedDevice
 
+    abstract val deviceFlow: StateFlow<SpecializedDevice>
+
     abstract val normalModeStatusFlow: SharedFlow<SpecializedDeviceStatus>
 
-    // current minimum sequence number for the probe
+    // current minimum sequence number for the device
     abstract val minSequenceNumber: UInt?
 
 
-    // current maximum sequence number for the probe
+    // current maximum sequence number for the device
     abstract val maxSequenceNumber: UInt?
 
     // the flow that is consumed to get LogResponses from MeatNet
@@ -101,7 +104,7 @@ internal abstract class BleManager {
     abstract fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt)
 
     fun finish(deviceIdsToDisconnect: Set<DeviceID>? = null) {
-        Log.d(LOG_TAG, "ProbeManager.finish($deviceIdsToDisconnect) for ($serialNumber)")
+        Log.d(LOG_TAG, "BleManager.finish($deviceIdsToDisconnect) for ($serialNumber)")
 
         arbitrator.finish(
             nodeAction = {
