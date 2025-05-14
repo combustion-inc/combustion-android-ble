@@ -86,7 +86,7 @@ internal class GaugeManager(
     // the flow that is consumed to get state and date updates
     val gaugeFlow = _gauge.asStateFlow()
 
-    val gauge: Gauge
+    override val device: Gauge
         get() {
             return _gauge.value
         }

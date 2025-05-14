@@ -286,7 +286,7 @@ internal class ProbeManager(
             }?.deviceInfoModelInformation
         }
 
-    val probe: Probe
+    override val device: Probe
         get() {
             return _probe.value
         }

@@ -34,6 +34,7 @@ import inc.combustion.framework.ble.device.DeviceID
 import inc.combustion.framework.ble.uart.LogResponse
 import inc.combustion.framework.service.ProbeUploadState
 import inc.combustion.framework.service.SessionInformation
+import inc.combustion.framework.service.SpecializedDevice
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -51,6 +52,8 @@ internal abstract class BleManager {
     }
 
     abstract val serialNumber: String
+
+    abstract val device: SpecializedDevice
 
     abstract val normalModeStatusFlow: SharedFlow<SpecializedDeviceStatus>
 

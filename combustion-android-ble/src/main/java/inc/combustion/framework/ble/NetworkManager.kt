@@ -500,7 +500,7 @@ internal class NetworkManager(
     }
 
     internal fun probeState(serialNumber: String): Probe? {
-        return probeManagers[serialNumber]?.probe
+        return probeManagers[serialNumber]?.device
     }
 
     internal fun gaugeFlow(serialNumber: String): StateFlow<Gauge>? {
@@ -508,7 +508,7 @@ internal class NetworkManager(
     }
 
     internal fun gaugeState(serialNumber: String): Gauge? {
-        return gaugeManagers[serialNumber]?.gauge
+        return gaugeManagers[serialNumber]?.device
     }
 
     internal fun deviceSmoothedRssiFlow(serialNumber: String): StateFlow<Double?>? {
@@ -1038,11 +1038,7 @@ internal class NetworkManager(
         // Remove the device from the discovere devices list
         val deviceManager = probeManagers.remove(serialNumber) ?: gaugeManagers.remove(serialNumber)
 
-        val deviceId = when (deviceManager) {
-            is ProbeManager -> deviceManager.probe.baseDevice.id
-            is GaugeManager -> deviceManager.gauge.baseDevice.id
-            else -> null
-        }
+        val deviceId = deviceManager?.device?.baseDevice?.id
 
         // We need to figure out which repeated probe devices (nodes, essentially) are solely
         // repeating the probe that we want to disconnect from. So, for example, from the following
