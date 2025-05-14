@@ -291,10 +291,6 @@ internal class ProbeManager(
             return _probe.value
         }
 
-//    // current session information for the probe
-//    var sessionInfo: SessionInformation? = null
-//        private set
-
     // current minimum sequence number for the probe
     override val minSequenceNumber: UInt?
         get() {

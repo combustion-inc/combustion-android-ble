@@ -622,10 +622,11 @@ internal class NetworkManager(
 
     @ExperimentalCoroutinesApi
     fun clearDevices() {
-        probeManagers.forEach { (_, probe) -> probe.finish() }
+        (probeManagers + gaugeManagers).forEach { (_, manager) -> manager.finish() }
         deviceInformationDevices.forEach { (_, device) -> device.finish() }
         deviceInformationDevices.clear()
         probeManagers.clear()
+        gaugeManagers.clear()
         devices.clear()
         meatNetLinks.clear()
         proximityDevices.clear()
@@ -1034,11 +1035,14 @@ internal class NetworkManager(
     private fun unlinkDevice(serialNumber: String) {
         Log.i(LOG_TAG, "Unlinking device: $serialNumber")
 
-        // Remove the probe from the discoveredProbes list
+        // Remove the device from the discovere devices list
         val deviceManager = probeManagers.remove(serialNumber) ?: gaugeManagers.remove(serialNumber)
 
-        val deviceId =
-            if (deviceManager is ProbeManager) deviceManager.probe.baseDevice.id else null
+        val deviceId = when (deviceManager) {
+            is ProbeManager -> deviceManager.probe.baseDevice.id
+            is GaugeManager -> deviceManager.gauge.baseDevice.id
+            else -> null
+        }
 
         // We need to figure out which repeated probe devices (nodes, essentially) are solely
         // repeating the probe that we want to disconnect from. So, for example, from the following
@@ -1099,12 +1103,12 @@ internal class NetworkManager(
             }
         }
 
-        // Clean up the probe manager's resources, disconnecting only those nodes that are sole
+        // Clean up the device manager's resources, disconnecting only those nodes that are sole
         // providers.
         LogManager.instance.finish(serialNumber)
         deviceManager?.finish(soleProviders.map { it.repeatedProbe.id }.toSet())
 
-        // Remove the probe from the device list--this should be the last reference to the held
+        // Remove the device from the device list--this should be the last reference to the held
         // device.
         deviceId?.let {
             devices.remove(it)
