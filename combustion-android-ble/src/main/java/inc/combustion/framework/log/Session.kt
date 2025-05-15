@@ -36,11 +36,7 @@ import inc.combustion.framework.ble.SpecializedDeviceStatus
 import inc.combustion.framework.ble.uart.LogResponse
 import inc.combustion.framework.ble.uart.ProbeLogResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
-import inc.combustion.framework.service.DebugSettings
-import inc.combustion.framework.service.LoggedDataPoint
-import inc.combustion.framework.service.LoggedGaugeDataPoint
-import inc.combustion.framework.service.LoggedProbeDataPoint
-import inc.combustion.framework.service.SessionInformation
+import inc.combustion.framework.service.*
 import java.util.Date
 import java.util.SortedMap
 
@@ -252,12 +248,6 @@ internal class Session(
             else -> NOT_IMPLEMENTED("$deviceStatus is yet know or supported")
 
         }
-//        val loggedProbeDataPoint = LoggedProbeDataPoint.fromDeviceStatus(
-//            id,
-//            deviceStatus,
-//            startTime,
-//            sessionInfo.samplePeriod
-//        )
 
         // decrement the stale log request counter
         staleLogRequestCount--

@@ -623,28 +623,54 @@ class DeviceManager(
     }
 
     /**
-     * Retrieves the current temperature log as a list of LoggedProbeDataPoint for the specified
+     * Retrieves the current temperature log as a list of LoggedDataPoint for the specified
      * serial number.
      *
-     * @param serialNumber the serial number of the probe.
-     * @return list of LoggedProbeDataPoints.
+     * @param serialNumber the serial number of the device.
+     * @return list of LoggedDataPoint.
      *
-     * @see LoggedProbeDataPoint
+     * @see LoggedDataPoint
      */
-    fun exportLogsForDevice(serialNumber: String): List<LoggedProbeDataPoint>? {
+    fun exportLogsForDevice(serialNumber: String): List<LoggedDataPoint>? {
         return LogManager.instance.exportLogsForDevice(serialNumber)
     }
 
     /**
-     * Retrieves the current temperature log as a list of [LoggedProbeDataPoint]s, organized by
-     * session, for the specified serial number.
+     * Retrieves the current temperature log as a list of LoggedProbeDataPoint for the specified
+     * serial number.
      *
      * @param serialNumber the serial number of the probe.
-     * @return list of list of LoggedProbeDataPoints.
+     * @return list of LoggedProbeDataPoint.
      *
      * @see LoggedProbeDataPoint
      */
-    fun exportLogsForDeviceBySession(serialNumber: String): List<List<LoggedProbeDataPoint>>? {
+    fun exportLogsForProbe(serialNumber: String): List<LoggedProbeDataPoint>? {
+        return LogManager.instance.exportLogsForProbe(serialNumber)
+    }
+
+    /**
+     * Retrieves the current temperature log as a list of LoggedGaugeDataPoint for the specified
+     * serial number.
+     *
+     * @param serialNumber the serial number of the gauge.
+     * @return list of LoggedGaugeDataPoint.
+     *
+     * @see LoggedGaugeDataPoint
+     */
+    fun exportLogsForGauge(serialNumber: String): List<LoggedGaugeDataPoint>? {
+        return LogManager.instance.exportLogsForGauge(serialNumber)
+    }
+
+    /**
+     * Retrieves the current temperature log as a list of [LoggedDataPoint]s, organized by
+     * session, for the specified serial number.
+     *
+     * @param serialNumber the serial number of the device.
+     * @return list of list of LoggedDataPoint.
+     *
+     * @see LoggedDataPoint
+     */
+    fun exportLogsForDeviceBySession(serialNumber: String): List<List<LoggedDataPoint>>? {
         return LogManager.instance.exportLogsForDeviceBySession(serialNumber)
     }
 
@@ -659,7 +685,7 @@ class DeviceManager(
         serialNumber: String,
         appNameAndVersion: String
     ): Pair<String, String> {
-        val logs = exportLogsForDevice(serialNumber)
+        val logs = exportLogsForProbe(serialNumber)
         val probe = probe(serialNumber)
 
         return probeDataToCsv(probe, logs, appNameAndVersion)
@@ -702,7 +728,7 @@ class DeviceManager(
     fun createLogFlowForDevice(
         serialNumber: String,
         includeHistory: Boolean = true
-    ): Flow<LoggedProbeDataPoint> {
+    ): Flow<LoggedDataPoint> {
         return LogManager.instance.createLogFlowForDevice(serialNumber, includeHistory)
     }
 
@@ -950,7 +976,7 @@ class DeviceManager(
     private fun probeDataToCsv(
         probe: Probe?,
         probeData: List<LoggedProbeDataPoint>?,
-        appNameAndVersion: String
+        appNameAndVersion: String,
     ): Pair<String, String> {
         val csvVersion = 4
         val sb = StringBuilder()
