@@ -44,8 +44,8 @@ data class LoggedGaugeDataPoint(
     override fun copyWith(
         sessionId: UInt,
         sequenceNumber: UInt,
-        timestamp: Date
-    ): LoggedDataPoint = this.copy(
+        timestamp: Date,
+    ): LoggedGaugeDataPoint = this.copy(
         sessionId = sessionId,
         sequenceNumber = sequenceNumber,
         timestamp = timestamp

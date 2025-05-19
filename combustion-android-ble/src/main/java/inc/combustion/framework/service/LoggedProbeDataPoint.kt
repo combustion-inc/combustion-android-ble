@@ -53,7 +53,7 @@ data class LoggedProbeDataPoint(
     val predictionType: ProbePredictionType,
     val predictionSetPointTemperature: Double,
     val predictionValueSeconds: UInt,
-    val estimatedCoreTemperature: Double
+    val estimatedCoreTemperature: Double,
 ) : LoggedDataPoint {
 
     val virtualCoreTemperature: Double
@@ -74,8 +74,8 @@ data class LoggedProbeDataPoint(
     override fun copyWith(
         sessionId: UInt,
         sequenceNumber: UInt,
-        timestamp: Date
-    ): LoggedDataPoint = this.copy(
+        timestamp: Date,
+    ): LoggedProbeDataPoint = this.copy(
         sessionId = sessionId,
         sequenceNumber = sequenceNumber,
         timestamp = timestamp
