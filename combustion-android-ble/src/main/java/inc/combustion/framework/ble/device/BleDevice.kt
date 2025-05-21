@@ -123,7 +123,7 @@ internal open class BleDevice(
     private val connectionMonitor = IdleMonitor()
 
     val rssi get() = remoteRssi.get()
-    var connectionState = DeviceConnectionState.OUT_OF_RANGE
+    var connectionState = DeviceConnectionState.DISCONNECTED
 
     val isConnected = AtomicBoolean(false)
     val isDisconnected = AtomicBoolean(true)

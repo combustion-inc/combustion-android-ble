@@ -36,9 +36,13 @@ import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.SingletonHolder
 import inc.combustion.framework.ble.BleManager
 import inc.combustion.framework.ble.GaugeManager
+import inc.combustion.framework.ble.GaugeStatus
 import inc.combustion.framework.ble.ProbeManager
+import inc.combustion.framework.ble.ProbeStatus
 import inc.combustion.framework.service.DebugSettings
 import inc.combustion.framework.service.DeviceManager
+import inc.combustion.framework.service.LoggedDataPoint
+import inc.combustion.framework.service.LoggedGaugeDataPoint
 import inc.combustion.framework.service.LoggedProbeDataPoint
 import inc.combustion.framework.service.ProbeMode
 import inc.combustion.framework.service.ProbeUploadState
@@ -66,6 +70,9 @@ internal class LogManager {
     private val gaugeTemperatureLogs: SortedMap<String, GaugeTemperatureLog> = sortedMapOf()
 
     companion object : SingletonHolder<LogManager>({ LogManager() })
+
+    private fun temperatureLog(serialNumber: String): TemperatureLog<out LoggedDataPoint>? =
+        probeTemperatureLogs[serialNumber] ?: gaugeTemperatureLogs[serialNumber]
 
     fun manageProbe(owner: LifecycleOwner, probeManager: ProbeManager) {
         if (probes.containsKey(probeManager.serialNumber)) return
@@ -110,7 +117,7 @@ internal class LogManager {
                             Log.d(LOG_TAG, "Gauge Status Flow Complete")
                         }
                         .catch {
-                            Log.i(LOG_TAG, "Gauge Status Flow Catch: $it")
+                            Log.w(LOG_TAG, "Gauge Status Flow Catch: $it")
                         }
                         .collect { deviceStatus ->
                             // LogManager only operates on Normal mode status updates, only
@@ -241,7 +248,7 @@ internal class LogManager {
                             Log.d(LOG_TAG, "Log Response Flow Complete")
                         }
                         .catch {
-                            Log.i(LOG_TAG, "Log Response Flow Catch: $it")
+                            Log.w(LOG_TAG, "Log Response Flow Catch: $it")
                         }
                         .collect { response ->
 
@@ -365,39 +372,47 @@ internal class LogManager {
     }
 
     fun recordsDownloaded(serialNumber: String): Int {
-        return probeTemperatureLogs[serialNumber]?.dataPointCount ?: 0
+        return temperatureLog(serialNumber)?.dataPointCount ?: 0
     }
 
     fun logStartTimestampForDevice(serialNumber: String): Date {
-        return probeTemperatureLogs[serialNumber]?.logStartTime ?: Date()
+        return temperatureLog(serialNumber)?.logStartTime ?: Date()
     }
 
-    fun exportLogsForDevice(serialNumber: String): List<LoggedProbeDataPoint>? {
+    fun exportLogsForDevice(serialNumber: String): List<LoggedDataPoint>? {
+        return temperatureLog(serialNumber)?.dataPoints
+    }
+
+    fun exportLogsForProbe(serialNumber: String): List<LoggedProbeDataPoint>? {
         return probeTemperatureLogs[serialNumber]?.dataPoints
     }
 
-    fun exportLogsForDeviceBySession(serialNumber: String): List<List<LoggedProbeDataPoint>>? {
-        return probeTemperatureLogs[serialNumber]?.dataPointsBySession
+    fun exportLogsForGauge(serialNumber: String): List<LoggedGaugeDataPoint>? {
+        return gaugeTemperatureLogs[serialNumber]?.dataPoints
+    }
+
+    fun exportLogsForDeviceBySession(serialNumber: String): List<List<LoggedDataPoint>>? {
+        return temperatureLog(serialNumber)?.dataPointsBySession
     }
 
     fun createLogFlowForDevice(
         serialNumber: String,
         includeHistory: Boolean = true
-    ): Flow<LoggedProbeDataPoint> {
+    ): Flow<LoggedDataPoint> {
         return flow {
-            probes[serialNumber]?.let { probeManager ->
+            (probes[serialNumber] ?: gauges[serialNumber])?.let { manager ->
 
                 // if the device isn't uploading or hasn't completed an upload, then
                 // return out of this flow immediately, there is nothing to do.  the device
                 // needs to connect, or the client needs to initiate the record transfer.
-                if (probeManager.uploadState !is ProbeUploadState.ProbeUploadInProgress &&
-                    probeManager.uploadState !is ProbeUploadState.ProbeUploadComplete
+                if (manager.uploadState !is ProbeUploadState.ProbeUploadInProgress &&
+                    manager.uploadState !is ProbeUploadState.ProbeUploadComplete
                 ) {
                     return@flow
                 }
 
                 // wait for the upload to complete before emitting into the flow.
-                while (probeManager.uploadState is ProbeUploadState.ProbeUploadInProgress &&
+                while (manager.uploadState is ProbeUploadState.ProbeUploadInProgress &&
                     currentCoroutineContext().isActive
                 ) {
                     delay(250)
@@ -417,27 +432,35 @@ internal class LogManager {
                     // into the flow for the consumer.  if we are no longer in an upload complete
                     // syncing state, then exit out of this flow.
                     val sessionId = log.currentSessionId
-                    probeManager.normalModeStatusFlow
-                        .collect { deviceStatus ->
-                            if (probeManager.uploadState !is ProbeUploadState.ProbeUploadInProgress &&
-                                probeManager.uploadState !is ProbeUploadState.ProbeUploadComplete
-                            ) {
-                                throw CancellationException("Upload State is Now Invalid")
-                            }
+                    manager.normalModeStatusFlow.collect { deviceStatus ->
+                        if (manager.uploadState !is ProbeUploadState.ProbeUploadInProgress &&
+                            manager.uploadState !is ProbeUploadState.ProbeUploadComplete
+                        ) {
+                            throw CancellationException("Upload State is Now Invalid")
+                        }
 
-                            // only log normal mode packets
-                            if (deviceStatus.mode != ProbeMode.NORMAL)
-                                return@collect
+                        // only log normal mode packets
+                        if (deviceStatus.mode != ProbeMode.NORMAL)
+                            return@collect
 
-                            emit(
-                                LoggedProbeDataPoint.fromDeviceStatus(
+                        emit(
+                            when (deviceStatus) {
+                                is GaugeStatus -> LoggedGaugeDataPoint.fromDeviceStatus(
+                                    deviceStatus,
+                                    log.currentSessionStartTime,
+                                )
+
+                                is ProbeStatus -> LoggedProbeDataPoint.fromDeviceStatus(
                                     sessionId,
                                     deviceStatus,
                                     log.currentSessionStartTime,
-                                    log.currentSessionSamplePeriod
+                                    log.currentSessionSamplePeriod,
                                 )
-                            )
-                        }
+
+                                else -> throw NotImplementedError("device status $deviceStatus is not implemented")
+                            }
+                        )
+                    }
                 }
             }
         }

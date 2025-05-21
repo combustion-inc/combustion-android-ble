@@ -54,6 +54,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -81,14 +82,14 @@ internal class GaugeManager(
     private val statusNotificationsMonitor = IdleMonitor()
 
     // holds the current state and data for this probe
-    private val _gauge = MutableStateFlow(Gauge.create(serialNumber = serialNumber, mac = mac))
+    private val _deviceFlow = MutableStateFlow(Gauge.create(serialNumber = serialNumber, mac = mac))
 
     // the flow that is consumed to get state and date updates
-    val gaugeFlow = _gauge.asStateFlow()
+    override val deviceFlow: StateFlow<Gauge> = _deviceFlow.asStateFlow()
 
-    val gauge: Gauge
+    override val device: Gauge
         get() {
-            return _gauge.value
+            return _deviceFlow.value
         }
 
     // the flow that produces LogResponses from MeatNet
@@ -103,30 +104,30 @@ internal class GaugeManager(
     // current upload state for this probe, determined by LogManager
     override var uploadState: ProbeUploadState
         get() {
-            return _gauge.value.uploadState
+            return _deviceFlow.value.uploadState
         }
         set(value) {
-            if (value != _gauge.value.uploadState) {
-                _gauge.update { it.copy(uploadState = value) }
+            if (value != _deviceFlow.value.uploadState) {
+                _deviceFlow.update { it.copy(uploadState = value) }
             }
         }
     override var recordsDownloaded: Int
         get() {
-            return _gauge.value.recordsDownloaded
+            return _deviceFlow.value.recordsDownloaded
         }
         set(value) {
-            if (value != _gauge.value.recordsDownloaded) {
-                _gauge.update { it.copy(recordsDownloaded = value) }
+            if (value != _deviceFlow.value.recordsDownloaded) {
+                _deviceFlow.update { it.copy(recordsDownloaded = value) }
             }
         }
 
     override var logUploadPercent: UInt
         get() {
-            return _gauge.value.logUploadPercent
+            return _deviceFlow.value.logUploadPercent
         }
         set(value) {
-            if (value != _gauge.value.logUploadPercent) {
-                _gauge.update { it.copy(logUploadPercent = value) }
+            if (value != _deviceFlow.value.logUploadPercent) {
+                _deviceFlow.update { it.copy(logUploadPercent = value) }
             }
         }
 
@@ -156,7 +157,7 @@ internal class GaugeManager(
     // serial number of the probe that is being managed by this manager
     override val serialNumber: String
         get() {
-            return _gauge.value.serialNumber
+            return _deviceFlow.value.serialNumber
         }
 
     // the flow that produces ProbeStatus updates from MeatNet
@@ -169,12 +170,12 @@ internal class GaugeManager(
 
     override val minSequenceNumber: UInt?
         get() {
-            return _gauge.value.minSequence
+            return _deviceFlow.value.minSequence
         }
 
     override val maxSequenceNumber: UInt?
         get() {
-            return _gauge.value.maxSequence
+            return _deviceFlow.value.maxSequence
         }
 
     // tracks if we've run into a message timeout condition getting
@@ -203,10 +204,10 @@ internal class GaugeManager(
                     val statusNotificationsStale =
                         statusNotificationsMonitor.isIdle(GAUGE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS)
                     val shouldUpdate =
-                        statusNotificationsStale != _gauge.value.statusNotificationsStale
+                        statusNotificationsStale != _deviceFlow.value.statusNotificationsStale
 
                     if (shouldUpdate) {
-                        _gauge.update {
+                        _deviceFlow.update {
                             it.copy(
                                 statusNotificationsStale = statusNotificationsStale,
                             )
@@ -245,7 +246,7 @@ internal class GaugeManager(
         currentGauge: Gauge,
     ): Gauge {
         val updatedGauge = currentGauge.copy(
-            baseDevice = _gauge.value.baseDevice.copy(rssi = advertisement.rssi),
+            baseDevice = _deviceFlow.value.baseDevice.copy(rssi = advertisement.rssi),
         )
 
         return updatedGauge.copy(
@@ -273,7 +274,7 @@ internal class GaugeManager(
 
     fun addSimulatedGauge(simGauge: SimulatedGaugeBleDevice) {
         if (simulatedGauge != null) return
-        var updatedGauge = _gauge.value
+        var updatedGauge = _deviceFlow.value
 
         // process simulated device status notifications
         simGauge.observeGaugeStatusUpdates() { status ->
@@ -304,7 +305,7 @@ internal class GaugeManager(
 
         simulatedGauge = simGauge
 
-        _gauge.update {
+        _deviceFlow.update {
             updatedGauge.copy(baseDevice = it.baseDevice.copy(mac = simGauge.mac))
         }
     }
@@ -321,14 +322,14 @@ internal class GaugeManager(
         if (networkIsAdvertisingAndNotConnected) {
             val updatedDevice =
                 if (arbitrator.shouldUpdateDataFromAdvertisingPacket(device, advertisement)) {
-                    updateDataFromAdvertisement(advertisement, _gauge.value)
+                    updateDataFromAdvertisement(advertisement, _deviceFlow.value)
                 } else {
-                    _gauge.value
+                    _deviceFlow.value
                 }
 
-            _gauge.update {
+            _deviceFlow.update {
                 updatedDevice.copy(
-                    baseDevice = _gauge.value.baseDevice.copy(connectionState = state),
+                    baseDevice = _deviceFlow.value.baseDevice.copy(connectionState = state),
                 )
             }
         }
@@ -392,13 +393,13 @@ internal class GaugeManager(
 
     private fun fetchFirmwareVersion() {
         // if we don't know the probe's firmware version
-        if (_gauge.value.fwVersion == null) {
+        if (_deviceFlow.value.fwVersion == null) {
 
             // if direct link, then get the probe version over that link
             arbitrator.directLink?.readFirmwareVersionAsync { fwVersion ->
                 // update firmware version on completion of read
-                _gauge.update {
-                    it.copy(baseDevice = _gauge.value.baseDevice.copy(fwVersion = fwVersion))
+                _deviceFlow.update {
+                    it.copy(baseDevice = _deviceFlow.value.baseDevice.copy(fwVersion = fwVersion))
                 }
             }
         }
@@ -406,13 +407,13 @@ internal class GaugeManager(
 
     private fun fetchHardwareRevision() {
         // if we don't know the probe's hardware revision
-        if (_gauge.value.hwRevision == null) {
+        if (_deviceFlow.value.hwRevision == null) {
 
             // if direct link, then get the probe revision over that link
             arbitrator.directLink?.readHardwareRevisionAsync { hwRevision ->
 
                 // update firmware version on completion of read
-                _gauge.update {
+                _deviceFlow.update {
                     it.copy(baseDevice = it.baseDevice.copy(hwRevision = hwRevision))
                 }
             }
@@ -421,13 +422,13 @@ internal class GaugeManager(
 
     private fun fetchModelInformation() {
         // if we don't know the probe's model information
-        if (_gauge.value.modelInformation == null) {
+        if (_deviceFlow.value.modelInformation == null) {
 
             // if direct link, then get the probe model info over that link
             arbitrator.directLink?.readModelInformationAsync { info ->
 
                 // update firmware version on completion of read
-                _gauge.update {
+                _deviceFlow.update {
                     it.copy(
                         baseDevice = it.baseDevice.copy(modelInformation = info)
                     )
@@ -438,7 +439,7 @@ internal class GaugeManager(
 
     private fun updateConnectionState(currentGauge: Gauge): Gauge {
         return currentGauge.copy(
-            baseDevice = _gauge.value.baseDevice.copy(
+            baseDevice = _deviceFlow.value.baseDevice.copy(
                 connectionState = connectionState,
                 fwVersion = fwVersion,
                 hwRevision = hwRevision,
@@ -451,7 +452,7 @@ internal class GaugeManager(
         // if the arbitrated connection state is out of range, then update.
         return if (connectionState == DeviceConnectionState.OUT_OF_RANGE) {
             currentGauge.copy(
-                baseDevice = _gauge.value.baseDevice.copy(
+                baseDevice = _deviceFlow.value.baseDevice.copy(
                     connectionState = DeviceConnectionState.OUT_OF_RANGE
                 )
             )
@@ -478,45 +479,33 @@ internal class GaugeManager(
         maxSequenceNumber: UInt,
     ): Gauge {
         sessionInfoTimeout = false
-        var minSequence: UInt? = minSequenceNumber
-        var maxSequence: UInt? = maxSequenceNumber
 
         // if the session information has changed, then we need to finish the previous log session.
         if (sessionInfo != info) {
             logTransferCompleteCallback()
             uploadState = ProbeUploadState.Unavailable
 
-            minSequence = null
-            maxSequence = null
-
             Log.i(LOG_TAG, "PM($serialNumber): finished log transfer.")
         }
 
         sessionInfo = info
-        return _gauge.value.copy(
-            minSequence = minSequence,
-            maxSequence = maxSequence,
+        val updatedGauge = _deviceFlow.value.copy(
+            minSequence = minSequenceNumber,
+            maxSequence = maxSequenceNumber,
             sessionInfo = info,
         )
+        _deviceFlow.update { updatedGauge }
+        return updatedGauge
     }
 
     private suspend fun handleStatus(status: GaugeStatus) {
         if (arbitrator.shouldUpdateDataFromStatusForNormalMode(status, sessionInfo)) {
             statusNotificationsMonitor.activity()
 
-            var updatedGauge = handleSessionInfo(
+            handleSessionInfo(
                 status.sessionInformation,
                 minSequenceNumber = status.minSequenceNumber,
                 maxSequenceNumber = status.maxSequenceNumber,
-            )
-
-            updatedGauge = updatedGauge.copy(
-                batteryPercentage = status.batteryPercentage,
-                highLowAlarmStatus = status.highLowAlarmStatus,
-                gaugeStatusFlags = status.gaugeStatusFlags,
-                temperatureCelsius = if (status.gaugeStatusFlags.sensorPresent) status.temperature else null,
-                newRecordFlag = status.isNewRecord,
-                hopCount = status.hopCount.hopCount,
             )
 
             _normalModeProbeStatusFlow.emit(status)
@@ -527,12 +516,21 @@ internal class GaugeManager(
             // These log-related items can be updated outside of this function--specifically, these
             // are updated by the LogManager when we emit a new status to the
             // normalModeProbeStatusFlow.
-            _gauge.update { updatedGauge }
+            _deviceFlow.update {
+                _deviceFlow.value.copy(
+                    batteryPercentage = status.batteryPercentage,
+                    highLowAlarmStatus = status.highLowAlarmStatus,
+                    gaugeStatusFlags = status.gaugeStatusFlags,
+                    temperatureCelsius = if (status.gaugeStatusFlags.sensorPresent) status.temperature else null,
+                    newRecordFlag = status.isNewRecord,
+                    hopCount = status.hopCount.hopCount,
+                )
+            }
         }
     }
 
     private fun observe(guage: GaugeBleDevice) {
-        _gauge.update {
+        _deviceFlow.update {
             it.copy(
                 baseDevice = it.baseDevice.copy(
                     mac = guage.mac,
@@ -547,14 +545,14 @@ internal class GaugeManager(
         }
 
         guage.observeConnectionState { state ->
-            _gauge.update { handleConnectionState(guage, state, it) }
+            _deviceFlow.update { handleConnectionState(guage, state, it) }
             if (state == DeviceConnectionState.CONNECTED) {
                 _nodeConnectionFlow.emit(setOf(guage.nodeParent.id))
             }
         }
 
         guage.observeOutOfRange(OUT_OF_RANGE_TIMEOUT) {
-            _gauge.update { handleOutOfRange(it) }
+            _deviceFlow.update { handleOutOfRange(it) }
         }
 
         guage.observeGaugeStatusUpdates { status ->
@@ -562,7 +560,7 @@ internal class GaugeManager(
         }
 
         guage.observeRemoteRssi { rssi ->
-            _gauge.update { handleRemoteRssi(guage, rssi, it) }
+            _deviceFlow.update { handleRemoteRssi(guage, rssi, it) }
         }
     }
 
@@ -572,8 +570,8 @@ internal class GaugeManager(
     ) {
         val onCompletion: (Boolean) -> Unit = { success ->
             if (success) {
-                _gauge.update {
-                    _gauge.value.copy(
+                _deviceFlow.update {
+                    _deviceFlow.value.copy(
                         highLowAlarmStatus = highLowAlarmStatus,
                     )
                 }
