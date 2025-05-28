@@ -29,6 +29,7 @@
 package inc.combustion.framework.service
 
 import inc.combustion.framework.ble.shl
+import kotlin.math.roundToInt
 import kotlin.random.Random
 
 @JvmInline
@@ -38,7 +39,7 @@ value class SensorTemperature(
 
     fun toRawDataEnd(): UByteArray {
         // Convert temperature to 13-bit raw value
-        val raw13 = ((this.value + 20.0) / 0.1).toInt().coerceIn(0, 0x1FFF)
+        val raw13 = ((this.value + 20.0) / 0.1).roundToInt().coerceIn(0, 0x1FFF)
 
         // Shift left to place raw13 into bits 3–15 (leave bits 0–2 as 0)
         val raw16 = (raw13 shl 3).toUShort()
