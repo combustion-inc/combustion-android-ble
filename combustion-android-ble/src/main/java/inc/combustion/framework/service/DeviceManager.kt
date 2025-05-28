@@ -254,7 +254,7 @@ class DeviceManager(
         }
 
     @Deprecated(
-        message = "discoveredProbesFlow is deprecated, use discoveredDevicesFlow instead.",
+        message = "discoveredProbesFlow is deprecated, use deviceInProximityFlow instead.",
         replaceWith = ReplaceWith("discoveredDevicesFlow"),
         level = DeprecationLevel.WARNING
     )
