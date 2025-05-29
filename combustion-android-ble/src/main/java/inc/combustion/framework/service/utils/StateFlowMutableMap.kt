@@ -109,4 +109,8 @@ class StateFlowMutableMap<K, V>(initialMap: Map<K, V> = emptyMap()) {
     fun toMap(): Map<K, V> = this.mutableMap.toMap()
 
     fun asStateFlow(): StateFlow<Map<K, V>> = stateFlow
+
+    override fun toString(): String {
+        return mutableMap.toString()
+    }
 }

@@ -2,7 +2,7 @@ package inc.combustion.framework.ble.uart.meatnet
 
 open class GenericNodeRequest(
     val outgoingPayload: UByteArray,
-    var nodeSerialNumber: String,
+    val nodeSerialNumber: String,
     val requestId: UInt?,
     payloadLength: UByte,
     messageId: NodeMessage,
@@ -28,7 +28,7 @@ open class GenericNodeRequest(
         return "${nodeRequest} SerialNumber: $nodeSerialNumber"
     }
 
-    private val nodeRequest :  NodeRequest = NodeRequest(outgoingPayload, messageId)
+    private val nodeRequest :  NodeRequest = NodeRequest(outgoingPayload, messageId, serialNumber = nodeSerialNumber)
 
     internal fun toNodeRequest() : NodeRequest {
         return nodeRequest

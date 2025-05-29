@@ -37,12 +37,12 @@ import inc.combustion.framework.service.*
  * @property temperatures probe's current temperature values.
  */
 internal data class ProbeStatus(
-    val minSequenceNumber: UInt,
-    val maxSequenceNumber: UInt,
+    override val minSequenceNumber: UInt,
+    override val maxSequenceNumber: UInt,
     val temperatures: ProbeTemperatures,
     val id: ProbeID,
     val color: ProbeColor,
-    val mode: ProbeMode,
+    override val mode: ProbeMode,
     val batteryStatus: ProbeBatteryStatus,
     val virtualSensors: ProbeVirtualSensors,
     val predictionStatus: PredictionStatus,
@@ -50,7 +50,7 @@ internal data class ProbeStatus(
     val foodSafeStatus: FoodSafeStatus?,
     val overheatingSensors: OverheatingSensors,
     val thermometerPrefs: ThermometerPreferences,
-) {
+) : SpecializedDeviceStatus {
     val virtualCoreTemperature: Double
         get() {
             return virtualSensors.virtualCoreSensor.temperatureFrom(temperatures)

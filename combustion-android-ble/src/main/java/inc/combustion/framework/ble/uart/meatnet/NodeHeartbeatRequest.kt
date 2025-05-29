@@ -33,8 +33,8 @@ import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.getLittleEndianUInt32At
 import inc.combustion.framework.service.CombustionProductType
 
-internal class NodeHeartbeatRequest (
-    val serialNumber: String,
+internal class NodeHeartbeatRequest(
+    serialNumber: String,
     val macAddress: String,
     val productType: CombustionProductType,
     val hopCount: UInt,
@@ -42,7 +42,7 @@ internal class NodeHeartbeatRequest (
     val connectionDetails: List<ConnectionDetail>,
     requestId: UInt,
     payloadLength: UByte
-) : NodeRequest(requestId, payloadLength, NodeMessageType.HEARTBEAT) {
+) : NodeRequest(requestId, payloadLength, NodeMessageType.HEARTBEAT, serialNumber) {
     class ConnectionDetail(
         val present: Boolean,
         val serialNumber: String = "",
@@ -80,10 +80,13 @@ internal class NodeHeartbeatRequest (
 
                 val sn = when (pt) {
                     CombustionProductType.PROBE ->
-                        Integer.toHexString(data.getLittleEndianUInt32At(SERIAL_NUMBER_INDEX).toInt()).uppercase()
-                    CombustionProductType.DISPLAY,
-                    CombustionProductType.CHARGER ->
+                        Integer.toHexString(
+                            data.getLittleEndianUInt32At(SERIAL_NUMBER_INDEX).toInt()
+                        ).uppercase()
+
+                    CombustionProductType.NODE, CombustionProductType.GAUGE ->
                         data.trimmedStringFromRange(SERIAL_NUMBER_INDEX until SERIAL_NUMBER_INDEX + NODE_SERIAL_NUMBER_SIZE)
+
                     CombustionProductType.UNKNOWN -> {
                         Log.w(LOG_TAG, "Unknown product type ($pt) encountered")
                         ""
@@ -136,7 +139,8 @@ internal class NodeHeartbeatRequest (
 
                 connectionDetails.add(
                     ConnectionDetail.fromRaw(
-                        payload.slice(startIndex until startIndex + ConnectionDetail.PAYLOAD_SIZE).toUByteArray()
+                        payload.slice(startIndex until startIndex + ConnectionDetail.PAYLOAD_SIZE)
+                            .toUByteArray()
                     )
                 )
             }

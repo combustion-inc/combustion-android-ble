@@ -5,7 +5,7 @@ import inc.combustion.framework.ble.putLittleEndianUInt32At
 internal class NodeReadFeatureFlagsRequest(
     nodeSerialNumber: String,
     requestId: UInt? = null
-) : NodeRequest(populatePayload(nodeSerialNumber), NodeMessageType.GET_FEATURE_FLAGS, requestId)
+) : NodeRequest(populatePayload(nodeSerialNumber), NodeMessageType.GET_FEATURE_FLAGS, requestId, nodeSerialNumber)
 {
     companion object {
 

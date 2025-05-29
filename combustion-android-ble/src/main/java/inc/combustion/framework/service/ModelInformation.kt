@@ -28,8 +28,11 @@
 
 package inc.combustion.framework.service
 
+import inc.combustion.framework.service.dfu.DfuProductType
+
 data class ModelInformation(
     val productType: CombustionProductType,
+    val dfuProductType: DfuProductType,
     val sku: String,
     val manufacturingLot: String
 ) {
@@ -52,6 +55,7 @@ data class ModelInformation(
 
                     return ModelInformation(
                         productType = CombustionProductType.PROBE,
+                        dfuProductType = DfuProductType.PROBE,
                         sku = split[0],
                         manufacturingLot = split[1]
                     )
@@ -62,8 +66,10 @@ data class ModelInformation(
                         val skuLot = split[1].split("-")
 
                         if (skuLot.size == 2) {
+                            val split0 = split[0]
                             return ModelInformation(
-                                productType = CombustionProductType.fromModelString(split[0]),
+                                productType = CombustionProductType.fromModelString(split0),
+                                dfuProductType = DfuProductType.fromModelString(split0),
                                 sku = skuLot[0],
                                 manufacturingLot = skuLot[1]
                             )
@@ -74,6 +80,7 @@ data class ModelInformation(
 
             return ModelInformation(
                 productType = CombustionProductType.UNKNOWN,
+                dfuProductType = DfuProductType.UNKNOWN,
                 sku = "",
                 manufacturingLot = ""
             )

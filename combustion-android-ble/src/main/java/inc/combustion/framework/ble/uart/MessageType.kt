@@ -36,7 +36,7 @@ internal enum class MessageType(val value: UByte) {
     SET_PROBE_ID(0x01u),
     SET_PROBE_COLOR(0x02u),
     READ_SESSION_INFO(0x03u),
-    LOG(0x04u),
+    PROBE_LOG(0x04u),
     SET_PREDICTION(0x05u),
     CONFIGURE_FOOD_SAFE(0x07u),
     RESET_FOOD_SAFE(0x08u),

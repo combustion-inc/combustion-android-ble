@@ -34,18 +34,19 @@ import androidx.lifecycle.lifecycleScope
 import com.juul.kable.WriteType
 import com.juul.kable.characteristicOf
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
-import inc.combustion.framework.service.*
+import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
+import inc.combustion.framework.service.DebugSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 
 internal open class UartBleDevice(
     mac: String,
-    advertisement: CombustionAdvertisingData,
+    advertisement: DeviceAdvertisingData,
     owner: LifecycleOwner,
     adapter: BluetoothAdapter
 ) : DeviceInformationBleDevice(mac, advertisement, owner, adapter) {
@@ -69,7 +70,7 @@ internal open class UartBleDevice(
             // if we are waiting for a specific request id
             requestId?.let {
                 // and we weren't called with the request id we are looking for
-                if(it == reqId) {
+                if (it == reqId) {
                     matched = true
                 } else {
                     return matched
@@ -91,11 +92,16 @@ internal open class UartBleDevice(
             return matched
         }
 
-        fun wait(owner: LifecycleOwner, duration: Long, reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)?) {
+        fun wait(
+            owner: LifecycleOwner,
+            duration: Long,
+            reqId: UInt? = null,
+            callback: ((Boolean, Any?) -> Unit)?,
+        ) {
             requestId?.let {
                 // if we are waiting for a specific request id and asked to wait again, then
                 // we callback to the caller with an error (the current wait has not completed).
-                if(it == reqId) {
+                if (it == reqId) {
                     callback?.let { it(false, null) }
                     return
                 }
@@ -111,7 +117,7 @@ internal open class UartBleDevice(
                 return
             }
 
-            if(waiting.get()) {
+            if (waiting.get()) {
                 callback?.let { it(false, null) }
                 return
             }
@@ -122,7 +128,7 @@ internal open class UartBleDevice(
 
             job = owner.lifecycleScope.launch {
                 delay(duration)
-                if(waiting.getAndSet(false)) {
+                if (waiting.getAndSet(false)) {
                     callback?.let { it(false, null) }
                     cleanup()
                 }
@@ -155,11 +161,11 @@ internal open class UartBleDevice(
     var isInDfuMode: Boolean = false
 
     fun writeUartCharacteristic(data: ByteArray) {
-        if(isConnected.get()) {
+        if (isConnected.get()) {
             owner.lifecycleScope.launch(Dispatchers.IO) {
                 try {
                     peripheral.write(UART_RX_CHARACTERISTIC, data, WriteType.WithoutResponse)
-                } catch(e: Exception)  {
+                } catch (e: Exception) {
                     Log.w(LOG_TAG, "UART-TX: Unable to write to RX characteristic.")
                 }
             }

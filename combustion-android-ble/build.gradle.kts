@@ -5,6 +5,7 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 plugins {
     alias(frameworkLibs.plugins.android.library)
     alias(frameworkLibs.plugins.kotlin.android)
+    alias(frameworkLibs.plugins.kotlin.serialization)
     alias(frameworkLibs.plugins.maven.publish)
 }
 
@@ -31,7 +32,7 @@ kotlin {
 
 android {
     namespace = "inc.combustion.framework"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         minSdk = 24
@@ -82,15 +83,17 @@ android {
     }
 
     tasks.withType<KotlinCompile>().configureEach {
-        kotlinOptions.freeCompilerArgs += listOf(
-            "-opt-in=kotlin.ExperimentalUnsignedTypes",
-            "-opt-in=com.juul.kable.ObsoleteKableApi",
-            "-Xjvm-default=all-compatibility"
-        )
+        compilerOptions {
+            freeCompilerArgs.addAll(
+                "-opt-in=kotlin.ExperimentalUnsignedTypes",
+                "-opt-in=com.juul.kable.ObsoleteKableApi",
+                "-Xjvm-default=all-compatibility"
+            )
+        }
     }
 
     tasks.withType<KotlinCompile>().configureEach {
-        kotlinOptions.allWarningsAsErrors = name.contains("Release")
+        compilerOptions.allWarningsAsErrors = name.contains("Release")
     }
 }
 
@@ -98,6 +101,7 @@ dependencies {
     implementation(frameworkLibs.core.ktx)
     implementation(frameworkLibs.appcompat)
     implementation(frameworkLibs.lifecycle.runtime)
+    implementation(frameworkLibs.kotlinx.serialization.json)
     implementation(frameworkLibs.kable.core)
     implementation(frameworkLibs.lifecycle.service)
     implementation(frameworkLibs.nordicsemi.dfu)

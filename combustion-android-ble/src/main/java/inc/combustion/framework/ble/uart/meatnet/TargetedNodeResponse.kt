@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: NodeReadLogsRequest.kt
- * Author: https://github.com/angrygorilla
+ * File: TargetedNodeResponse.kt
+ * Author:
  *
  * MIT License
  *
- * Copyright (c) 2023. Combustion Inc.
+ * Copyright (c) 2025. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -28,40 +28,6 @@
 
 package inc.combustion.framework.ble.uart.meatnet
 
-import inc.combustion.framework.ble.putLittleEndianUInt32At
-
-internal class NodeReadLogsRequest(
-    serialNumber: String,
-    minSequence: UInt,
-    maxSequence: UInt,
-    requestId: UInt? = null
-) : NodeRequest(
-    populatePayload(
-        serialNumber,
-        minSequence,
-        maxSequence
-    ),
-    NodeMessageType.LOG,
-    requestId
-) {
-    companion object {
-        /// payload length 12 = serial number (4 bytes) + min sequence (4 bytes) + max sequence (4 bytes)
-        const val PAYLOAD_LENGTH: UByte = 12u
-
-        /**
-         * Helper function that builds up payload of request.
-         */
-        fun populatePayload(
-            serialNumber: String,
-            minSequence: UInt,
-            maxSequence: UInt): UByteArray {
-            val payload = UByteArray(PAYLOAD_LENGTH.toInt()) { 0u }
-
-            payload.putLittleEndianUInt32At(0, serialNumber.toLong(radix = 16).toUInt())
-            payload.putLittleEndianUInt32At(4, minSequence)
-            payload.putLittleEndianUInt32At(8, maxSequence)
-            return payload
-        }
-    }
-
+interface TargetedNodeResponse {
+    val serialNumber: String
 }

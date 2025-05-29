@@ -30,7 +30,7 @@ package inc.combustion.framework.analytics
 
 import inc.combustion.framework.SingletonHolder
 import inc.combustion.framework.analytics.AnalyticsEvent.EventName
-import inc.combustion.framework.service.CombustionProductType
+import inc.combustion.framework.service.dfu.DfuProductType
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -67,18 +67,18 @@ internal class AnalyticsTracker {
         _exceptionEventFlow.tryEmit(exceptionEvent)
     }
 
-    fun trackStartDfu(productType: CombustionProductType?, serialNumber: String?) {
+    fun trackStartDfu(productType: DfuProductType?, serialNumber: String?) {
         val params = genDfuParams(productType, serialNumber)
         trackEvent(AnalyticsEvent(EventName.DFU_STARTED, params))
     }
 
-    fun trackRetryDfu(productType: CombustionProductType?, serialNumber: String?) {
+    fun trackRetryDfu(productType: DfuProductType?, serialNumber: String?) {
         val params = genDfuParams(productType, serialNumber)
         trackEvent(AnalyticsEvent(EventName.DFU_RETRY, params))
     }
 
     private fun genDfuParams(
-        productType: CombustionProductType?,
+        productType: DfuProductType?,
         serialNumber: String?,
     ): Map<String, Any> =
         mutableMapOf<String, Any>().apply {

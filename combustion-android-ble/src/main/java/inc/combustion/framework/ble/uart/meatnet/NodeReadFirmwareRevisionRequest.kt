@@ -36,7 +36,8 @@ internal class NodeReadFirmwareRevisionRequest(
 ) : NodeRequest(
     populatePayload(serialNumber),
     NodeMessageType.PROBE_FIRMWARE_REVISION,
-    requestId
+    requestId,
+    serialNumber,
 ) {
     companion object {
         const val PAYLOAD_LENGTH: UByte = 4u

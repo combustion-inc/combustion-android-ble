@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: ProbeDiscoveredEvent.kt
- * Author: https://github.com/miwright2
+ * File: TemperatureTest.kt
+ * Author:
  *
  * MIT License
  *
- * Copyright (c) 2022. Combustion Inc.
+ * Copyright (c) 2025. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,35 +25,27 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+
 package inc.combustion.framework.service
 
-/**
- * Enumerates the asynchronous events that can be collected while the device is
- * scanning and producing events to the discovered probes flow.
- *
- * @see DeviceManager.discoveredProbesFlow
- *
- * TODO: This should probably have a more accurate name.
- */
-sealed class ProbeDiscoveredEvent {
-    /**
-     * Combustion device discovered
-     *
-     * @property serialNumber serial number of the discovered device
-     */
-    data class ProbeDiscovered(
-        val serialNumber: String
-    ) : ProbeDiscoveredEvent()
+import junitparams.JUnitParamsRunner
+import junitparams.Parameters
+import org.junit.Test
+import org.junit.runner.RunWith
+import kotlin.test.assertEquals
 
-    /**
-     * Combustion device with serial number [serialNumber] was removed.
-     */
-    data class ProbeRemoved(
-        val serialNumber: String
-    ) : ProbeDiscoveredEvent()
+@RunWith(JUnitParamsRunner::class)
+class SensorTemperatureTest {
 
-    /**
-     * The device cache was cleared.
-     */
-    object DevicesCleared: ProbeDiscoveredEvent()
+    @Test
+    @Parameters(method = "tempRawDataParams")
+    fun mew(givenTempValue: Double) {
+        val givenTemp = SensorTemperature(givenTempValue)
+        assertEquals(SensorTemperature.fromRawDataEnd(givenTemp.toRawDataEnd()), givenTemp)
+    }
+
+    fun tempRawDataParams() = arrayOf(
+        arrayOf(-20.0),
+        arrayOf(100.0)
+    )
 }

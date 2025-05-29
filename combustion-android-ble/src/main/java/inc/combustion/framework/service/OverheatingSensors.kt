@@ -28,6 +28,8 @@
 
 package inc.combustion.framework.service
 
+import inc.combustion.framework.isBitSet
+
 data class OverheatingSensors(val values: List<Int>) {
 
     public fun isAnySensorOverheating(): Boolean {
@@ -53,7 +55,7 @@ data class OverheatingSensors(val values: List<Int>) {
         fun fromRawByte(byte: UByte): OverheatingSensors {
             val overheatingSensors = mutableListOf<Int>()
             for (i in 0 until 8) {
-                if (byte.toInt() and (1 shl i) != 0) {
+                if (byte.isBitSet(i)) {
                     overheatingSensors.add(i)
                 }
             }
