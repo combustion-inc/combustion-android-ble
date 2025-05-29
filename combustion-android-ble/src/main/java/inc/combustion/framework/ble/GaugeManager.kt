@@ -278,9 +278,8 @@ internal class GaugeManager(
 
         // process simulated device status notifications
         simGauge.observeGaugeStatusUpdates() { status ->
-            // TODO : implement for simulated gauge
-            // updatedProbe = updateNormalMode(status, updatedProbe)
-            _normalModeProbeStatusFlow.emit(status)
+            handleStatus(status, simulated = true)
+            updatedGauge = _deviceFlow.value
         }
 
         // process simulated connection state changes
@@ -498,8 +497,11 @@ internal class GaugeManager(
         return updatedGauge
     }
 
-    private suspend fun handleStatus(status: GaugeStatus) {
-        if (arbitrator.shouldUpdateDataFromStatusForNormalMode(status, sessionInfo)) {
+    private suspend fun handleStatus(
+        status: GaugeStatus,
+        simulated: Boolean = simulatedGauge != null,
+    ) {
+        if (simulated || arbitrator.shouldUpdateDataFromStatusForNormalMode(status, sessionInfo)) {
             statusNotificationsMonitor.activity()
 
             handleSessionInfo(
@@ -511,7 +513,9 @@ internal class GaugeManager(
             _normalModeProbeStatusFlow.emit(status)
 
             // redundantly check for device information
-            fetchDeviceInfo()
+            if (!simulated) {
+                fetchDeviceInfo()
+            }
 
             // These log-related items can be updated outside of this function--specifically, these
             // are updated by the LogManager when we emit a new status to the

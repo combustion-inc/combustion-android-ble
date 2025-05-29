@@ -33,7 +33,7 @@ import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.getLittleEndianUInt32At
 import inc.combustion.framework.service.CombustionProductType
 
-internal class NodeHeartbeatRequest (
+internal class NodeHeartbeatRequest(
     serialNumber: String,
     val macAddress: String,
     val productType: CombustionProductType,
@@ -80,10 +80,13 @@ internal class NodeHeartbeatRequest (
 
                 val sn = when (pt) {
                     CombustionProductType.PROBE ->
-                        Integer.toHexString(data.getLittleEndianUInt32At(SERIAL_NUMBER_INDEX).toInt()).uppercase()
-                    CombustionProductType.NODE ->
+                        Integer.toHexString(
+                            data.getLittleEndianUInt32At(SERIAL_NUMBER_INDEX).toInt()
+                        ).uppercase()
+
+                    CombustionProductType.NODE, CombustionProductType.GAUGE ->
                         data.trimmedStringFromRange(SERIAL_NUMBER_INDEX until SERIAL_NUMBER_INDEX + NODE_SERIAL_NUMBER_SIZE)
-                    CombustionProductType.GAUGE -> TODO()
+
                     CombustionProductType.UNKNOWN -> {
                         Log.w(LOG_TAG, "Unknown product type ($pt) encountered")
                         ""
@@ -136,7 +139,8 @@ internal class NodeHeartbeatRequest (
 
                 connectionDetails.add(
                     ConnectionDetail.fromRaw(
-                        payload.slice(startIndex until startIndex + ConnectionDetail.PAYLOAD_SIZE).toUByteArray()
+                        payload.slice(startIndex until startIndex + ConnectionDetail.PAYLOAD_SIZE)
+                            .toUByteArray()
                     )
                 )
             }
