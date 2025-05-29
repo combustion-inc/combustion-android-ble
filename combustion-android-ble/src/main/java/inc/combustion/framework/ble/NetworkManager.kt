@@ -37,7 +37,18 @@ import android.util.Log
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.device.*
+import inc.combustion.framework.ble.device.DeviceID
+import inc.combustion.framework.ble.device.DeviceInformationBleDevice
+import inc.combustion.framework.ble.device.GaugeBleDevice
+import inc.combustion.framework.ble.device.LinkID
+import inc.combustion.framework.ble.device.NodeBleDevice
+import inc.combustion.framework.ble.device.NodeHybridDevice
+import inc.combustion.framework.ble.device.ProbeBleDevice
+import inc.combustion.framework.ble.device.ProximityDevice
+import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
+import inc.combustion.framework.ble.device.SimulatedGaugeBleDevice
+import inc.combustion.framework.ble.device.SimulatedProbeBleDevice
+import inc.combustion.framework.ble.device.UartCapableProbe
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.DeviceScanner
 import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
@@ -47,15 +58,42 @@ import inc.combustion.framework.ble.uart.meatnet.GenericNodeResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.log.LogManager
-import inc.combustion.framework.service.*
-import inc.combustion.framework.service.CombustionProductType.*
+import inc.combustion.framework.service.CombustionProductType
+import inc.combustion.framework.service.CombustionProductType.GAUGE
+import inc.combustion.framework.service.CombustionProductType.NODE
+import inc.combustion.framework.service.CombustionProductType.PROBE
+import inc.combustion.framework.service.DeviceConnectionState
+import inc.combustion.framework.service.DeviceDiscoveryEvent
+import inc.combustion.framework.service.DeviceInProximityEvent
+import inc.combustion.framework.service.DeviceManager
+import inc.combustion.framework.service.FirmwareState
+import inc.combustion.framework.service.FoodSafeData
+import inc.combustion.framework.service.Gauge
+import inc.combustion.framework.service.HighLowAlarmStatus
+import inc.combustion.framework.service.NetworkState
+import inc.combustion.framework.service.Probe
+import inc.combustion.framework.service.ProbeColor
+import inc.combustion.framework.service.ProbeID
+import inc.combustion.framework.service.ProbePowerMode
+import inc.combustion.framework.service.ProbePredictionMode
 import inc.combustion.framework.service.utils.StateFlowMutableMap
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.Semaphore
 import java.util.concurrent.atomic.AtomicBoolean
 
 private val SPECIALIZED_DEVICES = setOf(PROBE, GAUGE)
@@ -63,7 +101,7 @@ private val SPECIALIZED_DEVICES = setOf(PROBE, GAUGE)
 internal class NetworkManager(
     private var owner: LifecycleOwner,
     private var adapter: BluetoothAdapter,
-    private var settings: DeviceManager.Settings
+    private var settings: DeviceManager.Settings,
 ) {
     private sealed class DeviceHolder {
         data class ProbeHolder(val probe: ProbeBleDevice) : DeviceHolder()
@@ -84,7 +122,7 @@ internal class NetworkManager(
     )
 
     private inner class NodeDeviceManager(
-        val owner: LifecycleOwner
+        val owner: LifecycleOwner,
     ) {
         private val connectedNodes = StateFlowMutableMap<String, NodeBleDevice>()
         private val ignoredNodes: MutableSet<String> = mutableSetOf()
@@ -100,20 +138,17 @@ internal class NetworkManager(
         }
 
         private fun getNodeRequestMutex(deviceId: String): Semaphore =
-            // Note, using Java's Semaphore instead ok Kotlin's coroutine friendly version since methods do not use suspend modifier
-            nodeRequestMutexMap[deviceId] ?: (Semaphore(1, true).also {
+            nodeRequestMutexMap[deviceId] ?: (Semaphore(1).also {
                 nodeRequestMutexMap[deviceId] = it
             })
 
-        fun sendNodeRequest(
+        suspend fun sendNodeRequest(
             deviceId: String,
             request: GenericNodeRequest,
             completionHandler: (Boolean, GenericNodeResponse?) -> Unit,
         ) {
             connectedNodes[deviceId]?.let {
                 val mutex = getNodeRequestMutex(deviceId)
-                // TODO DROID-531 : initial sendNodeRequest threadsafety solution - should be replaced with a better solution,
-                //  e.g. one that is coroutine-suspend friendly (instead of thread-block)
                 mutex.acquire()
                 it.sendNodeRequest(request) { status, data ->
                     mutex.release()
@@ -612,7 +647,7 @@ internal class NetworkManager(
             }
     }
 
-    internal fun sendNodeRequest(
+    internal suspend fun sendNodeRequest(
         deviceId: String,
         request: GenericNodeRequest,
         completionHandler: (Boolean, GenericNodeResponse?) -> Unit,
