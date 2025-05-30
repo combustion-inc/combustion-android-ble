@@ -31,8 +31,8 @@ package inc.combustion.framework.service
 enum class CombustionProductType(val type: UByte) {
     UNKNOWN(0x00u),
     PROBE(0x01u),
-    DISPLAY(0x02u),
-    CHARGER(0x03u);
+    DISPLAY(0x02u), // TODO : rename to NODE
+    CHARGER(0x03u); // TODO : rename to GAUGE
 
     companion object {
         fun fromUByte(byte: UByte) : CombustionProductType {

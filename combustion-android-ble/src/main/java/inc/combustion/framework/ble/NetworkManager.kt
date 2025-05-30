@@ -53,7 +53,19 @@ import inc.combustion.framework.ble.uart.meatnet.GenericNodeResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.log.LogManager
-import inc.combustion.framework.service.*
+import inc.combustion.framework.service.CombustionProductType
+import inc.combustion.framework.service.DeviceConnectionState
+import inc.combustion.framework.service.DeviceDiscoveredEvent
+import inc.combustion.framework.service.DeviceManager
+import inc.combustion.framework.service.FirmwareState
+import inc.combustion.framework.service.FoodSafeData
+import inc.combustion.framework.service.NetworkState
+import inc.combustion.framework.service.Probe
+import inc.combustion.framework.service.ProbeColor
+import inc.combustion.framework.service.ProbeDiscoveredEvent
+import inc.combustion.framework.service.ProbeID
+import inc.combustion.framework.service.ProbePowerMode
+import inc.combustion.framework.service.ProbePredictionMode
 import inc.combustion.framework.service.utils.StateFlowMutableMap
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
@@ -73,6 +85,11 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Semaphore
 import java.util.concurrent.atomic.AtomicBoolean
+
+private val SUPPORTED_ADVERTISING_PRODUCTS = setOf(
+    CombustionProductType.PROBE,
+    CombustionProductType.DISPLAY,
+)
 
 internal class NetworkManager(
     private var owner: LifecycleOwner,
@@ -769,6 +786,9 @@ internal class NetworkManager(
         DeviceScanner.advertisements.collect { advertisingData ->
             if (scanningForProbes) {
                 val serialNumber = advertisingData.probeSerialNumber
+                val productType = advertisingData.productType
+                if (!SUPPORTED_ADVERTISING_PRODUCTS.contains(productType)) return@collect
+
                 if (serialNumber == REPEATER_NO_PROBES_SERIAL_NUMBER) {
                     manageMeatNetDeviceWithoutProbe(advertisingData)
                 } else if (manageMeatNetDeviceWithProbe(advertisingData)) {
@@ -778,7 +798,7 @@ internal class NetworkManager(
                 }
 
                 // Publish this device to the proximity flow if it's a probe.
-                if (advertisingData.productType == CombustionProductType.PROBE) {
+                if (productType == CombustionProductType.PROBE) {
                     // If we haven't seen this probe before, then add it to our list of devices
                     // that we track proximity for and publish the addition.
                     if (!proximityDevices.contains(serialNumber)) {
