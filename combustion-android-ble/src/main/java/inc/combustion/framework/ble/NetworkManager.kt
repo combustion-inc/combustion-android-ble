@@ -99,9 +99,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 private val SPECIALIZED_DEVICES = setOf(PROBE, GAUGE)
 
 private val SUPPORTED_ADVERTISING_PRODUCTS = setOf(
-    CombustionProductType.PROBE,
-    CombustionProductType.DISPLAY,
-    CombustionProductType.GAUGE,
+    PROBE,
+    NODE,
+    GAUGE,
 )
 
 internal class NetworkManager(
