@@ -98,6 +98,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 private val SPECIALIZED_DEVICES = setOf(PROBE, GAUGE)
 
+private val SUPPORTED_ADVERTISING_PRODUCTS = setOf(
+    CombustionProductType.PROBE,
+    CombustionProductType.DISPLAY,
+    CombustionProductType.GAUGE,
+)
+
 internal class NetworkManager(
     private var owner: LifecycleOwner,
     private var adapter: BluetoothAdapter,
@@ -932,7 +938,7 @@ internal class NetworkManager(
             if (scanningForDevices) {
                 val serialNumber = advertisingData.serialNumber
                 val productType = advertisingData.productType
-
+                if (!SUPPORTED_ADVERTISING_PRODUCTS.contains(productType)) return@collect
                 when (advertisingData) {
                     is ProbeAdvertisingData -> if (serialNumber == REPEATER_NO_PROBES_SERIAL_NUMBER) {
                         manageNodeWithoutProbe(advertisingData)
