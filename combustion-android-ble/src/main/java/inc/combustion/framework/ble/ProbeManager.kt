@@ -81,7 +81,7 @@ import kotlinx.coroutines.launch
  * manages only direct links to temperature probes.  The class is responsible for presenting
  * a common interface over both scenarios.
  *
- * @property owner LifecycleOnwer for coroutine scope.
+ * @property owner LifecycleOwner for coroutine scope.
  * @property settings Service settings.
  * @constructor
  * Constructs a probe manager
@@ -95,12 +95,8 @@ internal class ProbeManager(
     private val dfuDisconnectedNodeCallback: (DeviceID) -> Unit
 ) : BleManager() {
     companion object {
-        private const val PROBE_STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS = 1000L
-        private const val PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS =
-            Probe.PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS
         private const val MEATNET_STATUS_NOTIFICATIONS_TIMEOUT_MS = 30_000L
         private const val PREDICTION_IDLE_TIMEOUT_MS = Probe.PREDICTION_IDLE_TIMEOUT_MS
-        private const val PROBE_STATUS_NOTIFICATIONS_POLL_DELAY_MS = 30000L
         private const val PROBE_INSTANT_READ_IDLE_TIMEOUT_MS = 5000L
     }
 
@@ -618,34 +614,6 @@ internal class ProbeManager(
         }
     }
 
-//    fun finish(deviceIdsToDisconnect: Set<DeviceID>? = null) {
-//        Log.d(LOG_TAG, "ProbeManager.finish($deviceIdsToDisconnect) for ($serialNumber)")
-//
-//        arbitrator.finish(
-//            nodeAction = {
-//                // There's a couple specific things that come out of unlinking a probe that need to
-//                // be addressed here:
-//                //
-//                // - Jobs are created on repeated probes (nodes) that need to be cancelled so that
-//                //   we don't continue to obtain data for probes that we're disconnected from. If
-//                //   all jobs on a node are blindly cancelled, then we'll likely cancel jobs that
-//                //   are still needed for other probes connected to this node. The [jobKey]
-//                //   parameter allows for selective cancellation of jobs.
-//                // - On a related note, we need to be able to selectively disconnect from nodes as
-//                //   some are still providing data from other probes.
-//                it.finish(
-//                    jobKey = serialNumber,
-//                    disconnect = deviceIdsToDisconnect?.contains(it.id) ?: true
-//                )
-//            },
-//            directConnectionAction = {
-//                it.disconnect()
-//            }
-//        )
-//
-//        jobManager.cancelJobs()
-//    }
-
     private fun observe(base: ProbeBleDeviceBase) {
         if (base is ProbeBleDevice) {
             _deviceFlow.update {
@@ -692,13 +660,13 @@ internal class ProbeManager(
             ) {
                 // Wait before starting to monitor prediction status, this allows for initial
                 // connection time
-                delay(PROBE_STATUS_NOTIFICATIONS_POLL_DELAY_MS)
+                delay(STATUS_NOTIFICATIONS_POLL_DELAY_MS)
 
                 while (isActive) {
-                    delay(PROBE_STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS)
+                    delay(STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS)
 
                     val statusNotificationsStale =
-                        statusNotificationsMonitor.isIdle(PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS)
+                        statusNotificationsMonitor.isIdle(STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS)
                     val predictionStale =
                         predictionMonitor.isIdle(PREDICTION_IDLE_TIMEOUT_MS) && _deviceFlow.value.isPredicting
                     val shouldUpdate =

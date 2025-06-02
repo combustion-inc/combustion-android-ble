@@ -58,4 +58,8 @@ interface SpecializedDevice {
         get() = baseDevice.rssi
     val connectionState: DeviceConnectionState
         get() = baseDevice.connectionState
+
+    companion object {
+        const val STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS = 15000L
+    }
 }

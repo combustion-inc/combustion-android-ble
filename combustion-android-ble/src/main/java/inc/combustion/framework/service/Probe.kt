@@ -157,7 +157,6 @@ data class Probe(
         )
 
     companion object {
-        const val PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS = 15000L
         const val PREDICTION_IDLE_TIMEOUT_MS = 60000L
 
         fun create(serialNumber: String = "", mac: String = "") : Probe {

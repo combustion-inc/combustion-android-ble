@@ -61,6 +61,20 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+/**
+ * This class is responsible for managing and arbitrating the data links to a gauge.
+ * When MeatNet is enabled that includes data links through repeater devices over
+ * MeatNet and direct links to gauge.  When MeatNet is disabled, this class
+ * manages only direct links to the gauge. The class is responsible for presenting
+ * a common interface over both scenarios.
+ *
+ * @property owner LifecycleOwner for coroutine scope.
+ * @property settings Service settings.
+ * @constructor
+ * Constructs a gauge manager
+ *
+ * @param serialNumber The serial number of the gauge being managed.
+ */
 internal class GaugeManager(
     mac: String,
     serialNumber: String,
@@ -68,12 +82,6 @@ internal class GaugeManager(
     private val settings: DeviceManager.Settings,
     private val dfuDisconnectedNodeCallback: (DeviceID) -> Unit,
 ) : BleManager() {
-    companion object {
-        private const val GAUGE_STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS = 1000L
-        private const val GAUGE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS =
-            Gauge.GAUGE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS
-        private const val GAUGE_STATUS_NOTIFICATIONS_POLL_DELAY_MS = 30000L
-    }
 
     // encapsulates logic for managing network data links
     override val arbitrator = GaugeDataLinkArbitrator()
@@ -196,13 +204,13 @@ internal class GaugeManager(
             ) {
                 // Wait before starting to monitor prediction status, this allows for initial
                 // connection time
-                delay(GAUGE_STATUS_NOTIFICATIONS_POLL_DELAY_MS)
+                delay(STATUS_NOTIFICATIONS_POLL_DELAY_MS)
 
                 while (isActive) {
-                    delay(GAUGE_STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS)
+                    delay(STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS)
 
                     val statusNotificationsStale =
-                        statusNotificationsMonitor.isIdle(GAUGE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS)
+                        statusNotificationsMonitor.isIdle(STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS)
                     val shouldUpdate =
                         statusNotificationsStale != _deviceFlow.value.statusNotificationsStale
 

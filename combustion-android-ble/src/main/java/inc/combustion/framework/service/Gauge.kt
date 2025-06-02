@@ -51,8 +51,6 @@ data class Gauge(
 ) : SpecializedDevice {
 
     companion object {
-        const val GAUGE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS = 15000L
-
         fun create(serialNumber: String = "", mac: String = ""): Gauge {
             return Gauge(
                 baseDevice = Device(
