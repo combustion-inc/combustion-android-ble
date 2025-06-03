@@ -13,6 +13,7 @@ import inc.combustion.framework.ble.uart.meatnet.GenericNodeResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeSetHighLowAlarmRequest
@@ -34,7 +35,6 @@ internal class NodeBleDevice(
     adapter: BluetoothAdapter,
     private val uart: UartBleDevice = UartBleDevice(mac, nodeAdvertisingData, owner, adapter)
 ) : UartCapableDevice {
-
 
     override val id: DeviceID
         get() = uart.id
@@ -81,6 +81,9 @@ internal class NodeBleDevice(
         }
 
     private val disconnectedCallbacks = mutableMapOf<String, () -> Unit>()
+
+    private val logResponseCallbackForSerialNumber =
+        mutableMapOf<String, suspend (NodeReadGaugeLogsResponse) -> Unit>()
 
     override var isInDfuMode: Boolean
         get() = uart.isInDfuMode
@@ -139,8 +142,11 @@ internal class NodeBleDevice(
         serialNumber: String,
         minSequence: UInt,
         maxSequence: UInt,
+        reqId: UInt?,
+        callback: suspend (NodeReadGaugeLogsResponse) -> Unit,
     ) {
-        sendUartRequest(NodeReadGaugeLogsRequest(serialNumber, minSequence, maxSequence))
+        logResponseCallbackForSerialNumber[serialNumber] = callback
+        sendUartRequest(NodeReadGaugeLogsRequest(serialNumber, minSequence, maxSequence, reqId))
     }
 
     override fun connect() {
@@ -234,6 +240,10 @@ internal class NodeBleDevice(
                         )
                     }
 
+                    message is NodeReadGaugeLogsResponse -> {
+                        handleGaugeLogResponse(message)
+                    }
+
                     (message is NodeRequest) && (message.serialNumber == hybridDeviceChild?.serialNumber) -> {
                         hybridDeviceChild?.processNodeRequest(message)
                     }
@@ -249,6 +259,11 @@ internal class NodeBleDevice(
                 }
             }
         }
+    }
+
+    private suspend fun handleGaugeLogResponse(message: NodeReadGaugeLogsResponse) {
+        // Send log response to matching callback
+        logResponseCallbackForSerialNumber[message.serialNumber]?.invoke(message)
     }
 
     // Read the serial number from the device

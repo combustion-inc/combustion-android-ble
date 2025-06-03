@@ -273,7 +273,8 @@ internal class SimulatedGaugeBleDevice(
     override fun sendGaugeLogRequest(
         minSequence: UInt,
         maxSequence: UInt,
-        callback: (suspend (NodeReadGaugeLogsResponse) -> Unit)?
+        reqId: UInt?,
+        callback: suspend (NodeReadGaugeLogsResponse) -> Unit,
     ) {
         // do nothing
     }

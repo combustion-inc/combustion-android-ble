@@ -922,11 +922,22 @@ internal class NetworkManager(
 
         if (gaugeManagers[serialNumber]?.hasGauge() == false) {
             (devices[deviceId] as? DeviceHolder.RepeaterHolder)?.gauge?.let { gaugeBleDevice ->
-                gaugeManagers[serialNumber]?.addGauge(
-                    gauge = gaugeBleDevice,
-                    baseDevice = gaugeBleDevice.baseDevice,
-                    advertisement = advertisement,
-                )
+                gaugeManagers[serialNumber]?.let { manager ->
+                    manager.addGauge(
+                        gauge = gaugeBleDevice,
+                        baseDevice = gaugeBleDevice.baseDevice,
+                        advertisement = advertisement,
+                    )
+                    manager.addRepeaters {
+                        devices.values.toList().filterIsInstance<DeviceHolder.RepeaterHolder>()
+                            .filter {
+                                it.gauge?.serialNumber != gaugeBleDevice.serialNumber
+                            }
+                            .map {
+                                it.repeater
+                            }
+                    }
+                }
             }
         }
 
