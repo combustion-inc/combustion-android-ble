@@ -52,6 +52,8 @@ value class SensorTemperature(
     }
 
     companion object {
+        val NO_DATA = SensorTemperature(-20.0)
+
         private fun UShort.temperatureFromRaw() =
             (this.toDouble() * 0.1) - 20.0
 

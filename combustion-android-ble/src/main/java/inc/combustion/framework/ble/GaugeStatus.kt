@@ -28,7 +28,12 @@
 
 package inc.combustion.framework.ble
 
-import inc.combustion.framework.service.*
+import inc.combustion.framework.service.GaugeStatusFlags
+import inc.combustion.framework.service.HighLowAlarmStatus
+import inc.combustion.framework.service.HopCount
+import inc.combustion.framework.service.ProbeMode
+import inc.combustion.framework.service.SensorTemperature
+import inc.combustion.framework.service.SessionInformation
 import inc.combustion.framework.toPercentage
 
 data class GaugeStatus(
@@ -68,9 +73,14 @@ data class GaugeStatus(
             val sessionInformation =
                 SessionInformation(sessionID = sessionID, samplePeriod = samplePeriod)
 
-            val temperature = SensorTemperature.fromRawDataStart(data.sliceArray(RAW_TEMP_RANGE))
             val gaugeStatusFlags =
                 GaugeStatusFlags.fromRawByte(data.sliceArray(STATUS_FLAGS_RANGE)[0])
+
+            val temperature = if (gaugeStatusFlags.sensorPresent) {
+                SensorTemperature.fromRawDataStart(data.sliceArray(RAW_TEMP_RANGE))
+            } else {
+                SensorTemperature.NO_DATA
+            }
 
             val minSequenceNumber = data.getLittleEndianUInt32At(MIN_SEQ_RANGE.first)
             val maxSequenceNumber = data.getLittleEndianUInt32At(MAX_SEQ_RANGE.first)
