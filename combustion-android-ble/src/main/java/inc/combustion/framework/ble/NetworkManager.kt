@@ -173,12 +173,12 @@ internal class NetworkManager(
                     .collect { deviceIds ->
                         deviceIds.forEach { deviceId ->
                             when (val node = devices[deviceId]) {
-                                is DeviceHolder.ProbeHolder -> NOT_IMPLEMENTED("subscribeToNodeFlow is not implemented for probe with id = $deviceId, type = ${node.probe.productType}, and serialNumber = ${node.probe.serialNumber}")
+                                is DeviceHolder.ProbeHolder -> NOT_IMPLEMENTED("subscribeToNodeFlow from manager ${probeManager.serialNumber} is not implemented for probe with id = $deviceId, type = ${node.probe.productType}, and serialNumber = ${node.probe.serialNumber}")
                                 is DeviceHolder.RepeaterHolder -> {
                                     updateConnectedNodes(node.repeater)
                                 }
 
-                                else -> NOT_IMPLEMENTED("subscribeToNodeFlow is not implemented for unknown device $node with id = $deviceId")
+                                else -> NOT_IMPLEMENTED("subscribeToNodeFlow from manager ${probeManager.serialNumber} is not implemented for unknown device $node with id = $deviceId")
                             }
                         }
                     }
@@ -1156,10 +1156,15 @@ internal class NetworkManager(
         LogManager.instance.finish(serialNumber)
         deviceManager?.finish(soleProviders.map { it.repeatedProbe.id }.toSet())
 
-        // Remove the device from the device list--this should be the last reference to the held
-        // device.
         deviceId?.let {
-            devices.remove(it)
+            val deviceHolder = devices[it]
+            if ((deviceHolder is DeviceHolder.RepeaterHolder) && (deviceHolder.hybridDeviceChild != null)) {
+                // node component of hybridDevice might still be connected to devices
+                deviceHolder.repeater.clearNodeHybridDevice()
+            } else {
+                // Remove the device from the device list -- this should be the last reference to the held device.
+                devices.remove(it)
+            }
         }
 
         // Event out the removal

@@ -106,6 +106,10 @@ internal class NodeBleDevice(
         this.hybridDeviceChild = create(this)
     }
 
+    fun clearNodeHybridDevice() {
+        this.hybridDeviceChild = null
+    }
+
     fun sendNodeRequest(request: GenericNodeRequest, callback: ((Boolean, Any?) -> Unit)?) {
         val nodeRequest = request.toNodeRequest()
         genericRequestHandler.wait(
