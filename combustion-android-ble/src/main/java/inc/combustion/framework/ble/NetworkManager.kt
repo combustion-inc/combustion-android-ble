@@ -173,12 +173,12 @@ internal class NetworkManager(
                     .collect { deviceIds ->
                         deviceIds.forEach { deviceId ->
                             when (val node = devices[deviceId]) {
-                                is DeviceHolder.ProbeHolder -> NOT_IMPLEMENTED("Unsupported device type")
+                                is DeviceHolder.ProbeHolder -> NOT_IMPLEMENTED("subscribeToNodeFlow is not implemented for probe with id = $deviceId, type = ${node.probe.productType}, and serialNumber = ${node.probe.serialNumber}")
                                 is DeviceHolder.RepeaterHolder -> {
                                     updateConnectedNodes(node.repeater)
                                 }
 
-                                else -> NOT_IMPLEMENTED("Unknown device type")
+                                else -> NOT_IMPLEMENTED("subscribeToNodeFlow is not implemented for unknown device $node with id = $deviceId")
                             }
                         }
                     }
@@ -922,11 +922,22 @@ internal class NetworkManager(
 
         if (gaugeManagers[serialNumber]?.hasGauge() == false) {
             (devices[deviceId] as? DeviceHolder.RepeaterHolder)?.gauge?.let { gaugeBleDevice ->
-                gaugeManagers[serialNumber]?.addGauge(
-                    gauge = gaugeBleDevice,
-                    baseDevice = gaugeBleDevice.baseDevice,
-                    advertisement = advertisement,
-                )
+                gaugeManagers[serialNumber]?.let { manager ->
+                    manager.addGauge(
+                        gauge = gaugeBleDevice,
+                        baseDevice = gaugeBleDevice.baseDevice,
+                        advertisement = advertisement,
+                    )
+                    manager.addRepeaters {
+                        devices.values.toList().filterIsInstance<DeviceHolder.RepeaterHolder>()
+                            .filter {
+                                it.gauge?.serialNumber != gaugeBleDevice.serialNumber
+                            }
+                            .map {
+                                it.repeater
+                            }
+                    }
+                }
             }
         }
 

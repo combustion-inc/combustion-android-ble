@@ -116,7 +116,6 @@ internal class GaugeBleDevice(
         }
 
     private var observeGaugeStatusCallback: (suspend (status: GaugeStatus) -> Unit)? = null
-    private var logResponseCallback: (suspend (status: NodeReadGaugeLogsResponse) -> Unit)? = null
 
     // connection management
     override fun connect() = uart.connect()
@@ -208,19 +207,9 @@ internal class GaugeBleDevice(
         }
     }
 
-    private suspend fun handleLogResponse(message: NodeReadGaugeLogsResponse) {
-        logResponseCallback?.invoke(message)
-    }
-
     override suspend fun processNodeResponse(response: NodeResponse): Boolean {
-        return when (response) {
-            is NodeReadGaugeLogsResponse -> {
-                handleLogResponse(response)
-                true
-            }
-
-            else -> false
-        }
+        // nothing currently supported
+        return false
     }
 
     override fun sendSetHighLowAlarmStatus(
@@ -239,13 +228,15 @@ internal class GaugeBleDevice(
     override fun sendGaugeLogRequest(
         minSequence: UInt,
         maxSequence: UInt,
-        callback: (suspend (NodeReadGaugeLogsResponse) -> Unit)?,
+        reqId: UInt?,
+        callback: suspend (NodeReadGaugeLogsResponse) -> Unit,
     ) {
-        this.logResponseCallback = callback
         nodeParent.sendGaugeLogRequest(
             serialNumber,
             minSequence,
             maxSequence,
+            reqId,
+            callback,
         )
     }
 }

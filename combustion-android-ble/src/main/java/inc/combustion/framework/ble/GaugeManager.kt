@@ -35,6 +35,7 @@ import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.device.DeviceID
 import inc.combustion.framework.ble.device.DeviceInformationBleDevice
 import inc.combustion.framework.ble.device.GaugeBleDevice
+import inc.combustion.framework.ble.device.NodeBleDevice
 import inc.combustion.framework.ble.device.SimulatedGaugeBleDevice
 import inc.combustion.framework.ble.device.UartCapableGauge
 import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
@@ -61,6 +62,20 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+/**
+ * This class is responsible for managing and arbitrating the data links to a gauge.
+ * When MeatNet is enabled that includes data links through repeater devices over
+ * MeatNet and direct links to gauge.  When MeatNet is disabled, this class
+ * manages only direct links to the gauge. The class is responsible for presenting
+ * a common interface over both scenarios.
+ *
+ * @property owner LifecycleOwner for coroutine scope.
+ * @property settings Service settings.
+ * @constructor
+ * Constructs a gauge manager
+ *
+ * @param serialNumber The serial number of the gauge being managed.
+ */
 internal class GaugeManager(
     mac: String,
     serialNumber: String,
@@ -68,12 +83,6 @@ internal class GaugeManager(
     private val settings: DeviceManager.Settings,
     private val dfuDisconnectedNodeCallback: (DeviceID) -> Unit,
 ) : BleManager() {
-    companion object {
-        private const val GAUGE_STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS = 1000L
-        private const val GAUGE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS =
-            Gauge.GAUGE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS
-        private const val GAUGE_STATUS_NOTIFICATIONS_POLL_DELAY_MS = 30000L
-    }
 
     // encapsulates logic for managing network data links
     override val arbitrator = GaugeDataLinkArbitrator()
@@ -196,13 +205,13 @@ internal class GaugeManager(
             ) {
                 // Wait before starting to monitor prediction status, this allows for initial
                 // connection time
-                delay(GAUGE_STATUS_NOTIFICATIONS_POLL_DELAY_MS)
+                delay(STATUS_NOTIFICATIONS_POLL_DELAY_MS)
 
                 while (isActive) {
-                    delay(GAUGE_STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS)
+                    delay(STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS)
 
                     val statusNotificationsStale =
-                        statusNotificationsMonitor.isIdle(GAUGE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS)
+                        statusNotificationsMonitor.isIdle(STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS)
                     val shouldUpdate =
                         statusNotificationsStale != _deviceFlow.value.statusNotificationsStale
 
@@ -272,12 +281,16 @@ internal class GaugeManager(
         }
     }
 
+    fun addRepeaters(repeaters: () -> List<NodeBleDevice>) {
+        arbitrator.addRepeaterNodes(repeaters)
+    }
+
     fun addSimulatedGauge(simGauge: SimulatedGaugeBleDevice) {
         if (simulatedGauge != null) return
         var updatedGauge = _deviceFlow.value
 
         // process simulated device status notifications
-        simGauge.observeGaugeStatusUpdates() { status ->
+        simGauge.observeGaugeStatusUpdates { status ->
             handleStatus(status, simulated = true)
             updatedGauge = _deviceFlow.value
         }
@@ -501,7 +514,11 @@ internal class GaugeManager(
         status: GaugeStatus,
         simulated: Boolean = simulatedGauge != null,
     ) {
-        if (simulated || arbitrator.shouldUpdateDataFromStatusForNormalMode(status, sessionInfo)) {
+        if (simulated || arbitrator.shouldUpdateDataFromStatusForNormalMode(
+                status,
+                sessionInfo,
+            )
+        ) {
             statusNotificationsMonitor.activity()
 
             handleSessionInfo(
@@ -570,7 +587,7 @@ internal class GaugeManager(
 
     fun setHighLowAlarmStatus(
         highLowAlarmStatus: HighLowAlarmStatus,
-        completionHandler: (Boolean) -> Unit
+        completionHandler: (Boolean) -> Unit,
     ) {
         val onCompletion: (Boolean) -> Unit = { success ->
             if (success) {
@@ -586,24 +603,67 @@ internal class GaugeManager(
         val requestId = makeRequestId()
         simulatedGauge?.sendSetHighLowAlarmStatus(highLowAlarmStatus, requestId) { status, _ ->
             onCompletion(status)
+        } ?: arbitrator.directLink?.sendSetHighLowAlarmStatus(
+            highLowAlarmStatus,
+            requestId,
+        ) { status, _ ->
+            onCompletion(status)
         } ?: run {
-            // if there is a direct link to the probe, then use that
-            arbitrator.directLink?.sendSetHighLowAlarmStatus(
-                highLowAlarmStatus,
-                requestId,
-            ) { status, _ ->
-                onCompletion(status)
-            } ?: run {
+            val nodeLinks = arbitrator.connectedNodeLinks
+            if (nodeLinks.isNotEmpty()) {
+                var handled = false
+                nodeLinks.forEach { node ->
+                    node.sendSetHighLowAlarmStatus(
+                        serialNumber,
+                        highLowAlarmStatus,
+                        requestId,
+                    ) { status, _ ->
+                        if (!handled) {
+                            handled = true
+                            onCompletion(status)
+                        }
+                    }
+                }
+
+            } else {
                 onCompletion(false)
             }
         }
     }
 
     override fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt) {
-        simulatedGauge?.sendGaugeLogRequest(startSequenceNumber, endSequenceNumber) {
+        val requestId = makeRequestId()
+        val callback: suspend (NodeReadGaugeLogsResponse) -> Unit = {
             _logResponseFlow.emit(it)
-        } ?: arbitrator.directLink?.sendGaugeLogRequest(startSequenceNumber, endSequenceNumber) {
-            _logResponseFlow.emit(it)
+        }
+        simulatedGauge?.sendGaugeLogRequest(
+            startSequenceNumber,
+            endSequenceNumber,
+            requestId,
+            callback,
+        ) ?: arbitrator.directLink?.sendGaugeLogRequest(
+            startSequenceNumber,
+            endSequenceNumber,
+            requestId,
+            callback,
+        ) ?: run {
+            val nodeLinks = arbitrator.connectedNodeLinks
+            if (nodeLinks.isNotEmpty()) {
+                var handledSequenceNumbers = mutableSetOf<UInt>()
+                nodeLinks.forEach { node ->
+                    node.sendGaugeLogRequest(
+                        serialNumber,
+                        startSequenceNumber,
+                        endSequenceNumber,
+                        requestId,
+                    ) {
+                        if (!handledSequenceNumbers.contains(it.sequenceNumber)) {
+                            handledSequenceNumbers.add(it.sequenceNumber)
+                            callback(it)
+                        }
+                    }
+                }
+            }
         }
     }
 }

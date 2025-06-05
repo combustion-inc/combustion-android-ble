@@ -79,13 +79,18 @@ internal class NodeReadGaugeLogsResponse(
 
             val serialNumber = payload.getUtf8SerialNumber(SERIAL_NUMBER_IDX)
             val sequenceNumber = payload.getLittleEndianUInt32At(SEQ_NUMBER_IDX)
-            val temperature = SensorTemperature.fromRawDataStart(
-                payload.sliceArray(RAW_TEMP_IDX until (RAW_TEMP_IDX + RAW_TEMP_LENGTH))
-            )
             val isSensorPresent =
                 payload.sliceArray(
                     SENSOR_PRESENT_IDX until (SENSOR_PRESENT_IDX + SENSOR_PRESENT_LENGTH)
                 )[0].isBitSet(0)
+
+            val temperature = if (isSensorPresent) {
+                SensorTemperature.fromRawDataStart(
+                    payload.sliceArray(RAW_TEMP_IDX until (RAW_TEMP_IDX + RAW_TEMP_LENGTH))
+                )
+            } else {
+                SensorTemperature.NO_DATA
+            }
 
             return NodeReadGaugeLogsResponse(
                 serialNumber,

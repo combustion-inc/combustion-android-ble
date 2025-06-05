@@ -50,6 +50,11 @@ internal abstract class BleManager {
         const val IGNORE_GAUGES = false
 
         const val OUT_OF_RANGE_TIMEOUT = 15000L
+
+        protected const val STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS = 1000L
+        protected const val STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS =
+            SpecializedDevice.STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS
+        protected const val STATUS_NOTIFICATIONS_POLL_DELAY_MS = 30000L
     }
 
     abstract val serialNumber: String

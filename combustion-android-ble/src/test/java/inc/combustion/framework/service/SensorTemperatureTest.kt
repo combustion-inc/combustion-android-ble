@@ -39,7 +39,7 @@ class SensorTemperatureTest {
 
     @Test
     @Parameters(method = "tempRawDataParams")
-    fun mew(givenTempValue: Double) {
+    fun `raw value is same as conversion from raw and then back to raw`(givenTempValue: Double) {
         val givenTemp = SensorTemperature(givenTempValue)
         assertEquals(SensorTemperature.fromRawDataEnd(givenTemp.toRawDataEnd()), givenTemp)
     }
@@ -48,4 +48,13 @@ class SensorTemperatureTest {
         arrayOf(-20.0),
         arrayOf(100.0)
     )
+
+    @Test
+    fun `verify no data bytes parses to no data value`() {
+        val tempFromRawDataStart = SensorTemperature.fromRawDataStart(UByteArray(2) { 0x0u })
+        assertEquals(-20.0, tempFromRawDataStart.value)
+
+        val tempFromRawDataEnd = SensorTemperature.fromRawDataEnd(UByteArray(2) { 0x0u })
+        assertEquals(-20.0, tempFromRawDataEnd.value)
+    }
 }

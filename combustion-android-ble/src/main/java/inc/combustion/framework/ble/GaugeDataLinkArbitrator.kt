@@ -32,6 +32,7 @@ import android.util.Log
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.device.DeviceInformationBleDevice
 import inc.combustion.framework.ble.device.GaugeBleDevice
+import inc.combustion.framework.ble.device.NodeBleDevice
 import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
 import inc.combustion.framework.ble.device.SimulatedProbeBleDevice
@@ -59,6 +60,16 @@ internal class GaugeDataLinkArbitrator :
     private var currentStatus: SpecializedDeviceStatus? = null
     private var currentSessionInfo: SessionInformation? = null
 
+    private var repeaterNodesGetter: (() -> List<NodeBleDevice>)? = null
+
+    private val repeaterNodes: List<NodeBleDevice>
+        get() = repeaterNodesGetter?.invoke() ?: emptyList()
+
+    val connectedNodeLinks: List<NodeBleDevice>
+        get() {
+            return repeaterNodes.filter { it.isConnected }
+        }
+
     /**
      * Cleans up all resources associated with this arbitrator.
      *
@@ -78,6 +89,7 @@ internal class GaugeDataLinkArbitrator :
             directConnectionAction(it)
         }
 
+        repeaterNodesGetter = null
         bleDevice = null
     }
 
@@ -95,6 +107,10 @@ internal class GaugeDataLinkArbitrator :
         }
 
         return false
+    }
+
+    fun addRepeaterNodes(repeaterNodesGetter: (() -> List<NodeBleDevice>)) {
+        this.repeaterNodesGetter = repeaterNodesGetter
     }
 
     override fun getPreferredConnectionState(state: DeviceConnectionState): GaugeBleDevice? {
