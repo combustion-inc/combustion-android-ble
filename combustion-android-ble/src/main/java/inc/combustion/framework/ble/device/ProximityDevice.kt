@@ -28,7 +28,7 @@
 
 package inc.combustion.framework.ble.device
 
-import inc.combustion.framework.Constants.Companion.MIN_RSSI
+import inc.combustion.framework.Constants.MIN_RSSI
 import inc.combustion.framework.service.Ewma
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow

@@ -36,7 +36,8 @@ internal class NodeReadHardwareRevisionRequest (
 ) : NodeRequest(
     populatePayload(serialNumber),
     NodeMessageType.PROBE_HARDWARE_REVISION,
-    requestId
+    requestId,
+    serialNumber,
 ) {
     companion object {
         const val PAYLOAD_LENGTH: UByte = 4u

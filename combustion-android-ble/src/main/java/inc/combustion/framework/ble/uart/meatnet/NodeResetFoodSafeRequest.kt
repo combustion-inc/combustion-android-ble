@@ -36,7 +36,8 @@ internal class NodeResetFoodSafeRequest(
 ) : NodeRequest(
     populatePayload(serialNumber),
     NodeMessageType.RESET_FOOD_SAFE,
-    requestId
+    requestId,
+    serialNumber,
 ) {
     companion object {
         const val PAYLOAD_LENGTH: UByte = 4u

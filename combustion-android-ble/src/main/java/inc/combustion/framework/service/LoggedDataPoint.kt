@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: DeviceDiscoveredEvent.kt
- * Author: Nick Helseth <nick@combustion.inc>
+ * File: LoggedDataPoint.kt
+ * Author:
  *
  * MIT License
  *
- * Copyright (c) 2023. Combustion Inc.
+ * Copyright (c) 2025. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -28,23 +28,31 @@
 
 package inc.combustion.framework.service
 
-sealed class DeviceDiscoveredEvent {
-    /**
-     * Combustion probe discovered with serial number [serialNumber].
-     */
-    data class ProbeDiscovered(
-        val serialNumber: String
-    ) : DeviceDiscoveredEvent()
+import java.util.Date
 
-    /**
-     * Combustion node discovered with serial number [serialNumber].
-     */
-    data class NodeDiscovered(
-        val serialNumber: String
-    ) : DeviceDiscoveredEvent()
+interface LoggedDataPoint : Comparable<LoggedDataPoint> {
+    val sessionId: UInt
+    val sequenceNumber: UInt
+    val timestamp: Date
 
-    /**
-     * The device cache was cleared.
-     */
-    object DevicesCleared: DeviceDiscoveredEvent()
+    override fun compareTo(other: LoggedDataPoint): Int {
+        return when {
+            this.sequenceNumber > other.sequenceNumber -> 1
+            this.sequenceNumber < other.sequenceNumber -> -1
+            else -> 0
+        }
+    }
+
+    fun copyWith(sessionId: UInt = this.sessionId, sequenceNumber: UInt = this.sequenceNumber, timestamp: Date = this.timestamp) : LoggedDataPoint
+
+    companion object {
+        fun getTimestamp(
+            sessionStart: Date?,
+            sequenceNumber: UInt,
+            samplePeriod: UInt,
+        ): Date {
+            val start = (sessionStart ?: Date()).time
+            return Date(start + (sequenceNumber * samplePeriod).toLong())
+        }
+    }
 }

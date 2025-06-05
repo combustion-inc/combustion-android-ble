@@ -28,6 +28,7 @@
 
 package inc.combustion.framework.service
 
+import inc.combustion.framework.service.dfu.DfuProductType
 import org.junit.Test
 import kotlin.test.assertEquals
 
@@ -37,6 +38,7 @@ internal class ModelInformationTest {
         val mi = ModelInformation.fromString("10010101:20220914")
 
         assertEquals(CombustionProductType.PROBE, mi.productType)
+        assertEquals(DfuProductType.PROBE, mi.dfuProductType)
         assertEquals("10010101", mi.sku)
         assertEquals("20220914", mi.manufacturingLot)
     }
@@ -45,7 +47,8 @@ internal class ModelInformationTest {
     fun `Check Timer Model Information String`() {
         val mi = ModelInformation.fromString("Timer 123-ABC")
 
-        assertEquals(CombustionProductType.DISPLAY, mi.productType)
+        assertEquals(CombustionProductType.NODE, mi.productType)
+        assertEquals(DfuProductType.DISPLAY, mi.dfuProductType)
         assertEquals("123", mi.sku)
         assertEquals("ABC", mi.manufacturingLot)
     }
@@ -54,16 +57,45 @@ internal class ModelInformationTest {
     fun `Check Charger Model Information String`() {
         val mi = ModelInformation.fromString("Charger 123-ABC")
 
-        assertEquals(CombustionProductType.CHARGER, mi.productType)
+        assertEquals(CombustionProductType.NODE, mi.productType)
+        assertEquals(DfuProductType.CHARGER, mi.dfuProductType)
         assertEquals("123", mi.sku)
         assertEquals("ABC", mi.manufacturingLot)
     }
 
     @Test
     fun `Check Malformed Strings Fail`() {
-        assertEquals(CombustionProductType.UNKNOWN, ModelInformation.fromString("1001010120220914").productType)
-        assertEquals(CombustionProductType.UNKNOWN, ModelInformation.fromString("10010101 20220914").productType)
-        assertEquals(CombustionProductType.UNKNOWN, ModelInformation.fromString("Timer 20220914").productType)
-        assertEquals(CombustionProductType.UNKNOWN, ModelInformation.fromString("Charger123-ABC").productType)
+        assertEquals(
+            CombustionProductType.UNKNOWN,
+            ModelInformation.fromString("1001010120220914").productType
+        )
+        assertEquals(
+            DfuProductType.UNKNOWN,
+            ModelInformation.fromString("1001010120220914").dfuProductType
+        )
+        assertEquals(
+            CombustionProductType.UNKNOWN,
+            ModelInformation.fromString("10010101 20220914").productType
+        )
+        assertEquals(
+            DfuProductType.UNKNOWN,
+            ModelInformation.fromString("10010101 20220914").dfuProductType
+        )
+        assertEquals(
+            CombustionProductType.UNKNOWN,
+            ModelInformation.fromString("Timer 20220914").productType
+        )
+        assertEquals(
+            DfuProductType.UNKNOWN,
+            ModelInformation.fromString("Timer 20220914").dfuProductType
+        )
+        assertEquals(
+            CombustionProductType.UNKNOWN,
+            ModelInformation.fromString("Charger123-ABC").productType
+        )
+        assertEquals(
+            DfuProductType.UNKNOWN,
+            ModelInformation.fromString("Charger123-ABC").dfuProductType
+        )
     }
 }

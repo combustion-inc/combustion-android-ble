@@ -29,12 +29,11 @@
 package inc.combustion.framework.ble.uart.meatnet
 
 import inc.combustion.framework.ble.getLittleEndianUInt32At
-import inc.combustion.framework.ble.uart.MessageType
 import inc.combustion.framework.service.PredictionLog
 import inc.combustion.framework.service.ProbeTemperatures
 
-internal class NodeReadLogsResponse(
-    val serialNumber: String,
+internal class NodeReadProbeLogsResponse(
+    override val serialNumber: String,
     val sequenceNumber: UInt,
     val temperatures: ProbeTemperatures,
     val predictionLog: PredictionLog,
@@ -47,8 +46,8 @@ internal class NodeReadLogsResponse(
     requestId,
     responseId,
     payLoadLength,
-    NodeMessageType.LOG
-) {
+    NodeMessageType.PROBE_LOG
+), TargetedNodeResponse {
     override fun toString(): String {
         return "${super.toString()} $success $serialNumber $sequenceNumber"
     }
@@ -62,7 +61,7 @@ internal class NodeReadLogsResponse(
             requestId: UInt,
             responseId: UInt,
             payloadLength: UByte
-        ) : NodeReadLogsResponse? {
+        ) : NodeReadProbeLogsResponse? {
             if (payloadLength < MIN_PAYLOAD_LENGTH) {
                 return null
             }
@@ -77,7 +76,7 @@ internal class NodeReadLogsResponse(
             val temperatures = ProbeTemperatures.fromRawData(rawTemperatures)
             val predictionLog = PredictionLog.fromRawData(rawPredictionLog)
 
-            return NodeReadLogsResponse(
+            return NodeReadProbeLogsResponse(
                 serialNumber,
                 sequenceNumber,
                 temperatures,

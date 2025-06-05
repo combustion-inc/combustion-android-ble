@@ -38,7 +38,7 @@ import kotlin.random.Random
  */
 data class ProbeTemperatures(
     val values: List<Double>
-) {
+) : DeviceTemperature {
     fun coreTemperatureCelsius(sensors: ProbeVirtualSensors): Double {
         return when(sensors.virtualCoreSensor) {
             ProbeVirtualSensors.VirtualCoreSensor.T1 -> values[0]

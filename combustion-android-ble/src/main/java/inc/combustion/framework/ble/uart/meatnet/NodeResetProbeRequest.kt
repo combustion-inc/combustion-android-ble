@@ -37,6 +37,7 @@ internal class NodeResetProbeRequest(
     populatePayload(serialNumber),
     NodeMessageType.RESET_PROBE,
     requestId,
+    serialNumber,
 ) {
     companion object {
         private const val PAYLOAD_LENGTH: UByte = 4u

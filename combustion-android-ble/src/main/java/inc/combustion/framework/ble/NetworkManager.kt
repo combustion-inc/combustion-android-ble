@@ -39,30 +39,40 @@ import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.device.DeviceID
 import inc.combustion.framework.ble.device.DeviceInformationBleDevice
+import inc.combustion.framework.ble.device.GaugeBleDevice
 import inc.combustion.framework.ble.device.LinkID
 import inc.combustion.framework.ble.device.NodeBleDevice
+import inc.combustion.framework.ble.device.NodeHybridDevice
 import inc.combustion.framework.ble.device.ProbeBleDevice
-import inc.combustion.framework.ble.device.ProbeBleDeviceBase
 import inc.combustion.framework.ble.device.ProximityDevice
 import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
+import inc.combustion.framework.ble.device.SimulatedGaugeBleDevice
 import inc.combustion.framework.ble.device.SimulatedProbeBleDevice
-import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
+import inc.combustion.framework.ble.device.UartCapableProbe
+import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.DeviceScanner
+import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
+import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
 import inc.combustion.framework.ble.uart.meatnet.GenericNodeRequest
 import inc.combustion.framework.ble.uart.meatnet.GenericNodeResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.log.LogManager
 import inc.combustion.framework.service.CombustionProductType
+import inc.combustion.framework.service.CombustionProductType.GAUGE
+import inc.combustion.framework.service.CombustionProductType.NODE
+import inc.combustion.framework.service.CombustionProductType.PROBE
 import inc.combustion.framework.service.DeviceConnectionState
-import inc.combustion.framework.service.DeviceDiscoveredEvent
+import inc.combustion.framework.service.DeviceDiscoveryEvent
+import inc.combustion.framework.service.DeviceInProximityEvent
 import inc.combustion.framework.service.DeviceManager
 import inc.combustion.framework.service.FirmwareState
 import inc.combustion.framework.service.FoodSafeData
+import inc.combustion.framework.service.Gauge
+import inc.combustion.framework.service.HighLowAlarmStatus
 import inc.combustion.framework.service.NetworkState
 import inc.combustion.framework.service.Probe
 import inc.combustion.framework.service.ProbeColor
-import inc.combustion.framework.service.ProbeDiscoveredEvent
 import inc.combustion.framework.service.ProbeID
 import inc.combustion.framework.service.ProbePowerMode
 import inc.combustion.framework.service.ProbePredictionMode
@@ -81,20 +91,23 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.Semaphore
 import java.util.concurrent.atomic.AtomicBoolean
 
+private val SPECIALIZED_DEVICES = setOf(PROBE, GAUGE)
+
 private val SUPPORTED_ADVERTISING_PRODUCTS = setOf(
-    CombustionProductType.PROBE,
-    CombustionProductType.DISPLAY,
+    PROBE,
+    NODE,
+    GAUGE,
 )
 
 internal class NetworkManager(
     private var owner: LifecycleOwner,
     private var adapter: BluetoothAdapter,
-    private var settings: DeviceManager.Settings
+    private var settings: DeviceManager.Settings,
 ) {
     private sealed class DeviceHolder {
         data class ProbeHolder(val probe: ProbeBleDevice) : DeviceHolder()
@@ -107,15 +120,15 @@ internal class NetworkManager(
     }
 
     internal data class FlowHolder(
-        var mutableDiscoveredProbesFlow: MutableSharedFlow<ProbeDiscoveredEvent>,
-        var mutableNetworkState: MutableStateFlow<NetworkState>,
-        var mutableFirmwareUpdateState: MutableStateFlow<FirmwareState>,
-        var mutableDeviceProximityFlow: MutableSharedFlow<DeviceDiscoveredEvent>,
-        var mutableGenericNodeMessageFlow: MutableSharedFlow<NodeUARTMessage>,
+        val mutableDiscoveredDevicesFlow: MutableSharedFlow<DeviceDiscoveryEvent>,
+        val mutableNetworkState: MutableStateFlow<NetworkState>,
+        val mutableFirmwareUpdateState: MutableStateFlow<FirmwareState>,
+        val mutableDeviceInProximityFlow: MutableSharedFlow<DeviceInProximityEvent>,
+        val mutableGenericNodeMessageFlow: MutableSharedFlow<NodeUARTMessage>,
     )
 
     private inner class NodeDeviceManager(
-        val owner: LifecycleOwner
+        val owner: LifecycleOwner,
     ) {
         private val connectedNodes = StateFlowMutableMap<String, NodeBleDevice>()
         private val ignoredNodes: MutableSet<String> = mutableSetOf()
@@ -131,20 +144,17 @@ internal class NetworkManager(
         }
 
         private fun getNodeRequestMutex(deviceId: String): Semaphore =
-            // Note, using Java's Semaphore instead ok Kotlin's coroutine friendly version since methods do not use suspend modifier
-            nodeRequestMutexMap[deviceId] ?: (Semaphore(1, true).also {
+            nodeRequestMutexMap[deviceId] ?: (Semaphore(1).also {
                 nodeRequestMutexMap[deviceId] = it
             })
 
-        fun sendNodeRequest(
+        suspend fun sendNodeRequest(
             deviceId: String,
             request: GenericNodeRequest,
             completionHandler: (Boolean, GenericNodeResponse?) -> Unit,
         ) {
             connectedNodes[deviceId]?.let {
                 val mutex = getNodeRequestMutex(deviceId)
-                // TODO DROID-531 : initial sendNodeRequest threadsafety solution - should be replaced with a better solution,
-                //  e.g. one that is coroutine-suspend friendly (instead of thread-block)
                 mutex.acquire()
                 it.sendNodeRequest(request) { status, data ->
                     mutex.release()
@@ -155,7 +165,7 @@ internal class NetworkManager(
             }
         }
 
-        fun subscribeToNodeFlow(probeManager: ProbeManager) {
+        fun subscribeToNodeFlow(probeManager: BleManager) {
             owner.lifecycleScope.launch(
                 CoroutineName("NodeConnectionFlow")
             ) {
@@ -163,12 +173,12 @@ internal class NetworkManager(
                     .collect { deviceIds ->
                         deviceIds.forEach { deviceId ->
                             when (val node = devices[deviceId]) {
-                                is DeviceHolder.ProbeHolder -> NOT_IMPLEMENTED("Unsupported device type")
+                                is DeviceHolder.ProbeHolder -> NOT_IMPLEMENTED("subscribeToNodeFlow from manager ${probeManager.serialNumber} is not implemented for probe with id = $deviceId, type = ${node.probe.productType}, and serialNumber = ${node.probe.serialNumber}")
                                 is DeviceHolder.RepeaterHolder -> {
                                     updateConnectedNodes(node.repeater)
                                 }
 
-                                else -> NOT_IMPLEMENTED("Unknown device type")
+                                else -> NOT_IMPLEMENTED("subscribeToNodeFlow from manager ${probeManager.serialNumber} is not implemented for unknown device $node with id = $deviceId")
                             }
                         }
                     }
@@ -226,12 +236,12 @@ internal class NetworkManager(
         private val initialized = AtomicBoolean(false)
 
         internal var flowHolder = FlowHolder(
-            mutableDiscoveredProbesFlow = MutableSharedFlow(
+            mutableDiscoveredDevicesFlow = MutableSharedFlow(
                 FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.SUSPEND
             ),
             mutableNetworkState = MutableStateFlow(NetworkState()),
             mutableFirmwareUpdateState = MutableStateFlow(FirmwareState(listOf())),
-            mutableDeviceProximityFlow = MutableSharedFlow(
+            mutableDeviceInProximityFlow = MutableSharedFlow(
                 FLOW_CONFIG_REPLAY, FLOW_CONFIG_BUFFER, BufferOverflow.SUSPEND
             ),
             mutableGenericNodeMessageFlow = MutableSharedFlow(
@@ -246,6 +256,7 @@ internal class NetworkManager(
         ) {
             if (!initialized.getAndSet(true)) {
                 INSTANCE = NetworkManager(owner, adapter, settings)
+                _instanceFlow.value = INSTANCE
             } else {
                 // assumption is that CombustionService will correctly manage things as part of its
                 // lifecycle, clearing this manager when the service is stopped.
@@ -266,9 +277,12 @@ internal class NetworkManager(
                 return INSTANCE
             }
 
-        val discoveredProbesFlow: SharedFlow<ProbeDiscoveredEvent>
+        private val _instanceFlow = MutableStateFlow<NetworkManager?>(null)
+        val instanceFlow: StateFlow<NetworkManager?> = _instanceFlow.asStateFlow()
+
+        val discoveredDevicesFlow: SharedFlow<DeviceDiscoveryEvent>
             get() {
-                return flowHolder.mutableDiscoveredProbesFlow.asSharedFlow()
+                return flowHolder.mutableDiscoveredDevicesFlow.asSharedFlow()
             }
 
         val networkStateFlow: StateFlow<NetworkState>
@@ -281,9 +295,9 @@ internal class NetworkManager(
                 return flowHolder.mutableFirmwareUpdateState.asStateFlow()
             }
 
-        val deviceProximityFlow: SharedFlow<DeviceDiscoveredEvent>
+        val deviceProximityFlow: SharedFlow<DeviceInProximityEvent>
             get() {
-                return flowHolder.mutableDeviceProximityFlow.asSharedFlow()
+                return flowHolder.mutableDeviceInProximityFlow.asSharedFlow()
             }
 
         val genericNodeMessageFlow: SharedFlow<NodeUARTMessage>
@@ -296,11 +310,12 @@ internal class NetworkManager(
     private val devices = hashMapOf<DeviceID, DeviceHolder>()
     private val meatNetLinks = hashMapOf<LinkID, LinkHolder>()
     private val probeManagers = hashMapOf<String, ProbeManager>()
+    private val gaugeManagers = hashMapOf<String, GaugeManager>()
     private val deviceInformationDevices = hashMapOf<DeviceID, DeviceInformationBleDevice>()
     private var proximityDevices = hashMapOf<String, ProximityDevice>()
     private var nodeDeviceManager = NodeDeviceManager(owner)
 
-    var probeAllowlist: Set<String>? = settings.probeAllowlist
+    var deviceAllowlist: Set<String>? = settings.probeAllowlist
         private set
 
     internal val bluetoothAdapterStateIntentFilter =
@@ -315,14 +330,14 @@ internal class NetworkManager(
                 )
                 when (state) {
                     BluetoothAdapter.STATE_OFF -> {
-                        if (scanningForProbes) {
+                        if (scanningForDevices) {
                             DeviceScanner.stop()
                         }
                         flowHolder.mutableNetworkState.value = NetworkState()
                     }
 
                     BluetoothAdapter.STATE_ON -> {
-                        if (scanningForProbes) {
+                        if (scanningForDevices) {
                             DeviceScanner.scan(owner)
                         }
                         flowHolder.mutableNetworkState.value =
@@ -343,7 +358,7 @@ internal class NetworkManager(
             return adapter.isEnabled
         }
 
-    internal var scanningForProbes: Boolean = false
+    internal var scanningForDevices: Boolean = false
         private set
 
     internal var dfuModeEnabled: Boolean = false
@@ -354,6 +369,16 @@ internal class NetworkManager(
             return probeManagers.keys.toList()
         }
 
+    internal val discoveredGauges: List<String>
+        get() {
+            return gaugeManagers.keys.toList()
+        }
+
+    internal val discoveredSpecializedDevices: List<String>
+        get() {
+            return discoveredProbes + discoveredGauges
+        }
+
     internal val discoveredNodes: List<String>
         get() {
             return nodeDeviceManager.discoveredNodes()
@@ -362,12 +387,12 @@ internal class NetworkManager(
     internal val discoveredNodesFlow: StateFlow<List<String>>
         get() = nodeDeviceManager.discoveredNodesFlow
 
-    fun setProbeAllowlist(allowlist: Set<String>?) {
+    fun setDeviceAllowlist(allowlist: Set<String>?) {
         // Make sure that the new allowlist is set before we get another advertisement sneak in and
         // try to kick off a connection to a probe that is no longer in the allowlist.
-        probeAllowlist = allowlist
+        deviceAllowlist = allowlist
 
-        Log.i(LOG_TAG, "Setting the probe allowlist to $probeAllowlist")
+        Log.i(LOG_TAG, "Setting the probe allowlist to $deviceAllowlist")
 
         // If the allowlist is null, we don't want to remove any probes.
         if (allowlist == null) {
@@ -375,38 +400,38 @@ internal class NetworkManager(
         }
 
         // We want to remove probes that are in the discoveredProbes list but not the allowlist.
-        discoveredProbes.filterNot {
+        discoveredSpecializedDevices.filterNot {
             allowlist.contains(it)
         }.forEach { serialNumber ->
-            unlinkProbe(serialNumber)
+            unlinkDevice(serialNumber)
         }
     }
 
-    fun startScanForProbes(): Boolean {
+    fun startScanForDevices(): Boolean {
         if (bluetoothIsEnabled) {
-            scanningForProbes = true
+            scanningForDevices = true
         }
 
-        if (scanningForProbes) {
+        if (scanningForDevices) {
             DeviceScanner.scan(owner)
             flowHolder.mutableNetworkState.value =
                 flowHolder.mutableNetworkState.value.copy(scanningOn = true)
         }
 
-        return scanningForProbes
+        return scanningForDevices
     }
 
-    fun stopScanForProbes(): Boolean {
+    fun stopScanForDevices(): Boolean {
         if (bluetoothIsEnabled) {
-            scanningForProbes = false
+            scanningForDevices = false
         }
 
-        if (!scanningForProbes) {
+        if (!scanningForDevices) {
             flowHolder.mutableNetworkState.value =
                 flowHolder.mutableNetworkState.value.copy(scanningOn = false)
         }
 
-        return scanningForProbes
+        return scanningForDevices
     }
 
     fun startDfuMode() {
@@ -414,7 +439,7 @@ internal class NetworkManager(
 
             // if MeatNet is managing network, then stop returning probe scan results
             if (settings.meatNetEnabled) {
-                stopScanForProbes()
+                stopScanForDevices()
             }
 
             // disconnect any active connection
@@ -446,7 +471,7 @@ internal class NetworkManager(
 
             // if MeatNet is managing network, then start returning probe scan results
             if (settings.meatNetEnabled) {
-                startScanForProbes()
+                startScanForDevices()
             }
 
             // take all of the devices out of DFU mode.  we will automatically reconnect to
@@ -471,30 +496,60 @@ internal class NetworkManager(
     fun addSimulatedProbe() {
         val probe = SimulatedProbeBleDevice(owner)
         val manager = ProbeManager(
-            serialNumber = probe.probeSerialNumber,
+            serialNumber = probe.serialNumber,
             owner = owner,
             settings = settings,
             dfuDisconnectedNodeCallback = { }
         )
 
         probeManagers[manager.serialNumber] = manager
-        LogManager.instance.manage(owner, manager)
+        LogManager.instance.manageProbe(owner, manager)
 
         manager.addSimulatedProbe(probe)
 
         owner.lifecycleScope.launch {
-            flowHolder.mutableDiscoveredProbesFlow.emit(
-                ProbeDiscoveredEvent.ProbeDiscovered(probe.probeSerialNumber)
+            flowHolder.mutableDiscoveredDevicesFlow.emit(
+                DeviceDiscoveryEvent.ProbeDiscovered(probe.serialNumber)
+            )
+        }
+    }
+
+    fun addSimulatedGauge() {
+        val gauge = SimulatedGaugeBleDevice(owner)
+        val manager = GaugeManager(
+            mac = gauge.mac,
+            serialNumber = gauge.serialNumber,
+            owner = owner,
+            settings = settings,
+            dfuDisconnectedNodeCallback = { }
+        )
+
+        gaugeManagers[manager.serialNumber] = manager
+        LogManager.instance.manageGauge(owner, manager)
+
+        manager.addSimulatedGauge(gauge)
+
+        owner.lifecycleScope.launch {
+            flowHolder.mutableDiscoveredDevicesFlow.emit(
+                DeviceDiscoveryEvent.GaugeDiscovered(gauge.serialNumber)
             )
         }
     }
 
     internal fun probeFlow(serialNumber: String): StateFlow<Probe>? {
-        return probeManagers[serialNumber]?.probeFlow
+        return probeManagers[serialNumber]?.deviceFlow
     }
 
     internal fun probeState(serialNumber: String): Probe? {
-        return probeManagers[serialNumber]?.probe
+        return probeManagers[serialNumber]?.device
+    }
+
+    internal fun gaugeFlow(serialNumber: String): StateFlow<Gauge>? {
+        return gaugeManagers[serialNumber]?.deviceFlow
+    }
+
+    internal fun gaugeState(serialNumber: String): Gauge? {
+        return gaugeManagers[serialNumber]?.device
     }
 
     internal fun deviceSmoothedRssiFlow(serialNumber: String): StateFlow<Double?>? {
@@ -503,10 +558,12 @@ internal class NetworkManager(
 
     internal fun connect(serialNumber: String) {
         probeManagers[serialNumber]?.connect()
+        gaugeManagers[serialNumber]?.connect()
     }
 
     internal fun disconnect(serialNumber: String, canDisconnectMeatNetDevices: Boolean = false) {
         probeManagers[serialNumber]?.disconnect(canDisconnectMeatNetDevices)
+        gaugeManagers[serialNumber]?.disconnect()
     }
 
     internal fun setProbeColor(
@@ -585,7 +642,18 @@ internal class NetworkManager(
         }
     }
 
-    internal fun sendNodeRequest(
+    internal fun setHighLowAlarmStatus(
+        serialNumber: String,
+        highLowAlarmStatus: HighLowAlarmStatus,
+        completionHandler: (Boolean) -> Unit,
+    ) {
+        gaugeManagers[serialNumber]?.setHighLowAlarmStatus(highLowAlarmStatus, completionHandler)
+            ?: run {
+                completionHandler(false)
+            }
+    }
+
+    internal suspend fun sendNodeRequest(
         deviceId: String,
         request: GenericNodeRequest,
         completionHandler: (Boolean, GenericNodeResponse?) -> Unit,
@@ -595,17 +663,18 @@ internal class NetworkManager(
 
     @ExperimentalCoroutinesApi
     fun clearDevices() {
-        probeManagers.forEach { (_, probe) -> probe.finish() }
+        (probeManagers + gaugeManagers).forEach { (_, manager) -> manager.finish() }
         deviceInformationDevices.forEach { (_, device) -> device.finish() }
         deviceInformationDevices.clear()
         probeManagers.clear()
+        gaugeManagers.clear()
         devices.clear()
         meatNetLinks.clear()
         proximityDevices.clear()
 
         // clear the discovered probes flow
-        flowHolder.mutableDiscoveredProbesFlow.resetReplayCache()
-        flowHolder.mutableDiscoveredProbesFlow.tryEmit(ProbeDiscoveredEvent.DevicesCleared)
+        flowHolder.mutableDiscoveredDevicesFlow.resetReplayCache()
+        flowHolder.mutableDiscoveredDevicesFlow.tryEmit(DeviceDiscoveryEvent.DevicesCleared)
 
         flowHolder.mutableNetworkState.value = NetworkState()
         flowHolder.mutableFirmwareUpdateState.value = FirmwareState(listOf())
@@ -621,29 +690,51 @@ internal class NetworkManager(
     /**
      * If we have not seen this device by its uid [deviceId], then track in the device map.
      */
-    private fun trackDeviceIfNew(
+    private fun trackProbeAdvertisingDeviceIfNew(
         deviceId: String,
-        advertisement: CombustionAdvertisingData,
+        advertisement: ProbeAdvertisingData,
     ) {
         if (!devices.containsKey(deviceId)) {
             val deviceHolder = when (advertisement.productType) {
-                CombustionProductType.PROBE -> {
+                PROBE -> {
                     DeviceHolder.ProbeHolder(
                         ProbeBleDevice(advertisement.mac, owner, advertisement, adapter)
                     )
                 }
 
-                CombustionProductType.DISPLAY, CombustionProductType.CHARGER -> {
-                    val device = NodeBleDevice(advertisement.mac, owner, advertisement, adapter)
-                    publishNodeFirmwareOnConnectedState(device.getDevice())
-                    DeviceHolder.RepeaterHolder(device)
+                NODE -> {
+                    DeviceHolder.RepeaterHolder(createNodeBleDevice(advertisement))
                 }
 
-                else -> NOT_IMPLEMENTED("Unknown type of advertising data")
+                else -> NOT_IMPLEMENTED("Unknown product type")
             }
 
             devices[deviceId] = deviceHolder
         }
+    }
+
+    private fun trackGaugeDeviceIfNew(
+        deviceId: String,
+        advertisement: GaugeAdvertisingData,
+    ) {
+        if (devices[deviceId].hybridDeviceChild == null) {
+            val device = (devices[deviceId] as? DeviceHolder.RepeaterHolder)?.repeater
+                ?: createNodeBleDevice(advertisement)
+            device.createAndAssignNodeHybridDevice { nodeParent ->
+                GaugeBleDevice(
+                    nodeParent = nodeParent,
+                    gaugeAdvertisingData = advertisement,
+                )
+            }
+            val deviceHolder = DeviceHolder.RepeaterHolder(device)
+            devices[deviceId] = deviceHolder
+        }
+    }
+
+    private fun createNodeBleDevice(advertisement: DeviceAdvertisingData): NodeBleDevice {
+        val device = NodeBleDevice(advertisement.mac, owner, advertisement, adapter)
+        publishNodeFirmwareOnConnectedState(device.getDevice())
+        return device
     }
 
     /**
@@ -668,7 +759,37 @@ internal class NetworkManager(
             )
 
             probeManagers[probeSerialNumber] = manager
-            LogManager.instance.manage(owner, manager)
+            LogManager.instance.manageProbe(owner, manager)
+
+            nodeDeviceManager.subscribeToNodeFlow(manager)
+            true
+        } else {
+            false
+        }
+
+    /**
+     * if we haven't seen [gaugeSerialNumber], then create a manager for it.
+     * @return true if new manager was created
+     */
+    private fun createGaugeManagerIfNew(mac: String, gaugeSerialNumber: String): Boolean =
+        if (!gaugeManagers.containsKey(gaugeSerialNumber)) {
+            val manager = GaugeManager(
+                mac = mac,
+                serialNumber = gaugeSerialNumber,
+                owner = owner,
+                settings = settings,
+                dfuDisconnectedNodeCallback = {
+                    firmwareStateOfNetwork.remove(it)
+
+                    // publish the list of firmware details for the network
+                    flowHolder.mutableFirmwareUpdateState.value = FirmwareState(
+                        nodes = firmwareStateOfNetwork.values.toList()
+                    )
+                }
+            )
+
+            gaugeManagers[gaugeSerialNumber] = manager
+            LogManager.instance.manageGauge(owner, manager)
 
             nodeDeviceManager.subscribeToNodeFlow(manager)
             true
@@ -687,28 +808,32 @@ internal class NetworkManager(
         linkId: LinkID,
         deviceId: String,
         probeSerialNumber: String,
-        advertisement: CombustionAdvertisingData
+        advertisement: ProbeAdvertisingData,
     ) {
         if (!meatNetLinks.containsKey(linkId)) {
             // get reference to the source device for this link
-            val device = devices[deviceId]
+            val deviceHolder = devices[deviceId]
             val probeManger = probeManagers[probeSerialNumber]
-            when (device) {
+            when (deviceHolder) {
                 is DeviceHolder.ProbeHolder -> {
-                    meatNetLinks[linkId] = LinkHolder.ProbeHolder(device.probe)
-                    probeManger?.addProbe(device.probe, device.probe.baseDevice, advertisement)
+                    meatNetLinks[linkId] = LinkHolder.ProbeHolder(deviceHolder.probe)
+                    probeManger?.addProbe(
+                        deviceHolder.probe,
+                        deviceHolder.probe.baseDevice,
+                        advertisement,
+                    )
                 }
 
                 is DeviceHolder.RepeaterHolder -> {
                     val repeatedProbe = RepeatedProbeBleDevice(
                         probeSerialNumber,
-                        device.repeater.getDevice(),
+                        deviceHolder.repeater,
                         advertisement,
                     )
                     meatNetLinks[linkId] = LinkHolder.RepeatedProbeHolder(repeatedProbe)
                     probeManger?.addRepeatedProbe(
                         repeatedProbe,
-                        device.repeater.getDevice(),
+                        deviceHolder.repeater.getDevice(),
                         advertisement,
                     )
                 }
@@ -720,18 +845,18 @@ internal class NetworkManager(
 
     private fun createMeatNetLinkIfNewAndAddToProbelessDevicesManager(
         deviceId: String,
-        advertisement: CombustionAdvertisingData
+        advertisement: ProbeAdvertisingData,
     ) {
         createMeatNetLinkIfNewAndAddToProbeManager(
-            linkId = ProbeBleDeviceBase.makeLinkId(advertisement),
+            linkId = UartCapableProbe.makeLinkId(advertisement),
             deviceId = deviceId,
             probeSerialNumber = REPEATER_NO_PROBES_SERIAL_NUMBER,
             advertisement = advertisement,
         )
     }
 
-    private fun manageMeatNetDeviceWithoutProbe(
-        advertisement: CombustionAdvertisingData,
+    private fun manageNodeWithoutProbe(
+        advertisement: ProbeAdvertisingData,
     ) {
         // Not supported if MeatNet is disabled
         if (!settings.meatNetEnabled) {
@@ -739,7 +864,7 @@ internal class NetworkManager(
         }
 
         val deviceId = advertisement.id
-        trackDeviceIfNew(deviceId, advertisement)
+        trackProbeAdvertisingDeviceIfNew(deviceId, advertisement)
         createManagerForDevicesWithoutProbeIfItDoesNotExist()
         createMeatNetLinkIfNewAndAddToProbelessDevicesManager(
             deviceId = deviceId,
@@ -747,30 +872,29 @@ internal class NetworkManager(
         )
     }
 
-
     private fun manageMeatNetDeviceWithProbe(
-        advertisement: CombustionAdvertisingData,
+        advertisement: ProbeAdvertisingData,
     ): Boolean {
         // if MeatNet isn't enabled and we see anything other than a probe, then return out now
         // because that product type isn't supported in this mode.
-        if (!settings.meatNetEnabled && advertisement.productType != CombustionProductType.PROBE) {
+        if (!settings.meatNetEnabled && advertisement.productType != PROBE) {
             return false
         }
 
-        val probeSerialNumber = advertisement.probeSerialNumber
+        val probeSerialNumber = advertisement.serialNumber
         val deviceId = advertisement.id
-        val linkId = ProbeBleDeviceBase.makeLinkId(advertisement)
+        val linkId = UartCapableProbe.makeLinkId(advertisement)
 
         // If the advertised probe isn't in the subscriber list, don't bother connecting
-        probeAllowlist?.let {
+        deviceAllowlist?.let {
             if (!it.contains(probeSerialNumber)) {
                 return false
             }
         }
 
-        trackDeviceIfNew(deviceId, advertisement)
+        trackProbeAdvertisingDeviceIfNew(deviceId, advertisement)
 
-        val discoveredProbe = createProbeManagerIfNew(probeSerialNumber)
+        val isNewlyDiscovered = createProbeManagerIfNew(probeSerialNumber)
 
         createMeatNetLinkIfNewAndAddToProbeManager(
             linkId = linkId,
@@ -779,44 +903,104 @@ internal class NetworkManager(
             advertisement = advertisement,
         )
 
-        return discoveredProbe
+        return isNewlyDiscovered
+    }
+
+    private fun manageGaugeDevice(
+        advertisement: GaugeAdvertisingData,
+    ): Boolean {
+        val serialNumber = advertisement.serialNumber
+        val deviceId = advertisement.id
+        deviceAllowlist?.let {
+            if (!it.contains(serialNumber)) {
+                return false
+            }
+        }
+
+        trackGaugeDeviceIfNew(deviceId, advertisement)
+        val isNewlyDiscovered = createGaugeManagerIfNew(advertisement.mac, serialNumber)
+
+        if (gaugeManagers[serialNumber]?.hasGauge() == false) {
+            (devices[deviceId] as? DeviceHolder.RepeaterHolder)?.gauge?.let { gaugeBleDevice ->
+                gaugeManagers[serialNumber]?.let { manager ->
+                    manager.addGauge(
+                        gauge = gaugeBleDevice,
+                        baseDevice = gaugeBleDevice.baseDevice,
+                        advertisement = advertisement,
+                    )
+                    manager.addRepeaters {
+                        devices.values.toList().filterIsInstance<DeviceHolder.RepeaterHolder>()
+                            .filter {
+                                it.gauge?.serialNumber != gaugeBleDevice.serialNumber
+                            }
+                            .map {
+                                it.repeater
+                            }
+                    }
+                }
+            }
+        }
+
+        return isNewlyDiscovered
     }
 
     private suspend fun collectAdvertisingData() {
         DeviceScanner.advertisements.collect { advertisingData ->
-            if (scanningForProbes) {
-                val serialNumber = advertisingData.probeSerialNumber
+            if (scanningForDevices) {
+                val serialNumber = advertisingData.serialNumber
                 val productType = advertisingData.productType
                 if (!SUPPORTED_ADVERTISING_PRODUCTS.contains(productType)) return@collect
-
-                if (serialNumber == REPEATER_NO_PROBES_SERIAL_NUMBER) {
-                    manageMeatNetDeviceWithoutProbe(advertisingData)
-                } else if (manageMeatNetDeviceWithProbe(advertisingData)) {
-                    flowHolder.mutableDiscoveredProbesFlow.emit(
-                        ProbeDiscoveredEvent.ProbeDiscovered(serialNumber)
-                    )
-                }
-
-                // Publish this device to the proximity flow if it's a probe.
-                if (productType == CombustionProductType.PROBE) {
-                    // If we haven't seen this probe before, then add it to our list of devices
-                    // that we track proximity for and publish the addition.
-                    if (!proximityDevices.contains(serialNumber)) {
-                        Log.i(LOG_TAG, "Adding $serialNumber to probes in proximity")
-
-                        // Guarantee that the device has a valid RSSI value before flowing out
-                        // the discovery event.
-                        proximityDevices[serialNumber] = ProximityDevice()
-                        proximityDevices[serialNumber]?.handleRssiUpdate(advertisingData.rssi)
-                        flowHolder.mutableDeviceProximityFlow.emit(
-                            DeviceDiscoveredEvent.ProbeDiscovered(serialNumber)
+                when (advertisingData) {
+                    is ProbeAdvertisingData -> if (serialNumber == REPEATER_NO_PROBES_SERIAL_NUMBER) {
+                        manageNodeWithoutProbe(advertisingData)
+                    } else if (manageMeatNetDeviceWithProbe(advertisingData)) {
+                        flowHolder.mutableDiscoveredDevicesFlow.emit(
+                            DeviceDiscoveryEvent.ProbeDiscovered(
+                                serialNumber
+                            )
                         )
-                    } else {
-                        // Update the smoothed RSSI value for this device
-                        proximityDevices[serialNumber]?.handleRssiUpdate(advertisingData.rssi)
+                    }
+
+                    is GaugeAdvertisingData -> if (manageGaugeDevice(advertisingData)) {
+                        flowHolder.mutableDiscoveredDevicesFlow.emit(
+                            DeviceDiscoveryEvent.GaugeDiscovered(
+                                serialNumber
+                            )
+                        )
                     }
                 }
+
+                if (SPECIALIZED_DEVICES.contains(productType)) {
+                    updateDeviceProximity(serialNumber, productType, advertisingData.rssi)
+                }
             }
+        }
+    }
+
+    private suspend fun updateDeviceProximity(
+        serialNumber: String,
+        productType: CombustionProductType,
+        rssi: Int
+    ) {
+        // If we haven't seen this probe before, then add it to our list of devices
+        // that we track proximity for and publish the addition.
+        if (!proximityDevices.contains(serialNumber)) {
+            Log.i(LOG_TAG, "Adding ${productType.name} $serialNumber to devices in proximity")
+
+            // Guarantee that the device has a valid RSSI value before flowing out
+            // the discovery event.
+            proximityDevices[serialNumber] = ProximityDevice()
+            proximityDevices[serialNumber]?.handleRssiUpdate(rssi)
+            when (productType) {
+                PROBE -> DeviceInProximityEvent.ProbeDiscovered(serialNumber)
+                GAUGE -> DeviceInProximityEvent.GaugeDiscovered(serialNumber)
+                else -> null
+            }?.let { inProximityEvent ->
+                flowHolder.mutableDeviceInProximityFlow.emit(inProximityEvent)
+            }
+        } else {
+            // Update the smoothed RSSI value for this device
+            proximityDevices[serialNumber]?.handleRssiUpdate(rssi)
         }
     }
 
@@ -835,7 +1019,11 @@ internal class NetworkManager(
                     device.firmwareVersion?.let { firmwareVersion ->
                         // Add to firmware state map
                         val node =
-                            FirmwareState.Node(device.id, device.productType, firmwareVersion)
+                            FirmwareState.Node(
+                                device.id,
+                                device.dfuProductType,
+                                firmwareVersion
+                            )
                         firmwareStateOfNetwork[device.id] = node
 
                         // publish the list of firmware details for the network
@@ -868,11 +1056,11 @@ internal class NetworkManager(
                     var bluetoothIsOn = false
                     networkStateFlow.collect {
                         if (!bluetoothIsOn && it.bluetoothOn) {
-                            startScanForProbes()
+                            startScanForDevices()
                         }
 
                         if (bluetoothIsOn && !it.bluetoothOn) {
-                            stopScanForProbes()
+                            stopScanForDevices()
                         }
 
                         bluetoothIsOn = it.bluetoothOn
@@ -888,7 +1076,7 @@ internal class NetworkManager(
             if (settings.meatNetEnabled) {
                 // MeatNet automatically starts scanning without API call.
                 DeviceScanner.scan(owner)
-                startScanForProbes()
+                startScanForDevices()
             }
         } else {
             flowHolder.mutableNetworkState.value =
@@ -896,13 +1084,13 @@ internal class NetworkManager(
         }
     }
 
-    private fun unlinkProbe(serialNumber: String) {
-        Log.i(LOG_TAG, "Unlinking probe: $serialNumber")
+    private fun unlinkDevice(serialNumber: String) {
+        Log.i(LOG_TAG, "Unlinking device: $serialNumber")
 
-        // Remove the probe from the discoveredProbes list
-        val probeManager = probeManagers.remove(serialNumber)
+        // Remove the device from the discovere devices list
+        val deviceManager = probeManagers.remove(serialNumber) ?: gaugeManagers.remove(serialNumber)
 
-        val deviceId = probeManager?.probe?.baseDevice?.id
+        val deviceId = deviceManager?.device?.baseDevice?.id
 
         // We need to figure out which repeated probe devices (nodes, essentially) are solely
         // repeating the probe that we want to disconnect from. So, for example, from the following
@@ -931,14 +1119,14 @@ internal class NetworkManager(
         // Set of all Device IDs of nodes (repeated devices) that do provide this serial number
         val providers = meatNetLinks.values
             .filterIsInstance<LinkHolder.RepeatedProbeHolder>()
-            .filter { it.repeatedProbe.probeSerialNumber == serialNumber }
+            .filter { it.repeatedProbe.serialNumber == serialNumber }
             .map { it.repeatedProbe.id }
             .toSet()
 
         // Set of all Device IDs of nodes (repeated devices) that provide other serial numbers
         val nonProviders = meatNetLinks.values
             .filterIsInstance<LinkHolder.RepeatedProbeHolder>()
-            .filterNot { it.repeatedProbe.probeSerialNumber == serialNumber }
+            .filterNot { it.repeatedProbe.serialNumber == serialNumber }
             .map { it.repeatedProbe.id }
             .toSet()
 
@@ -956,27 +1144,44 @@ internal class NetworkManager(
         meatNetLinks.values.removeIf {
             when (it) {
                 is LinkHolder.ProbeHolder ->
-                    it.probe.probeSerialNumber == serialNumber
+                    it.probe.serialNumber == serialNumber
 
                 is LinkHolder.RepeatedProbeHolder ->
-                    it.repeatedProbe.probeSerialNumber == serialNumber
+                    it.repeatedProbe.serialNumber == serialNumber
             }
         }
 
-        // Clean up the probe manager's resources, disconnecting only those nodes that are sole
+        // Clean up the device manager's resources, disconnecting only those nodes that are sole
         // providers.
         LogManager.instance.finish(serialNumber)
-        probeManager?.finish(soleProviders.map { it.repeatedProbe.id }.toSet())
+        deviceManager?.finish(soleProviders.map { it.repeatedProbe.id }.toSet())
 
-        // Remove the probe from the device list--this should be the last reference to the held
-        // device.
         deviceId?.let {
-            devices.remove(it)
+            val deviceHolder = devices[it]
+            if ((deviceHolder is DeviceHolder.RepeaterHolder) && (deviceHolder.hybridDeviceChild != null)) {
+                // node component of hybridDevice might still be connected to devices
+                deviceHolder.repeater.clearNodeHybridDevice()
+            } else {
+                // Remove the device from the device list -- this should be the last reference to the held device.
+                devices.remove(it)
+            }
         }
 
         // Event out the removal
-        flowHolder.mutableDiscoveredProbesFlow.tryEmit(
-            ProbeDiscoveredEvent.ProbeRemoved(serialNumber)
+        flowHolder.mutableDiscoveredDevicesFlow.tryEmit(
+            when (deviceManager) {
+                is GaugeManager -> DeviceDiscoveryEvent.GaugeRemoved(serialNumber)
+                else -> DeviceDiscoveryEvent.ProbeRemoved(serialNumber)
+            }
         )
     }
+
+    private val NodeBleDevice.gaugeHybridDevice: GaugeBleDevice?
+        get() = hybridDeviceChild as? GaugeBleDevice
+
+    private val DeviceHolder.RepeaterHolder.gauge: GaugeBleDevice?
+        get() = repeater.gaugeHybridDevice
+
+    private val DeviceHolder?.hybridDeviceChild: NodeHybridDevice?
+        get() = (this as? DeviceHolder.RepeaterHolder)?.repeater?.hybridDeviceChild
 }
