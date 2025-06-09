@@ -90,7 +90,7 @@ internal class GaugeManager(
     // idle monitors
     private val statusNotificationsMonitor = IdleMonitor()
 
-    // holds the current state and data for this probe
+    // holds the current state and data for this gauge
     private val _deviceFlow = MutableStateFlow(Gauge.create(serialNumber = serialNumber, mac = mac))
 
     // the flow that is consumed to get state and date updates
@@ -110,7 +110,7 @@ internal class GaugeManager(
     override val logResponseFlow = _logResponseFlow.asSharedFlow()
 
 
-    // current upload state for this probe, determined by LogManager
+    // current upload state for this gauge, determined by LogManager
     override var uploadState: ProbeUploadState
         get() {
             return _deviceFlow.value.uploadState
@@ -163,19 +163,19 @@ internal class GaugeManager(
             return arbitrator.bleDevice?.deviceInfoModelInformation
         }
 
-    // serial number of the probe that is being managed by this manager
+    // serial number of the gauge that is being managed by this manager
     override val serialNumber: String
         get() {
             return _deviceFlow.value.serialNumber
         }
 
-    // the flow that produces ProbeStatus updates from MeatNet
-    private val _normalModeProbeStatusFlow = MutableSharedFlow<GaugeStatus>(
+    // the flow that produces GaugeStatus updates from MeatNet
+    private val _normalModeStatusFlow = MutableSharedFlow<GaugeStatus>(
         replay = 0, extraBufferCapacity = 10, BufferOverflow.DROP_OLDEST
     )
 
     override val normalModeStatusFlow: SharedFlow<SpecializedDeviceStatus> =
-        _normalModeProbeStatusFlow.asSharedFlow()
+        _normalModeStatusFlow.asSharedFlow()
 
     override val minSequenceNumber: UInt?
         get() {
@@ -404,10 +404,10 @@ internal class GaugeManager(
     }
 
     private fun fetchFirmwareVersion() {
-        // if we don't know the probe's firmware version
+        // if we don't know the gauge's firmware version
         if (_deviceFlow.value.fwVersion == null) {
 
-            // if direct link, then get the probe version over that link
+            // if direct link, then get the gauge version over that link
             arbitrator.directLink?.readFirmwareVersionAsync { fwVersion ->
                 // update firmware version on completion of read
                 _deviceFlow.update {
@@ -418,10 +418,10 @@ internal class GaugeManager(
     }
 
     private fun fetchHardwareRevision() {
-        // if we don't know the probe's hardware revision
+        // if we don't know the gauge's hardware revision
         if (_deviceFlow.value.hwRevision == null) {
 
-            // if direct link, then get the probe revision over that link
+            // if direct link, then get the gauge revision over that link
             arbitrator.directLink?.readHardwareRevisionAsync { hwRevision ->
 
                 // update firmware version on completion of read
@@ -433,10 +433,10 @@ internal class GaugeManager(
     }
 
     private fun fetchModelInformation() {
-        // if we don't know the probe's model information
+        // if we don't know the gauge's model information
         if (_deviceFlow.value.modelInformation == null) {
 
-            // if direct link, then get the probe model info over that link
+            // if direct link, then get the gauge model info over that link
             arbitrator.directLink?.readModelInformationAsync { info ->
 
                 // update firmware version on completion of read
@@ -527,7 +527,7 @@ internal class GaugeManager(
                 maxSequenceNumber = status.maxSequenceNumber,
             )
 
-            _normalModeProbeStatusFlow.emit(status)
+            _normalModeStatusFlow.emit(status)
 
             // redundantly check for device information
             if (!simulated) {
