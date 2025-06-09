@@ -1085,13 +1085,14 @@ internal class ProbeManager(
             status.overheatingSensors,
             updatedProbe
         )
-        val predictionInfo = predictionManager.updatePredictionStatus(
+        predictionManager.updatePredictionStatus(
             predictionInfo = PredictionManager.PredictionInfo.fromPredictionStatus(
                 status.predictionStatus
             ),
             sequenceNumber = status.maxSequenceNumber
-        )
-        updatedProbe = updatePredictionInfo(predictionInfo, updatedProbe)
+        )?.let { predictionInfo ->
+            updatedProbe = updatePredictionInfo(predictionInfo, updatedProbe)
+        }
         updatedProbe = updateFoodSafe(status.foodSafeData, status.foodSafeStatus, updatedProbe)
 
         return updatedProbe
