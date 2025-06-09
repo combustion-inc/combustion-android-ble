@@ -36,7 +36,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.dfu.PerformDfuDelegate
-import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
+import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.service.dfu.DfuState
 import kotlinx.coroutines.Dispatchers
@@ -51,7 +51,7 @@ internal class DfuBleDevice(
     private val context: Context,
     owner: LifecycleOwner,
     adapter: BluetoothAdapter,
-    advertisingData: CombustionAdvertisingData,
+    advertisingData: DeviceAdvertisingData,
 ) : DeviceInformationBleDevice(advertisingData.mac, advertisingData, owner, adapter),
     DfuProgressListener,
     DfuLogListener {
@@ -60,7 +60,7 @@ internal class DfuBleDevice(
         context: Context,
         owner: LifecycleOwner,
         adapter: BluetoothAdapter,
-        advertisingData: CombustionAdvertisingData,
+        advertisingData: DeviceAdvertisingData,
     ) : this(
         performDfuDelegate = PerformDfuDelegate(context, advertisingData, advertisingData.mac),
         context = context,

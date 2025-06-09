@@ -49,13 +49,24 @@ import inc.combustion.framework.ble.uart.meatnet.NodeMessage
 import inc.combustion.framework.ble.uart.meatnet.NodeMessageType
 import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.log.LogManager
+import inc.combustion.framework.service.dfu.DfuProductType
 import inc.combustion.framework.service.dfu.DfuSystemState
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.shareIn
+import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import java.util.*
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -79,16 +90,22 @@ class DeviceManager(
         val autoLogTransfer: Boolean = false,
         val meatNetEnabled: Boolean = false,
         val probeAllowlist: Set<String>? = null,
-        val messageTypeCallback: (UByte) -> NodeMessage? = { messageType: UByte -> NodeMessageType.fromUByte(messageType) }
+        val messageTypeCallback: (UByte) -> NodeMessage? = { messageType: UByte ->
+            NodeMessageType.fromUByte(
+                messageType
+            )
+        }
     )
 
     companion object {
         private lateinit var INSTANCE: DeviceManager
-        private lateinit var app : Application
-        private lateinit var onServiceBound : (deviceManager: DeviceManager) -> Unit
+        private lateinit var app: Application
+        private lateinit var onServiceBound: (deviceManager: DeviceManager) -> Unit
         private val initialized = AtomicBoolean(false)
         private val connected = AtomicBoolean(false)
         private val bindingCount = AtomicInteger(0)
+        private var defaultCoroutineScope: CoroutineScope? = null
+        private var mainCoroutineScope: CoroutineScope? = null
 
         private val connection = object : ServiceConnection {
 
@@ -99,7 +116,7 @@ class DeviceManager(
                 connected.set(true)
                 onServiceBound(INSTANCE)
 
-                INSTANCE.onBoundInitList.forEach{ initCallback ->
+                INSTANCE.onBoundInitList.forEach { initCallback ->
                     initCallback()
                 }
             }
@@ -122,8 +139,12 @@ class DeviceManager(
          * @param application Application context.
          * @param onBound Optional lambda to be called when the service is connected to an Activity.
          */
-        fun initialize(application: Application, settings: Settings = Settings(), onBound: (deviceManager: DeviceManager) -> Unit = {_ -> }) {
-            if(!initialized.getAndSet(true)) {
+        fun initialize(
+            application: Application,
+            settings: Settings = Settings(),
+            onBound: (deviceManager: DeviceManager) -> Unit = { _ -> }
+        ) {
+            if (!initialized.getAndSet(true)) {
                 app = application
                 onServiceBound = onBound
                 INSTANCE = DeviceManager(settings)
@@ -140,11 +161,14 @@ class DeviceManager(
         fun startCombustionService(
             notification: Notification?,
             dfuNotificationTarget: Class<out Activity?>? = null,
-            latestFirmware: Map<CombustionProductType, Uri> = emptyMap()
+            latestFirmware: Map<DfuProductType, Uri> = emptyMap(),
+            onServiceStarted: (() -> Unit)? = null,
         ): Int {
-            if(!connected.get()) {
-                if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
+            if (!connected.get()) {
+                if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
                     Log.d(LOG_TAG, "Start Service")
+                defaultCoroutineScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+                mainCoroutineScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
                 return CombustionService.start(
                     app.applicationContext,
@@ -152,6 +176,7 @@ class DeviceManager(
                     dfuNotificationTarget,
                     INSTANCE.settings,
                     latestFirmware,
+                    onServiceStarted,
                 )
             }
             return 0
@@ -162,14 +187,14 @@ class DeviceManager(
          */
         fun bindCombustionService() {
             val count = bindingCount.getAndIncrement()
-            if(count <= 0) {
-                if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
+            if (count <= 0) {
+                if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
                     Log.d(LOG_TAG, "Binding Service")
 
                 CombustionService.bind(app.applicationContext, connection)
             }
 
-            if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
+            if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
                 Log.d(LOG_TAG, "Binding Reference Count (${count + 1})")
         }
 
@@ -179,11 +204,11 @@ class DeviceManager(
         fun unbindCombustionService() {
             val count = bindingCount.decrementAndGet()
 
-            if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE) {
+            if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE) {
                 Log.d(LOG_TAG, "Unbinding Reference Count ($count)")
             }
 
-            if(connected.get() && count <= 0) {
+            if (connected.get() && count <= 0) {
                 stopCombustionService()
             }
         }
@@ -192,12 +217,17 @@ class DeviceManager(
          * Stops the Combustion Android Service
          */
         fun stopCombustionService() {
-            if(DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE) {
+            if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE) {
                 Log.d(LOG_TAG, "Unbinding & Stopping Service")
             }
 
             bindingCount.set(0)
             app.unbindService(connection)
+
+            defaultCoroutineScope?.cancel()
+            defaultCoroutineScope = null
+            mainCoroutineScope?.cancel()
+            mainCoroutineScope = null
 
             // we might run into situations where the service isn't fully started
             // by the time we reach this call since the operation is asynchronous.
@@ -226,7 +256,7 @@ class DeviceManager(
      */
     val scanningForProbes: Boolean
         get() {
-            return NetworkManager.instance.scanningForProbes
+            return NetworkManager.instance.scanningForDevices
         }
 
     /**
@@ -237,26 +267,72 @@ class DeviceManager(
             return NetworkManager.instance.dfuModeEnabled
         }
 
-    /**
-     * Kotlin flow for collecting ProbeDiscoveredEvents that occur when the service
-     * is scanning for thermometers.  This is a hot flow.
-     *
-     * @see ProbeDiscoveredEvent
-     */
-    val discoveredProbesFlow : SharedFlow<ProbeDiscoveredEvent>
+    @Deprecated(
+        message = "discoveredProbesFlow is deprecated, use deviceInProximityFlow instead.",
+        replaceWith = ReplaceWith("discoveredDevicesFlow"),
+        level = DeprecationLevel.WARNING
+    )
+    @Suppress("DEPRECATION")
+    val discoveredProbesFlow: SharedFlow<ProbeDiscoveredEvent>
         get() {
-            return NetworkManager.discoveredProbesFlow
+            return discoveredDevicesFlow.mapNotNull {
+                when (it) {
+                    is DeviceDiscoveryEvent.ProbeDiscovered -> ProbeDiscoveredEvent.ProbeDiscovered(
+                        it.serialNumber
+                    )
+
+                    is DeviceDiscoveryEvent.ProbeRemoved -> ProbeDiscoveredEvent.ProbeRemoved(it.serialNumber)
+                    is DeviceDiscoveryEvent.DevicesCleared -> ProbeDiscoveredEvent.DevicesCleared
+                    else -> null
+                }
+            }.shareIn(requireNotNull(defaultCoroutineScope), SharingStarted.Lazily)
         }
 
     /**
-     * Kotlin flow for collecting [DeviceDiscoveredEvent]s that occur when the service encounters a
+     * Kotlin flow for collecting [DeviceDiscoveryEvent] that occur when the service
+     * is scanning for devices.  This is a hot flow.
+     *
+     * @see DeviceDiscoveryEvent
+     */
+    val discoveredDevicesFlow: SharedFlow<DeviceDiscoveryEvent>
+        get() {
+            return NetworkManager.discoveredDevicesFlow
+        }
+
+
+    @Deprecated(
+        message = "deviceProximityFlow is deprecated, use deviceInProximityFlow instead.",
+        replaceWith = ReplaceWith("deviceInProximityFlow"),
+        level = DeprecationLevel.WARNING
+    )
+    @Suppress("DEPRECATION")
+    val deviceProximityFlow: SharedFlow<DeviceDiscoveredEvent>
+        get() {
+            return deviceInProximityFlow.mapNotNull {
+                when (it) {
+                    is DeviceInProximityEvent.ProbeDiscovered -> DeviceDiscoveredEvent.ProbeDiscovered(
+                        it.serialNumber
+                    )
+
+                    is DeviceInProximityEvent.NodeDiscovered -> DeviceDiscoveredEvent.NodeDiscovered(
+                        it.serialNumber
+                    )
+
+                    is DeviceInProximityEvent.DevicesCleared -> DeviceDiscoveredEvent.DevicesCleared
+                    else -> null
+                }
+            }.shareIn(requireNotNull(defaultCoroutineScope), SharingStarted.Lazily)
+        }
+
+    /**
+     * Kotlin flow for collecting [DeviceInProximityEvent] that occur when the service encounters a
      * device that is in proximity. To receive updates to the proximity value, collect on the
      * [deviceSmoothedRssiFlow]. This is a hot flow.
      *
      * Note that this flow will emit events for all devices in proximity, disregarding any allowlist
      * information.
      */
-    val deviceProximityFlow : SharedFlow<DeviceDiscoveredEvent>
+    val deviceInProximityFlow: SharedFlow<DeviceInProximityEvent>
         get() {
             return NetworkManager.deviceProximityFlow
         }
@@ -266,7 +342,7 @@ class DeviceManager(
      *
      * @see NetworkEvent
      */
-    val networkFlow : StateFlow<NetworkState>
+    val networkFlow: StateFlow<NetworkState>
         get() {
             return NetworkManager.networkStateFlow
         }
@@ -274,18 +350,27 @@ class DeviceManager(
     /**
      * Kotlin flow for collecting GenericNodeRequest messages that are sent from nodes.
      */
-    val genericNodeRequestFlow : SharedFlow<NodeUARTMessage>
+    val genericNodeRequestFlow: SharedFlow<NodeUARTMessage>
         get() {
             return NetworkManager.genericNodeMessageFlow
         }
 
     /**
-     * Returns a list of device serial numbers, consisting of all devices that have been
+     * Returns a list of device serial numbers, consisting of all probes that have been
      * discovered.
      */
     val discoveredProbes: List<String>
         get() {
             return NetworkManager.instance.discoveredProbes
+        }
+
+    /**
+     * Returns a list of device serial numbers, consisting of all gauges that have been
+     * discovered.
+     */
+    val discoveredGauges: List<String>
+        get() {
+            return NetworkManager.instance.discoveredGauges
         }
 
     /**
@@ -318,15 +403,25 @@ class DeviceManager(
     val analyticsExceptionsFlow: SharedFlow<ExceptionEvent>
         get() = AnalyticsTracker.instance.exceptionEventFlow
 
+    private fun doWhenNetworkManagerInitialized(onInitialized: suspend (NetworkManager) -> Unit) {
+        mainCoroutineScope?.launch {
+            NetworkManager.instanceFlow.first { it != null }?.let {
+                onInitialized(it)
+            } ?: run {
+                throw IllegalStateException("NetworkManager was not initialized")
+            }
+        }
+    }
+
     /**
      * Registers a lambda to be called by the DeviceManager upon binding with the
      * Combustion Service and completing initialization.
      *
      * @param callback Lambda to be called by the Device Manager upon completing initialization.
      */
-    fun registerOnBoundInitialization(callback : () -> Unit) {
+    fun registerOnBoundInitialization(callback: () -> Unit) {
         // if service is already connected, then run the callback right away.
-        if(connected.get()) {
+        if (connected.get()) {
             callback()
         }
         // otherwise queue the callback to be run when the service is bound.
@@ -335,49 +430,83 @@ class DeviceManager(
         }
     }
 
+    @Deprecated(
+        message = "startScanningForProbes is deprecated, use startScanningForDevices instead.",
+        replaceWith = ReplaceWith("startScanningForDevices"),
+        level = DeprecationLevel.WARNING
+    )
+    fun startScanningForProbes(): Boolean = startScanningForDevices()
+
     /**
-     * Starts scanning for temperature probes.  Will generate a ProbeDiscoveredEvent
-     * to the discoveredProbesFlow property.
+     * Starts scanning for devices.  Will generate a [DeviceDiscoveryEvent]
+     * to the [discoveredDevicesFlow] property.
      *
      * @return true if scanning has started, false otherwise.
      *
-     * @see discoveredProbesFlow
-     * @see ProbeDiscoveredEvent
+     * @see discoveredDevicesFlow
+     * @see DeviceDiscoveryEvent
      */
-    fun startScanningForProbes(): Boolean {
-        return NetworkManager.instance.startScanForProbes()
+    fun startScanningForDevices(): Boolean {
+        return NetworkManager.instance.startScanForDevices()
+    }
+
+    @Deprecated(
+        message = "setProbeAllowlist is deprecated, use setDeviceAllowList instead.",
+        replaceWith = ReplaceWith("setDeviceAllowList"),
+        level = DeprecationLevel.WARNING
+    )
+    fun setProbeAllowlist(allowlist: Set<String>?) {
+        setDeviceAllowList(allowlist)
     }
 
     /**
-     * Sets the list of probes that the framework will publish data for to [allowlist]. A
-     * discovery event will be emitted to [discoveredProbesFlow] for every probe in the list that
+     * Sets the list of devices that the framework will publish data for to [allowlist]. A
+     * discovery event will be emitted to [discoveredDevicesFlow] for every device in the list that
      * isn't currently in the internal list maintained by the framework.
      *
-     * Passing null for [allowlist] will cause all probes to be published.
+     * Passing null for [allowlist] will cause all devices to be published.
      */
-    fun setProbeAllowlist(allowlist: Set<String>?) {
-        NetworkManager.instance.setProbeAllowlist(allowlist)
+    fun setDeviceAllowList(allowlist: Set<String>?) {
+        doWhenNetworkManagerInitialized {
+            it.setDeviceAllowlist(allowlist)
+        }
     }
 
-    /**
-     * Returns the current thermometer allowlist.
-     */
+    @Deprecated(
+        message = "setProbeAllowlist is deprecated, use setDeviceAllowList instead.",
+        replaceWith = ReplaceWith("setDeviceAllowList"),
+        level = DeprecationLevel.WARNING
+    )
     val probeAllowlist: Set<String>?
-        get() {
-            return NetworkManager.instance.probeAllowlist
-        }
+        get() = deviceAllowlist
 
     /**
-     * Stops scanning for temperature probes.  Will generate a ProbeDiscoveredEvent
-     * to the discoveredProbFlow property.
+     * Returns the current device allowlist.
+     */
+    val deviceAllowlist: Set<String>?
+        get() {
+            return NetworkManager.instance.deviceAllowlist
+        }
+
+
+    @Deprecated(
+        message = "stopScanningForProbes is deprecated, use stopScanningForDevices instead.",
+        replaceWith = ReplaceWith("stopScanningForDevices"),
+        level = DeprecationLevel.WARNING
+    )
+    fun stopScanningForProbes(): Boolean = stopScanningForDevices()
+
+    /**
+     * Stops scanning for devices.  Will generate a [DeviceDiscoveryEvent]
+     * to the [discoveredDevicesFlow] property.
      *
      * @return true if scanning has stopped, false otherwise.
      *
-     * @see discoveredProbesFlow
-     * @see ProbeDiscoveredEvent
+     * @see discoveredDevicesFlow
+     * @see DeviceDiscoveryEvent
      */
-    fun stopScanningForProbes(): Boolean {
-        return NetworkManager.instance.stopScanForProbes()
+    fun stopScanningForDevices(): Boolean {
+        return NetworkManager.instance.stopScanForDevices()
     }
 
     /**
@@ -406,6 +535,31 @@ class DeviceManager(
     }
 
     /**
+     * Retrieves the Kotlin flow for collecting Gauge state updates for the specified
+     * probe serial number.  Note, this is a hot flow.
+     *
+     * @param serialNumber the serial number of the gauge.
+     * @return Kotlin flow for collecting Gauge state updates.
+     *
+     * @see Gauge
+     */
+    fun gaugeFlow(serialNumber: String): StateFlow<Gauge>? {
+        return NetworkManager.instance.gaugeFlow(serialNumber)
+    }
+
+    /**
+     * Retrieves the current probe state for the specified probe serial number.
+     *
+     * @param serialNumber the serial number of the probe.
+     * @return current ProbeState of the probe.
+     *
+     * @see Gauge
+     */
+    fun gauge(serialNumber: String): Gauge? {
+        return NetworkManager.instance.gaugeState(serialNumber)
+    }
+
+    /**
      * Retrieves the Kotlin flow for collecting current smoothed RSSI value updates for the device
      * with serial number [serialNumber]. Note that the value retrieved from this flow disregards
      * MeatNet connections--you may have a MeatNet connection to this device, but if the device
@@ -416,8 +570,8 @@ class DeviceManager(
      * advertising data, which can come in more or less frequently if the probe is in instant read
      * mode or not.
      *
-     * This flow is guaranteed to exist if a [DeviceDiscoveredEvent.ProbeDiscovered] event is flowed
-     * from [deviceProximityFlow] for [serialNumber].
+     * This flow is guaranteed to exist if a [DeviceInProximityEvent.ProbeDiscovered] event is flowed
+     * from [deviceInProximityFlow] for [serialNumber].
      */
     fun deviceSmoothedRssiFlow(serialNumber: String): StateFlow<Double?>? {
         return NetworkManager.instance.deviceSmoothedRssiFlow(serialNumber)
@@ -437,8 +591,10 @@ class DeviceManager(
      * @see DeviceConnectionState.CONNECTING
      * @see probeFlow
      */
-    fun connect(serialNumber : String) {
-        NetworkManager.instance.connect(serialNumber)
+    fun connect(serialNumber: String) {
+        doWhenNetworkManagerInitialized {
+            it.connect(serialNumber)
+        }
     }
 
     /**
@@ -456,7 +612,9 @@ class DeviceManager(
      * @see probeFlow
      */
     fun disconnect(serialNumber: String) {
-        NetworkManager.instance.disconnect(serialNumber)
+        doWhenNetworkManagerInitialized {
+            it.disconnect(serialNumber)
+        }
     }
 
     /**
@@ -479,28 +637,54 @@ class DeviceManager(
     }
 
     /**
-     * Retrieves the current temperature log as a list of LoggedProbeDataPoint for the specified
+     * Retrieves the current temperature log as a list of LoggedDataPoint for the specified
      * serial number.
      *
-     * @param serialNumber the serial number of the probe.
-     * @return list of LoggedProbeDataPoints.
+     * @param serialNumber the serial number of the device.
+     * @return list of LoggedDataPoint.
      *
-     * @see LoggedProbeDataPoint
+     * @see LoggedDataPoint
      */
-    fun exportLogsForDevice(serialNumber: String): List<LoggedProbeDataPoint>? {
+    fun exportLogsForDevice(serialNumber: String): List<LoggedDataPoint>? {
         return LogManager.instance.exportLogsForDevice(serialNumber)
     }
 
     /**
-     * Retrieves the current temperature log as a list of [LoggedProbeDataPoint]s, organized by
-     * session, for the specified serial number.
+     * Retrieves the current temperature log as a list of LoggedProbeDataPoint for the specified
+     * serial number.
      *
      * @param serialNumber the serial number of the probe.
-     * @return list of list of LoggedProbeDataPoints.
+     * @return list of LoggedProbeDataPoint.
      *
      * @see LoggedProbeDataPoint
      */
-    fun exportLogsForDeviceBySession(serialNumber: String): List<List<LoggedProbeDataPoint>>? {
+    fun exportLogsForProbe(serialNumber: String): List<LoggedProbeDataPoint>? {
+        return LogManager.instance.exportLogsForProbe(serialNumber)
+    }
+
+    /**
+     * Retrieves the current temperature log as a list of LoggedGaugeDataPoint for the specified
+     * serial number.
+     *
+     * @param serialNumber the serial number of the gauge.
+     * @return list of LoggedGaugeDataPoint.
+     *
+     * @see LoggedGaugeDataPoint
+     */
+    fun exportLogsForGauge(serialNumber: String): List<LoggedGaugeDataPoint>? {
+        return LogManager.instance.exportLogsForGauge(serialNumber)
+    }
+
+    /**
+     * Retrieves the current temperature log as a list of [LoggedDataPoint]s, organized by
+     * session, for the specified serial number.
+     *
+     * @param serialNumber the serial number of the device.
+     * @return list of list of LoggedDataPoint.
+     *
+     * @see LoggedDataPoint
+     */
+    fun exportLogsForDeviceBySession(serialNumber: String): List<List<LoggedDataPoint>>? {
         return LogManager.instance.exportLogsForDeviceBySession(serialNumber)
     }
 
@@ -511,8 +695,11 @@ class DeviceManager(
      * @param appNameAndVersion Name and version to include in the CSV header
      * @return Pair: first is suggested name for the exported file, second is the CSV data.
      */
-    fun exportLogsForDeviceAsCsv(serialNumber: String, appNameAndVersion: String): Pair<String, String> {
-        val logs = exportLogsForDevice(serialNumber)
+    fun exportLogsForDeviceAsCsv(
+        serialNumber: String,
+        appNameAndVersion: String
+    ): Pair<String, String> {
+        val logs = exportLogsForProbe(serialNumber)
         val probe = probe(serialNumber)
 
         return probeDataToCsv(probe, logs, appNameAndVersion)
@@ -552,7 +739,10 @@ class DeviceManager(
      *
      * @see LoggedProbeDataPoint
      */
-    fun createLogFlowForDevice(serialNumber: String, includeHistory: Boolean = true): Flow<LoggedProbeDataPoint> {
+    fun createLogFlowForDevice(
+        serialNumber: String,
+        includeHistory: Boolean = true
+    ): Flow<LoggedDataPoint> {
         return LogManager.instance.createLogFlowForDevice(serialNumber, includeHistory)
     }
 
@@ -561,21 +751,40 @@ class DeviceManager(
      * and disposes related resources.
      */
     fun clearDevices() {
-        NetworkManager.instance.clearDevices()
-        LogManager.instance.clear()
+        doWhenNetworkManagerInitialized {
+            it.clearDevices()
+            LogManager.instance.clear()
+        }
     }
 
     /**
      * Creates a simulated probe.  The simulated probe will generate events to the
-     * discoveredProbesFlow.  The simulated probe has a state flow that can be collected
+     * discoveredDevicesFlow.  The simulated probe has a state flow that can be collected
      * use the probeFlow method.
      *
-     * @see ProbeDiscoveredEvent
-     * @see discoveredProbesFlow
+     * @see DeviceDiscoveryEvent
+     * @see discoveredDevicesFlow
      * @see probeFlow
      */
     fun addSimulatedProbe() {
-        NetworkManager.instance.addSimulatedProbe()
+        doWhenNetworkManagerInitialized {
+            it.addSimulatedProbe()
+        }
+    }
+
+    /**
+     * Creates a simulated gauge. The simulated gauge will generate events to the
+     * discoveredDevicesFlow.  The simulated gauge has a state flow that can be collected
+     * use the gaugeFlow method.
+     *
+     * @see DeviceDiscoveryEvent
+     * @see discoveredDevicesFlow
+     * @see gaugeFlow
+     */
+    fun addSimulatedGauge() {
+        doWhenNetworkManagerInitialized {
+            it.addSimulatedGauge()
+        }
     }
 
     /**
@@ -587,8 +796,14 @@ class DeviceManager(
      * @param completionHandler completion handler to be called operation is complete
      *
      */
-    fun setProbeColor(serialNumber: String, color: ProbeColor, completionHandler: (Boolean) -> Unit) {
-        NetworkManager.instance.setProbeColor(serialNumber, color, completionHandler)
+    fun setProbeColor(
+        serialNumber: String,
+        color: ProbeColor,
+        completionHandler: (Boolean) -> Unit
+    ) {
+        doWhenNetworkManagerInitialized {
+            it.setProbeColor(serialNumber, color, completionHandler)
+        }
     }
 
     /**
@@ -601,7 +816,9 @@ class DeviceManager(
      *
      */
     fun setProbeID(serialNumber: String, id: ProbeID, completionHandler: (Boolean) -> Unit) {
-        NetworkManager.instance.setProbeID(serialNumber, id, completionHandler)
+        doWhenNetworkManagerInitialized {
+            it.setProbeID(serialNumber, id, completionHandler)
+        }
     }
 
     /**
@@ -614,12 +831,22 @@ class DeviceManager(
      * @param removalTemperatureC the target removal temperature in Celsius.
      * @param completionHandler completion handler to be called operation is complete
      */
-    fun setRemovalPrediction(serialNumber: String, removalTemperatureC: Double, completionHandler: (Boolean) -> Unit) {
-        if(removalTemperatureC > MAXIMUM_PREDICTION_SETPOINT_CELSIUS || removalTemperatureC < MINIMUM_PREDICTION_SETPOINT_CELSIUS) {
+    fun setRemovalPrediction(
+        serialNumber: String,
+        removalTemperatureC: Double,
+        completionHandler: (Boolean) -> Unit
+    ) {
+        if (removalTemperatureC > MAXIMUM_PREDICTION_SETPOINT_CELSIUS || removalTemperatureC < MINIMUM_PREDICTION_SETPOINT_CELSIUS) {
             completionHandler(false)
             return
         }
-        NetworkManager.instance.setRemovalPrediction(serialNumber, removalTemperatureC, completionHandler)
+        doWhenNetworkManagerInitialized {
+            it.setRemovalPrediction(
+                serialNumber,
+                removalTemperatureC,
+                completionHandler
+            )
+        }
     }
 
     /**
@@ -629,16 +856,24 @@ class DeviceManager(
      * @param completionHandler completion handler to be called operation is complete
      */
     fun cancelPrediction(serialNumber: String, completionHandler: (Boolean) -> Unit) {
-        NetworkManager.instance.cancelPrediction(serialNumber, completionHandler)
+        doWhenNetworkManagerInitialized {
+            it.cancelPrediction(serialNumber, completionHandler)
+        }
     }
 
     /**
      * Set the food safety configuration on the probe with the serial number [serialNumber] to
      * [foodSafeData], calling [completionHandler] with the success value on completion.
      */
-    fun configureFoodSafe(serialNumber: String, foodSafeData: FoodSafeData, completionHandler: (Boolean) -> Unit) {
+    fun configureFoodSafe(
+        serialNumber: String,
+        foodSafeData: FoodSafeData,
+        completionHandler: (Boolean) -> Unit
+    ) {
         Log.i(LOG_TAG, "Setting food safe configuration: $foodSafeData")
-        NetworkManager.instance.configureFoodSafe(serialNumber, foodSafeData, completionHandler)
+        doWhenNetworkManagerInitialized {
+            it.configureFoodSafe(serialNumber, foodSafeData, completionHandler)
+        }
     }
 
     /**
@@ -647,16 +882,24 @@ class DeviceManager(
      */
     fun resetFoodSafe(serialNumber: String, completionHandler: (Boolean) -> Unit) {
         Log.i(LOG_TAG, "Resetting food safe configuration")
-        NetworkManager.instance.resetFoodSafe(serialNumber, completionHandler)
+        doWhenNetworkManagerInitialized {
+            it.resetFoodSafe(serialNumber, completionHandler)
+        }
     }
 
     /**
      * Set powerMode on probe with the serial number [serialNumber] to
      * [powerMode], calling [completionHandler] with the success value on completion.
      */
-    fun setPowerMode(serialNumber: String, powerMode: ProbePowerMode, completionHandler: (Boolean) -> Unit) {
+    fun setPowerMode(
+        serialNumber: String,
+        powerMode: ProbePowerMode,
+        completionHandler: (Boolean) -> Unit
+    ) {
         Log.i(LOG_TAG, "Setting probe $serialNumber's powerMode to $powerMode")
-        NetworkManager.instance.setPowerMode(serialNumber, powerMode, completionHandler)
+        doWhenNetworkManagerInitialized {
+            it.setPowerMode(serialNumber, powerMode, completionHandler)
+        }
     }
 
     /**
@@ -665,7 +908,24 @@ class DeviceManager(
      */
     fun resetProbe(serialNumber: String, completionHandler: (Boolean) -> Unit) {
         Log.i(LOG_TAG, "Resetting probe $serialNumber")
-        NetworkManager.instance.resetProbe(serialNumber, completionHandler)
+        doWhenNetworkManagerInitialized {
+            it.resetProbe(serialNumber, completionHandler)
+        }
+    }
+
+    /**
+     * Set highLowAlarmStatus on gauge with the serial number [serialNumber] to
+     * [highLowAlarmStatus], calling [completionHandler] with the success value on completion.
+     */
+    fun setHighLowAlarmStatus(
+        serialNumber: String,
+        highLowAlarmStatus: HighLowAlarmStatus,
+        completionHandler: (Boolean) -> Unit
+    ) {
+        Log.i(LOG_TAG, "Setting guage $serialNumber's highLowAlarmStatus to $highLowAlarmStatus")
+        doWhenNetworkManagerInitialized {
+            it.setHighLowAlarmStatus(serialNumber, highLowAlarmStatus, completionHandler)
+        }
     }
 
     /**
@@ -688,7 +948,7 @@ class DeviceManager(
     /**
      * Flow exposing the DFU system's overall state.
      */
-    val dfuSystemStateFlow : SharedFlow<DfuSystemState>
+    val dfuSystemStateFlow: SharedFlow<DfuSystemState>
         get() {
             return DfuManager.SYSTEM_STATE_FLOW
         }
@@ -717,18 +977,29 @@ class DeviceManager(
     fun performDfuForDevice(id: DeviceID, updateFile: Uri) =
         service.dfuManager?.performDfu(id, updateFile)
 
-    fun sendNodeRequest(deviceId: String, request: GenericNodeRequest, completionHandler: (Boolean, GenericNodeResponse?) -> Unit) {
-        NetworkManager.instance.sendNodeRequest(deviceId, request, completionHandler)
+    fun sendNodeRequest(
+        deviceId: String,
+        request: GenericNodeRequest,
+        completionHandler: (Boolean, GenericNodeResponse?) -> Unit
+    ) {
+        doWhenNetworkManagerInitialized {
+            it.sendNodeRequest(deviceId, request, completionHandler)
+        }
     }
 
-    private fun probeDataToCsv(probe: Probe?, probeData: List<LoggedProbeDataPoint>?, appNameAndVersion: String): Pair<String, String> {
+    private fun probeDataToCsv(
+        probe: Probe?,
+        probeData: List<LoggedProbeDataPoint>?,
+        appNameAndVersion: String,
+    ): Pair<String, String> {
         val csvVersion = 4
         val sb = StringBuilder()
         val serialNumber = probe?.serialNumber ?: "UNKNOWN"
         val firmwareVersion = probe?.fwVersion ?: "UNKNOWN"
         val hardwareVersion = probe?.hwRevision ?: "UNKNOWN"
         val samplePeriod = probe?.sessionInfo?.samplePeriod ?: 0
-        val frameworkVersion = "Android ${Combustion.FRAMEWORK_VERSION_NAME} ${Combustion.FRAMEWORK_BUILD_TYPE}"
+        val frameworkVersion =
+            "Android ${Combustion.FRAMEWORK_VERSION_NAME} ${Combustion.FRAMEWORK_BUILD_TYPE}"
 
         val now = LocalDateTime.now()
         val headerDateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
@@ -755,17 +1026,31 @@ class DeviceManager(
             val timestamp = dataPoint.timestamp.time
             val elapsed = (timestamp - startTime) / 1000.0f
             sb.appendLine(
-                String.format(locale = Locale.US,
+                String.format(
+                    locale = Locale.US,
                     "%.3f,%s,%s,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%s,%s,%s,%s,%s,%s,%d",
                     elapsed,
                     dataPoint.sessionId.toString(),
                     dataPoint.sequenceNumber.toString(),
-                    dataPoint.temperatures.values[0], dataPoint.temperatures.values[1], dataPoint.temperatures.values[2], dataPoint.temperatures.values[3],
-                    dataPoint.temperatures.values[4], dataPoint.temperatures.values[5], dataPoint.temperatures.values[6], dataPoint.temperatures.values[7],
-                    dataPoint.virtualCoreTemperature, dataPoint.virtualSurfaceTemperature, dataPoint.virtualAmbientTemperature,
-                    dataPoint.estimatedCoreTemperature, dataPoint.predictionSetPointTemperature,
-                    dataPoint.virtualCoreSensor.toString(), dataPoint.virtualSurfaceSensor.toString(), dataPoint.virtualAmbientSensor.toString(),
-                    dataPoint.predictionState.toString(), dataPoint.predictionMode.toString(), dataPoint.predictionType.toString(),
+                    dataPoint.temperatures.values[0],
+                    dataPoint.temperatures.values[1],
+                    dataPoint.temperatures.values[2],
+                    dataPoint.temperatures.values[3],
+                    dataPoint.temperatures.values[4],
+                    dataPoint.temperatures.values[5],
+                    dataPoint.temperatures.values[6],
+                    dataPoint.temperatures.values[7],
+                    dataPoint.virtualCoreTemperature,
+                    dataPoint.virtualSurfaceTemperature,
+                    dataPoint.virtualAmbientTemperature,
+                    dataPoint.estimatedCoreTemperature,
+                    dataPoint.predictionSetPointTemperature,
+                    dataPoint.virtualCoreSensor.toString(),
+                    dataPoint.virtualSurfaceSensor.toString(),
+                    dataPoint.virtualAmbientSensor.toString(),
+                    dataPoint.predictionState.toString(),
+                    dataPoint.predictionMode.toString(),
+                    dataPoint.predictionType.toString(),
                     dataPoint.predictionValueSeconds.toInt()
                 )
             )
@@ -773,7 +1058,8 @@ class DeviceManager(
 
         // recommended file name
         val fileDateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
-        val recommendedFileName = "ProbeData_${serialNumber}_${now.format(fileDateTimeFormatter)}.csv"
+        val recommendedFileName =
+            "ProbeData_${serialNumber}_${now.format(fileDateTimeFormatter)}.csv"
 
         return recommendedFileName to sb.toString()
     }

@@ -33,7 +33,7 @@ import inc.combustion.framework.ble.getLittleEndianUInt32At
 import inc.combustion.framework.service.SessionInformation
 
 internal class NodeReadSessionInfoResponse (
-    val serialNumber: String,
+    override val serialNumber: String,
     val sessionInformation: SessionInformation,
     success: Boolean,
     requestId: UInt,
@@ -45,7 +45,7 @@ internal class NodeReadSessionInfoResponse (
     responseId,
     payloadLength,
     NodeMessageType.SESSION_INFO
-) {
+), TargetedNodeResponse {
     override fun toString(): String {
         return "${super.toString()} $success ${sessionInformation.sessionID} ${sessionInformation.samplePeriod}"
     }

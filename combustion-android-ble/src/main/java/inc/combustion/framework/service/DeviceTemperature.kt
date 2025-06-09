@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: CombustionAdvertisingData.kt
- * Author: httpsL//github.com/miwright2
+ * File: DeviceTemperature.kt
+ * Author:
  *
  * MIT License
  *
- * Copyright (c) 2023. Combustion Inc.
+ * Copyright (c) 2025. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -26,33 +26,6 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble.scanning
+package inc.combustion.framework.service
 
-import inc.combustion.framework.service.*
-
-internal class CombustionAdvertisingData(
-    mac: String,
-    name: String,
-    rssi: Int,
-    productType: CombustionProductType,
-    isConnectable: Boolean,
-    val probeSerialNumber: String,
-    val probeTemperatures: ProbeTemperatures,
-    val probeID: ProbeID,
-    val color: ProbeColor,
-    val mode: ProbeMode,
-    val batteryStatus: ProbeBatteryStatus,
-    val virtualSensors: ProbeVirtualSensors,
-    val overheatingSensors: OverheatingSensors,
-    val hopCount: UInt = 0u,
-): BaseAdvertisingData(mac, name, rssi, productType, isConnectable) {
-
-    val isRepeater: Boolean
-        get() {
-            return productType == CombustionProductType.CHARGER || productType == CombustionProductType.DISPLAY
-        }
-
-    override fun toString(): String {
-        return "${super.toString()} | $probeSerialNumber $mode $hopCount"
-    }
-}
+interface DeviceTemperature

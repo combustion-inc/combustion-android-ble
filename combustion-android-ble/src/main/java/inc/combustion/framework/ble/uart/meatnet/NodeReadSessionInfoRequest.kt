@@ -36,7 +36,8 @@ internal class NodeReadSessionInfoRequest (
 ) : NodeRequest(
     populatePayload(serialNumber),
     NodeMessageType.SESSION_INFO,
-    requestId
+    requestId,
+    serialNumber,
 ) {
 
         companion object {

@@ -31,7 +31,7 @@ package inc.combustion.framework.ble.uart.meatnet
 import inc.combustion.framework.ble.getLittleEndianUInt32At
 
 internal class NodeReadHardwareRevisionResponse (
-    val serialNumber: String,
+    override val serialNumber: String,
     val hardwareRevision: String,
     success: Boolean,
     requestId: UInt,
@@ -43,7 +43,7 @@ internal class NodeReadHardwareRevisionResponse (
     response,
     payloadLength,
     NodeMessageType.PROBE_HARDWARE_REVISION
-) {
+), TargetedNodeResponse {
     companion object {
 
         // payload is 20 bytes = 4 bytes for serial number + 16 bytes for hardware revision

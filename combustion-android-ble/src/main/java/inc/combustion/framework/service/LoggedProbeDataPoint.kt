@@ -28,8 +28,9 @@
 package inc.combustion.framework.service
 
 import inc.combustion.framework.ble.ProbeStatus
-import inc.combustion.framework.ble.uart.LogResponse
-import java.util.*
+import inc.combustion.framework.ble.uart.ProbeLogResponse
+import inc.combustion.framework.service.LoggedDataPoint.Companion.getTimestamp
+import java.util.Date
 
 /**
  * Data class for a logged probe data point.
@@ -39,10 +40,10 @@ import java.util.*
  * @property timestamp Wall clock timestamp
  * @property temperatures Temperature measurements
  */
-data class LoggedProbeDataPoint (
-    val sessionId: UInt,
-    val sequenceNumber: UInt,
-    val timestamp: Date,
+data class LoggedProbeDataPoint(
+    override val sessionId: UInt,
+    override val sequenceNumber: UInt,
+    override val timestamp: Date,
     val temperatures: ProbeTemperatures,
     val virtualCoreSensor: ProbeVirtualSensors.VirtualCoreSensor,
     val virtualSurfaceSensor: ProbeVirtualSensors.VirtualSurfaceSensor,
@@ -52,8 +53,8 @@ data class LoggedProbeDataPoint (
     val predictionType: ProbePredictionType,
     val predictionSetPointTemperature: Double,
     val predictionValueSeconds: UInt,
-    val estimatedCoreTemperature: Double
-) : Comparable<LoggedProbeDataPoint> {
+    val estimatedCoreTemperature: Double,
+) : LoggedDataPoint {
 
     val virtualCoreTemperature: Double
         get() {
@@ -70,15 +71,17 @@ data class LoggedProbeDataPoint (
             return virtualAmbientSensor.temperatureFrom(temperatures)
         }
 
-    override fun compareTo(other: LoggedProbeDataPoint): Int {
-        return when {
-            this.sequenceNumber > other.sequenceNumber -> 1
-            this.sequenceNumber < other.sequenceNumber -> -1
-            else -> 0
-        }
-    }
+    override fun copyWith(
+        sessionId: UInt,
+        sequenceNumber: UInt,
+        timestamp: Date,
+    ): LoggedProbeDataPoint = this.copy(
+        sessionId = sessionId,
+        sequenceNumber = sequenceNumber,
+        timestamp = timestamp
+    )
 
-    internal companion object{
+    internal companion object {
         fun fromDeviceStatus(
             sessionId: UInt,
             status: ProbeStatus,
@@ -105,7 +108,7 @@ data class LoggedProbeDataPoint (
 
         fun fromLogResponse(
             sessionId: UInt,
-            response: LogResponse,
+            response: ProbeLogResponse,
             sessionStart: Date?,
             samplePeriod: UInt
         ): LoggedProbeDataPoint {
@@ -114,7 +117,7 @@ data class LoggedProbeDataPoint (
                 sessionId,
                 response.sequenceNumber,
                 timestamp,
-                response.temperatures,
+                response.temperature,
                 response.predictionLog.virtualSensors.virtualCoreSensor,
                 response.predictionLog.virtualSensors.virtualSurfaceSensor,
                 response.predictionLog.virtualSensors.virtualAmbientSensor,
@@ -125,11 +128,6 @@ data class LoggedProbeDataPoint (
                 response.predictionLog.predictionValueSeconds,
                 response.predictionLog.estimatedCoreTemperature
             )
-        }
-
-        private fun getTimestamp(sessionStart: Date?, sequenceNumber: UInt, samplePeriod: UInt): Date {
-            val start = (sessionStart ?: Date()).time
-            return Date(start + (sequenceNumber * samplePeriod).toLong())
         }
     }
 }

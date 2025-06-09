@@ -27,8 +27,40 @@
  */
 package inc.combustion.framework
 
+import inc.combustion.framework.Constants.UTF8_SERIAL_NUMBER_LENGTH
+
 val Any.LOG_TAG: String
     get() {
         val tag = "Combustion.${javaClass.simpleName}"
         return if (tag.length <= 23) tag else tag.substring(0, 23)
     }
+
+fun UByte.isBitSet(position: Int): Boolean {
+    require(position in 0..7) { "Bit position must be between 0 and 7" }
+    return (this.toInt() and (1 shl position)) != 0
+}
+
+fun Int.setBit(bit: Int): Int = this or (1 shl bit)
+
+fun UByte.setBit(bit: Int): UByte {
+    require(bit in 0..7) { "Bit index must be between 0 and 7" }
+    return (this.toInt().setBit(bit)).toUByte()
+}
+
+fun UByte.toPercentage(): Int = this.toInt()
+
+fun UByteArray.utf8StringFromRange(indices: IntRange): String =
+    String(this.copyOf().sliceArray(indices).toByteArray(), Charsets.UTF_8).uppercase()
+
+fun UByteArray.getUtf8SerialNumber(startIdx: Int): String =
+    this.utf8StringFromRange(startIdx until (startIdx + UTF8_SERIAL_NUMBER_LENGTH))
+
+fun UByteArray.copyInUtf8SerialNumber(serialNumber: String, startIdx: Int) {
+    val serialBytes = serialNumber.encodeToByteArray().toUByteArray() // UTF-8 by default
+    serialBytes.copyInto(
+        destination = this,
+        startIndex = 0,
+        endIndex = minOf(serialBytes.size, UTF8_SERIAL_NUMBER_LENGTH),
+        destinationOffset = startIdx,
+    )
+}

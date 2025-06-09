@@ -1,17 +1,18 @@
 [versions]
-androidGradlePlugin = "8.2.0"
-lifecycle = "2.6.2"
-androidxAppCompat = "1.6.1"
-androidxTestExt = "1.1.5"
-androidxTestEspresso = "3.5.1"
-core-ktx = "1.12.0"
+androidGradlePlugin = "8.7.3"
+lifecycle = "2.8.7"
+androidxAppCompat = "1.7.0"
+androidxTestExt = "1.2.1"
+androidxTestEspresso = "3.6.1"
+core-ktx = "1.15.0"
 kableCore = "0.32.0"
-kotlin = "1.8.0"
+kotlin = "2.1.0"
+kotlinxSerializationJson = "1.8.0"
 nordicsemiDfu = "2.8.0"
 junit = "4.13.2"
 junitParams = "1.1.1"
-androidDesugarJdkLibs = "2.0.3"
-kotlinTestJunit = "1.8.10"
+androidDesugarJdkLibs = "2.1.4"
+kotlinTestJunit = "2.1.0"
 mavenPublish = "0.25.3"
 mockk = "1.13.9"
 
@@ -20,6 +21,7 @@ android-desugarJdkLibs = { group = "com.android.tools", name = "desugar_jdk_libs
 appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "androidxAppCompat" }
 lifecycle-runtime = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle" }
 lifecycle-service = { group = "androidx.lifecycle", name = "lifecycle-service", version.ref = "lifecycle" }
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
 androidx-test-ext = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExt" }
 androidx-test-espresso = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "androidxTestEspresso" }
 core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "core-ktx" }
@@ -34,3 +36,4 @@ mockk-android = { group = "io.mockk", name = "mockk-android", version.ref = "moc
 android-library = { id = "com.android.library", version.ref = "androidGradlePlugin" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 maven-publish = { id = "com.vanniktech.maven.publish", version.ref = "mavenPublish" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

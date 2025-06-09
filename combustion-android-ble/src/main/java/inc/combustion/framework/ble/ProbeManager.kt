@@ -38,8 +38,8 @@ import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.device.ProbeBleDeviceBase
 import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
 import inc.combustion.framework.ble.device.SimulatedProbeBleDevice
-import inc.combustion.framework.ble.scanning.CombustionAdvertisingData
-import inc.combustion.framework.ble.uart.LogResponse
+import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
+import inc.combustion.framework.ble.uart.ProbeLogResponse
 import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.service.DeviceManager
 import inc.combustion.framework.service.FirmwareVersion
@@ -63,11 +63,11 @@ import inc.combustion.framework.service.utils.DefaultLinearizationTimerImpl
 import inc.combustion.framework.service.utils.PredictionManager
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -81,7 +81,7 @@ import kotlinx.coroutines.launch
  * manages only direct links to temperature probes.  The class is responsible for presenting
  * a common interface over both scenarios.
  *
- * @property owner LifecycleOnwer for coroutine scope.
+ * @property owner LifecycleOwner for coroutine scope.
  * @property settings Service settings.
  * @constructor
  * Constructs a probe manager
@@ -93,25 +93,15 @@ internal class ProbeManager(
     private val owner: LifecycleOwner,
     private val settings: DeviceManager.Settings,
     private val dfuDisconnectedNodeCallback: (DeviceID) -> Unit
-) {
+) : BleManager() {
     companion object {
-        const val OUT_OF_RANGE_TIMEOUT = 15000L
-        private const val PROBE_STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS = 1000L
-        private const val PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS =
-            Probe.PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS
         private const val MEATNET_STATUS_NOTIFICATIONS_TIMEOUT_MS = 30_000L
         private const val PREDICTION_IDLE_TIMEOUT_MS = Probe.PREDICTION_IDLE_TIMEOUT_MS
-        private const val PROBE_STATUS_NOTIFICATIONS_POLL_DELAY_MS = 30000L
         private const val PROBE_INSTANT_READ_IDLE_TIMEOUT_MS = 5000L
-        private const val IGNORE_PROBES = false
-        private const val IGNORE_REPEATERS = false
     }
 
     // encapsulates logic for managing network data links
-    private val arbitrator = DataLinkArbitrator(settings)
-
-    // manages long-running coroutine scopes for data handling
-    private val jobManager = JobManager()
+    override val arbitrator = ProbeDataLinkArbitrator(settings)
 
     // idle monitors
     private val instantReadMonitor = IdleMonitor()
@@ -119,10 +109,10 @@ internal class ProbeManager(
     private val predictionMonitor = IdleMonitor()
 
     // holds the current state and data for this probe
-    private var _probe = MutableStateFlow(Probe.create(serialNumber = serialNumber))
+    private val _deviceFlow = MutableStateFlow(Probe.create(serialNumber = serialNumber))
 
     // the flow that is consumed to get state and date updates
-    val probeFlow = _probe.asStateFlow()
+    override val deviceFlow: StateFlow<Probe> = _deviceFlow.asStateFlow()
 
     // the flow that produces ProbeStatus updates from MeatNet
     private val _normalModeProbeStatusFlow = MutableSharedFlow<ProbeStatus>(
@@ -130,10 +120,10 @@ internal class ProbeManager(
     )
 
     // the flow that is consumed to get ProbeStatus updates from MeatNet
-    val normalModeProbeStatusFlow = _normalModeProbeStatusFlow.asSharedFlow()
+    override val normalModeStatusFlow = _normalModeProbeStatusFlow.asSharedFlow()
 
     // the flow that produces LogResponses from MeatNet
-    private val _logResponseFlow = MutableSharedFlow<LogResponse>(
+    private val _logResponseFlow = MutableSharedFlow<ProbeLogResponse>(
         replay = 0, extraBufferCapacity = 50, BufferOverflow.SUSPEND
     )
 
@@ -145,49 +135,42 @@ internal class ProbeManager(
     private var sessionInfoTimeout: Boolean = false
 
     // the flow that is consumed to get LogResponses from MeatNet
-    val logResponseFlow = _logResponseFlow.asSharedFlow()
+    override val logResponseFlow = _logResponseFlow.asSharedFlow()
 
     // serial number of the probe that is being managed by this manager
-    val serialNumber: String
+    override val serialNumber: String
         get() {
-            return _probe.value.serialNumber
+            return _deviceFlow.value.serialNumber
         }
-
-    // provides a set of all the nodes that are currently connected
-    private val _nodeConnectionFlow = MutableSharedFlow<Set<String>>(
-        replay = 0, extraBufferCapacity = 10, BufferOverflow.DROP_OLDEST
-    )
-
-    val nodeConnectionFlow = _nodeConnectionFlow.asSharedFlow()
 
     // current upload state for this probe, determined by LogManager
-    var uploadState: ProbeUploadState
+    override var uploadState: ProbeUploadState
         get() {
-            return _probe.value.uploadState
+            return _deviceFlow.value.uploadState
         }
         set(value) {
-            if (value != _probe.value.uploadState) {
-                _probe.update { it.copy(uploadState = value) }
+            if (value != _deviceFlow.value.uploadState) {
+                _deviceFlow.update { it.copy(uploadState = value) }
             }
         }
 
-    var recordsDownloaded: Int
+    override var recordsDownloaded: Int
         get() {
-            return _probe.value.recordsDownloaded
+            return _deviceFlow.value.recordsDownloaded
         }
         set(value) {
-            if (value != _probe.value.recordsDownloaded) {
-                _probe.update { it.copy(recordsDownloaded = value) }
+            if (value != _deviceFlow.value.recordsDownloaded) {
+                _deviceFlow.update { it.copy(recordsDownloaded = value) }
             }
         }
 
-    var logUploadPercent: UInt
+    override var logUploadPercent: UInt
         get() {
-            return _probe.value.logUploadPercent
+            return _deviceFlow.value.logUploadPercent
         }
         set(value) {
-            if (value != _probe.value.logUploadPercent) {
-                _probe.update { it.copy(logUploadPercent = value) }
+            if (value != _deviceFlow.value.logUploadPercent) {
+                _deviceFlow.update { it.copy(logUploadPercent = value) }
             }
         }
 
@@ -200,7 +183,7 @@ internal class ProbeManager(
 
             // if not using meatnet, then we use the direct link
             if (!settings.meatNetEnabled) {
-                return arbitrator.probeBleDevice?.connectionState
+                return arbitrator.bleDevice?.connectionState
                     ?: DeviceConnectionState.OUT_OF_RANGE
             }
 
@@ -259,7 +242,7 @@ internal class ProbeManager(
         get() {
             simulatedProbe?.let { return it.deviceInfoFirmwareVersion }
 
-            arbitrator.probeBleDevice?.let {
+            arbitrator.bleDevice?.let {
                 if (it.deviceInfoFirmwareVersion != null) {
                     return it.deviceInfoFirmwareVersion
                 }
@@ -274,7 +257,7 @@ internal class ProbeManager(
         get() {
             simulatedProbe?.let { return it.deviceInfoHardwareRevision }
 
-            arbitrator.probeBleDevice?.let {
+            arbitrator.bleDevice?.let {
                 if (it.deviceInfoHardwareRevision != null) {
                     return it.deviceInfoHardwareRevision
                 }
@@ -289,7 +272,7 @@ internal class ProbeManager(
         get() {
             simulatedProbe?.let { return it.deviceInfoModelInformation }
 
-            arbitrator.probeBleDevice?.let {
+            arbitrator.bleDevice?.let {
                 if (it.deviceInfoModelInformation != null) {
                     return it.deviceInfoModelInformation
                 }
@@ -300,29 +283,22 @@ internal class ProbeManager(
             }?.deviceInfoModelInformation
         }
 
-    val probe: Probe
+    override val device: Probe
         get() {
-            return _probe.value
+            return _deviceFlow.value
         }
 
-    // current session information for the probe
-    var sessionInfo: SessionInformation? = null
-        private set
-
     // current minimum sequence number for the probe
-    val minSequenceNumber: UInt?
+    override val minSequenceNumber: UInt?
         get() {
-            return _probe.value.minSequence
+            return _deviceFlow.value.minSequence
         }
 
     // current maximum sequence number for the probe
-    val maxSequenceNumber: UInt?
+    override val maxSequenceNumber: UInt?
         get() {
-            return _probe.value.maxSequence
+            return _deviceFlow.value.maxSequence
         }
-
-    // signals when logs are no longer being added to LogManager.
-    var logTransferCompleteCallback: () -> Unit = { }
 
     private val predictionManager = PredictionManager(DefaultLinearizationTimerImpl())
 
@@ -331,23 +307,23 @@ internal class ProbeManager(
     init {
         predictionManager.setPredictionCallback { prediction, shouldUpdateStatus ->
             if (shouldUpdateStatus) {
-                _probe.update { updatePredictionInfo(prediction, it) }
+                _deviceFlow.update { updatePredictionInfo(prediction, it) }
             }
         }
 
         monitorStatusNotifications()
     }
 
-    fun addJob(serialNumber: String, job: Job) = jobManager.addJob(serialNumber, job)
+//    fun addJob(serialNumber: String, job: Job) = jobManager.addJob(serialNumber, job)
 
     fun addProbe(
         probe: ProbeBleDevice,
         baseDevice: DeviceInformationBleDevice,
-        advertisement: CombustionAdvertisingData
+        advertisement: ProbeAdvertisingData,
     ) {
         if (IGNORE_PROBES) return
 
-        if (arbitrator.addProbe(probe, baseDevice)) {
+        if (arbitrator.addDevice(probe, baseDevice)) {
             handleAdvertisingPackets(probe, advertisement)
             observe(probe)
             Log.i(LOG_TAG, "PM($serialNumber) is managing link ${probe.linkId}")
@@ -357,7 +333,7 @@ internal class ProbeManager(
     fun addRepeatedProbe(
         repeatedProbe: RepeatedProbeBleDevice,
         repeater: DeviceInformationBleDevice,
-        advertisement: CombustionAdvertisingData
+        advertisement: ProbeAdvertisingData
     ) {
         if (IGNORE_REPEATERS) return
 
@@ -372,7 +348,7 @@ internal class ProbeManager(
 
     fun addSimulatedProbe(simProbe: SimulatedProbeBleDevice) {
         simulatedProbe ?: run {
-            var updatedProbe = _probe.value
+            var updatedProbe = _deviceFlow.value
 
             // process simulated device status notifications
             simProbe.observeProbeStatusUpdates(hopCount = null) { status, _ ->
@@ -396,21 +372,23 @@ internal class ProbeManager(
 
             // process simulated advertising packets
             simProbe.observeAdvertisingPackets(serialNumber, simProbe.mac) { advertisement ->
-                updatedProbe = updateDataFromAdvertisement(advertisement, updatedProbe)
-                if (settings.autoReconnect && simProbe.shouldConnect) {
-                    simProbe.connect()
+                if (advertisement is ProbeAdvertisingData) {
+                    updatedProbe = updateDataFromAdvertisement(advertisement, updatedProbe)
+                    if (settings.autoReconnect && simProbe.shouldConnect) {
+                        simProbe.connect()
+                    }
                 }
             }
 
             // process simulated rssi
             simProbe.observeRemoteRssi { rssi ->
                 updatedProbe =
-                    updatedProbe.copy(baseDevice = _probe.value.baseDevice.copy(rssi = rssi))
+                    updatedProbe.copy(baseDevice = _deviceFlow.value.baseDevice.copy(rssi = rssi))
             }
 
             simulatedProbe = simProbe
 
-            _probe.update {
+            _deviceFlow.update {
                 updatedProbe.copy(baseDevice = it.baseDevice.copy(mac = simProbe.mac))
             }
         }
@@ -533,7 +511,7 @@ internal class ProbeManager(
             completionHandler(status)
         } ?: run {
             // if there is a direct link to the probe, then use that
-            arbitrator.directLink?.sendResetFoodSafe() { status, _ ->
+            arbitrator.directLink?.sendResetFoodSafe { status, _ ->
                 completionHandler(status)
             } ?: run {
                 val nodeLinks = arbitrator.connectedNodeLinks
@@ -559,8 +537,8 @@ internal class ProbeManager(
     fun setPowerMode(powerMode: ProbePowerMode, completionHandler: (Boolean) -> Unit) {
         val onCompletion: (Boolean) -> Unit = { success ->
             if (success) {
-                val probeVal = _probe.value
-                _probe.update {
+                val probeVal = _deviceFlow.value
+                _deviceFlow.update {
                     probeVal.copy(
                         thermometerPrefs = probeVal.thermometerPrefs?.copy(
                             powerMode = powerMode,
@@ -625,7 +603,7 @@ internal class ProbeManager(
         }
     }
 
-    fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt) {
+    override fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt) {
         simulatedProbe?.sendLogRequest(startSequenceNumber, endSequenceNumber) {
             _logResponseFlow.emit(it)
         } ?: run {
@@ -636,37 +614,9 @@ internal class ProbeManager(
         }
     }
 
-    fun finish(deviceIdsToDisconnect: Set<DeviceID>? = null) {
-        Log.d(LOG_TAG, "ProbeManager.finish($deviceIdsToDisconnect) for ($serialNumber)")
-
-        arbitrator.finish(
-            nodeAction = {
-                // There's a couple specific things that come out of unlinking a probe that need to
-                // be addressed here:
-                //
-                // - Jobs are created on repeated probes (nodes) that need to be cancelled so that
-                //   we don't continue to obtain data for probes that we're disconnected from. If
-                //   all jobs on a node are blindly cancelled, then we'll likely cancel jobs that
-                //   are still needed for other probes connected to this node. The [jobKey]
-                //   parameter allows for selective cancellation of jobs.
-                // - On a related note, we need to be able to selectively disconnect from nodes as
-                //   some are still providing data from other probes.
-                it.finish(
-                    jobKey = serialNumber,
-                    disconnect = deviceIdsToDisconnect?.contains(it.id) ?: true
-                )
-            },
-            directConnectionAction = {
-                it.disconnect()
-            }
-        )
-
-        jobManager.cancelJobs()
-    }
-
     private fun observe(base: ProbeBleDeviceBase) {
         if (base is ProbeBleDevice) {
-            _probe.update {
+            _deviceFlow.update {
                 it.copy(
                     baseDevice = it.baseDevice.copy(
                         mac = base.mac,
@@ -677,18 +627,20 @@ internal class ProbeManager(
         }
 
         base.observeAdvertisingPackets(serialNumber, base.mac) { advertisement ->
-            handleAdvertisingPackets(base, advertisement)
+            if (advertisement is ProbeAdvertisingData) {
+                handleAdvertisingPackets(base, advertisement)
+            }
         }
         base.observeConnectionState { state ->
-            _probe.update { handleConnectionState(base, state, it) }
+            _deviceFlow.update { handleConnectionState(base, state, it) }
             _nodeConnectionFlow.emit(arbitrator.connectedNodeLinks.map { it.id }.toSet())
         }
         base.observeOutOfRange(OUT_OF_RANGE_TIMEOUT) {
-            _probe.update { handleOutOfRange(it) }
+            _deviceFlow.update { handleOutOfRange(it) }
         }
-        (base as? RepeatedProbeBleDevice)?.let {
-            it.observeMeatNetNodeTimeout(MEATNET_STATUS_NOTIFICATIONS_TIMEOUT_MS)
-        }
+        (base as? RepeatedProbeBleDevice)?.observeMeatNetNodeTimeout(
+            MEATNET_STATUS_NOTIFICATIONS_TIMEOUT_MS
+        )
         base.observeProbeStatusUpdates(hopCount = base.hopCount) { status, hopCount ->
             handleProbeStatus(
                 status,
@@ -696,33 +648,33 @@ internal class ProbeManager(
             )
         }
         base.observeRemoteRssi { rssi ->
-            _probe.update { handleRemoteRssi(base, rssi, it) }
+            _deviceFlow.update { handleRemoteRssi(base, rssi, it) }
         }
     }
 
     private fun monitorStatusNotifications() {
-        jobManager.addJob(
-            key = serialNumber,
-            job = owner.lifecycleScope.launch(
+        addJob(
+            serialNumber,
+            owner.lifecycleScope.launch(
                 CoroutineName("${serialNumber}.monitorStatusNotifications") + Dispatchers.IO
             ) {
                 // Wait before starting to monitor prediction status, this allows for initial
                 // connection time
-                delay(PROBE_STATUS_NOTIFICATIONS_POLL_DELAY_MS)
+                delay(STATUS_NOTIFICATIONS_POLL_DELAY_MS)
 
                 while (isActive) {
-                    delay(PROBE_STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS)
+                    delay(STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS)
 
                     val statusNotificationsStale =
-                        statusNotificationsMonitor.isIdle(PROBE_STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS)
+                        statusNotificationsMonitor.isIdle(STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS)
                     val predictionStale =
-                        predictionMonitor.isIdle(PREDICTION_IDLE_TIMEOUT_MS) && _probe.value.isPredicting
+                        predictionMonitor.isIdle(PREDICTION_IDLE_TIMEOUT_MS) && _deviceFlow.value.isPredicting
                     val shouldUpdate =
-                        statusNotificationsStale != _probe.value.statusNotificationsStale ||
-                                predictionStale != _probe.value.predictionStale
+                        statusNotificationsStale != _deviceFlow.value.statusNotificationsStale ||
+                                predictionStale != _deviceFlow.value.predictionStale
 
                     if (shouldUpdate) {
-                        _probe.update {
+                        _deviceFlow.update {
                             it.copy(
                                 statusNotificationsStale = statusNotificationsStale,
                                 predictionStale = predictionStale
@@ -735,10 +687,10 @@ internal class ProbeManager(
     }
 
     private suspend fun handleProbeStatus(status: ProbeStatus, hopCount: UInt?) {
-        if (arbitrator.shouldUpdateDataFromProbeStatus(status, sessionInfo, hopCount)) {
+        if (arbitrator.shouldUpdateDataFromStatus(status, sessionInfo, hopCount)) {
             Log.v(LOG_TAG, "ProbeManager.handleProbeStatus: $serialNumber $status")
 
-            var updatedProbe = _probe.value
+            var updatedProbe = _deviceFlow.value
 
             updatedProbe = updateLink(updatedProbe)
             updatedProbe =
@@ -764,7 +716,7 @@ internal class ProbeManager(
             // These log-related items can be updated outside of this function--specifically, these
             // are updated by the LogManager when we emit a new status to the
             // normalModeProbeStatusFlow.
-            _probe.update {
+            _deviceFlow.update {
                 updatedProbe.copy(
                     uploadState = it.uploadState,
                     recordsDownloaded = it.recordsDownloaded,
@@ -790,7 +742,7 @@ internal class ProbeManager(
 
     private fun handleAdvertisingPackets(
         device: ProbeBleDeviceBase,
-        advertisement: CombustionAdvertisingData
+        advertisement: ProbeAdvertisingData
     ) {
         Log.v(LOG_TAG, "ProbeManager.handleAdvertisingPackets($device, $advertisement)")
         val state = connectionState
@@ -801,14 +753,14 @@ internal class ProbeManager(
         if (networkIsAdvertisingAndNotConnected) {
             val updatedProbe =
                 if (arbitrator.shouldUpdateDataFromAdvertisingPacket(device, advertisement)) {
-                    updateDataFromAdvertisement(advertisement, _probe.value)
+                    updateDataFromAdvertisement(advertisement, _deviceFlow.value)
                 } else {
-                    _probe.value
+                    _deviceFlow.value
                 }
 
-            _probe.update {
+            _deviceFlow.update {
                 updatedProbe.copy(
-                    baseDevice = _probe.value.baseDevice.copy(connectionState = state)
+                    baseDevice = _deviceFlow.value.baseDevice.copy(connectionState = state)
                 )
             }
         }
@@ -825,7 +777,7 @@ internal class ProbeManager(
     private fun handleConnectionState(
         device: ProbeBleDeviceBase,
         state: DeviceConnectionState,
-        currentProbe: Probe
+        currentProbe: Probe,
     ): Probe {
         val isConnected = state == DeviceConnectionState.CONNECTED
         val isDisconnected = state == DeviceConnectionState.DISCONNECTED
@@ -870,7 +822,7 @@ internal class ProbeManager(
         // if the arbitrated connection state is out of range, then update.
         return if (connectionState == DeviceConnectionState.OUT_OF_RANGE) {
             currentProbe.copy(
-                baseDevice = _probe.value.baseDevice.copy(
+                baseDevice = _deviceFlow.value.baseDevice.copy(
                     connectionState = DeviceConnectionState.OUT_OF_RANGE
                 )
             )
@@ -900,13 +852,13 @@ internal class ProbeManager(
 
     private fun fetchFirmwareVersion() {
         // if we don't know the probe's firmware version
-        if (_probe.value.fwVersion == null) {
+        if (_deviceFlow.value.fwVersion == null) {
 
             // if direct link, then get the probe version over that link
-            arbitrator.directLink?.readProbeFirmwareVersion { fwVersion ->
+            arbitrator.directLink?.readFirmwareVersionAsync { fwVersion ->
                 // update firmware version on completion of read
-                _probe.update {
-                    it.copy(baseDevice = _probe.value.baseDevice.copy(fwVersion = fwVersion))
+                _deviceFlow.update {
+                    it.copy(baseDevice = _deviceFlow.value.baseDevice.copy(fwVersion = fwVersion))
                 }
             } ?: run {
 
@@ -923,7 +875,7 @@ internal class ProbeManager(
                             // on first response from network, use the value
                             if (!handled) {
                                 handled = true
-                                _probe.update {
+                                _deviceFlow.update {
                                     it.copy(baseDevice = it.baseDevice.copy(fwVersion = version))
                                 }
                             }
@@ -936,13 +888,13 @@ internal class ProbeManager(
 
     private fun fetchHardwareRevision() {
         // if we don't know the probe's hardware revision
-        if (_probe.value.hwRevision == null) {
+        if (_deviceFlow.value.hwRevision == null) {
 
             // if direct link, then get the probe revision over that link
-            arbitrator.directLink?.readProbeHardwareRevision { hwRevision ->
+            arbitrator.directLink?.readHardwareRevisionAsync { hwRevision ->
 
                 // update firmware version on completion of read
-                _probe.update {
+                _deviceFlow.update {
                     it.copy(baseDevice = it.baseDevice.copy(hwRevision = hwRevision))
                 }
             } ?: run {
@@ -960,7 +912,7 @@ internal class ProbeManager(
                             // on first response from network, use the value
                             if (!handled) {
                                 handled = true
-                                _probe.update {
+                                _deviceFlow.update {
                                     it.copy(
                                         baseDevice = it.baseDevice.copy(hwRevision = revision)
                                     )
@@ -975,13 +927,13 @@ internal class ProbeManager(
 
     private fun fetchModelInformation() {
         // if we don't know the probe's model information
-        if (_probe.value.modelInformation == null) {
+        if (_deviceFlow.value.modelInformation == null) {
 
             // if direct link, then get the probe model info over that link
-            arbitrator.directLink?.readProbeModelInformation { info ->
+            arbitrator.directLink?.readModelInformationAsync { info ->
 
                 // update firmware version on completion of read
-                _probe.update {
+                _deviceFlow.update {
                     it.copy(
                         baseDevice = it.baseDevice.copy(modelInformation = info)
                     )
@@ -1001,7 +953,7 @@ internal class ProbeManager(
                             // on first response from network, use the value
                             if (!handled) {
                                 handled = true
-                                _probe.update {
+                                _deviceFlow.update {
                                     it.copy(baseDevice = it.baseDevice.copy(modelInformation = info))
                                 }
                             }
@@ -1018,7 +970,7 @@ internal class ProbeManager(
                 device.sendSessionInformationRequest { status, info ->
                     if (status && info is SessionInformation) {
                         sessionInfo = info
-                        _probe.update { it.copy(sessionInfo = info) }
+                        _deviceFlow.update { it.copy(sessionInfo = info) }
                     }
                 }
             }
@@ -1076,7 +1028,7 @@ internal class ProbeManager(
         }
 
         sessionInfo = info
-        _probe.update {
+        _deviceFlow.update {
             it.copy(
                 minSequence = minSequence,
                 maxSequence = maxSequence,
@@ -1086,11 +1038,11 @@ internal class ProbeManager(
     }
 
     private fun updateDataFromAdvertisement(
-        advertisement: CombustionAdvertisingData,
+        advertisement: ProbeAdvertisingData,
         currentProbe: Probe,
     ): Probe {
         var updatedProbe = currentProbe.copy(
-            baseDevice = _probe.value.baseDevice.copy(rssi = advertisement.rssi),
+            baseDevice = _deviceFlow.value.baseDevice.copy(rssi = advertisement.rssi),
         )
 
         updatedProbe = when (advertisement.mode) {
@@ -1133,13 +1085,14 @@ internal class ProbeManager(
             status.overheatingSensors,
             updatedProbe
         )
-        val predictionInfo = predictionManager.updatePredictionStatus(
+        predictionManager.updatePredictionStatus(
             predictionInfo = PredictionManager.PredictionInfo.fromPredictionStatus(
                 status.predictionStatus
             ),
             sequenceNumber = status.maxSequenceNumber
-        )
-        updatedProbe = updatePredictionInfo(predictionInfo, updatedProbe)
+        )?.let { predictionInfo ->
+            updatedProbe = updatePredictionInfo(predictionInfo, updatedProbe)
+        }
         updatedProbe = updateFoodSafe(status.foodSafeData, status.foodSafeStatus, updatedProbe)
 
         return updatedProbe
@@ -1147,7 +1100,7 @@ internal class ProbeManager(
 
     private fun updateConnectionState(currentProbe: Probe): Probe {
         return currentProbe.copy(
-            baseDevice = _probe.value.baseDevice.copy(
+            baseDevice = _deviceFlow.value.baseDevice.copy(
                 connectionState = connectionState,
                 fwVersion = fwVersion,
                 hwRevision = hwRevision,
@@ -1272,9 +1225,5 @@ internal class ProbeManager(
             minSequence = minSequenceNumber,
             maxSequence = maxSequenceNumber
         )
-    }
-
-    private fun makeRequestId(): UInt {
-        return (0u..UInt.MAX_VALUE).random()
     }
 }
