@@ -732,7 +732,15 @@ internal class NetworkManager(
     }
 
     private fun createNodeBleDevice(advertisement: DeviceAdvertisingData): NodeBleDevice {
-        val device = NodeBleDevice(advertisement.mac, owner, advertisement, adapter)
+        val device = NodeBleDevice(
+            advertisement.mac,
+            owner,
+            advertisement,
+            adapter,
+            observeGaugeStatusCallback = { serialNumber, gaugeStatus ->
+                gaugeManagers[serialNumber]?.observedGaugeStatus(gaugeStatus)
+            },
+        )
         publishNodeFirmwareOnConnectedState(device.getDevice())
         return device
     }
@@ -980,7 +988,7 @@ internal class NetworkManager(
     private suspend fun updateDeviceProximity(
         serialNumber: String,
         productType: CombustionProductType,
-        rssi: Int
+        rssi: Int,
     ) {
         // If we haven't seen this probe before, then add it to our list of devices
         // that we track proximity for and publish the addition.

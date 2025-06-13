@@ -5,11 +5,13 @@ import android.util.Log
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
+import inc.combustion.framework.ble.GaugeStatus
 import inc.combustion.framework.ble.NetworkManager
 import inc.combustion.framework.ble.device.UartCapableProbe.Companion.MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.uart.meatnet.GenericNodeRequest
 import inc.combustion.framework.ble.uart.meatnet.GenericNodeResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeGaugeStatusRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsRequest
@@ -33,7 +35,8 @@ internal class NodeBleDevice(
     owner: LifecycleOwner,
     nodeAdvertisingData: DeviceAdvertisingData,
     adapter: BluetoothAdapter,
-    private val uart: UartBleDevice = UartBleDevice(mac, nodeAdvertisingData, owner, adapter)
+    private val uart: UartBleDevice = UartBleDevice(mac, nodeAdvertisingData, owner, adapter),
+    private val observeGaugeStatusCallback: suspend (String, GaugeStatus) -> Unit,
 ) : UartCapableDevice {
 
     override val id: DeviceID
@@ -246,6 +249,10 @@ internal class NodeBleDevice(
 
                     message is NodeReadGaugeLogsResponse -> {
                         handleGaugeLogResponse(message)
+                    }
+
+                    message is NodeGaugeStatusRequest -> {
+                        observeGaugeStatusCallback(message.serialNumber, message.gaugeStatus)
                     }
 
                     (message is NodeRequest) && (message.serialNumber == hybridDeviceChild?.serialNumber) -> {

@@ -29,10 +29,8 @@
 package inc.combustion.framework.ble.device
 
 import androidx.lifecycle.lifecycleScope
-import inc.combustion.framework.ble.GaugeStatus
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
-import inc.combustion.framework.ble.uart.meatnet.NodeGaugeStatusRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeResponse
@@ -115,8 +113,6 @@ internal class GaugeBleDevice(
             return uart.modelInformation
         }
 
-    private var observeGaugeStatusCallback: (suspend (status: GaugeStatus) -> Unit)? = null
-
     // connection management
     override fun connect() = uart.connect()
     override fun disconnect() = uart.disconnect()
@@ -188,23 +184,9 @@ internal class GaugeBleDevice(
         }
     }
 
-    override fun observeGaugeStatusUpdates(callback: (suspend (status: GaugeStatus) -> Unit)?) {
-        this.observeGaugeStatusCallback = callback
-    }
-
-    private suspend fun handleGaugeStatusRequest(message: NodeGaugeStatusRequest) {
-        observeGaugeStatusCallback?.invoke(message.gaugeStatus)
-    }
-
     override suspend fun processNodeRequest(request: NodeRequest): Boolean {
-        return when (request) {
-            is NodeGaugeStatusRequest -> {
-                handleGaugeStatusRequest(request)
-                true
-            }
-
-            else -> false
-        }
+        // nothing currently supported
+        return false
     }
 
     override suspend fun processNodeResponse(response: NodeResponse): Boolean {

@@ -28,13 +28,10 @@
 
 package inc.combustion.framework.ble.device
 
-import inc.combustion.framework.ble.GaugeStatus
 import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
 import inc.combustion.framework.service.HighLowAlarmStatus
 
 internal interface UartCapableGauge : UartCapableSpecializedDevice {
-    // gauge status updates
-    fun observeGaugeStatusUpdates(callback: (suspend (status: GaugeStatus) -> Unit)? = null)
 
     fun sendSetHighLowAlarmStatus(
         highLowAlarmStatus: HighLowAlarmStatus,

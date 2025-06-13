@@ -289,12 +289,6 @@ internal class GaugeManager(
         if (simulatedGauge != null) return
         var updatedGauge = _deviceFlow.value
 
-        // process simulated device status notifications
-        simGauge.observeGaugeStatusUpdates { status ->
-            handleStatus(status, simulated = true)
-            updatedGauge = _deviceFlow.value
-        }
-
         // process simulated connection state changes
         simGauge.observeConnectionState { state ->
             updatedGauge = handleConnectionState(simGauge, state, updatedGauge)
@@ -510,16 +504,24 @@ internal class GaugeManager(
         return updatedGauge
     }
 
+    suspend fun observedGaugeStatus(gaugeStatus: GaugeStatus) {
+        handleStatus(gaugeStatus, simulated = false)
+    }
+
     private suspend fun handleStatus(
         status: GaugeStatus,
         simulated: Boolean = simulatedGauge != null,
     ) {
+        // since status from gauge with no sensor currently does not trigger a status update, we need to
+        // update statusNotificationsMonitor before check
+        // TODO : do update after check if logic is changed
+        statusNotificationsMonitor.activity()
+
         if (simulated || arbitrator.shouldUpdateDataFromStatusForNormalMode(
                 status,
                 sessionInfo,
             )
         ) {
-            statusNotificationsMonitor.activity()
 
             handleSessionInfo(
                 status.sessionInformation,
@@ -574,10 +576,6 @@ internal class GaugeManager(
 
         guage.observeOutOfRange(OUT_OF_RANGE_TIMEOUT) {
             _deviceFlow.update { handleOutOfRange(it) }
-        }
-
-        guage.observeGaugeStatusUpdates { status ->
-            handleStatus(status)
         }
 
         guage.observeRemoteRssi { rssi ->
