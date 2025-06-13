@@ -55,7 +55,7 @@ internal class GaugeDataLinkArbitrator :
         get() = directLink
 
     override val meatNetIsOutOfRange: Boolean
-        get() = bleDevice?.isInRange ?: true
+        get() = bleDevice?.isInRange != false
 
     private var currentStatus: SpecializedDeviceStatus? = null
     private var currentSessionInfo: SessionInformation? = null
@@ -179,6 +179,7 @@ internal class GaugeDataLinkArbitrator :
             }
 
             // if status.max > current.max, then we want to update
+            // TODO : when gauge has no sensor then always sequenceNumbers of 0 -- how then to determine if should update?
             val shouldUpdate =
                 status.maxSequenceNumber > (currentStatus?.maxSequenceNumber ?: UInt.MAX_VALUE)
 

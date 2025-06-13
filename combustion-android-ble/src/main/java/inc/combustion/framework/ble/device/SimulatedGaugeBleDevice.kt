@@ -30,17 +30,10 @@ package inc.combustion.framework.ble.device
 
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
-import inc.combustion.framework.ble.GaugeStatus
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
 import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
-import inc.combustion.framework.service.CombustionProductType
-import inc.combustion.framework.service.DeviceConnectionState
-import inc.combustion.framework.service.FirmwareVersion
-import inc.combustion.framework.service.GaugeStatusFlags
-import inc.combustion.framework.service.HighLowAlarmStatus
-import inc.combustion.framework.service.ModelInformation
-import inc.combustion.framework.service.SensorTemperature
+import inc.combustion.framework.service.*
 import inc.combustion.framework.service.dfu.DfuProductType
 import kotlinx.coroutines.launch
 import kotlin.concurrent.fixedRateTimer
@@ -150,8 +143,6 @@ internal class SimulatedGaugeBleDevice(
     private var observeConnectionStateCallback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)? =
         null
 
-    private var observeStatusUpdatesCallback: (suspend (status: GaugeStatus) -> Unit)? = null
-
     init {
         fixedRateTimer(name = "SimAdvertising", initialDelay = 1000, period = 1000) {
             owner.lifecycleScope.launch {
@@ -256,10 +247,6 @@ internal class SimulatedGaugeBleDevice(
                 it(connectionState)
             }
         }
-    }
-
-    override fun observeGaugeStatusUpdates(callback: (suspend (status: GaugeStatus) -> Unit)?) {
-        observeStatusUpdatesCallback = callback
     }
 
     override fun sendSetHighLowAlarmStatus(
