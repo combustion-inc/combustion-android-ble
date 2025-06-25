@@ -27,6 +27,7 @@
  */
 package inc.combustion.framework.service
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.Notification
 import android.app.NotificationManager
@@ -105,7 +106,7 @@ class CombustionService : LifecycleService() {
 
         fun bind(context: Context, connection: ServiceConnection) {
             Intent(context, CombustionService::class.java).also { intent ->
-                val flags = Context.BIND_AUTO_CREATE
+                val flags = BIND_AUTO_CREATE
                 context.bindService(intent, connection, flags)
             }
         }
@@ -134,7 +135,7 @@ class CombustionService : LifecycleService() {
 
     private fun stopForeground() {
         serviceNotification?.let {
-            val service = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val service = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
             service.cancel(notificationId)
             stopForeground(STOP_FOREGROUND_REMOVE)
         }
@@ -143,7 +144,7 @@ class CombustionService : LifecycleService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
 
-        val bluetooth = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        val bluetooth = getSystemService(BLUETOOTH_SERVICE) as BluetoothManager
 
         if (bluetooth.adapter != null) {
             // Note: Older versions of Android running on emulator (e.g. Pixel 4 API 29) do not
@@ -164,10 +165,19 @@ class CombustionService : LifecycleService() {
             }
 
             // setup receiver to see when platform Bluetooth state changes
-            registerReceiver(
-                NetworkManager.instance.bluetoothAdapterStateReceiver,
-                NetworkManager.instance.bluetoothAdapterStateIntentFilter,
-            )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(
+                    NetworkManager.instance.bluetoothAdapterStateReceiver,
+                    NetworkManager.instance.bluetoothAdapterStateIntentFilter,
+                    RECEIVER_NOT_EXPORTED,
+                )
+            } else {
+                @SuppressLint("UnspecifiedRegisterReceiverFlag")
+                registerReceiver(
+                    NetworkManager.instance.bluetoothAdapterStateReceiver,
+                    NetworkManager.instance.bluetoothAdapterStateIntentFilter,
+                )
+            }
         }
 
         startForeground()
@@ -188,7 +198,6 @@ class CombustionService : LifecycleService() {
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
-        stopForeground()
         return super.onUnbind(intent)
     }
 

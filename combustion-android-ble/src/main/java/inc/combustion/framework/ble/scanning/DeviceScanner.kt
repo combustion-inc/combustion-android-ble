@@ -70,16 +70,19 @@ internal class DeviceScanner private constructor() {
                 .build()
         }
 
-        private val mutableAdvertisements = MutableSharedFlow<DeviceAdvertisingData>(5, 10, BufferOverflow.DROP_OLDEST)
+        private val mutableAdvertisements =
+            MutableSharedFlow<DeviceAdvertisingData>(5, 10, BufferOverflow.DROP_OLDEST)
         val advertisements: SharedFlow<DeviceAdvertisingData> = mutableAdvertisements.asSharedFlow()
 
-        private val _bootloadingAdvertisements = MutableSharedFlow<AdvertisingData>(5, 10, BufferOverflow.DROP_OLDEST)
-        val bootloadingAdvertisements: SharedFlow<AdvertisingData> = _bootloadingAdvertisements.asSharedFlow()
+        private val _bootloadingAdvertisements =
+            MutableSharedFlow<AdvertisingData>(5, 10, BufferOverflow.DROP_OLDEST)
+        val bootloadingAdvertisements: SharedFlow<AdvertisingData> =
+            _bootloadingAdvertisements.asSharedFlow()
 
         fun scan(owner: LifecycleOwner) {
-
-            if(!atomicIsScanning.getAndSet(true)) {
-                allMatchesScanJob = owner.lifecycleScope.launch(Dispatchers.IO) {
+            if (!atomicIsScanning.getAndSet(true)) {
+                // NB, repeatOnLifecycle only works if lifecycleScope launches on Main (its default)
+                allMatchesScanJob = owner.lifecycleScope.launch {
                     // launches the block in a new coroutine every time the LifecycleOwner is
                     // in the CREATED state or above, and cancels the block when the LifecycleOwner
                     // is destroyed
@@ -92,19 +95,23 @@ internal class DeviceScanner private constructor() {
                             .flowOn(Dispatchers.IO)
                             .catch { cause ->
                                 stop()
-                                atomicIsScanning.set(false)
-                                Log.e(LOG_TAG, "Scan Error: ${cause.localizedMessage}")
-                                Log.e(LOG_TAG, Log.getStackTraceString(cause))
+                                Log.e(LOG_TAG, "Scan Error: ${cause.localizedMessage}", cause)
                             }
                             .onCompletion {
                                 Log.d(LOG_TAG, "Scanning stopped ...")
-                                atomicIsScanning.set(false)
+                                stop()
                             }
                             .collect { advertisement ->
                                 val advertisingData = AdvertisingData.create(advertisement)
                                 when {
-                                    advertisingData is DeviceAdvertisingData -> mutableAdvertisements.tryEmit(advertisingData)
-                                    advertisingData.isBootLoading -> _bootloadingAdvertisements.tryEmit(advertisingData)
+                                    advertisingData is DeviceAdvertisingData -> mutableAdvertisements.tryEmit(
+                                        advertisingData
+                                    )
+
+                                    advertisingData.isBootLoading -> _bootloadingAdvertisements.tryEmit(
+                                        advertisingData
+                                    )
+
                                     else -> {} // if just BaseAdvertisingData, then no need to produce to flow.
                                 }
                             }
@@ -116,6 +123,7 @@ internal class DeviceScanner private constructor() {
         fun stop() {
             allMatchesScanJob?.cancelChildren()
             allMatchesScanJob = null
+            atomicIsScanning.set(false)
         }
     }
 }
