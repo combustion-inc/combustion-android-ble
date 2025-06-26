@@ -241,10 +241,6 @@ class DeviceManager(
          * @return true if the service was stopped, false otherwise.
          */
         fun stopCombustionService(): Boolean {
-            Log.v(
-                "D4V",
-                "stopCombustionService, connected = ${connected.get()}, count = ${activeBind.get()}"
-            )
             if (connected.get()) {
                 Log.w(LOG_TAG, "Stopping Service: requires unbinding service first")
                 return false
