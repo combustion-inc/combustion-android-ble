@@ -49,6 +49,10 @@ import inc.combustion.framework.ble.uart.meatnet.NodeMessage
 import inc.combustion.framework.ble.uart.meatnet.NodeMessageType
 import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.log.LogManager
+import inc.combustion.framework.service.DeviceManager.Companion.bindCombustionService
+import inc.combustion.framework.service.DeviceManager.Companion.startCombustionService
+import inc.combustion.framework.service.DeviceManager.Companion.stopCombustionService
+import inc.combustion.framework.service.DeviceManager.Companion.unbindCombustionService
 import inc.combustion.framework.service.dfu.DfuProductType
 import inc.combustion.framework.service.dfu.DfuSystemState
 import kotlinx.coroutines.CoroutineScope
@@ -68,7 +72,6 @@ import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Singleton instance for managing communications with Combustion Inc. devices.
@@ -102,8 +105,19 @@ class DeviceManager(
         private lateinit var app: Application
         private lateinit var onServiceBound: (deviceManager: DeviceManager) -> Unit
         private val initialized = AtomicBoolean(false)
+
+        /**
+         * Is true if binding application to the unbound service was called.
+         * Is false if not yet binding or application was unbounded.
+         */
+        private val activeBind = AtomicBoolean(false)
+
+        /**
+         * Is true if the application was successfully bound/connected to the service.
+         * Is false if the application was not yet bound to the service or was unbounded.
+         */
         private val connected = AtomicBoolean(false)
-        private val bindingCount = AtomicInteger(0)
+
         private var defaultCoroutineScope: CoroutineScope? = null
         private var mainCoroutineScope: CoroutineScope? = null
 
@@ -152,7 +166,8 @@ class DeviceManager(
         }
 
         /**
-         * Starts the Combustion Android Service as a Foreground Service
+         * Starts the Combustion Android Service as a Foreground Service.
+         * Must be called before binding service with [bindCombustionService].
          *
          * @param notification Optional notification for the service.  If provided the service is run
          *  in the foreground.
@@ -178,51 +193,62 @@ class DeviceManager(
                     latestFirmware,
                     onServiceStarted,
                 )
+            } else {
+                Log.w(LOG_TAG, "`Start Service: service already connected.")
             }
             return 0
         }
 
         /**
-         * Binds to the Combustion Android Service
+         * Binds to the Combustion Android Service.
+         * Must be called after starting service with [startCombustionService].
          */
         fun bindCombustionService() {
-            val count = bindingCount.getAndIncrement()
-            if (count <= 0) {
+            if (!activeBind.getAndSet(true)) {
                 if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
                     Log.d(LOG_TAG, "Binding Service")
 
                 CombustionService.bind(app.applicationContext, connection)
-            }
-
-            if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
-                Log.d(LOG_TAG, "Binding Reference Count (${count + 1})")
-        }
-
-        /**
-         * Unbinds from the Combustion Android Service
-         */
-        fun unbindCombustionService() {
-            val count = bindingCount.decrementAndGet()
-
-            if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE) {
-                Log.d(LOG_TAG, "Unbinding Reference Count ($count)")
-            }
-
-            if (connected.get() && count <= 0) {
-                stopCombustionService()
+            } else {
+                Log.w(LOG_TAG, "Binding Service: service already binding.")
             }
         }
 
         /**
-         * Stops the Combustion Android Service
+         * Unbinds from the Combustion Android Service.
+         * Must be called before stopping service with [stopCombustionService].
+         * @return true if the service was unbound, false otherwise.
          */
-        fun stopCombustionService() {
-            if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE) {
-                Log.d(LOG_TAG, "Unbinding & Stopping Service")
+        fun unbindCombustionService(): Boolean {
+            return if (connected.get() && activeBind.get()) {
+                if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE) {
+                    Log.d(LOG_TAG, "Unbinding Service")
+                }
+
+                activeBind.set(false)
+                connected.set(false)
+                app.unbindService(connection)
+                true
+            } else {
+                Log.w(LOG_TAG, "Unbinding Service: service already unbound.")
+                false
+            }
+        }
+
+        /**
+         * Stops the Combustion Android Service.
+         * Must be called after unbinding service with [unbindCombustionService].
+         * @return true if the service was stopped, false otherwise.
+         */
+        fun stopCombustionService(): Boolean {
+            if (connected.get()) {
+                Log.w(LOG_TAG, "Stopping Service: requires unbinding service first")
+                return false
             }
 
-            bindingCount.set(0)
-            app.unbindService(connection)
+            if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE) {
+                Log.d(LOG_TAG, "Stopping Service")
+            }
 
             defaultCoroutineScope?.cancel()
             defaultCoroutineScope = null
@@ -239,7 +265,7 @@ class DeviceManager(
                 Log.w(LOG_TAG, "Exception stopping service ${e.stackTrace}")
             }
 
-            connected.set(false)
+            return true
         }
     }
 
@@ -270,7 +296,7 @@ class DeviceManager(
     @Deprecated(
         message = "discoveredProbesFlow is deprecated, use deviceInProximityFlow instead.",
         replaceWith = ReplaceWith("discoveredDevicesFlow"),
-        level = DeprecationLevel.WARNING
+        level = DeprecationLevel.WARNING,
     )
     @Suppress("DEPRECATION")
     val discoveredProbesFlow: SharedFlow<ProbeDiscoveredEvent>
@@ -303,7 +329,7 @@ class DeviceManager(
     @Deprecated(
         message = "deviceProximityFlow is deprecated, use deviceInProximityFlow instead.",
         replaceWith = ReplaceWith("deviceInProximityFlow"),
-        level = DeprecationLevel.WARNING
+        level = DeprecationLevel.WARNING,
     )
     @Suppress("DEPRECATION")
     val deviceProximityFlow: SharedFlow<DeviceDiscoveredEvent>
@@ -377,17 +403,27 @@ class DeviceManager(
      * Returns a list of node serial numbers, consisting of all nodes that have been discovered.
      * This will exclude any probe devices.
      */
-    val discoveredNodes: List<String>
+    val discoveredWiFiNodes: List<String>
         get() {
-            return NetworkManager.instance.discoveredNodes
+            return NetworkManager.instance.discoveredWiFiNodes
         }
 
+
+    @Deprecated(
+        message = "discoveredNodesFlow is deprecated because the name does not specify it is only for Wi-Fi-capable nodes. " +
+                "Use discoveredWiFiNodesFlow instead.",
+        replaceWith = ReplaceWith("discoveredWiFiNodesFlow"),
+        level = DeprecationLevel.WARNING,
+    )
+    val discoveredNodesFlow: StateFlow<List<String>>
+        get() = discoveredWiFiNodesFlow
+
     /**
-     * Returns a stateFlow of a list of node serial numbers, consisting of all nodes that have been discovered.
+     * Returns a stateFlow of a list of node serial numbers, consisting of all nodes that have been discovered that support WiFi.
      * This will exclude any probe devices.
      */
-    val discoveredNodesFlow: StateFlow<List<String>>
-        get() = NetworkManager.instance.discoveredNodesFlow
+    val discoveredWiFiNodesFlow: StateFlow<List<String>>
+        get() = NetworkManager.instance.discoveredWiFiNodesFlow
 
     /**
      * Returns a flow of [AnalyticsEvent], tracked analytics events.
@@ -977,13 +1013,27 @@ class DeviceManager(
     fun performDfuForDevice(id: DeviceID, updateFile: Uri) =
         service.dfuManager?.performDfu(id, updateFile)
 
+    @Deprecated(
+        message = "sendNodeRequest is deprecated because its name does not indicate that it requires a Wi-Fi-capable node. " +
+                "Use sendRequestToWifiCapableNode() instead.",
+        replaceWith = ReplaceWith("sendRequestToWifiCapableNode()"),
+        level = DeprecationLevel.WARNING,
+    )
     fun sendNodeRequest(
         deviceId: String,
         request: GenericNodeRequest,
-        completionHandler: (Boolean, GenericNodeResponse?) -> Unit
+        completionHandler: (Boolean, GenericNodeResponse?) -> Unit,
+    ) {
+        sendNodeRequestRequiringWiFi(deviceId, request, completionHandler)
+    }
+
+    fun sendNodeRequestRequiringWiFi(
+        deviceId: String,
+        request: GenericNodeRequest,
+        completionHandler: (Boolean, GenericNodeResponse?) -> Unit,
     ) {
         doWhenNetworkManagerInitialized {
-            it.sendNodeRequest(deviceId, request, completionHandler)
+            it.sendNodeRequestRequiringWiFi(deviceId, request, completionHandler)
         }
     }
 

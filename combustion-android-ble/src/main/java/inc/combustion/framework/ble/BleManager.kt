@@ -41,6 +41,8 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlin.random.Random
+import kotlin.random.nextUInt
 
 internal abstract class BleManager {
 
@@ -85,7 +87,7 @@ internal abstract class BleManager {
         replay = 0, extraBufferCapacity = 10, BufferOverflow.DROP_OLDEST
     )
 
-    val nodeConnectionFlow = _nodeConnectionFlow.asSharedFlow()
+    val nodeConnectionFlow: SharedFlow<Set<String>> = _nodeConnectionFlow.asSharedFlow()
 
     // signals when logs are no longer being added to LogManager.
     var logTransferCompleteCallback: () -> Unit = { }
@@ -103,7 +105,7 @@ internal abstract class BleManager {
     fun addJob(serialNumber: String, job: Job) = jobManager.addJob(serialNumber, job)
 
     protected fun makeRequestId(): UInt {
-        return (0u..UInt.MAX_VALUE).random()
+        return Random.nextUInt()
     }
 
     abstract fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt)

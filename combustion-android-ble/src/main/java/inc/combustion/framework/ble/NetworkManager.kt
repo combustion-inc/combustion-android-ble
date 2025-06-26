@@ -55,7 +55,6 @@ import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
 import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
 import inc.combustion.framework.ble.uart.meatnet.GenericNodeRequest
 import inc.combustion.framework.ble.uart.meatnet.GenericNodeResponse
-import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.log.LogManager
 import inc.combustion.framework.service.CombustionProductType
@@ -76,11 +75,8 @@ import inc.combustion.framework.service.ProbeColor
 import inc.combustion.framework.service.ProbeID
 import inc.combustion.framework.service.ProbePowerMode
 import inc.combustion.framework.service.ProbePredictionMode
-import inc.combustion.framework.service.utils.StateFlowMutableMap
 import kotlinx.coroutines.CoroutineName
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -88,12 +84,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Semaphore
-import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 private val SPECIALIZED_DEVICES = setOf(PROBE, GAUGE)
@@ -126,103 +117,6 @@ internal class NetworkManager(
         val mutableDeviceInProximityFlow: MutableSharedFlow<DeviceInProximityEvent>,
         val mutableGenericNodeMessageFlow: MutableSharedFlow<NodeUARTMessage>,
     )
-
-    private inner class NodeDeviceManager(
-        val owner: LifecycleOwner,
-    ) {
-        private val connectedNodes = StateFlowMutableMap<String, NodeBleDevice>()
-        private val ignoredNodes: MutableSet<String> = mutableSetOf()
-        private val nodeRequestMutexMap: MutableMap<String, Semaphore> = ConcurrentHashMap()
-        private val coroutineScope = CoroutineScope(SupervisorJob())
-
-        val discoveredNodesFlow: StateFlow<List<String>> by lazy {
-            val mutableDiscoveredNodesFlow = MutableStateFlow<List<String>>(emptyList())
-            connectedNodes.stateFlow.onEach { nodes ->
-                mutableDiscoveredNodesFlow.value = nodes.keys.toList()
-            }.launchIn(coroutineScope)
-            mutableDiscoveredNodesFlow.asStateFlow()
-        }
-
-        private fun getNodeRequestMutex(deviceId: String): Semaphore =
-            nodeRequestMutexMap[deviceId] ?: (Semaphore(1).also {
-                nodeRequestMutexMap[deviceId] = it
-            })
-
-        suspend fun sendNodeRequest(
-            deviceId: String,
-            request: GenericNodeRequest,
-            completionHandler: (Boolean, GenericNodeResponse?) -> Unit,
-        ) {
-            connectedNodes[deviceId]?.let {
-                val mutex = getNodeRequestMutex(deviceId)
-                mutex.acquire()
-                it.sendNodeRequest(request) { status, data ->
-                    mutex.release()
-                    completionHandler(status, data as? GenericNodeResponse)
-                }
-            } ?: run {
-                completionHandler(false, null)
-            }
-        }
-
-        fun subscribeToNodeFlow(probeManager: BleManager) {
-            owner.lifecycleScope.launch(
-                CoroutineName("NodeConnectionFlow")
-            ) {
-                probeManager.nodeConnectionFlow
-                    .collect { deviceIds ->
-                        deviceIds.forEach { deviceId ->
-                            when (val node = devices[deviceId]) {
-                                is DeviceHolder.ProbeHolder -> NOT_IMPLEMENTED("subscribeToNodeFlow from manager ${probeManager.serialNumber} is not implemented for probe with id = $deviceId, type = ${node.probe.productType}, and serialNumber = ${node.probe.serialNumber}")
-                                is DeviceHolder.RepeaterHolder -> {
-                                    updateConnectedNodes(node.repeater)
-                                }
-
-                                else -> NOT_IMPLEMENTED("subscribeToNodeFlow from manager ${probeManager.serialNumber} is not implemented for unknown device $node with id = $deviceId")
-                            }
-                        }
-                    }
-            }
-        }
-
-        fun discoveredNodes(): List<String> = discoveredNodesFlow.value
-
-        private suspend fun updateConnectedNodes(node: NodeBleDevice) {
-            if (node.deviceInfoSerialNumber == null) {
-                node.readSerialNumber()
-            }
-            node.deviceInfoSerialNumber?.let {
-                if (!connectedNodes.containsKey(it) && !ignoredNodes.contains(it)) {
-                    node.sendFeatureFlagRequest(null) { success: Boolean, data: Any? ->
-                        if (success) {
-                            val featureFlags =
-                                data as NodeReadFeatureFlagsResponse
-                            if (featureFlags.wifi) {
-                                Log.d(
-                                    LOG_TAG,
-                                    "Node $it supports WiFi feature flag: add to connectedNodes",
-                                )
-                                connectedNodes[it] = node
-                                UUID.randomUUID().toString().let { key ->
-                                    node.observeDisconnected(key) {
-                                        Log.d(
-                                            LOG_TAG,
-                                            "Node $it disconnected: remove from connectedNodes",
-                                        )
-                                        connectedNodes.remove(it)
-                                        node.removeDisconnectedObserver(key)
-                                    }
-                                }
-                            } else {
-                                Log.d(LOG_TAG, "Node doesn't support WiFi feature flag: $it")
-                                ignoredNodes.add(it)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
 
     companion object {
         private const val FLOW_CONFIG_NO_REPLAY = 0
@@ -313,7 +207,13 @@ internal class NetworkManager(
     private val gaugeManagers = hashMapOf<String, GaugeManager>()
     private val deviceInformationDevices = hashMapOf<DeviceID, DeviceInformationBleDevice>()
     private var proximityDevices = hashMapOf<String, ProximityDevice>()
-    private var nodeDeviceManager = NodeDeviceManager(owner)
+    private val wifiNodesManager = WiFiNodesManager { deviceId ->
+        when (val node = devices[deviceId]) {
+            is DeviceHolder.ProbeHolder -> NOT_IMPLEMENTED("getNodeDevice is not implemented for probe with id = $deviceId, type = ${node.probe.productType}, and serialNumber = ${node.probe.serialNumber}")
+            is DeviceHolder.RepeaterHolder -> node.repeater
+            else -> NOT_IMPLEMENTED("getNodeDevice is not implemented for unknown device $node with id = $deviceId")
+        }
+    }
 
     var deviceAllowlist: Set<String>? = settings.probeAllowlist
         private set
@@ -379,13 +279,13 @@ internal class NetworkManager(
             return discoveredProbes + discoveredGauges
         }
 
-    internal val discoveredNodes: List<String>
+    internal val discoveredWiFiNodes: List<String>
         get() {
-            return nodeDeviceManager.discoveredNodes()
+            return wifiNodesManager.discoveredWiFiNodes()
         }
 
-    internal val discoveredNodesFlow: StateFlow<List<String>>
-        get() = nodeDeviceManager.discoveredNodesFlow
+    internal val discoveredWiFiNodesFlow: StateFlow<List<String>>
+        get() = wifiNodesManager.discoveredWiFiNodesFlow
 
     fun setDeviceAllowlist(allowlist: Set<String>?) {
         // Make sure that the new allowlist is set before we get another advertisement sneak in and
@@ -421,6 +321,10 @@ internal class NetworkManager(
         return scanningForDevices
     }
 
+    /**
+     * Stops interpreting DeviceScanner's scanned advertisements to find devices.
+     * NB, dont stop the actual scanning since needed for DFU
+     */
     fun stopScanForDevices(): Boolean {
         if (bluetoothIsEnabled) {
             scanningForDevices = false
@@ -653,12 +557,12 @@ internal class NetworkManager(
             }
     }
 
-    internal suspend fun sendNodeRequest(
+    internal suspend fun sendNodeRequestRequiringWiFi(
         deviceId: String,
         request: GenericNodeRequest,
         completionHandler: (Boolean, GenericNodeResponse?) -> Unit,
     ) {
-        nodeDeviceManager.sendNodeRequest(deviceId, request, completionHandler)
+        wifiNodesManager.sendNodeRequestRequiringWiFi(deviceId, request, completionHandler)
     }
 
     @ExperimentalCoroutinesApi
@@ -671,6 +575,7 @@ internal class NetworkManager(
         devices.clear()
         meatNetLinks.clear()
         proximityDevices.clear()
+        wifiNodesManager.clear()
 
         // clear the discovered probes flow
         flowHolder.mutableDiscoveredDevicesFlow.resetReplayCache()
@@ -680,11 +585,11 @@ internal class NetworkManager(
         flowHolder.mutableFirmwareUpdateState.value = FirmwareState(listOf())
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun finish() {
         DeviceScanner.stop()
-        @Suppress("OPT_IN_USAGE")
-        clearDevices()
         jobManager.cancelJobs()
+        clearDevices()
     }
 
     /**
@@ -769,7 +674,7 @@ internal class NetworkManager(
             probeManagers[probeSerialNumber] = manager
             LogManager.instance.manageProbe(owner, manager)
 
-            nodeDeviceManager.subscribeToNodeFlow(manager)
+            wifiNodesManager.subscribeToNodeFlow(manager)
             true
         } else {
             false
@@ -799,7 +704,7 @@ internal class NetworkManager(
             gaugeManagers[gaugeSerialNumber] = manager
             LogManager.instance.manageGauge(owner, manager)
 
-            nodeDeviceManager.subscribeToNodeFlow(manager)
+            wifiNodesManager.subscribeToNodeFlow(manager)
             true
         } else {
             false
@@ -1049,6 +954,7 @@ internal class NetworkManager(
     }
 
     private fun initialize() {
+        wifiNodesManager.initialize(owner)
         jobManager.addJob(
             owner.lifecycleScope.launch(CoroutineName("collectAdvertisingData")) {
                 collectAdvertisingData()
