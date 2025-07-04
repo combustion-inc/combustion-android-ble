@@ -41,7 +41,6 @@ import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.service.dfu.DfuState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import no.nordicsemi.android.dfu.DfuBaseService
 import no.nordicsemi.android.dfu.DfuLogListener
 import no.nordicsemi.android.dfu.DfuProgressListener
 import no.nordicsemi.android.dfu.DfuServiceListenerHelper
@@ -343,32 +342,10 @@ internal class DfuBleDevice(
 
     override fun onLogEvent(deviceAddress: String?, level: Int, message: String?) {
         message?.let {
-            val s = "[onLogEvent] $it (${state.value}])"
-            when (level) {
-                DfuBaseService.LOG_LEVEL_VERBOSE -> {
-                    Log.v(LOG_TAG, s)
-                }
-
-                DfuBaseService.LOG_LEVEL_DEBUG -> {
-                    Log.d(LOG_TAG, s)
-                }
-
-                DfuBaseService.LOG_LEVEL_INFO, DfuBaseService.LOG_LEVEL_APPLICATION -> {
-                    Log.i(LOG_TAG, s)
-                }
-
-                DfuBaseService.LOG_LEVEL_WARNING -> {
-                    Log.w(LOG_TAG, s)
-                }
-
-                DfuBaseService.LOG_LEVEL_ERROR -> {
-                    Log.e(LOG_TAG, s)
-                }
-
-                else -> {
-                    Log.e(LOG_TAG, "Unknown log level [$level]: $s")
-                }
-            }
+            performDfuDelegate.onLogEvent(
+                level = level,
+                message = message,
+            )
         }
     }
 

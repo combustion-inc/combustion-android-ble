@@ -33,6 +33,9 @@ import android.net.Uri
 import inc.combustion.framework.ble.dfu.PerformDfuDelegate
 import inc.combustion.framework.ble.scanning.AdvertisingData
 import inc.combustion.framework.service.dfu.DfuProductType
+import no.nordicsemi.android.dfu.DfuLogListener
+import no.nordicsemi.android.dfu.DfuProgressListener
+import no.nordicsemi.android.dfu.DfuServiceListenerHelper
 
 private const val LEGACY_PROBE_NAME = "CI Probe BL"
 private const val LEGACY_DISPLAY_AND_CHARGER_NAME = "CI Timer BL"
@@ -51,7 +54,8 @@ private val bootLoadingDevicePrefixes =
 class BootLoaderDevice(
     val performDfuDelegate: PerformDfuDelegate,
     val advertisingData: AdvertisingData,
-) {
+    private val context: Context,
+) : DfuProgressListener, DfuLogListener {
     val standardId: String = advertisingData.standardId()
 
     val dfuProductType: DfuProductType
@@ -77,12 +81,26 @@ class BootLoaderDevice(
         context: Context,
         advertisingData: AdvertisingData,
     ) : this(
-        PerformDfuDelegate(context, advertisingData, advertisingData.standardId()),
-        advertisingData
+        PerformDfuDelegate(context, advertisingData, advertisingData.mac),
+        advertisingData,
+        context,
     )
 
     fun millisSinceFirstSeen(): Long =
         System.currentTimeMillis() - firstSeenTimestamp
+
+    init {
+        DfuServiceListenerHelper.registerProgressListener(
+            context, this, advertisingData.mac
+        )
+        DfuServiceListenerHelper.registerLogListener(
+            context, this, advertisingData.mac
+        )
+    }
+
+    fun finish() {
+        DfuServiceListenerHelper.unregisterProgressListener(context, this)
+    }
 
     fun performDfu(file: Uri, completionHandler: (Boolean) -> Unit) {
         performDfuDelegate.performDfu(file, completionHandler)
@@ -99,7 +117,92 @@ class BootLoaderDevice(
         }
 
     override fun toString(): String {
-        return "BootLoaderDevice(standardId=$standardId, dfuProductType=$dfuProductType)"
+        return "BootLoaderDevice(mac=${advertisingData.mac}, dfuProductType=$dfuProductType, standardId=$standardId)"
+    }
+
+    override fun onDeviceConnecting(deviceAddress: String) {
+        performDfuDelegate.onDeviceDisconnecting(deviceAddress)
+    }
+
+    override fun onDeviceConnected(deviceAddress: String) {
+        performDfuDelegate.onDeviceConnected(deviceAddress)
+    }
+
+    override fun onDfuProcessStarting(deviceAddress: String) {
+        performDfuDelegate.onDfuProcessStarting(deviceAddress)
+    }
+
+    override fun onDfuProcessStarted(deviceAddress: String) {
+        performDfuDelegate.onDfuProcessStarted(deviceAddress)
+    }
+
+    override fun onEnablingDfuMode(deviceAddress: String) {
+        performDfuDelegate.onEnablingDfuMode(deviceAddress)
+    }
+
+    override fun onProgressChanged(
+        deviceAddress: String,
+        percent: Int,
+        speed: Float,
+        avgSpeed: Float,
+        currentPart: Int,
+        partsTotal: Int
+    ) {
+        performDfuDelegate.onProgressChanged(
+            deviceAddress = deviceAddress,
+            percent = percent,
+            speed = speed,
+            avgSpeed = avgSpeed,
+            currentPart = currentPart,
+            partsTotal = partsTotal,
+        )
+    }
+
+    override fun onFirmwareValidating(deviceAddress: String) {
+        performDfuDelegate.onFirmwareValidating(deviceAddress)
+    }
+
+    override fun onDeviceDisconnecting(deviceAddress: String) {
+        performDfuDelegate.onDeviceDisconnecting(deviceAddress)
+    }
+
+    override fun onDeviceDisconnected(deviceAddress: String) {
+        performDfuDelegate.onDeviceDisconnected(deviceAddress)
+    }
+
+    override fun onDfuCompleted(deviceAddress: String) {
+        performDfuDelegate.onDfuCompleted(deviceAddress)
+    }
+
+    override fun onDfuAborted(deviceAddress: String) {
+        performDfuDelegate.onDfuAborted(deviceAddress)
+    }
+
+    override fun onError(
+        deviceAddress: String,
+        error: Int,
+        errorType: Int,
+        message: String?
+    ) {
+        performDfuDelegate.onError(
+            deviceAddress = deviceAddress,
+            error = error,
+            errorType = errorType,
+            message = message,
+        )
+    }
+
+    override fun onLogEvent(
+        deviceAddress: String?,
+        level: Int,
+        message: String?
+    ) {
+        message?.let {
+            performDfuDelegate.onLogEvent(
+                level = level,
+                message = message,
+            )
+        }
     }
 }
 

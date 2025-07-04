@@ -318,4 +318,33 @@ class PerformDfuDelegate(
         // Call DFU complete callback
         dfuCompleteCallback?.invoke(false)
     }
+
+    fun onLogEvent(level: Int, message: String) {
+        val s = "[onLogEvent] $message (${state.value}])"
+        when (level) {
+            DfuBaseService.LOG_LEVEL_VERBOSE -> {
+                Log.v(LOG_TAG, s)
+            }
+
+            DfuBaseService.LOG_LEVEL_DEBUG -> {
+                Log.d(LOG_TAG, s)
+            }
+
+            DfuBaseService.LOG_LEVEL_INFO, DfuBaseService.LOG_LEVEL_APPLICATION -> {
+                Log.i(LOG_TAG, s)
+            }
+
+            DfuBaseService.LOG_LEVEL_WARNING -> {
+                Log.w(LOG_TAG, s)
+            }
+
+            DfuBaseService.LOG_LEVEL_ERROR -> {
+                Log.e(LOG_TAG, s)
+            }
+
+            else -> {
+                Log.e(LOG_TAG, "Unknown log level [$level]: $s")
+            }
+        }
+    }
 }

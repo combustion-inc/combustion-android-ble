@@ -48,11 +48,7 @@ import inc.combustion.framework.service.dfu.DfuState
 import inc.combustion.framework.service.dfu.DfuSystemState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -217,7 +213,9 @@ internal class DfuManager(
                         val id = advertisingData.id
 
                         // if device is visible here then it exited bootLoading and can be removed
-                        val matchingBootloaderDevice = bootLoaderDevices.remove(id)
+                        val matchingBootloaderDevice = bootLoaderDevices.remove(id)?.also {
+                            it.finish()
+                        }
 
                         // Add the device to our list of devices if it doesn't exist yet.
                         if (!devices.containsKey(id)) {
@@ -263,6 +261,7 @@ internal class DfuManager(
                             BootLoaderDevice(
                                 performDfuDelegate = performDfuDelegate,
                                 advertisingData = advertisingData,
+                                context = context,
                             )
                         } ?: BootLoaderDevice(
                             context = context,
@@ -321,7 +320,11 @@ internal class DfuManager(
                 matchingDevice?.performDfuDelegate?.dfuCompleteCallback
             bootLoaderDevice.performDfu(firmwareFile) { success ->
                 activeRetryDfuContext = null
-                bootLoaderDevices.remove(bootLoaderDevice.standardId)
+                if (success) {
+                    bootLoaderDevices.remove(bootLoaderDevice.standardId)?.also {
+                        it.finish()
+                    }
+                }
                 matchingDeviceCallback?.invoke(success)
                 Log.i(
                     LOG_TAG,
