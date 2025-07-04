@@ -68,7 +68,7 @@ class PerformDfuDelegate(
     private var dfuServiceController: DfuServiceController? = null
 
     // callback used to signal that a DFU is complete (can be success, error) and other devices can be DFU'd.
-    var dfuCompleteCallback: (() -> Unit)? = null
+    var dfuCompleteCallback: ((Boolean) -> Unit)? = null
         private set
 
     fun emitState(dfuState: DfuState) {
@@ -83,10 +83,10 @@ class PerformDfuDelegate(
         dfuServiceController?.abort() ?: Log.e(LOG_TAG, "Unable to abort DFU process.")
 
         // Call DFU completed callback
-        dfuCompleteCallback?.invoke()
+        dfuCompleteCallback?.invoke(false)
     }
 
-    fun performDfu(file: Uri, completionHandler: () -> Unit) {
+    fun performDfu(file: Uri, completionHandler: (Boolean) -> Unit) {
         Log.i(LOG_TAG, "Performing DFU for device ${_state.value.device} with file $file")
 
         // Save off the completion handler so we can call it when the DFU process is complete.
@@ -262,7 +262,7 @@ class PerformDfuDelegate(
         internalDfuState.status = InternalDfuState.Status.COMPLETE
 
         // Call DFU completed callback
-        dfuCompleteCallback?.invoke()
+        dfuCompleteCallback?.invoke(true)
     }
 
     override fun onDfuAborted(deviceAddress: String) {
@@ -271,7 +271,7 @@ class PerformDfuDelegate(
         Log.i(LOG_TAG, "[onDfuAborted] $deviceAddress ${_state.value}")
 
         // Call DFU completed callback
-        dfuCompleteCallback?.invoke()
+        dfuCompleteCallback?.invoke(false)
     }
 
     override fun onError(
@@ -316,6 +316,6 @@ class PerformDfuDelegate(
         Log.e(LOG_TAG, "[onError] $error (type: $errorType, message: $message ${_state.value}")
 
         // Call DFU complete callback
-        dfuCompleteCallback?.invoke()
+        dfuCompleteCallback?.invoke(false)
     }
 }

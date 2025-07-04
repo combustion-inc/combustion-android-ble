@@ -261,7 +261,7 @@ internal class DfuBleDevice(
         )
     }
 
-    fun performDfu(file: Uri, completionHandler: () -> Unit) {
+    fun performDfu(file: Uri, completionHandler: (Boolean) -> Unit) {
         performDfuDelegate.performDfu(file, completionHandler)
     }
 

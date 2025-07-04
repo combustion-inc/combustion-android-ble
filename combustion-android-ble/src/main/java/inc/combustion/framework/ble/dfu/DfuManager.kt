@@ -319,13 +319,13 @@ internal class DfuManager(
 
             val matchingDeviceCallback =
                 matchingDevice?.performDfuDelegate?.dfuCompleteCallback
-            bootLoaderDevice.performDfu(firmwareFile) {
+            bootLoaderDevice.performDfu(firmwareFile) { success ->
                 activeRetryDfuContext = null
                 bootLoaderDevices.remove(bootLoaderDevice.standardId)
-                matchingDeviceCallback?.invoke()
+                matchingDeviceCallback?.invoke(success)
                 Log.i(
                     LOG_TAG,
-                    "dfu retry completed for bootloader device $bootLoaderDevice with context $retryDfuContext",
+                    "dfu retry completed with success = $success for bootloader device $bootLoaderDevice with context $retryDfuContext",
                 )
             }
         }
