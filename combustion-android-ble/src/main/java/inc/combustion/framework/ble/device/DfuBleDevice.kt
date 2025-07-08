@@ -35,47 +35,40 @@ import android.util.Log
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
+import inc.combustion.framework.ble.dfu.DfuCapableDevice
 import inc.combustion.framework.ble.dfu.PerformDfuDelegate
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.service.dfu.DfuState
+import inc.combustion.framework.service.dfu.DfuStatus
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import no.nordicsemi.android.dfu.DfuLogListener
 import no.nordicsemi.android.dfu.DfuProgressListener
 import no.nordicsemi.android.dfu.DfuServiceListenerHelper
 
 internal class DfuBleDevice(
-    val performDfuDelegate: PerformDfuDelegate,
+    deviceStateFlow: MutableStateFlow<DfuState>,
     private val context: Context,
     owner: LifecycleOwner,
     adapter: BluetoothAdapter,
     advertisingData: DeviceAdvertisingData,
 ) : DeviceInformationBleDevice(advertisingData.mac, advertisingData, owner, adapter),
     DfuProgressListener,
-    DfuLogListener {
+    DfuLogListener,
+    DfuCapableDevice {
 
-    constructor(
-        context: Context,
-        owner: LifecycleOwner,
-        adapter: BluetoothAdapter,
-        advertisingData: DeviceAdvertisingData,
-    ) : this(
-        performDfuDelegate = PerformDfuDelegate(context, advertisingData, advertisingData.mac),
+    override val performDfuDelegate = PerformDfuDelegate(
+        deviceStateFlow = deviceStateFlow,
+        advertisingData = advertisingData,
         context = context,
-        owner = owner, adapter = adapter, advertisingData = advertisingData,
-    ) {
-        // CombustionAdvertisingData's productType might be more reliable than previous value
-        performDfuDelegate.emitState(
-            state.value.copy(
-                device = state.value.device.copy(
-                    productType = advertisingData.productType,
-                ),
-            )
-        )
-    }
+        dfuMac = advertisingData.mac,
+    )
 
-    val state = performDfuDelegate.state
+    override val state: StateFlow<DfuState>
+        get() = performDfuDelegate.state
 
     // Flag to indicate whether we should transition to a blocked state after connecting
     // Needed to handle new connections after a successful DFU and the device is rebooted
@@ -85,9 +78,9 @@ internal class DfuBleDevice(
         when (connectionState) {
             DeviceConnectionState.ADVERTISING_CONNECTABLE, DeviceConnectionState.CONNECTING -> {
                 performDfuDelegate.emitState(
-                    DfuState.NotReady(
-                        state.value.device.copy(connectionState = connectionState),
-                        DfuState.NotReady.Status.CONNECTING
+                    state.value.copy(
+                        device = state.value.device.copy(connectionState = connectionState),
+                        status = DfuStatus.NotReady(DfuStatus.NotReady.Status.CONNECTING),
                     )
                 )
             }
@@ -106,27 +99,30 @@ internal class DfuBleDevice(
 
                     if (blockAfterConnect) {
                         performDfuDelegate.emitState(
-                            DfuState.NotReady(
-                                state.value.device.copy(
+                            state.value.copy(
+                                device = state.value.device.copy(
                                     serialNumber = serialNumber ?: "",
                                     fwVersion = firmwareVersion,
                                     hwRevision = hardwareRevision,
                                     modelInformation = modelInformation,
                                     connectionState = connectionState,
                                 ),
-                                DfuState.NotReady.Status.BLOCKED
+                                status = DfuStatus.NotReady(
+                                    DfuStatus.NotReady.Status.BLOCKED
+                                ),
                             )
                         )
                     } else {
                         performDfuDelegate.emitState(
-                            DfuState.Idle(
-                                state.value.device.copy(
+                            state.value.copy(
+                                device = state.value.device.copy(
                                     serialNumber = serialNumber ?: "",
                                     fwVersion = firmwareVersion,
                                     hwRevision = hardwareRevision,
                                     modelInformation = modelInformation,
                                     connectionState = connectionState,
-                                )
+                                ),
+                                status = DfuStatus.Idle(),
                             )
                         )
                     }
@@ -135,9 +131,11 @@ internal class DfuBleDevice(
                 }
 
                 performDfuDelegate.emitState(
-                    DfuState.NotReady(
-                        state.value.device.copy(connectionState = connectionState),
-                        DfuState.NotReady.Status.READING_DEVICE_INFORMATION
+                    state.value.copy(
+                        device = state.value.device.copy(connectionState = connectionState),
+                        status = DfuStatus.NotReady(
+                            DfuStatus.NotReady.Status.READING_DEVICE_INFORMATION
+                        ),
                     )
                 )
             }
@@ -154,14 +152,16 @@ internal class DfuBleDevice(
                     hardwareRevision = null
 
                     performDfuDelegate.emitState(
-                        DfuState.NotReady(
-                            state.value.device.copy(
+                        state.value.copy(
+                            device = state.value.device.copy(
                                 serialNumber = "",
                                 fwVersion = null,
                                 hwRevision = null,
                                 connectionState = connectionState,
                             ),
-                            DfuState.NotReady.Status.DISCONNECTED
+                            status = DfuStatus.NotReady(
+                                DfuStatus.NotReady.Status.DISCONNECTED
+                            ),
                         )
                     )
                 }
@@ -171,14 +171,16 @@ internal class DfuBleDevice(
             DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE,
             DeviceConnectionState.OUT_OF_RANGE -> {
                 performDfuDelegate.emitState(
-                    DfuState.NotReady(
-                        state.value.device.copy(
+                    state.value.copy(
+                        device = state.value.device.copy(
                             serialNumber = "",
                             fwVersion = null,
                             hwRevision = null,
                             connectionState = connectionState,
                         ),
-                        DfuState.NotReady.Status.DISCONNECTED,
+                        status = DfuStatus.NotReady(
+                            DfuStatus.NotReady.Status.DISCONNECTED,
+                        ),
                     )
                 )
             }
@@ -189,6 +191,7 @@ internal class DfuBleDevice(
 
     init {
         Log.i(LOG_TAG, "INITIALIZING DFU BLE DEVICE")
+        performDfuDelegate.updateStuckBootloader(isStuck = false)
 
         observeConnectionState {
             // If we're in the middle of a DFU operation, let the Nordic library handle connection
@@ -203,8 +206,8 @@ internal class DfuBleDevice(
         observeOutOfRange(5000L) {
             if (performDfuDelegate.internalDfuState.status == PerformDfuDelegate.InternalDfuState.Status.IDLE) {
                 performDfuDelegate.emitState(
-                    DfuState.NotReady(
-                        state.value.device.copy(), DfuState.NotReady.Status.OUT_OF_RANGE
+                    state.value.copy(
+                        status = DfuStatus.NotReady(DfuStatus.NotReady.Status.OUT_OF_RANGE),
                     )
                 )
             }
@@ -250,17 +253,17 @@ internal class DfuBleDevice(
         connect()
     }
 
-    override fun finish(jobKey: String?, disconnect: Boolean) {
+    override fun finish() {
         DfuServiceListenerHelper.unregisterProgressListener(context, this)
 
         // Only disconnect if there's not a DFU operation in progress.
         super.finish(
-            jobKey,
+            jobKey = null,
             performDfuDelegate.internalDfuState.status == PerformDfuDelegate.InternalDfuState.Status.IDLE
         )
     }
 
-    fun performDfu(file: Uri, completionHandler: (Boolean) -> Unit) {
+    override fun performDfu(file: Uri, completionHandler: (Boolean) -> Unit) {
         performDfuDelegate.performDfu(file, completionHandler)
     }
 
@@ -352,21 +355,22 @@ internal class DfuBleDevice(
     fun setEnabled(enabled: Boolean) {
         if (enabled) {
             performDfuDelegate.emitState(
-                DfuState.Idle(
-                    state.value.device.copy(
+                state.value.copy(
+                    device = state.value.device.copy(
                         serialNumber = serialNumber ?: "",
                         fwVersion = firmwareVersion,
                         hwRevision = hardwareRevision,
                         modelInformation = modelInformation,
                         connectionState = connectionState,
-                    )
+                    ),
+                    status = DfuStatus.Idle(),
                 )
+
             )
         } else {
             performDfuDelegate.emitState(
-                DfuState.NotReady(
-                    state.value.device,
-                    DfuState.NotReady.Status.BLOCKED,
+                state.value.copy(
+                    status = DfuStatus.NotReady(DfuStatus.NotReady.Status.BLOCKED)
                 )
             )
         }

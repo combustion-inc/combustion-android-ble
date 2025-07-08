@@ -34,11 +34,13 @@ import android.os.Build
 import android.util.Log
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.scanning.AdvertisingData
-import inc.combustion.framework.service.Device
 import inc.combustion.framework.service.dfu.DfuProgress
 import inc.combustion.framework.service.dfu.DfuState
+import inc.combustion.framework.service.dfu.DfuStatus
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import no.nordicsemi.android.dfu.DfuBaseService
 import no.nordicsemi.android.dfu.DfuProgressListener
 import no.nordicsemi.android.dfu.DfuServiceController
@@ -46,21 +48,25 @@ import no.nordicsemi.android.dfu.DfuServiceInitiator
 import no.nordicsemi.android.error.SecureDfuError
 
 class PerformDfuDelegate(
+    deviceStateFlow: MutableStateFlow<DfuState>,
     private val context: Context,
     advertisingData: AdvertisingData,
-    mac: String,
+    private val dfuMac: String, // may be different from mac in DfuState, e.g. for bootloading device
 ) : DfuProgressListener {
-    private val _state = MutableStateFlow<DfuState>(
-        DfuState.NotReady(
-            device = Device(
-                mac = mac,
-                rssi = advertisingData.rssi,
-                productType = advertisingData.productType,
-            ),
-            DfuState.NotReady.Status.DISCONNECTED,
-        )
-    )
-    val state = _state.asStateFlow()
+
+    private val _state = deviceStateFlow
+    val state: StateFlow<DfuState> = _state.asStateFlow()
+
+    init {
+        _state.update {
+            it.copy(
+                device = it.device.copy(
+                    rssi = advertisingData.rssi,
+                    productType = advertisingData.productType,
+                )
+            )
+        }
+    }
 
     var internalDfuState = InternalDfuState()
         private set
@@ -73,6 +79,14 @@ class PerformDfuDelegate(
 
     fun emitState(dfuState: DfuState) {
         _state.value = dfuState
+    }
+
+    fun updateStuckBootloader(isStuck: Boolean) {
+        _state.update {
+            it.copy(
+                stuckBootloader = isStuck
+            )
+        }
     }
 
     fun resetInternalState() {
@@ -95,12 +109,15 @@ class PerformDfuDelegate(
         // Reset our internal state.
         internalDfuState = InternalDfuState(status = InternalDfuState.Status.IN_PROGRESS)
 
-        _state.value = DfuState.InProgress(
-            _state.value.device,
-            DfuProgress.Initializing(DfuProgress.Initializing.Status.INITIALIZING)
-        )
+        _state.update {
+            it.copy(
+                status = DfuStatus.InProgress(
+                    DfuProgress.Initializing(DfuProgress.Initializing.Status.INITIALIZING)
+                )
+            )
+        }
 
-        val starter = DfuServiceInitiator(_state.value.device.mac)
+        val starter = DfuServiceInitiator(dfuMac)
             //    .setDeviceName(genDeviceName()) // TODO : fix deviceName not sticking
             .setKeepBond(false)
             .setForceDfu(false)
@@ -151,37 +168,49 @@ class PerformDfuDelegate(
     }
 
     override fun onDeviceConnecting(deviceAddress: String) {
-        _state.value = DfuState.InProgress(
-            _state.value.device,
-            DfuProgress.Initializing(DfuProgress.Initializing.Status.CONNECTING_TO_DEVICE),
-        )
+        _state.update {
+            it.copy(
+                status = DfuStatus.InProgress(
+                    DfuProgress.Initializing(DfuProgress.Initializing.Status.CONNECTING_TO_DEVICE),
+                )
+            )
+        }
 
         Log.i(LOG_TAG, "[onDeviceConnecting] $deviceAddress ${_state.value}")
     }
 
     override fun onDeviceConnected(deviceAddress: String) {
-        _state.value = DfuState.InProgress(
-            _state.value.device,
-            DfuProgress.Initializing(DfuProgress.Initializing.Status.CONNECTED_TO_DEVICE),
-        )
+        _state.update {
+            it.copy(
+                status = DfuStatus.InProgress(
+                    DfuProgress.Initializing(DfuProgress.Initializing.Status.CONNECTED_TO_DEVICE),
+                )
+            )
+        }
 
         Log.i(LOG_TAG, "[onDeviceConnected] $deviceAddress ${_state.value}")
     }
 
     override fun onDfuProcessStarting(deviceAddress: String) {
-        _state.value = DfuState.InProgress(
-            _state.value.device,
-            DfuProgress.Initializing(DfuProgress.Initializing.Status.STARTING_DFU_PROCESS),
-        )
+        _state.update {
+            it.copy(
+                status = DfuStatus.InProgress(
+                    DfuProgress.Initializing(DfuProgress.Initializing.Status.STARTING_DFU_PROCESS),
+                )
+            )
+        }
 
         Log.i(LOG_TAG, "[onDfuProcessStarting] $deviceAddress ${_state.value}")
     }
 
     override fun onDfuProcessStarted(deviceAddress: String) {
-        _state.value = DfuState.InProgress(
-            _state.value.device,
-            DfuProgress.Initializing(DfuProgress.Initializing.Status.STARTED_DFU_PROCESS)
-        )
+        _state.update {
+            it.copy(
+                status = DfuStatus.InProgress(
+                    DfuProgress.Initializing(DfuProgress.Initializing.Status.STARTED_DFU_PROCESS)
+                )
+            )
+        }
 
         Log.i(LOG_TAG, "[onDfuProcessStarted] $deviceAddress ${_state.value}")
     }
@@ -189,10 +218,13 @@ class PerformDfuDelegate(
     override fun onEnablingDfuMode(deviceAddress: String) {
         // The command to enter the bootloader is sent immediately after this; the next event
         // encountered is onDeviceDisconnecting.
-        _state.value = DfuState.InProgress(
-            _state.value.device,
-            DfuProgress.Initializing(DfuProgress.Initializing.Status.ENABLING_DFU_MODE),
-        )
+        _state.update {
+            it.copy(
+                status = DfuStatus.InProgress(
+                    DfuProgress.Initializing(DfuProgress.Initializing.Status.ENABLING_DFU_MODE),
+                )
+            )
+        }
 
         Log.i(LOG_TAG, "[onEnablingDfuMode] $deviceAddress ${_state.value}")
     }
@@ -205,19 +237,25 @@ class PerformDfuDelegate(
         currentPart: Int,
         partsTotal: Int,
     ) {
-        _state.value = DfuState.InProgress(
-            _state.value.device,
-            DfuProgress.Uploading(percent, avgSpeed, currentPart, partsTotal)
-        )
+        _state.update {
+            it.copy(
+                status = DfuStatus.InProgress(
+                    DfuProgress.Uploading(percent, avgSpeed, currentPart, partsTotal)
+                )
+            )
+        }
 
         Log.i(LOG_TAG, "[onProgressChanged] $deviceAddress : ${_state.value}")
     }
 
     override fun onFirmwareValidating(deviceAddress: String) {
-        _state.value = DfuState.InProgress(
-            _state.value.device,
-            DfuProgress.Initializing(DfuProgress.Initializing.Status.VALIDATING_FIRMWARE),
-        )
+        _state.update {
+            it.copy(
+                status = DfuStatus.InProgress(
+                    DfuProgress.Initializing(DfuProgress.Initializing.Status.VALIDATING_FIRMWARE),
+                )
+            )
+        }
 
         Log.i(LOG_TAG, "[onFirmwareValidating] $deviceAddress ${_state.value}")
     }
@@ -232,10 +270,11 @@ class PerformDfuDelegate(
                 DfuProgress.Finishing(DfuProgress.Finishing.Status.DISCONNECTING_FROM_DEVICE)
 
         deviceAddress?.let {
-            _state.value = DfuState.InProgress(
-                _state.value.device,
-                progress,
-            )
+            _state.update {
+                it.copy(
+                    status = DfuStatus.InProgress(progress)
+                )
+            }
         }
 
         Log.i(LOG_TAG, "[onDeviceDisconnecting] $deviceAddress ${_state.value}")
@@ -243,19 +282,25 @@ class PerformDfuDelegate(
 
     override fun onDeviceDisconnected(deviceAddress: String) {
         // This isn't reached when rebooting into the bootloader
-        _state.value = DfuState.InProgress(
-            _state.value.device,
-            DfuProgress.Finishing(DfuProgress.Finishing.Status.DISCONNECTED_FROM_DEVICE),
-        )
+        _state.update {
+            it.copy(
+                status = DfuStatus.InProgress(
+                    DfuProgress.Finishing(DfuProgress.Finishing.Status.DISCONNECTED_FROM_DEVICE),
+                )
+            )
+        }
 
         Log.i(LOG_TAG, "[onDeviceDisconnected] $deviceAddress ${_state.value}")
     }
 
     override fun onDfuCompleted(deviceAddress: String) {
-        _state.value = DfuState.InProgress(
-            _state.value.device,
-            DfuProgress.Finishing(DfuProgress.Finishing.Status.COMPLETE_RESTARTING_DEVICE),
-        )
+        _state.update {
+            it.copy(
+                status = DfuStatus.InProgress(
+                    DfuProgress.Finishing(DfuProgress.Finishing.Status.COMPLETE_RESTARTING_DEVICE),
+                )
+            )
+        }
 
         Log.i(LOG_TAG, "[onDfuCompleted] $deviceAddress ${_state.value}")
 
@@ -266,7 +311,11 @@ class PerformDfuDelegate(
     }
 
     override fun onDfuAborted(deviceAddress: String) {
-        _state.value = DfuState.InProgress(_state.value.device, DfuProgress.Aborted)
+        _state.update {
+            it.copy(
+                status = DfuStatus.InProgress(DfuProgress.Aborted)
+            )
+        }
 
         Log.i(LOG_TAG, "[onDfuAborted] $deviceAddress ${_state.value}")
 
@@ -309,9 +358,13 @@ class PerformDfuDelegate(
             else -> message
         } ?: "Unknown error"
 
-        _state.value = DfuState.InProgress(
-            _state.value.device, DfuProgress.Error(type, betterMessage)
-        )
+        _state.update {
+            it.copy(
+                status = DfuStatus.InProgress(
+                    DfuProgress.Error(type, betterMessage)
+                )
+            )
+        }
 
         Log.e(LOG_TAG, "[onError] $error (type: $errorType, message: $message ${_state.value}")
 

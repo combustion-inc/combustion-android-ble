@@ -30,9 +30,13 @@ package inc.combustion.framework.ble.device
 
 import android.content.Context
 import android.net.Uri
+import inc.combustion.framework.ble.dfu.DfuCapableDevice
 import inc.combustion.framework.ble.dfu.PerformDfuDelegate
 import inc.combustion.framework.ble.scanning.AdvertisingData
 import inc.combustion.framework.service.dfu.DfuProductType
+import inc.combustion.framework.service.dfu.DfuState
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import no.nordicsemi.android.dfu.DfuLogListener
 import no.nordicsemi.android.dfu.DfuProgressListener
 import no.nordicsemi.android.dfu.DfuServiceListenerHelper
@@ -52,11 +56,19 @@ private val bootLoadingDevicePrefixes =
     setOf(PROBE_NAME_PREFIX, DISPLAY_NAME_PREFIX, CHARGER_NAME_PREFIX, GAUGE_NAME_PREFIX)
 
 class BootLoaderDevice(
-    val performDfuDelegate: PerformDfuDelegate,
+    deviceStateFlow: MutableStateFlow<DfuState>,
     val advertisingData: AdvertisingData,
     private val context: Context,
-) : DfuProgressListener, DfuLogListener {
+) : DfuProgressListener, DfuLogListener, DfuCapableDevice {
+    override val performDfuDelegate: PerformDfuDelegate = PerformDfuDelegate(
+        deviceStateFlow = deviceStateFlow,
+        advertisingData = advertisingData,
+        context = context,
+        dfuMac = advertisingData.mac,
+    )
     val standardId: String = advertisingData.standardId()
+    override val state: StateFlow<DfuState>
+        get() = performDfuDelegate.state
 
     val dfuProductType: DfuProductType
         get() = performDfuDelegate.state.value.device.dfuProductType.takeIf { it != DfuProductType.UNKNOWN }
@@ -77,15 +89,6 @@ class BootLoaderDevice(
 
     private val firstSeenTimestamp: Long = System.currentTimeMillis()
 
-    constructor(
-        context: Context,
-        advertisingData: AdvertisingData,
-    ) : this(
-        PerformDfuDelegate(context, advertisingData, advertisingData.mac),
-        advertisingData,
-        context,
-    )
-
     fun millisSinceFirstSeen(): Long =
         System.currentTimeMillis() - firstSeenTimestamp
 
@@ -98,11 +101,13 @@ class BootLoaderDevice(
         )
     }
 
-    fun finish() {
+    override fun finish() {
         DfuServiceListenerHelper.unregisterProgressListener(context, this)
     }
 
-    fun performDfu(file: Uri, completionHandler: (Boolean) -> Unit) {
+    override fun performDfu(file: Uri, completionHandler: (Boolean) -> Unit) {
+        // only verified as stuck if firstSeenTimestamp > threshold
+        performDfuDelegate.updateStuckBootloader(isStuck = true)
         performDfuDelegate.performDfu(file, completionHandler)
     }
 
