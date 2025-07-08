@@ -73,8 +73,9 @@ class BootLoaderDevice(
     val dfuProductType: DfuProductType
         get() = performDfuDelegate.state.value.device.dfuProductType.takeIf { it != DfuProductType.UNKNOWN }
             ?: if (advertisingData.isLegacyBootLoading) {
-                when {
-                    advertisingData.name == LEGACY_PROBE_NAME -> DfuProductType.PROBE
+                when (advertisingData.name) {
+                    LEGACY_PROBE_NAME -> DfuProductType.PROBE
+                    LEGACY_GAUGE_NAME -> DfuProductType.GAUGE
                     // can be either charger or display - initially assume charger and retryProductType() will return display
                     else -> DfuProductType.CHARGER
                 }
