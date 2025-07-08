@@ -60,6 +60,7 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 
 private const val BOOTLOADER_STUCK_TIMEOUT_MILLIS = 10000L
+private const val DFU_RETRIES_FAIL_REPORT_COUNT = 3
 
 internal class DfuManager(
     private var owner: LifecycleOwner,
@@ -355,6 +356,11 @@ internal class DfuManager(
                     bootLoaderDevices.remove(bootLoaderDevice.standardId)?.also {
                         it.finish()
                     }
+                } else if (retryDfuContext.count == DFU_RETRIES_FAIL_REPORT_COUNT) {
+                    analyticsTracker.trackDfuRetriesFailed(
+                        productType = bootLoaderDevice.dfuProductType,
+                        serialNumber = bootLoaderDevice.performDfuDelegate.state.value.device.serialNumber,
+                    )
                 }
                 Log.i(
                     LOG_TAG,
