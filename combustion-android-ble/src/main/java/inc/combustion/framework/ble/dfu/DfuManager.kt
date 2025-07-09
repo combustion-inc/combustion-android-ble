@@ -220,6 +220,11 @@ internal class DfuManager(
                 activeRetryDfuContext = null
             }
 
+            if (success) {
+                // if success then it exited bootLoading and can be removed
+                bootLoaderDevices.remove(currentId)?.finish()
+            }
+
             // Re-enable all devices when DFU is complete
             devices.toMap().forEach { (_, device) ->
                 device.setEnabled(true)
@@ -355,11 +360,7 @@ internal class DfuManager(
 
             performDfu(standardId, bootLoaderDevice, firmwareFile) { success ->
                 activeRetryDfuContext = null
-                if (success) {
-                    bootLoaderDevices.remove(bootLoaderDevice.standardId)?.also {
-                        it.finish()
-                    }
-                } else if (retryDfuContext.count == DFU_RETRY_MAX_COUNT) {
+                if (!success && (retryDfuContext.count == DFU_RETRY_MAX_COUNT)) {
                     analyticsTracker.trackDfuRetriesFailed(
                         productType = bootLoaderDevice.dfuProductType,
                         serialNumber = bootLoaderDevice.performDfuDelegate.state.value.device.serialNumber,

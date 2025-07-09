@@ -34,6 +34,7 @@ import android.os.Build
 import android.util.Log
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.scanning.AdvertisingData
+import inc.combustion.framework.service.CombustionProductType
 import inc.combustion.framework.service.dfu.DfuProgress
 import inc.combustion.framework.service.dfu.DfuState
 import inc.combustion.framework.service.dfu.DfuStatus
@@ -58,12 +59,14 @@ class PerformDfuDelegate(
     val state: StateFlow<DfuState> = _state.asStateFlow()
 
     init {
-        _state.update {
-            it.copy(
-                device = it.device.copy(
+        _state.update { dfuState ->
+            dfuState.copy(
+                device = dfuState.device.copy(
                     rssi = advertisingData.rssi,
-                    productType = advertisingData.productType,
-                )
+                    productType = advertisingData.productType.takeIf {
+                        (dfuState.device.productType == null) || (dfuState.device.productType == CombustionProductType.UNKNOWN)
+                    } ?: dfuState.device.productType,
+                ),
             )
         }
     }
