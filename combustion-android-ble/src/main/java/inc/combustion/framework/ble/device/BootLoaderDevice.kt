@@ -53,8 +53,9 @@ internal class BootLoaderDevice(
         dfuMac = advertisingData.mac,
     )
     val standardId: String = advertisingData.standardId()
-    override val state: StateFlow<DfuState>
-        get() = performDfuDelegate.state
+    override val state: StateFlow<DfuState> = performDfuDelegate.state
+
+    private var registeredListeners: Boolean = false
 
     /**
      * if DfuProductType.UNKNOWN then either charger or display - initially assume charger and [retryProductType] will return display
@@ -69,20 +70,24 @@ internal class BootLoaderDevice(
     fun millisSinceFirstSeen(): Long =
         System.currentTimeMillis() - firstSeenTimestamp
 
-    init {
-        DfuServiceListenerHelper.registerProgressListener(
-            context, this, advertisingData.mac
-        )
-        DfuServiceListenerHelper.registerLogListener(
-            context, this, advertisingData.mac
-        )
-    }
-
     override fun finish() {
-        DfuServiceListenerHelper.unregisterProgressListener(context, this)
+        if (registeredListeners) {
+            DfuServiceListenerHelper.unregisterProgressListener(context, this)
+            registeredListeners = false
+        }
     }
 
     override fun performDfu(file: Uri, completionHandler: (Boolean) -> Unit) {
+        if (!registeredListeners) {
+            registeredListeners = true
+            DfuServiceListenerHelper.registerProgressListener(
+                context, this, advertisingData.mac
+            )
+            DfuServiceListenerHelper.registerLogListener(
+                context, this, advertisingData.mac
+            )
+        }
+
         // only verified as stuck if firstSeenTimestamp > threshold
         performDfuDelegate.updateStuckBootloader(isStuck = true)
         performDfuDelegate.performDfu(file, completionHandler)

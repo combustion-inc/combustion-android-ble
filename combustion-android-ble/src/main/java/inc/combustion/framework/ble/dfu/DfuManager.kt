@@ -250,11 +250,8 @@ internal class DfuManager(
 
                     if (enabled && (activeRetryDfuContext?.standardId != id)) {
 
-
                         // if device is visible here then it exited bootLoading and can be removed
-                        bootLoaderDevices.remove(id)?.also { bootLoaderDevice ->
-                            bootLoaderDevice.finish()
-                        }
+                        bootLoaderDevices.remove(id)?.finish()
 
                         // Add the device to our list of devices if it doesn't exist yet.
                         if (!devices.containsKey(id)) {
