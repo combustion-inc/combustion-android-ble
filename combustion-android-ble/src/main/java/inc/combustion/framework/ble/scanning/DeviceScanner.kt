@@ -37,7 +37,6 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.juul.kable.Filter
 import com.juul.kable.Scanner
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.device.isBootLoading
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelChildren
@@ -75,8 +74,8 @@ internal class DeviceScanner private constructor() {
         val advertisements: SharedFlow<DeviceAdvertisingData> = mutableAdvertisements.asSharedFlow()
 
         private val _bootloadingAdvertisements =
-            MutableSharedFlow<AdvertisingData>(5, 10, BufferOverflow.DROP_OLDEST)
-        val bootloadingAdvertisements: SharedFlow<AdvertisingData> =
+            MutableSharedFlow<BootloadingAdvertisingData>(5, 10, BufferOverflow.DROP_OLDEST)
+        val bootloadingAdvertisements: SharedFlow<BootloadingAdvertisingData> =
             _bootloadingAdvertisements.asSharedFlow()
 
         fun scan(owner: LifecycleOwner) {
@@ -103,12 +102,12 @@ internal class DeviceScanner private constructor() {
                             }
                             .collect { advertisement ->
                                 val advertisingData = AdvertisingData.create(advertisement)
-                                when {
-                                    advertisingData is DeviceAdvertisingData -> mutableAdvertisements.tryEmit(
+                                when (advertisingData) {
+                                    is DeviceAdvertisingData -> mutableAdvertisements.tryEmit(
                                         advertisingData
                                     )
 
-                                    advertisingData.isBootLoading -> _bootloadingAdvertisements.tryEmit(
+                                    is BootloadingAdvertisingData -> _bootloadingAdvertisements.tryEmit(
                                         advertisingData
                                     )
 

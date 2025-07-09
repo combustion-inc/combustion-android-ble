@@ -32,7 +32,7 @@ import android.content.Context
 import android.net.Uri
 import inc.combustion.framework.ble.dfu.DfuCapableDevice
 import inc.combustion.framework.ble.dfu.PerformDfuDelegate
-import inc.combustion.framework.ble.scanning.AdvertisingData
+import inc.combustion.framework.ble.scanning.BootloadingAdvertisingData
 import inc.combustion.framework.service.dfu.DfuProductType
 import inc.combustion.framework.service.dfu.DfuState
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,23 +41,9 @@ import no.nordicsemi.android.dfu.DfuLogListener
 import no.nordicsemi.android.dfu.DfuProgressListener
 import no.nordicsemi.android.dfu.DfuServiceListenerHelper
 
-private const val LEGACY_PROBE_NAME = "CI Probe BL"
-private const val LEGACY_DISPLAY_AND_CHARGER_NAME = "CI Timer BL"
-private const val LEGACY_GAUGE_NAME = "CI Gauge BL"
-
-private const val PROBE_NAME_PREFIX = "Thermom_DFU_"
-private const val DISPLAY_NAME_PREFIX = "Display_DFU_"
-private const val CHARGER_NAME_PREFIX = "Charger_DFU_"
-private const val GAUGE_NAME_PREFIX = "Gauge_DFU_"
-
-private val legacyBootLoadingDeviceNames =
-    setOf(LEGACY_PROBE_NAME, LEGACY_DISPLAY_AND_CHARGER_NAME, LEGACY_GAUGE_NAME)
-private val bootLoadingDevicePrefixes =
-    setOf(PROBE_NAME_PREFIX, DISPLAY_NAME_PREFIX, CHARGER_NAME_PREFIX, GAUGE_NAME_PREFIX)
-
-class BootLoaderDevice(
+internal class BootLoaderDevice(
     deviceStateFlow: MutableStateFlow<DfuState>,
-    val advertisingData: AdvertisingData,
+    val advertisingData: BootloadingAdvertisingData,
     private val context: Context,
 ) : DfuProgressListener, DfuLogListener, DfuCapableDevice {
     override val performDfuDelegate: PerformDfuDelegate = PerformDfuDelegate(
@@ -70,23 +56,13 @@ class BootLoaderDevice(
     override val state: StateFlow<DfuState>
         get() = performDfuDelegate.state
 
+    /**
+     * if DfuProductType.UNKNOWN then either charger or display - initially assume charger and [retryProductType] will return display
+     */
     val dfuProductType: DfuProductType
         get() = performDfuDelegate.state.value.device.dfuProductType.takeIf { it != DfuProductType.UNKNOWN }
-            ?: if (advertisingData.isLegacyBootLoading) {
-                when (advertisingData.name) {
-                    LEGACY_PROBE_NAME -> DfuProductType.PROBE
-                    LEGACY_GAUGE_NAME -> DfuProductType.GAUGE
-                    // can be either charger or display - initially assume charger and retryProductType() will return display
-                    else -> DfuProductType.CHARGER
-                }
-            } else {
-                when {
-                    advertisingData.name.startsWith(DISPLAY_NAME_PREFIX) -> DfuProductType.DISPLAY
-                    advertisingData.name.startsWith(CHARGER_NAME_PREFIX) -> DfuProductType.CHARGER
-                    advertisingData.name.startsWith(GAUGE_NAME_PREFIX) -> DfuProductType.GAUGE
-                    else -> DfuProductType.PROBE
-                }
-            }
+            ?: advertisingData.dfuProductType.takeIf { it != DfuProductType.UNKNOWN }
+            ?: DfuProductType.CHARGER
 
     private val firstSeenTimestamp: Long = System.currentTimeMillis()
 
@@ -113,7 +89,7 @@ class BootLoaderDevice(
     }
 
     fun retryProductType(retryCount: Int): DfuProductType =
-        if (advertisingData.isLegacyBootLoading && (advertisingData.name == LEGACY_DISPLAY_AND_CHARGER_NAME)) {
+        if (advertisingData.isLegacyDisplayOrCharger) {
             when {
                 retryCount % 2 == 0 -> DfuProductType.DISPLAY
                 else -> DfuProductType.CHARGER
@@ -210,29 +186,4 @@ class BootLoaderDevice(
             )
         }
     }
-}
-
-fun AdvertisingData.standardId(): String =
-    if (this.isBootLoading) {
-        this.id.decrementMacAddress()
-    } else this.id
-
-
-private val AdvertisingData.isLegacyBootLoading
-    get() = legacyBootLoadingDeviceNames.contains(name)
-
-val AdvertisingData.isBootLoading: Boolean
-    get() = isLegacyBootLoading ||
-            (bootLoadingDevicePrefixes.firstOrNull { name.startsWith(it) } != null)
-
-private fun String.decrementMacAddress(): String {
-    val sections = this.split(":").toMutableList() // Split MAC into sections
-
-    val lastSection = sections.last().toInt(16) // Convert last section to an integer (hex)
-    val decremented = (lastSection - 1).coerceAtLeast(0) // Ensure it doesn’t go below 0
-
-    sections[sections.size - 1] =
-        String.format("%02X", decremented) // Convert back to uppercase hex
-
-    return sections.joinToString(":") // Reassemble the MAC address
 }

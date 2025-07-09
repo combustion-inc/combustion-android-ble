@@ -41,7 +41,6 @@ import inc.combustion.framework.analytics.ExceptionEvent
 import inc.combustion.framework.ble.device.BootLoaderDevice
 import inc.combustion.framework.ble.device.DeviceID
 import inc.combustion.framework.ble.device.DfuBleDevice
-import inc.combustion.framework.ble.device.standardId
 import inc.combustion.framework.ble.scanning.DeviceScanner
 import inc.combustion.framework.service.Device
 import inc.combustion.framework.service.dfu.DfuProductType
@@ -60,7 +59,7 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 
 private const val BOOTLOADER_STUCK_TIMEOUT_MILLIS = 10000L
-private const val DFU_RETRIES_FAIL_REPORT_COUNT = 3
+private const val DFU_RETRY_MAX_COUNT = 3
 
 internal class DfuManager(
     private var owner: LifecycleOwner,
@@ -302,7 +301,11 @@ internal class DfuManager(
                 }
 
                 // check if bootloader is stuck
-                if ((activeRetryDfuContext == null) && !dfuInProgress.get() && (bootLoaderDevice.millisSinceFirstSeen() >= BOOTLOADER_STUCK_TIMEOUT_MILLIS)) {
+                if ((activeRetryDfuContext == null) &&
+                    !dfuInProgress.get() &&
+                    (bootLoaderDevice.millisSinceFirstSeen() >= BOOTLOADER_STUCK_TIMEOUT_MILLIS) &&
+                    ((retryDfuHistory[standardId]?.count ?: 0) < DFU_RETRY_MAX_COUNT)
+                ) {
                     handleStuckBootloader(bootLoaderDevice, matchingDevice)
                 }
             }
@@ -356,7 +359,7 @@ internal class DfuManager(
                     bootLoaderDevices.remove(bootLoaderDevice.standardId)?.also {
                         it.finish()
                     }
-                } else if (retryDfuContext.count == DFU_RETRIES_FAIL_REPORT_COUNT) {
+                } else if (retryDfuContext.count == DFU_RETRY_MAX_COUNT) {
                     analyticsTracker.trackDfuRetriesFailed(
                         productType = bootLoaderDevice.dfuProductType,
                         serialNumber = bootLoaderDevice.performDfuDelegate.state.value.device.serialNumber,
