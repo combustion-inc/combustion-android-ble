@@ -34,7 +34,8 @@ data class AnalyticsEvent(
 ) {
     enum class EventName(val eventName: String) {
         DFU_STARTED("dfu_started"),
-        DFU_RETRY("dfu_retry")
+        DFU_RETRY("dfu_retry"),
+        DFU_RETRIES_FAILED("dfu_retries_failed")
     }
 
     object EventParams {

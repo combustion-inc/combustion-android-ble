@@ -30,66 +30,71 @@ package inc.combustion.framework.ble.device
 
 import android.content.Context
 import android.net.Uri
+import inc.combustion.framework.ble.dfu.DfuCapableDevice
 import inc.combustion.framework.ble.dfu.PerformDfuDelegate
-import inc.combustion.framework.ble.scanning.AdvertisingData
+import inc.combustion.framework.ble.scanning.BootloadingAdvertisingData
 import inc.combustion.framework.service.dfu.DfuProductType
+import inc.combustion.framework.service.dfu.DfuState
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import no.nordicsemi.android.dfu.DfuLogListener
+import no.nordicsemi.android.dfu.DfuProgressListener
+import no.nordicsemi.android.dfu.DfuServiceListenerHelper
 
-private const val LEGACY_PROBE_NAME = "CI Probe BL"
-private const val LEGACY_DISPLAY_AND_CHARGER_NAME = "CI Timer BL"
-private const val LEGACY_GAUGE_NAME = "CI Gauge BL"
-
-private const val PROBE_NAME_PREFIX = "Thermom_DFU_"
-private const val DISPLAY_NAME_PREFIX = "Display_DFU_"
-private const val CHARGER_NAME_PREFIX = "Charger_DFU_"
-private const val GAUGE_NAME_PREFIX = "Gauge_DFU_"
-
-private val legacyBootLoadingDeviceNames =
-    setOf(LEGACY_PROBE_NAME, LEGACY_DISPLAY_AND_CHARGER_NAME, LEGACY_GAUGE_NAME)
-private val bootLoadingDevicePrefixes =
-    setOf(PROBE_NAME_PREFIX, DISPLAY_NAME_PREFIX, CHARGER_NAME_PREFIX, GAUGE_NAME_PREFIX)
-
-class BootLoaderDevice(
-    val performDfuDelegate: PerformDfuDelegate,
-    val advertisingData: AdvertisingData,
-) {
+internal class BootLoaderDevice(
+    deviceStateFlow: MutableStateFlow<DfuState>,
+    val advertisingData: BootloadingAdvertisingData,
+    private val context: Context,
+) : DfuProgressListener, DfuLogListener, DfuCapableDevice {
+    override val performDfuDelegate: PerformDfuDelegate = PerformDfuDelegate(
+        deviceStateFlow = deviceStateFlow,
+        advertisingData = advertisingData,
+        context = context,
+        dfuMac = advertisingData.mac,
+    )
     val standardId: String = advertisingData.standardId()
+    override val state: StateFlow<DfuState> = performDfuDelegate.state
 
+    private var registeredListeners: Boolean = false
+
+    /**
+     * if DfuProductType.UNKNOWN then either charger or display - initially assume charger and [retryProductType] will return display
+     */
     val dfuProductType: DfuProductType
         get() = performDfuDelegate.state.value.device.dfuProductType.takeIf { it != DfuProductType.UNKNOWN }
-            ?: if (advertisingData.isLegacyBootLoading) {
-                when {
-                    advertisingData.name == LEGACY_PROBE_NAME -> DfuProductType.PROBE
-                    // can be either charger or display - initially assume charger and retryProductType() will return display
-                    else -> DfuProductType.CHARGER
-                }
-            } else {
-                when {
-                    advertisingData.name.startsWith(DISPLAY_NAME_PREFIX) -> DfuProductType.DISPLAY
-                    advertisingData.name.startsWith(CHARGER_NAME_PREFIX) -> DfuProductType.CHARGER
-                    advertisingData.name.startsWith(GAUGE_NAME_PREFIX) -> DfuProductType.GAUGE
-                    else -> DfuProductType.PROBE
-                }
-            }
+            ?: advertisingData.dfuProductType.takeIf { it != DfuProductType.UNKNOWN }
+            ?: DfuProductType.CHARGER
 
     private val firstSeenTimestamp: Long = System.currentTimeMillis()
-
-    constructor(
-        context: Context,
-        advertisingData: AdvertisingData,
-    ) : this(
-        PerformDfuDelegate(context, advertisingData, advertisingData.standardId()),
-        advertisingData
-    )
 
     fun millisSinceFirstSeen(): Long =
         System.currentTimeMillis() - firstSeenTimestamp
 
-    fun performDfu(file: Uri, completionHandler: () -> Unit) {
+    override fun finish() {
+        if (registeredListeners) {
+            DfuServiceListenerHelper.unregisterProgressListener(context, this)
+            registeredListeners = false
+        }
+    }
+
+    override fun performDfu(file: Uri, completionHandler: (Boolean) -> Unit) {
+        if (!registeredListeners) {
+            registeredListeners = true
+            DfuServiceListenerHelper.registerProgressListener(
+                context, this, advertisingData.mac
+            )
+            DfuServiceListenerHelper.registerLogListener(
+                context, this, advertisingData.mac
+            )
+        }
+
+        // only verified as stuck if firstSeenTimestamp > threshold
+        performDfuDelegate.updateStuckBootloader(isStuck = true)
         performDfuDelegate.performDfu(file, completionHandler)
     }
 
     fun retryProductType(retryCount: Int): DfuProductType =
-        if (advertisingData.isLegacyBootLoading && (advertisingData.name == LEGACY_DISPLAY_AND_CHARGER_NAME)) {
+        if (advertisingData.isLegacyDisplayOrCharger) {
             when {
                 retryCount % 2 == 0 -> DfuProductType.DISPLAY
                 else -> DfuProductType.CHARGER
@@ -99,31 +104,91 @@ class BootLoaderDevice(
         }
 
     override fun toString(): String {
-        return "BootLoaderDevice(standardId=$standardId, dfuProductType=$dfuProductType)"
+        return "BootLoaderDevice(mac=${advertisingData.mac}, dfuProductType=$dfuProductType, standardId=$standardId)"
     }
-}
 
-fun AdvertisingData.standardId(): String =
-    if (this.isBootLoading) {
-        this.id.decrementMacAddress()
-    } else this.id
+    override fun onDeviceConnecting(deviceAddress: String) {
+        performDfuDelegate.onDeviceDisconnecting(deviceAddress)
+    }
 
+    override fun onDeviceConnected(deviceAddress: String) {
+        performDfuDelegate.onDeviceConnected(deviceAddress)
+    }
 
-private val AdvertisingData.isLegacyBootLoading
-    get() = legacyBootLoadingDeviceNames.contains(name)
+    override fun onDfuProcessStarting(deviceAddress: String) {
+        performDfuDelegate.onDfuProcessStarting(deviceAddress)
+    }
 
-val AdvertisingData.isBootLoading: Boolean
-    get() = isLegacyBootLoading ||
-            (bootLoadingDevicePrefixes.firstOrNull { name.startsWith(it) } != null)
+    override fun onDfuProcessStarted(deviceAddress: String) {
+        performDfuDelegate.onDfuProcessStarted(deviceAddress)
+    }
 
-private fun String.decrementMacAddress(): String {
-    val sections = this.split(":").toMutableList() // Split MAC into sections
+    override fun onEnablingDfuMode(deviceAddress: String) {
+        performDfuDelegate.onEnablingDfuMode(deviceAddress)
+    }
 
-    val lastSection = sections.last().toInt(16) // Convert last section to an integer (hex)
-    val decremented = (lastSection - 1).coerceAtLeast(0) // Ensure it doesn’t go below 0
+    override fun onProgressChanged(
+        deviceAddress: String,
+        percent: Int,
+        speed: Float,
+        avgSpeed: Float,
+        currentPart: Int,
+        partsTotal: Int
+    ) {
+        performDfuDelegate.onProgressChanged(
+            deviceAddress = deviceAddress,
+            percent = percent,
+            speed = speed,
+            avgSpeed = avgSpeed,
+            currentPart = currentPart,
+            partsTotal = partsTotal,
+        )
+    }
 
-    sections[sections.size - 1] =
-        String.format("%02X", decremented) // Convert back to uppercase hex
+    override fun onFirmwareValidating(deviceAddress: String) {
+        performDfuDelegate.onFirmwareValidating(deviceAddress)
+    }
 
-    return sections.joinToString(":") // Reassemble the MAC address
+    override fun onDeviceDisconnecting(deviceAddress: String) {
+        performDfuDelegate.onDeviceDisconnecting(deviceAddress)
+    }
+
+    override fun onDeviceDisconnected(deviceAddress: String) {
+        performDfuDelegate.onDeviceDisconnected(deviceAddress)
+    }
+
+    override fun onDfuCompleted(deviceAddress: String) {
+        performDfuDelegate.onDfuCompleted(deviceAddress)
+    }
+
+    override fun onDfuAborted(deviceAddress: String) {
+        performDfuDelegate.onDfuAborted(deviceAddress)
+    }
+
+    override fun onError(
+        deviceAddress: String,
+        error: Int,
+        errorType: Int,
+        message: String?
+    ) {
+        performDfuDelegate.onError(
+            deviceAddress = deviceAddress,
+            error = error,
+            errorType = errorType,
+            message = message,
+        )
+    }
+
+    override fun onLogEvent(
+        deviceAddress: String?,
+        level: Int,
+        message: String?
+    ) {
+        message?.let {
+            performDfuDelegate.onLogEvent(
+                level = level,
+                message = message,
+            )
+        }
+    }
 }

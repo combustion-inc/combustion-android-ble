@@ -41,14 +41,16 @@ import inc.combustion.framework.analytics.ExceptionEvent
 import inc.combustion.framework.ble.device.BootLoaderDevice
 import inc.combustion.framework.ble.device.DeviceID
 import inc.combustion.framework.ble.device.DfuBleDevice
-import inc.combustion.framework.ble.device.standardId
 import inc.combustion.framework.ble.scanning.DeviceScanner
+import inc.combustion.framework.service.Device
 import inc.combustion.framework.service.dfu.DfuProductType
 import inc.combustion.framework.service.dfu.DfuState
+import inc.combustion.framework.service.dfu.DfuStatus
 import inc.combustion.framework.service.dfu.DfuSystemState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.launchIn
@@ -57,6 +59,7 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 
 private const val BOOTLOADER_STUCK_TIMEOUT_MILLIS = 10000L
+private const val DFU_RETRY_MAX_COUNT = 3
 
 internal class DfuManager(
     private var owner: LifecycleOwner,
@@ -66,6 +69,7 @@ internal class DfuManager(
     private val latestFirmware: Map<DfuProductType, Uri>,
     private val analyticsTracker: AnalyticsTracker = AnalyticsTracker.instance,
 ) {
+    private val deviceStateFlows: MutableMap<DeviceID, MutableStateFlow<DfuState>> = mutableMapOf()
     private val devices = hashMapOf<DeviceID, DfuBleDevice>()
     private var scanningJob: Job? = null
 
@@ -84,20 +88,37 @@ internal class DfuManager(
     val enabled: Boolean
         get() = _enabled.get()
 
-    val availableDevices = devices.keys
+    val availableDevices: Set<DeviceID>
+        get() = ((activeRetryDfuContext?.standardId?.let { setOf(it) }
+            ?: emptySet()) + devices.keys)
 
-    fun dfuFlowForDevice(id: DeviceID) = devices[id]?.state
+    fun dfuFlowForDevice(id: DeviceID): StateFlow<DfuState>? = getDeviceStateFlow(id)
+
+    private fun getDeviceStateFlow(deviceID: DeviceID): MutableStateFlow<DfuState> {
+        return deviceStateFlows[deviceID] ?: (MutableStateFlow(
+            DfuState(
+                device = Device(mac = deviceID),
+                status = DfuStatus.NotReady(DfuStatus.NotReady.Status.DISCONNECTED),
+            )
+        ).also {
+            deviceStateFlows[deviceID] = it
+        })
+    }
 
     private fun clearDevices() {
         // Release listener resources for each device
-        devices.values.forEach {
-            it.finish()
-        }
+        devices.values.toList().forEach { it.finish() }
+        devices.clear()
+        deviceStateFlows.clear()
+
+        bootLoaderDevices.values.toList().forEach { it.finish() }
+        bootLoaderDevices.clear()
+        retryDfuHistory.clear()
 
         // reset _dfuInProgress
         dfuInProgress.set(false)
+        activeRetryDfuContext = null
 
-        devices.clear()
         _systemState.tryEmit(DfuSystemState.DevicesCleared)
     }
 
@@ -174,67 +195,76 @@ internal class DfuManager(
             return null
         }
 
-        devices[id]?.let { currentDevice ->
-
-            // set dfu in progress to true
-            dfuInProgress.set(true)
-
+        return devices[id]?.let { currentDevice ->
             analyticsTracker.trackStartDfu(
                 productType = currentDevice.state.value.device.dfuProductType,
                 serialNumber = currentDevice.state.value.device.serialNumber,
             )
+            performDfu(id, currentDevice, file)
+        }
+    }
 
-            currentDevice.performDfu(file) {
-                // Re-enable all devices when DFU is complete
-                devices.forEach { (_, device) ->
-                    device.setEnabled(true)
-                }
+    private fun performDfu(
+        currentId: DeviceID,
+        currentDevice: DfuCapableDevice,
+        file: Uri,
+        successCallback: (Boolean) -> Unit = {},
+    ): StateFlow<DfuState>? {
+        // set dfu in progress to true
+        dfuInProgress.set(true)
 
-                // set dfu in progress to false
-                dfuInProgress.set(false)
+        currentDevice.performDfu(file) { success ->
+            successCallback(success)
 
-                if (activeRetryDfuContext?.standardId == id) {
-                    activeRetryDfuContext = null
-                }
+            if (activeRetryDfuContext?.standardId == currentId) {
+                activeRetryDfuContext = null
             }
 
-            // Disable all other devices while DFU is in progress
-            devices.filter { it.key != id }.forEach { (_, device) ->
-                device.setEnabled(false)
+            if (success) {
+                // if success then it exited bootLoading and can be removed
+                bootLoaderDevices.remove(currentId)?.finish()
             }
 
-            return currentDevice.state
+            // Re-enable all devices when DFU is complete
+            devices.toMap().forEach { (_, device) ->
+                device.setEnabled(true)
+            }
+
+            // set dfu in progress to false
+            dfuInProgress.set(false)
         }
 
-        return null
+        // Disable all other devices while DFU is in progress
+        devices.filter { it.key != currentId }.forEach { (_, device) ->
+            device.setEnabled(false)
+        }
+
+        return currentDevice.state
     }
 
     private fun collectAdvertisingData() {
         scanningJob = owner.lifecycleScope.let {
             DeviceScanner.advertisements
                 .onEach { advertisingData ->
-                    if (enabled) {
-                        val id = advertisingData.id
+                    val id = advertisingData.id
+
+                    if (enabled && (activeRetryDfuContext?.standardId != id)) {
 
                         // if device is visible here then it exited bootLoading and can be removed
-                        val matchingBootloaderDevice = bootLoaderDevices.remove(id)
+                        bootLoaderDevices.remove(id)?.finish()
 
                         // Add the device to our list of devices if it doesn't exist yet.
                         if (!devices.containsKey(id)) {
                             Log.i(LOG_TAG, "DFU manager encountered new device $id")
 
                             // This needs to happen before the DeviceDiscovered event is emitted.
-                            devices[id] =
-                                matchingBootloaderDevice?.performDfuDelegate?.let { performDfuDelegate ->
-                                    // reuse performDfuDelegate since probably retried dfu in progress on previously stuck bootLoader device
-                                    DfuBleDevice(
-                                        performDfuDelegate,
-                                        context,
-                                        owner,
-                                        adapter,
-                                        advertisingData,
-                                    )
-                                } ?: DfuBleDevice(context, owner, adapter, advertisingData)
+                            devices[id] = DfuBleDevice(
+                                getDeviceStateFlow(id),
+                                context,
+                                owner,
+                                adapter,
+                                advertisingData
+                            )
 
                             // If a DFU is in progress, disable the device.
                             if (dfuInProgress.get()) {
@@ -259,15 +289,11 @@ internal class DfuManager(
                 val matchingDevice = devices[standardId]
                 val bootLoaderDevice: BootLoaderDevice = when {
                     existingBootloaderDevice == null -> {
-                        (matchingDevice?.performDfuDelegate?.let { performDfuDelegate ->
-                            BootLoaderDevice(
-                                performDfuDelegate = performDfuDelegate,
-                                advertisingData = advertisingData,
-                            )
-                        } ?: BootLoaderDevice(
+                        BootLoaderDevice(
+                            deviceStateFlow = getDeviceStateFlow(standardId),
                             context = context,
                             advertisingData = advertisingData,
-                        )).also {
+                        ).also {
                             Log.i(LOG_TAG, "DFU manager encountered new bootloader device $it")
                             bootLoaderDevices[standardId] = it
                         }
@@ -277,7 +303,11 @@ internal class DfuManager(
                 }
 
                 // check if bootloader is stuck
-                if ((activeRetryDfuContext == null) && (bootLoaderDevice.millisSinceFirstSeen() >= BOOTLOADER_STUCK_TIMEOUT_MILLIS)) {
+                if ((activeRetryDfuContext == null) &&
+                    !dfuInProgress.get() &&
+                    (bootLoaderDevice.millisSinceFirstSeen() >= BOOTLOADER_STUCK_TIMEOUT_MILLIS) &&
+                    ((retryDfuHistory[standardId]?.count ?: 0) < DFU_RETRY_MAX_COUNT)
+                ) {
                     handleStuckBootloader(bootLoaderDevice, matchingDevice)
                 }
             }
@@ -312,20 +342,30 @@ internal class DfuManager(
             activeRetryDfuContext = retryDfuContext
             retryDfuHistory[standardId] = retryDfuContext
 
+            if (matchingDevice == null) {
+                _systemState.tryEmit(DfuSystemState.DeviceDiscovered(standardId))
+            } else {
+                // remove stuck device - will be re-added when unstuck advertisement is observed
+                devices.remove(standardId)
+                matchingDevice.finish()
+            }
+
             analyticsTracker.trackRetryDfu(
                 productType = retryDfuContext.dfuProductType,
                 serialNumber = bootLoaderDevice.performDfuDelegate.state.value.device.serialNumber,
             )
 
-            val matchingDeviceCallback =
-                matchingDevice?.performDfuDelegate?.dfuCompleteCallback
-            bootLoaderDevice.performDfu(firmwareFile) {
+            performDfu(standardId, bootLoaderDevice, firmwareFile) { success ->
                 activeRetryDfuContext = null
-                bootLoaderDevices.remove(bootLoaderDevice.standardId)
-                matchingDeviceCallback?.invoke()
+                if (!success && (retryDfuContext.count == DFU_RETRY_MAX_COUNT)) {
+                    analyticsTracker.trackDfuRetriesFailed(
+                        productType = bootLoaderDevice.dfuProductType,
+                        serialNumber = bootLoaderDevice.performDfuDelegate.state.value.device.serialNumber,
+                    )
+                }
                 Log.i(
                     LOG_TAG,
-                    "dfu retry completed for bootloader device $bootLoaderDevice with context $retryDfuContext",
+                    "dfu retry completed with success = $success for bootloader device $bootLoaderDevice with context $retryDfuContext",
                 )
             }
         }

@@ -64,6 +64,14 @@ interface AdvertisingData {
             val name = advertisement.name ?: ""
             val rssi = advertisement.rssi
             val isConnectable = advertisement.isConnectable ?: false
+
+            BootloadingAdvertisingData.create(
+                mac = address,
+                name = name,
+                rssi = rssi,
+                isConnectable = isConnectable,
+            )?.let { return it }
+
             val base = BaseAdvertisingData(
                 mac = address,
                 name = name,

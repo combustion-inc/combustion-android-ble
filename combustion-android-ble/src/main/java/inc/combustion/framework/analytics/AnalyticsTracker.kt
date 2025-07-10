@@ -77,6 +77,11 @@ internal class AnalyticsTracker {
         trackEvent(AnalyticsEvent(EventName.DFU_RETRY, params))
     }
 
+    fun trackDfuRetriesFailed(productType: DfuProductType?, serialNumber: String?) {
+        val params = genDfuParams(productType, serialNumber)
+        trackEvent(AnalyticsEvent(EventName.DFU_RETRIES_FAILED, params))
+    }
+
     private fun genDfuParams(
         productType: DfuProductType?,
         serialNumber: String?,

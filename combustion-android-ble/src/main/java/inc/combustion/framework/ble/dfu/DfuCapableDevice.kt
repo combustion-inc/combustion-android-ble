@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: DfuState.kt
+ * File: DfuCapableDevice.kt
  * Author:
  *
  * MIT License
  *
- * Copyright (c) 2023. Combustion Inc.
+ * Copyright (c) 2025. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -26,40 +26,18 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.service.dfu
+package inc.combustion.framework.ble.dfu
 
-import inc.combustion.framework.service.Device
+import android.net.Uri
+import inc.combustion.framework.service.dfu.DfuState
+import kotlinx.coroutines.flow.StateFlow
 
-data class DfuState(
-    val device: Device,
-    val status: DfuStatus,
-    val stuckBootloader: Boolean = false,
-)
+interface DfuCapableDevice {
+    val performDfuDelegate: PerformDfuDelegate
 
-sealed interface DfuStatus {
+    val state: StateFlow<DfuState>
 
-    /**
-     * A device is [NotReady] if it's seen in advertising but hasn't pulled down the necessary
-     * information from the device information service.
-     */
-    data class NotReady(val status: Status) : DfuStatus {
-        enum class Status {
-            DISCONNECTED,
-            OUT_OF_RANGE,
-            CONNECTING,
-            READING_DEVICE_INFORMATION,
-            BLOCKED,
-        }
-    }
+    fun performDfu(file: Uri, completionHandler: (Boolean) -> Unit)
 
-    /**
-     * A device is [Idle] if it's available to perform DFU, but the DFU operation isn't currently
-     * in progress.
-     */
-    data class Idle(val status: String = "") : DfuStatus
-
-    /**
-     * A device is [InProgress] if it's in the middle of a DFU operation.
-     */
-    data class InProgress(val status: DfuProgress) : DfuStatus
+    fun finish()
 }
