@@ -36,9 +36,13 @@ import inc.combustion.framework.ble.SpecializedDeviceStatus
 import inc.combustion.framework.ble.uart.LogResponse
 import inc.combustion.framework.ble.uart.ProbeLogResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
-import inc.combustion.framework.service.*
+import inc.combustion.framework.service.DebugSettings
+import inc.combustion.framework.service.LoggedDataPoint
+import inc.combustion.framework.service.LoggedGaugeDataPoint
+import inc.combustion.framework.service.LoggedProbeDataPoint
+import inc.combustion.framework.service.SessionInformation
 import java.util.Date
-import java.util.SortedMap
+import java.util.concurrent.ConcurrentSkipListMap
 
 /**
  * Log transfer sessions and buffer instance for a probe.
@@ -60,7 +64,7 @@ internal class Session(
         const val PRINT_LOG_SEQUENCE_GAPS = false
     }
 
-    private val _logs: SortedMap<UInt, LoggedDataPoint> = sortedMapOf()
+    private val _logs: ConcurrentSkipListMap<UInt, LoggedDataPoint> = ConcurrentSkipListMap()
     private var nextExpectedRecord = UInt.MAX_VALUE
     private var nextExpectedDeviceStatus = UInt.MAX_VALUE
     private var totalExpected = 0u
