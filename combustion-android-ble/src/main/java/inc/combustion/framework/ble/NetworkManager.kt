@@ -546,7 +546,7 @@ internal class NetworkManager(
         }
     }
 
-    internal fun setHighLowAlarmStatus(
+    internal fun setGaugeHighLowAlarmStatus(
         serialNumber: String,
         highLowAlarmStatus: HighLowAlarmStatus,
         completionHandler: (Boolean) -> Unit,
