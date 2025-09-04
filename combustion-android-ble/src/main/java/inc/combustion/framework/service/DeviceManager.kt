@@ -939,14 +939,14 @@ class DeviceManager(
      * Set highLowAlarmStatus on gauge with the serial number [serialNumber] to
      * [highLowAlarmStatus], calling [completionHandler] with the success value on completion.
      */
-    fun setHighLowAlarmStatus(
+    fun setGaugeHighLowAlarmStatus(
         serialNumber: String,
         highLowAlarmStatus: HighLowAlarmStatus,
         completionHandler: (Boolean) -> Unit
     ) {
         Log.i(LOG_TAG, "Setting guage $serialNumber's highLowAlarmStatus to $highLowAlarmStatus")
         doWhenNetworkManagerInitialized {
-            it.setHighLowAlarmStatus(serialNumber, highLowAlarmStatus, completionHandler)
+            it.setGaugeHighLowAlarmStatus(serialNumber, highLowAlarmStatus, completionHandler)
         }
     }
 
