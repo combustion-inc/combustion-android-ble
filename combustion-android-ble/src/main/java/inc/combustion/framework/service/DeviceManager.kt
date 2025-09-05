@@ -43,7 +43,11 @@ import inc.combustion.framework.analytics.ExceptionEvent
 import inc.combustion.framework.ble.NetworkManager
 import inc.combustion.framework.ble.device.DeviceID
 import inc.combustion.framework.ble.dfu.DfuManager
-import inc.combustion.framework.ble.uart.meatnet.*
+import inc.combustion.framework.ble.uart.meatnet.GenericNodeRequest
+import inc.combustion.framework.ble.uart.meatnet.GenericNodeResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeMessage
+import inc.combustion.framework.ble.uart.meatnet.NodeMessageType
+import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.log.LogManager
 import inc.combustion.framework.service.DeviceManager.Companion.bindCombustionService
 import inc.combustion.framework.service.DeviceManager.Companion.startCombustionService
@@ -51,8 +55,19 @@ import inc.combustion.framework.service.DeviceManager.Companion.stopCombustionSe
 import inc.combustion.framework.service.DeviceManager.Companion.unbindCombustionService
 import inc.combustion.framework.service.dfu.DfuProductType
 import inc.combustion.framework.service.dfu.DfuSystemState
-import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.shareIn
+import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Date
@@ -67,7 +82,9 @@ class DeviceManager(
     val settings: Settings,
 ) {
     private val onBoundInitList = mutableListOf<() -> Unit>()
-    private lateinit var service: CombustionService
+
+    private val serviceFlow = MutableStateFlow<CombustionService?>(null)
+    private val pendingDfuMode = AtomicBoolean(false)
 
     /**
      * [probeAllowlist] specifies a set of thermometers that will be used to filter devices
@@ -111,7 +128,7 @@ class DeviceManager(
 
             override fun onServiceConnected(className: ComponentName, serviceBinder: IBinder) {
                 val binder = serviceBinder as CombustionService.CombustionServiceBinder
-                INSTANCE.service = binder.getService()
+                INSTANCE.serviceFlow.value = binder.getService()
 
                 connected.set(true)
                 onServiceBound(INSTANCE)
@@ -251,6 +268,7 @@ class DeviceManager(
                 Log.w(LOG_TAG, "Exception stopping service ${e.stackTrace}")
             }
 
+            INSTANCE.serviceFlow.value = null
             return true
         }
     }
@@ -431,6 +449,16 @@ class DeviceManager(
                 onInitialized(it)
             } ?: run {
                 throw IllegalStateException("NetworkManager was not initialized")
+            }
+        }
+    }
+
+    private fun doWhenServiceInitialized(onInitialized: suspend (CombustionService) -> Unit) {
+        mainCoroutineScope?.launch {
+            serviceFlow.first { it != null }?.let {
+                onInitialized(it)
+            } ?: run {
+                throw IllegalStateException("CombustionService was not initialized")
             }
         }
     }
@@ -960,12 +988,22 @@ class DeviceManager(
     /**
      * Transitions the framework into DFU mode.
      */
-    fun startDfuMode() = service.startDfuMode()
+    fun startDfuMode() {
+        pendingDfuMode.set(true)
+        doWhenServiceInitialized { service ->
+            pendingDfuMode.getAndSet(false).takeIf { it }?.let {
+                service.startDfuMode()
+            }
+        }
+    }
 
     /**
      * Transitions the framework out of DFU mode and back into 'normal' mode.
      */
-    fun stopDfuMode() = service.stopDfuMode()
+    fun stopDfuMode() {
+        pendingDfuMode.set(false)
+        serviceFlow.value?.stopDfuMode()
+    }
 
     /**
      * Flow exposing the DFU system's overall state.
@@ -980,13 +1018,13 @@ class DeviceManager(
      */
     val dfuDevices: Set<DeviceID>
         get() {
-            return service.dfuManager?.availableDevices ?: setOf()
+            return serviceFlow?.value?.dfuManager?.availableDevices ?: setOf()
         }
 
     /**
      * A flow exposing DFU status for a specific device.
      */
-    fun dfuFlowForDevice(id: DeviceID) = service.dfuManager?.dfuFlowForDevice(id)
+    fun dfuFlowForDevice(id: DeviceID) = serviceFlow?.value?.dfuManager?.dfuFlowForDevice(id)
 
     /**
      * Starts a DFU operation using the update file [updateFile] on the device associated with [id],
@@ -997,7 +1035,7 @@ class DeviceManager(
      * This flow can also be obtained by using [dfuFlowForDevice].
      */
     fun performDfuForDevice(id: DeviceID, updateFile: Uri) =
-        service.dfuManager?.performDfu(id, updateFile)
+        serviceFlow.value?.dfuManager?.performDfu(id, updateFile)
 
     @Deprecated(
         message = "sendNodeRequest is deprecated because its name does not indicate that it requires a Wi-Fi-capable node. " +
