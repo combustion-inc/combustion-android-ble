@@ -90,8 +90,8 @@ data class Probe(
     override val minSequence: UInt? = null,
     override val maxSequence: UInt? = null,
     @Deprecated(
-      message = "This field will be removed in a future release",
-      level = DeprecationLevel.WARNING
+        message = "This field will be removed in a future release",
+        level = DeprecationLevel.WARNING
     )
     val minSequenceNumber: UInt = minSequence ?: 0u,
     @Deprecated(
@@ -102,7 +102,7 @@ data class Probe(
     override val uploadState: ProbeUploadState = ProbeUploadState.Unavailable,
     val id: ProbeID = ProbeID.ID1,
     val color: ProbeColor = ProbeColor.COLOR1,
-    override val batteryStatus: ProbeBatteryStatus = ProbeBatteryStatus.OK,
+    val batteryStatus: ProbeBatteryStatus = ProbeBatteryStatus.OK,
     val virtualSensors: ProbeVirtualSensors = ProbeVirtualSensors(),
     val predictionState: ProbePredictionState? = null,
     val predictionMode: ProbePredictionMode? = null,
@@ -123,18 +123,24 @@ data class Probe(
     val foodSafeStatus: FoodSafeStatus? = null,
     val thermometerPrefs: ThermometerPreferences? = null,
 ) : SpecializedDevice {
-    val instantReadStale: Boolean get() { return instantReadCelsius == null }
+    override val lowBattery: Boolean
+        get() = batteryStatus.isLowBattery
+
+    val instantReadStale: Boolean
+        get() {
+            return instantReadCelsius == null
+        }
 
     val predictionPercent: Double?
         get() {
             heatStartTemperatureCelsius?.let { start ->
                 setPointTemperatureCelsius?.let { end ->
                     estimatedCoreCelsius?.let { core ->
-                        if(core > end) {
+                        if (core > end) {
                             return 100.0
                         }
 
-                        if(core < start) {
+                        if (core < start) {
                             return 0.0
                         }
 
@@ -151,19 +157,21 @@ data class Probe(
 
     val isPredicting: Boolean
         get() = (
-            predictionMode?.let {
-                it == ProbePredictionMode.TIME_TO_REMOVAL || it == ProbePredictionMode.REMOVAL_AND_RESTING
-            } ?: false
-        )
+                predictionMode?.let {
+                    it == ProbePredictionMode.TIME_TO_REMOVAL || it == ProbePredictionMode.REMOVAL_AND_RESTING
+                } ?: false
+                )
 
     companion object {
         const val PREDICTION_IDLE_TIMEOUT_MS = 60000L
 
-        fun create(serialNumber: String = "", mac: String = "") : Probe {
-            return Probe(baseDevice = Device(
-                serialNumber = serialNumber,
-                mac = mac,
-            ))
+        fun create(serialNumber: String = "", mac: String = ""): Probe {
+            return Probe(
+                baseDevice = Device(
+                    serialNumber = serialNumber,
+                    mac = mac,
+                )
+            )
         }
     }
 }

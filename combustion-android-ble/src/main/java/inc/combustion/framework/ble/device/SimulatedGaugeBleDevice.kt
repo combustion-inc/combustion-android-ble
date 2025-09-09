@@ -33,7 +33,13 @@ import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
 import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
-import inc.combustion.framework.service.*
+import inc.combustion.framework.service.CombustionProductType
+import inc.combustion.framework.service.DeviceConnectionState
+import inc.combustion.framework.service.FirmwareVersion
+import inc.combustion.framework.service.GaugeStatusFlags
+import inc.combustion.framework.service.HighLowAlarmStatus
+import inc.combustion.framework.service.ModelInformation
+import inc.combustion.framework.service.SensorTemperature
 import inc.combustion.framework.service.dfu.DfuProductType
 import kotlinx.coroutines.launch
 import kotlin.concurrent.fixedRateTimer
@@ -75,7 +81,6 @@ internal class SimulatedGaugeBleDevice(
                     sensorOverheating = true,
                     lowBattery = true
                 ),
-                batteryPercentage = 50,
                 highLowAlarmStatus = HighLowAlarmStatus(
                     HighLowAlarmStatus.AlarmStatus(
                         set = false,

@@ -261,7 +261,6 @@ internal class GaugeManager(
         return updatedGauge.copy(
             gaugeStatusFlags = advertisement.gaugeStatusFlags,
             temperatureCelsius = if (advertisement.gaugeStatusFlags.sensorPresent) advertisement.gaugeTemperature else null,
-            batteryPercentage = advertisement.batteryPercentage,
             highLowAlarmStatus = advertisement.highLowAlarmStatus,
         )
     }
@@ -541,7 +540,6 @@ internal class GaugeManager(
             // normalModeProbeStatusFlow.
             _deviceFlow.update {
                 _deviceFlow.value.copy(
-                    batteryPercentage = status.batteryPercentage,
                     highLowAlarmStatus = status.highLowAlarmStatus,
                     gaugeStatusFlags = status.gaugeStatusFlags,
                     temperatureCelsius = if (status.gaugeStatusFlags.sensorPresent) status.temperature else null,
