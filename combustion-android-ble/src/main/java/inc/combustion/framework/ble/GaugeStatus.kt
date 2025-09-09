@@ -34,7 +34,6 @@ import inc.combustion.framework.service.HopCount
 import inc.combustion.framework.service.ProbeMode
 import inc.combustion.framework.service.SensorTemperature
 import inc.combustion.framework.service.SessionInformation
-import inc.combustion.framework.toPercentage
 
 data class GaugeStatus(
     val sessionInformation: SessionInformation,
@@ -43,7 +42,6 @@ data class GaugeStatus(
     val gaugeStatusFlags: GaugeStatusFlags,
     override val minSequenceNumber: UInt,
     override val maxSequenceNumber: UInt,
-    val batteryPercentage: Int,
     val highLowAlarmStatus: HighLowAlarmStatus,
     val isNewRecord: Boolean,
     val hopCount: HopCount,
@@ -58,7 +56,7 @@ data class GaugeStatus(
         private val STATUS_FLAGS_RANGE = 8..8
         private val MIN_SEQ_RANGE = 9..12
         private val MAX_SEQ_RANGE = 13..16
-        private val BATTERY_PERCENTAGE_RANGE = 17..17
+        private val RESERVED_RANGE = 17..17 // previously BATTERY_PERCENTAGE_RANGE
         private val HIGH_LOW_ALARM_RANGE = 18..21
         private val NEW_RECORD_FLAG_RANGE = 22..22
         private val HOP_COUNT_RANGE = 23..23
@@ -85,8 +83,6 @@ data class GaugeStatus(
             val minSequenceNumber = data.getLittleEndianUInt32At(MIN_SEQ_RANGE.first)
             val maxSequenceNumber = data.getLittleEndianUInt32At(MAX_SEQ_RANGE.first)
 
-            val batteryPercentage: Int = data.sliceArray(BATTERY_PERCENTAGE_RANGE)[0].toPercentage()
-
             val highLowAlarmStatus: HighLowAlarmStatus = HighLowAlarmStatus.fromRawData(
                 data.sliceArray(HIGH_LOW_ALARM_RANGE)
             )
@@ -103,7 +99,6 @@ data class GaugeStatus(
                 gaugeStatusFlags = gaugeStatusFlags,
                 minSequenceNumber = minSequenceNumber,
                 maxSequenceNumber = maxSequenceNumber,
-                batteryPercentage = batteryPercentage,
                 highLowAlarmStatus = highLowAlarmStatus,
                 isNewRecord = isNewRecord,
                 hopCount = hopCount,

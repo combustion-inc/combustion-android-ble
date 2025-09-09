@@ -102,7 +102,7 @@ data class Probe(
     override val uploadState: ProbeUploadState = ProbeUploadState.Unavailable,
     val id: ProbeID = ProbeID.ID1,
     val color: ProbeColor = ProbeColor.COLOR1,
-    override val batteryStatus: ProbeBatteryStatus = ProbeBatteryStatus.OK,
+    val batteryStatus: ProbeBatteryStatus = ProbeBatteryStatus.OK,
     val virtualSensors: ProbeVirtualSensors = ProbeVirtualSensors(),
     val predictionState: ProbePredictionState? = null,
     val predictionMode: ProbePredictionMode? = null,
@@ -124,6 +124,9 @@ data class Probe(
     val thermometerPrefs: ThermometerPreferences? = null,
     val highLowAlarmStatus: ProbeHighLowAlarmStatus = ProbeHighLowAlarmStatus.DEFAULT,
 ) : SpecializedDevice {
+    override val lowBattery: Boolean
+        get() = batteryStatus.isLowBattery
+
     val instantReadStale: Boolean
         get() {
             return instantReadCelsius == null

@@ -33,7 +33,6 @@ import inc.combustion.framework.service.CombustionProductType
 import inc.combustion.framework.service.GaugeStatusFlags
 import inc.combustion.framework.service.HighLowAlarmStatus
 import inc.combustion.framework.service.SensorTemperature
-import inc.combustion.framework.toPercentage
 import inc.combustion.framework.utf8StringFromRange
 
 /**
@@ -47,7 +46,6 @@ internal class GaugeAdvertisingData(
     override val serialNumber: String,
     val gaugeTemperature: SensorTemperature,
     val gaugeStatusFlags: GaugeStatusFlags,
-    val batteryPercentage: Int,
     val highLowAlarmStatus: HighLowAlarmStatus,
 ) : BaseAdvertisingData(
     mac = mac,
@@ -61,7 +59,7 @@ internal class GaugeAdvertisingData(
         private val SERIAL_RANGE = 1..10
         private val TEMPERATURE_RANGE = 11..12
         private val STATUS_FLAGS_RANGE = 13..13
-        private val BATTERY_PERCENTAGE_RANGE = 14..14
+        private val RESERVED_RANGE = 14..14 // previously BATTERY_PERCENTAGE_RANGE
         private val HIGH_LOW_ALARM_RANGE = 15..18
 
         internal fun create(
@@ -81,9 +79,6 @@ internal class GaugeAdvertisingData(
                 manufacturerData.copyOf().sliceArray(STATUS_FLAGS_RANGE)[0]
             )
 
-            val batteryPercentage: Int = manufacturerData.copyOf()
-                .sliceArray(BATTERY_PERCENTAGE_RANGE)[0].toPercentage()
-
             val highLowAlarmStatus: HighLowAlarmStatus = HighLowAlarmStatus.fromRawData(
                 manufacturerData.copyOf().sliceArray(HIGH_LOW_ALARM_RANGE)
             )
@@ -96,7 +91,6 @@ internal class GaugeAdvertisingData(
                 serialNumber = serialNumber,
                 gaugeTemperature = gaugeTemperature,
                 gaugeStatusFlags = gaugeStatusFlags,
-                batteryPercentage = batteryPercentage,
                 highLowAlarmStatus = highLowAlarmStatus,
             )
         }

@@ -36,11 +36,9 @@ data class Gauge(
     override val dfuProductType: DfuProductType = DfuProductType.GAUGE,
     override val sessionInfo: SessionInformation? = null,
     override val statusNotificationsStale: Boolean = false,
-    override val batteryStatus: ProbeBatteryStatus = ProbeBatteryStatus.OK, // TODO : rename class?
     override val uploadState: ProbeUploadState = ProbeUploadState.Unavailable, // TODO : rename class?
     override val minSequence: UInt? = null,
     override val maxSequence: UInt? = null,
-    val batteryPercentage: Int? = null,
     val highLowAlarmStatus: HighLowAlarmStatus = HighLowAlarmStatus.DEFAULT,
     val gaugeStatusFlags: GaugeStatusFlags = GaugeStatusFlags(),
     val temperatureCelsius: SensorTemperature? = null,
@@ -49,6 +47,8 @@ data class Gauge(
     val newRecordFlag: Boolean = false,
     override val hopCount: UInt? = null,
 ) : SpecializedDevice {
+    override val lowBattery: Boolean
+        get() = gaugeStatusFlags.lowBattery
 
     companion object {
         fun create(serialNumber: String = "", mac: String = ""): Gauge {
