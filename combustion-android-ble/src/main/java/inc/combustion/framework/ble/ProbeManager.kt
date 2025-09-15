@@ -608,7 +608,10 @@ internal class ProbeManager(
         probeHighLowAlarmStatus: ProbeHighLowAlarmStatus,
         completionHandler: (Boolean) -> Unit,
     ) {
-        Log.v("D3V", "setProbeHighLowAlarmStatus: probeHighLowAlarmStatus = $probeHighLowAlarmStatus, directLink = ${arbitrator.directLink}")
+        Log.v(
+            "D3V",
+            "setProbeHighLowAlarmStatus: probeHighLowAlarmStatus = $probeHighLowAlarmStatus, directLink = ${arbitrator.directLink}"
+        )
         Log.v("D3V", "setProbeHighLowAlarmStatus: directLink = ${arbitrator.directLink}")
         val onCompletion: (Boolean) -> Unit = { success ->
             if (success) {
@@ -756,6 +759,7 @@ internal class ProbeManager(
                 updatedProbe
             )
             updatedProbe = updateThermometerPreferences(status.thermometerPrefs, updatedProbe)
+            updatedProbe = updateHighLowAlarms(status.probeHighLowAlarmStatus, updatedProbe)
 
             if (status.mode == ProbeMode.NORMAL) {
                 updatedProbe = updateNormalMode(status, updatedProbe)
@@ -1241,6 +1245,15 @@ internal class ProbeManager(
     ): Probe {
         return currentProbe.copy(
             thermometerPrefs = thermometerPrefs,
+        )
+    }
+
+    private fun updateHighLowAlarms(
+        probeHighLowAlarmStatus: ProbeHighLowAlarmStatus,
+        currentProbe: Probe,
+    ): Probe {
+        return currentProbe.copy(
+            highLowAlarmStatus = probeHighLowAlarmStatus,
         )
     }
 

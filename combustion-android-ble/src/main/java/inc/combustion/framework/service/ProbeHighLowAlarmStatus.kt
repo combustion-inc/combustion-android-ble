@@ -79,7 +79,7 @@ data class ProbeHighLowAlarmStatus(
                     "ProbeHighLowAlarmStatus.fromRawData, idx = $idx, sensorStatus = $sensorStatus"
                 )
 
-                status = when (idx) {
+                status = when (sensorIdx) {
                     0 -> status.copy(t1 = sensorStatus)
                     1 -> status.copy(t2 = sensorStatus)
                     2 -> status.copy(t3 = sensorStatus)
