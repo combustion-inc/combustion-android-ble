@@ -72,6 +72,7 @@ import inc.combustion.framework.service.FirmwareVersion
 import inc.combustion.framework.service.FoodSafeData
 import inc.combustion.framework.service.ModelInformation
 import inc.combustion.framework.service.ProbeColor
+import inc.combustion.framework.service.ProbeHighLowAlarmStatus
 import inc.combustion.framework.service.ProbeID
 import inc.combustion.framework.service.ProbePowerMode
 import inc.combustion.framework.service.ProbePredictionMode
@@ -328,6 +329,14 @@ internal class RepeatedProbeBleDevice(
     override fun sendResetProbe(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
         resetProbeHandler.wait(uart.owner, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
         sendUartRequest(NodeResetProbeRequest(serialNumber, reqId))
+    }
+
+    override fun sendSetProbeHighLowAlarmStatus(
+        highLowAlarmStatus: ProbeHighLowAlarmStatus,
+        reqId: UInt?,
+        callback: ((Boolean, Any?) -> Unit)?
+    ) {
+        TODO("Not yet implemented")
     }
 
     override suspend fun readSerialNumber() = uart.readSerialNumber()

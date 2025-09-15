@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: NodeSetHighLowAlarmRequest.kt
+ * File: NodeSetHighLowAlarmResponse.kt
  * Author:
  *
  * MIT License
@@ -28,47 +28,41 @@
 
 package inc.combustion.framework.ble.uart.meatnet
 
-import inc.combustion.framework.copyInUtf8SerialNumber
-import inc.combustion.framework.service.HighLowAlarmStatus
-
-internal class NodeSetHighLowAlarmRequest(
-    serialNumber: String,
-    private val highLowAlarmStatus: HighLowAlarmStatus,
-    requestId: UInt? = null
-) : NodeRequest(
-    populatePayload(serialNumber, highLowAlarmStatus),
-    NodeMessageType.SET_HIGH_LOW_ALARM,
+internal class NodeSetGaugeHighLowAlarmResponse(
+    success: Boolean,
+    requestId: UInt,
+    responseId: UInt,
+    payloadLength: UByte,
+) : NodeResponse(
+    success,
     requestId,
-    serialNumber,
+    responseId,
+    payloadLength,
+    NodeMessageType.SET_GAUGE_HIGH_LOW_ALARM,
 ) {
     override fun toString(): String {
-        return "${super.toString()} $serialNumber $highLowAlarmStatus"
+        return "${super.toString()} $success"
     }
 
     companion object {
-        private const val PAYLOAD_LENGTH: UByte = 14u
+        private const val PAYLOAD_LENGTH: UByte = 0u
 
-        /**
-         * Helper function that builds up payload of request.
-         */
-        fun populatePayload(
-            serialNumber: String,
-            highLowAlarmStatus: HighLowAlarmStatus,
-        ): UByteArray {
+        fun fromData(
+            success: Boolean,
+            requestId: UInt,
+            responseId: UInt,
+            payloadLength: UByte,
+        ): NodeSetGaugeHighLowAlarmResponse? {
+            if (payloadLength < PAYLOAD_LENGTH) {
+                return null
+            }
 
-            val payload = UByteArray(PAYLOAD_LENGTH.toInt())
-
-            // Add serial number to payload
-            payload.copyInUtf8SerialNumber(serialNumber, 0)
-
-            // Encode alarm status in payload
-            val rawHighLowAlarmStatus = highLowAlarmStatus.toRawData()
-            rawHighLowAlarmStatus.copyInto(
-                destination = payload,
-                destinationOffset = payload.size - rawHighLowAlarmStatus.size
+            return NodeSetGaugeHighLowAlarmResponse(
+                success,
+                requestId,
+                responseId,
+                payloadLength
             )
-
-            return payload
         }
     }
 }

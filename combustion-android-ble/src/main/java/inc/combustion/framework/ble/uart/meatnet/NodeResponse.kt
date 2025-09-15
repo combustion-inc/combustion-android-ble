@@ -243,8 +243,8 @@ internal open class NodeResponse(
                     )
                 }
 
-                NodeMessageType.SET_HIGH_LOW_ALARM -> {
-                    NodeSetHighLowAlarmResponse.fromData(
+                NodeMessageType.SET_GAUGE_HIGH_LOW_ALARM -> {
+                    NodeSetGaugeHighLowAlarmResponse.fromData(
                         success,
                         requestId,
                         responseId,

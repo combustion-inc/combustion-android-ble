@@ -609,7 +609,7 @@ internal class GaugeManager(
             if (nodeLinks.isNotEmpty()) {
                 var handled = false
                 nodeLinks.forEach { node ->
-                    node.sendSetHighLowAlarmStatus(
+                    node.sendSetGaugeHighLowAlarmStatus(
                         serialNumber,
                         highLowAlarmStatus,
                         requestId,

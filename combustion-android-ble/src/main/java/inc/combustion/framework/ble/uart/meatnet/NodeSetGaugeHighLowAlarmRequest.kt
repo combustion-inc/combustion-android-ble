@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: NodeSetHighLowAlarmResponse.kt
+ * File: NodeSetHighLowAlarmRequest.kt
  * Author:
  *
  * MIT License
@@ -28,41 +28,47 @@
 
 package inc.combustion.framework.ble.uart.meatnet
 
-internal class NodeSetHighLowAlarmResponse(
-    success: Boolean,
-    requestId: UInt,
-    responseId: UInt,
-    payloadLength: UByte,
-) : NodeResponse(
-    success,
+import inc.combustion.framework.copyInUtf8SerialNumber
+import inc.combustion.framework.service.HighLowAlarmStatus
+
+internal class NodeSetGaugeHighLowAlarmRequest(
+    serialNumber: String,
+    private val highLowAlarmStatus: HighLowAlarmStatus,
+    requestId: UInt? = null
+) : NodeRequest(
+    populatePayload(serialNumber, highLowAlarmStatus),
+    NodeMessageType.SET_GAUGE_HIGH_LOW_ALARM,
     requestId,
-    responseId,
-    payloadLength,
-    NodeMessageType.SET_HIGH_LOW_ALARM,
+    serialNumber,
 ) {
     override fun toString(): String {
-        return "${super.toString()} $success"
+        return "${super.toString()} $serialNumber $highLowAlarmStatus"
     }
 
     companion object {
-        private const val PAYLOAD_LENGTH: UByte = 0u
+        private const val PAYLOAD_LENGTH: UByte = 14u
 
-        fun fromData(
-            success: Boolean,
-            requestId: UInt,
-            responseId: UInt,
-            payloadLength: UByte,
-        ): NodeSetHighLowAlarmResponse? {
-            if (payloadLength < PAYLOAD_LENGTH) {
-                return null
-            }
+        /**
+         * Helper function that builds up payload of request.
+         */
+        fun populatePayload(
+            serialNumber: String,
+            highLowAlarmStatus: HighLowAlarmStatus,
+        ): UByteArray {
 
-            return NodeSetHighLowAlarmResponse(
-                success,
-                requestId,
-                responseId,
-                payloadLength
+            val payload = UByteArray(PAYLOAD_LENGTH.toInt())
+
+            // Add serial number to payload
+            payload.copyInUtf8SerialNumber(serialNumber, 0)
+
+            // Encode alarm status in payload
+            val rawHighLowAlarmStatus = highLowAlarmStatus.toRawData()
+            rawHighLowAlarmStatus.copyInto(
+                destination = payload,
+                destinationOffset = payload.size - rawHighLowAlarmStatus.size
             )
+
+            return payload
         }
     }
 }

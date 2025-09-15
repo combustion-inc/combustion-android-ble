@@ -949,6 +949,21 @@ class DeviceManager(
     }
 
     /**
+     * Set highLowAlarmStatus on probe with the serial number [serialNumber] to
+     * [probeHighLowAlarmStatus], calling [completionHandler] with the success value on completion.
+     */
+    fun setProbeHighLowAlarmStatuses(
+        serialNumber: String,
+        probeHighLowAlarmStatus: ProbeHighLowAlarmStatus,
+        completionHandler: (Boolean) -> Unit
+    ) {
+        Log.i(LOG_TAG, "Setting probe $serialNumber's highLowAlarmStatuses to $probeHighLowAlarmStatus")
+        doWhenNetworkManagerInitialized {
+            it.setProbeHighLowAlarmStatus(serialNumber, probeHighLowAlarmStatus, completionHandler)
+        }
+    }
+
+    /**
      * Set highLowAlarmStatus on gauge with the serial number [serialNumber] to
      * [highLowAlarmStatus], calling [completionHandler] with the success value on completion.
      */
@@ -957,7 +972,7 @@ class DeviceManager(
         highLowAlarmStatus: HighLowAlarmStatus,
         completionHandler: (Boolean) -> Unit
     ) {
-        Log.i(LOG_TAG, "Setting guage $serialNumber's highLowAlarmStatus to $highLowAlarmStatus")
+        Log.i(LOG_TAG, "Setting gauge $serialNumber's highLowAlarmStatus to $highLowAlarmStatus")
         doWhenNetworkManagerInitialized {
             it.setGaugeHighLowAlarmStatus(serialNumber, highLowAlarmStatus, completionHandler)
         }

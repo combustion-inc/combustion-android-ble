@@ -50,6 +50,7 @@ import inc.combustion.framework.service.OverheatingSensors
 import inc.combustion.framework.service.Probe
 import inc.combustion.framework.service.ProbeBatteryStatus
 import inc.combustion.framework.service.ProbeColor
+import inc.combustion.framework.service.ProbeHighLowAlarmStatus
 import inc.combustion.framework.service.ProbeID
 import inc.combustion.framework.service.ProbeMode
 import inc.combustion.framework.service.ProbePowerMode
@@ -600,6 +601,60 @@ internal class ProbeManager(
                     completionHandler(false)
                 }
             }
+        }
+    }
+
+    fun setProbeHighLowAlarmStatus(
+        probeHighLowAlarmStatus: ProbeHighLowAlarmStatus,
+        completionHandler: (Boolean) -> Unit,
+    ) {
+        Log.v("D3V", "setProbeHighLowAlarmStatus: probeHighLowAlarmStatus = $probeHighLowAlarmStatus, directLink = ${arbitrator.directLink}")
+        Log.v("D3V", "setProbeHighLowAlarmStatus: directLink = ${arbitrator.directLink}")
+        val onCompletion: (Boolean) -> Unit = { success ->
+            if (success) {
+                _deviceFlow.update {
+                    _deviceFlow.value.copy(
+                        highLowAlarmStatus = probeHighLowAlarmStatus,
+                    )
+                }
+            }
+            completionHandler(success)
+        }
+
+        val requestId = makeRequestId()
+        simulatedProbe?.sendSetProbeHighLowAlarmStatus(
+            probeHighLowAlarmStatus,
+            requestId
+        ) { status, _ ->
+            onCompletion(status)
+        } ?: arbitrator.directLink?.sendSetProbeHighLowAlarmStatus(
+            probeHighLowAlarmStatus,
+            requestId,
+        ) { status, _ ->
+            Log.v("D3V", "setProbeHighLowAlarmStatus direct, status = $status")
+            onCompletion(status)
+        } ?: run {
+            Log.v("D3V", "setProbeHighLowAlarmStatus repeater, TODO")
+            onCompletion(false)
+            // TODO implement for MEATNET
+//            val nodeLinks = arbitrator.connectedNodeLinks
+//            if (nodeLinks.isNotEmpty()) {
+//                var handled = false
+//                nodeLinks.forEach { node ->
+//                    node.sendSetProbeHighLowAlarmStatus(
+//                        probeHighLowAlarmStatus,
+//                        requestId,
+//                    ) { status, _ ->
+//                        if (!handled) {
+//                            handled = true
+//                            onCompletion(status)
+//                        }
+//                    }
+//                }
+//
+//            } else {
+//                onCompletion(false)
+//            }
         }
     }
 

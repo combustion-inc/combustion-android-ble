@@ -72,6 +72,7 @@ import inc.combustion.framework.service.HighLowAlarmStatus
 import inc.combustion.framework.service.NetworkState
 import inc.combustion.framework.service.Probe
 import inc.combustion.framework.service.ProbeColor
+import inc.combustion.framework.service.ProbeHighLowAlarmStatus
 import inc.combustion.framework.service.ProbeID
 import inc.combustion.framework.service.ProbePowerMode
 import inc.combustion.framework.service.ProbePredictionMode
@@ -552,6 +553,17 @@ internal class NetworkManager(
         completionHandler: (Boolean) -> Unit,
     ) {
         gaugeManagers[serialNumber]?.setHighLowAlarmStatus(highLowAlarmStatus, completionHandler)
+            ?: run {
+                completionHandler(false)
+            }
+    }
+
+    internal fun setProbeHighLowAlarmStatus(
+        serialNumber: String,
+        probeHighLowAlarmStatus: ProbeHighLowAlarmStatus,
+        completionHandler: (Boolean) -> Unit,
+    ) {
+        probeManagers[serialNumber]?.setProbeHighLowAlarmStatus(probeHighLowAlarmStatus, completionHandler)
             ?: run {
                 completionHandler(false)
             }

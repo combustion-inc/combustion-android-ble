@@ -38,6 +38,7 @@ internal abstract class ProbeBleDeviceBase : UartCapableProbe {
     protected val resetFoodSafeHandler = UartBleDevice.MessageCompletionHandler()
     protected val resetProbeHandler = UartBleDevice.MessageCompletionHandler()
     protected val setPowerModeHandler = UartBleDevice.MessageCompletionHandler()
+    protected val setProbeHighLowAlarmStatusHandler = UartBleDevice.MessageCompletionHandler()
 
     override fun toString(): String {
         return "$mac $serialNumber $linkId $connectionState"

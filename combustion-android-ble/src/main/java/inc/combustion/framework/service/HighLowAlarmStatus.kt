@@ -51,6 +51,19 @@ data class HighLowAlarmStatus(
             bytes[0] = flagBits
             return bytes
         }
+
+        companion object {
+            fun fromRawData(bytes: UByteArray): AlarmStatus {
+                require(bytes.size >= 2) { "AlarmStatus requires 2 bytes" }
+                val firstByte = bytes[0]
+                return AlarmStatus(
+                    set = firstByte.isBitSet(0),
+                    tripped = firstByte.isBitSet(1),
+                    alarming = firstByte.isBitSet(2),
+                    temperature = SensorTemperature.fromRawDataEnd(bytes)
+                )
+            }
+        }
     }
 
     companion object {
@@ -59,22 +72,11 @@ data class HighLowAlarmStatus(
             lowStatus = AlarmStatus(),
         )
 
-        private fun alarmStatusFromBytes(bytes: UByteArray): AlarmStatus {
-            require(bytes.size >= 2) { "AlarmStatus requires 2 bytes" }
-            val firstByte = bytes[0]
-            return AlarmStatus(
-                set = firstByte.isBitSet(0),
-                tripped = firstByte.isBitSet(1),
-                alarming = firstByte.isBitSet(2),
-                temperature = SensorTemperature.fromRawDataEnd(bytes)
-            )
-        }
-
         fun fromRawData(bytes: UByteArray): HighLowAlarmStatus {
             require(bytes.size >= 4) { "HighLowAlarmStatus requires 4 bytes" }
             return HighLowAlarmStatus(
-                highStatus = alarmStatusFromBytes(bytes.sliceArray(0..1)),
-                lowStatus = alarmStatusFromBytes(bytes.sliceArray(2..3)),
+                highStatus = AlarmStatus.fromRawData(bytes.sliceArray(0..1)),
+                lowStatus = AlarmStatus.fromRawData(bytes.sliceArray(2..3)),
             )
         }
     }

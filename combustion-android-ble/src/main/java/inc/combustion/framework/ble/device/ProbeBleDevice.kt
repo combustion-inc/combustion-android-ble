@@ -59,6 +59,8 @@ import inc.combustion.framework.ble.uart.SetPowerModeRequest
 import inc.combustion.framework.ble.uart.SetPowerModeResponse
 import inc.combustion.framework.ble.uart.SetPredictionRequest
 import inc.combustion.framework.ble.uart.SetPredictionResponse
+import inc.combustion.framework.ble.uart.SetProbeHighLowAlarmRequest
+import inc.combustion.framework.ble.uart.SetProbeHighLowAlarmResponse
 import inc.combustion.framework.service.CombustionProductType
 import inc.combustion.framework.service.DebugSettings
 import inc.combustion.framework.service.DeviceConnectionState
@@ -66,6 +68,7 @@ import inc.combustion.framework.service.FirmwareVersion
 import inc.combustion.framework.service.FoodSafeData
 import inc.combustion.framework.service.ModelInformation
 import inc.combustion.framework.service.ProbeColor
+import inc.combustion.framework.service.ProbeHighLowAlarmStatus
 import inc.combustion.framework.service.ProbeID
 import inc.combustion.framework.service.ProbePowerMode
 import inc.combustion.framework.service.ProbePredictionMode
@@ -253,6 +256,20 @@ internal class ProbeBleDevice(
         sendUartRequest(ProbeLogRequest(minSequence, maxSequence))
     }
 
+    override fun sendSetProbeHighLowAlarmStatus(
+        highLowAlarmStatus: ProbeHighLowAlarmStatus,
+        reqId: UInt?,
+        callback: ((Boolean, Any?) -> Unit)?
+    ) {
+        setProbeHighLowAlarmStatusHandler.wait(
+            uart.owner,
+            PROBE_MESSAGE_RESPONSE_TIMEOUT_MS,
+            reqId,
+            callback,
+        )
+        sendUartRequest(SetProbeHighLowAlarmRequest(highLowAlarmStatus))
+    }
+
     override suspend fun readSerialNumber() = uart.readSerialNumber()
     override suspend fun readFirmwareVersion() = uart.readFirmwareVersion()
     override suspend fun readHardwareRevision() = uart.readHardwareRevision()
@@ -397,6 +414,7 @@ internal class ProbeBleDevice(
                     is ResetFoodSafeResponse -> resetFoodSafeHandler.handled(response.success, null)
                     is SetPowerModeResponse -> setPowerModeHandler.handled(response.success, null)
                     is ResetProbeResponse -> resetProbeHandler.handled(response.success, null)
+                    is SetProbeHighLowAlarmResponse -> setProbeHighLowAlarmStatusHandler.handled(response.success, null)
                 }
             }
         }

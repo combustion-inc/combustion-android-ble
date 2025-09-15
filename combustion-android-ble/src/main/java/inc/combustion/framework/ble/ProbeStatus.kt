@@ -27,7 +27,19 @@
  */
 package inc.combustion.framework.ble
 
-import inc.combustion.framework.service.*
+import android.util.Log
+import inc.combustion.framework.service.FoodSafeData
+import inc.combustion.framework.service.FoodSafeStatus
+import inc.combustion.framework.service.OverheatingSensors
+import inc.combustion.framework.service.PredictionStatus
+import inc.combustion.framework.service.ProbeBatteryStatus
+import inc.combustion.framework.service.ProbeColor
+import inc.combustion.framework.service.ProbeHighLowAlarmStatus
+import inc.combustion.framework.service.ProbeID
+import inc.combustion.framework.service.ProbeMode
+import inc.combustion.framework.service.ProbeTemperatures
+import inc.combustion.framework.service.ProbeVirtualSensors
+import inc.combustion.framework.service.ThermometerPreferences
 
 /**
  * Data object for the Probe Status packet.
@@ -50,6 +62,7 @@ internal data class ProbeStatus(
     val foodSafeStatus: FoodSafeStatus?,
     val overheatingSensors: OverheatingSensors,
     val thermometerPrefs: ThermometerPreferences,
+    val probeHighLowAlarmStatus: ProbeHighLowAlarmStatus,
 ) : SpecializedDeviceStatus {
     val virtualCoreTemperature: Double
         get() {
@@ -140,13 +153,24 @@ internal data class ProbeStatus(
             }
 
             val probeRefsByteStartIndex = overheatRange.last + 1
-            val probeRefsRange = probeRefsByteStartIndex until probeRefsByteStartIndex + ThermometerPreferences.PROBE_PREFS_SIZE_BYTES
+            val probeRefsRange =
+                probeRefsByteStartIndex until probeRefsByteStartIndex + ThermometerPreferences.PROBE_PREFS_SIZE_BYTES
             val probePrefs = if (data.size > probeRefsRange.last) {
                 val probePrefsRaw = data.sliceArray(probeRefsRange)[0]
                 ThermometerPreferences.fromUByte(probePrefsRaw)
             } else {
                 ThermometerPreferences.DEFAULT
             }
+
+            val highLowAlarmsByteStartIndex = probeRefsRange.last + 1
+            val highLowAlarmsRange =
+                highLowAlarmsByteStartIndex until highLowAlarmsByteStartIndex + ProbeHighLowAlarmStatus.PROBE_HIGH_LOW_ALARMS_SIZE_BYTES
+            val highLowAlarms = if (data.size > highLowAlarmsRange.last) {
+                ProbeHighLowAlarmStatus.fromRawData(data.sliceArray(highLowAlarmsRange))
+            } else {
+                ProbeHighLowAlarmStatus.DEFAULT
+            }
+            Log.v("D3V", "ProbeStatus.fromRawData, highLowAlarms = $highLowAlarms")
 
             return ProbeStatus(
                 minSequenceNumber = minSequenceNumber,
@@ -162,6 +186,7 @@ internal data class ProbeStatus(
                 foodSafeStatus = foodSafeStatus,
                 overheatingSensors = overheatingSensors,
                 thermometerPrefs = probePrefs,
+                probeHighLowAlarmStatus = highLowAlarms,
             )
         }
     }

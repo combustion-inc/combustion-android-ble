@@ -106,6 +106,7 @@ internal open class Response(
                 MessageType.RESET_FOOD_SAFE -> createGenericResponse(success, ResetFoodSafeResponse.PAYLOAD_LENGTH, length.toUInt(), ::ResetFoodSafeResponse)
                 MessageType.SET_POWER_MODE -> createGenericResponse(success, SetPowerModeResponse.PAYLOAD_LENGTH, length.toUInt(), ::SetPowerModeResponse)
                 MessageType.RESET_PROBE -> createGenericResponse(success, ResetProbeResponse.PAYLOAD_LENGTH, length.toUInt(), ::ResetProbeResponse)
+                MessageType.SET_PROBE_HIGH_LOW_ALARM -> createGenericResponse(success, SetProbeHighLowAlarmResponse.PAYLOAD_LENGTH, length.toUInt(), ::SetProbeHighLowAlarmResponse)
             }
         }
 

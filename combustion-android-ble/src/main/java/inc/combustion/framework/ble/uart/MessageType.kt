@@ -42,6 +42,7 @@ internal enum class MessageType(val value: UByte) {
     RESET_FOOD_SAFE(0x08u),
     SET_POWER_MODE(0x09u),
     RESET_PROBE(0x0Au),
+    SET_PROBE_HIGH_LOW_ALARM(0x0Bu),
     ;
 
     companion object {

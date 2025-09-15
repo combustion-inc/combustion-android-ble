@@ -33,6 +33,7 @@ import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
 import inc.combustion.framework.ble.uart.ProbeLogResponse
 import inc.combustion.framework.service.FoodSafeData
 import inc.combustion.framework.service.ProbeColor
+import inc.combustion.framework.service.ProbeHighLowAlarmStatus
 import inc.combustion.framework.service.ProbeID
 import inc.combustion.framework.service.ProbePowerMode
 import inc.combustion.framework.service.ProbePredictionMode
@@ -68,5 +69,5 @@ internal interface UartCapableProbe : UartCapableSpecializedDevice {
     fun sendLogRequest(minSequence: UInt, maxSequence: UInt, callback: (suspend (ProbeLogResponse) -> Unit)? = null)
     fun sendSetPowerMode(powerMode: ProbePowerMode, reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)?)
     fun sendResetProbe(reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)?)
-
+    fun sendSetProbeHighLowAlarmStatus(highLowAlarmStatus: ProbeHighLowAlarmStatus, reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)?)
 }
