@@ -72,11 +72,11 @@ data class ProbeHighLowAlarmStatus(
                 val sensorStatus = getSensorStatus(highBytes, lowBytes)
                 Log.v(
                     "D3V",
-                    "ProbeHighLowAlarmStatus.fromRawData, idx = $idx, highBytes = $highBytes, lowBytes = $lowBytes"
+                    "ProbeHighLowAlarmStatus.fromRawData, sensorIdx = $sensorIdx, idx = $idx, highBytes = $highBytes, lowBytes = $lowBytes"
                 )
                 Log.v(
                     "D3V",
-                    "ProbeHighLowAlarmStatus.fromRawData, idx = $idx, sensorStatus = $sensorStatus"
+                    "ProbeHighLowAlarmStatus.fromRawData, sensorIdx = $sensorIdx, idx = $idx, sensorStatus = $sensorStatus"
                 )
 
                 status = when (sensorIdx) {
@@ -96,5 +96,41 @@ data class ProbeHighLowAlarmStatus(
             }
             return status
         }
+    }
+
+    internal fun toRawData(): UByteArray {
+        val data = UByteArray(PROBE_HIGH_LOW_ALARMS_SIZE_BYTES)
+        for (sensorIdx in 0 until SENSOR_COUNT) {
+            val sensor = when (sensorIdx) {
+                0 -> t1
+                1 -> t2
+                2 -> t3
+                3 -> t4
+                4 -> t5
+                5 -> t6
+                6 -> t7
+                7 -> t8
+                8 -> virtualCore
+                9 -> virtualSurface
+                10 -> virtualAmbient
+                else -> throw IndexOutOfBoundsException("probeHighLowAlarmStatus sensor index $sensorIdx is out of bounds")
+            }
+            val idx = sensorIdx * 2
+            val highBytes = sensor.highStatus.toBytes()
+            val lowBytes = sensor.lowStatus.toBytes()
+            Log.v(
+                "D3V",
+                "toRawData: sensorIdx = $sensorIdx, idx = $idx, highBytes, $highBytes",
+            )
+            Log.v(
+                "D3V",
+                "toRawData: sensorIdx = $sensorIdx, idx = $idx, lowBytes, $lowBytes",
+            )
+            data[HIGH_ALARMS_STATUS_INDEX + idx + 0] = highBytes[0]
+            data[HIGH_ALARMS_STATUS_INDEX + idx + 1] = highBytes[1]
+            data[LOW_ALARMS_STATUS_INDEX + idx + 0] = lowBytes[0]
+            data[LOW_ALARMS_STATUS_INDEX + idx + 1] = lowBytes[1]
+        }
+        return data
     }
 }

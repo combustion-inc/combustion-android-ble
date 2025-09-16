@@ -233,6 +233,15 @@ internal open class NodeResponse(
                     )
                 }
 
+                NodeMessageType.SET_PROBE_HIGH_LOW_ALARM -> {
+                    NodeSetProbeHighLowAlarmResponse.fromData(
+                        success,
+                        requestId,
+                        responseId,
+                        payloadLength,
+                    )
+                }
+
                 NodeMessageType.GAUGE_LOG -> {
                     NodeReadGaugeLogsResponse.fromData(
                         data,

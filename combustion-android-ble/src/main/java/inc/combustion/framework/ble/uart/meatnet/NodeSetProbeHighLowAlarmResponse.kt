@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: SetProbeHighLowAlarmRequest.kt
+ * File: NodeSetProbeHighLowAlarmResponse.kt
  * Author:
  *
  * MIT License
@@ -26,26 +26,43 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble.uart
+package inc.combustion.framework.ble.uart.meatnet
 
-import android.util.Log
-import inc.combustion.framework.service.ProbeHighLowAlarmStatus
-
-internal class SetProbeHighLowAlarmRequest(
-    probeHighLowAlarmStatus: ProbeHighLowAlarmStatus,
-) : Request(
-    ProbeHighLowAlarmStatus.PROBE_HIGH_LOW_ALARMS_SIZE_BYTES.toUByte(),
-    MessageType.SET_PROBE_HIGH_LOW_ALARM,
+internal class NodeSetProbeHighLowAlarmResponse(
+    success: Boolean,
+    requestId: UInt,
+    responseId: UInt,
+    payloadLength: UByte,
+) : NodeResponse(
+    success,
+    requestId,
+    responseId,
+    payloadLength,
+    NodeMessageType.SET_PROBE_HIGH_LOW_ALARM,
 ) {
+    override fun toString(): String {
+        return "${super.toString()} $success"
+    }
 
-    init {
-        val headerSize = HEADER_SIZE.toInt()
-        val rawHighLowAlarmStatus = probeHighLowAlarmStatus.toRawData()
-        Log.v("D3V", "SetProbeHighLowAlarmRequest: payload, $data")
-        rawHighLowAlarmStatus.copyInto(
-            destination = data,
-            destinationOffset = headerSize,
-        )
-        setCRC()
+    companion object {
+        private const val PAYLOAD_LENGTH: UByte = 0u
+
+        fun fromData(
+            success: Boolean,
+            requestId: UInt,
+            responseId: UInt,
+            payloadLength: UByte,
+        ): NodeSetProbeHighLowAlarmResponse? {
+            if (payloadLength < PAYLOAD_LENGTH) {
+                return null
+            }
+
+            return NodeSetProbeHighLowAlarmResponse(
+                success,
+                requestId,
+                responseId,
+                payloadLength
+            )
+        }
     }
 }

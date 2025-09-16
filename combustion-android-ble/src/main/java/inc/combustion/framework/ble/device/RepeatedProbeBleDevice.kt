@@ -49,10 +49,10 @@ import inc.combustion.framework.ble.uart.meatnet.NodeReadFirmwareRevisionRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeReadFirmwareRevisionResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeReadHardwareRevisionRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeReadHardwareRevisionResponse
-import inc.combustion.framework.ble.uart.meatnet.NodeReadProbeLogsRequest
-import inc.combustion.framework.ble.uart.meatnet.NodeReadProbeLogsResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeReadModelInfoRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeReadModelInfoResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeReadProbeLogsRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeReadProbeLogsResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeReadSessionInfoRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeReadSessionInfoResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeRequest
@@ -65,6 +65,8 @@ import inc.combustion.framework.ble.uart.meatnet.NodeSetPowerModeRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeSetPowerModeResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeSetPredictionRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeSetPredictionResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeSetProbeHighLowAlarmRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeSetProbeHighLowAlarmResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.service.CombustionProductType
 import inc.combustion.framework.service.DeviceConnectionState
@@ -334,9 +336,15 @@ internal class RepeatedProbeBleDevice(
     override fun sendSetProbeHighLowAlarmStatus(
         highLowAlarmStatus: ProbeHighLowAlarmStatus,
         reqId: UInt?,
-        callback: ((Boolean, Any?) -> Unit)?
+        callback: ((Boolean, Any?) -> Unit)?,
     ) {
-        TODO("Not yet implemented")
+        setProbeHighLowAlarmStatusHandler.wait(
+            uart.owner,
+            MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS,
+            reqId,
+            callback,
+        )
+        sendUartRequest(NodeSetProbeHighLowAlarmRequest(serialNumber, highLowAlarmStatus, reqId))
     }
 
     override suspend fun readSerialNumber() = uart.readSerialNumber()
@@ -631,6 +639,14 @@ internal class RepeatedProbeBleDevice(
 
                     is NodeResetProbeResponse -> {
                         resetProbeHandler.handled(message.success, null, message.requestId)
+                    }
+
+                    is NodeSetProbeHighLowAlarmResponse -> {
+                        setProbeHighLowAlarmStatusHandler.handled(
+                            message.success,
+                            null,
+                            message.requestId,
+                        )
                     }
 
                     is NodeReadFirmwareRevisionResponse -> {

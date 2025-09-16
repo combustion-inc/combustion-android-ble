@@ -259,7 +259,7 @@ internal class ProbeBleDevice(
     override fun sendSetProbeHighLowAlarmStatus(
         highLowAlarmStatus: ProbeHighLowAlarmStatus,
         reqId: UInt?,
-        callback: ((Boolean, Any?) -> Unit)?
+        callback: ((Boolean, Any?) -> Unit)?,
     ) {
         setProbeHighLowAlarmStatusHandler.wait(
             uart.owner,
@@ -400,7 +400,7 @@ internal class ProbeBleDevice(
                     is ProbeLogResponse -> logResponseCallback?.let { it(response) }
                     is SessionInfoResponse -> sessionInfoHandler.handled(
                         response.success,
-                        response.sessionInformation
+                        response.sessionInformation,
                     )
 
                     is SetColorResponse -> setColorHandler.handled(response.success, null)
@@ -408,7 +408,7 @@ internal class ProbeBleDevice(
                     is SetPredictionResponse -> setPredictionHandler.handled(response.success, null)
                     is ConfigureFoodSafeResponse -> configureFoodSafeHandler.handled(
                         response.success,
-                        null
+                        null,
                     )
 
                     is ResetFoodSafeResponse -> resetFoodSafeHandler.handled(response.success, null)

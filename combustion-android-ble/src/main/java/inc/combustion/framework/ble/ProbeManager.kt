@@ -637,27 +637,28 @@ internal class ProbeManager(
             Log.v("D3V", "setProbeHighLowAlarmStatus direct, status = $status")
             onCompletion(status)
         } ?: run {
-            Log.v("D3V", "setProbeHighLowAlarmStatus repeater, TODO")
-            onCompletion(false)
-            // TODO implement for MEATNET
-//            val nodeLinks = arbitrator.connectedNodeLinks
-//            if (nodeLinks.isNotEmpty()) {
-//                var handled = false
-//                nodeLinks.forEach { node ->
-//                    node.sendSetProbeHighLowAlarmStatus(
-//                        probeHighLowAlarmStatus,
-//                        requestId,
-//                    ) { status, _ ->
-//                        if (!handled) {
-//                            handled = true
-//                            onCompletion(status)
-//                        }
-//                    }
-//                }
-//
-//            } else {
-//                onCompletion(false)
-//            }
+            val nodeLinks = arbitrator.connectedNodeLinks
+            if (nodeLinks.isNotEmpty()) {
+                var handled = false
+                nodeLinks.forEach { node ->
+                    node.sendSetProbeHighLowAlarmStatus(
+                        probeHighLowAlarmStatus,
+                        requestId,
+                    ) { status, _ ->
+                        Log.v(
+                            "D3V",
+                            "setProbeHighLowAlarmStatus repeater, handled = $handled, status = $status"
+                        )
+                        if (!handled) {
+                            handled = true
+                            onCompletion(status)
+                        }
+                    }
+                }
+
+            } else {
+                onCompletion(false)
+            }
         }
     }
 
