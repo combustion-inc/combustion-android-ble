@@ -39,39 +39,8 @@ import inc.combustion.framework.ble.device.UartCapableProbe.Companion.PROBE_MESS
 import inc.combustion.framework.ble.device.UartCapableProbe.Companion.makeLinkId
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
-import inc.combustion.framework.ble.uart.ConfigureFoodSafeRequest
-import inc.combustion.framework.ble.uart.ConfigureFoodSafeResponse
-import inc.combustion.framework.ble.uart.ProbeLogRequest
-import inc.combustion.framework.ble.uart.ProbeLogResponse
-import inc.combustion.framework.ble.uart.Request
-import inc.combustion.framework.ble.uart.ResetFoodSafeRequest
-import inc.combustion.framework.ble.uart.ResetFoodSafeResponse
-import inc.combustion.framework.ble.uart.ResetProbeRequest
-import inc.combustion.framework.ble.uart.ResetProbeResponse
-import inc.combustion.framework.ble.uart.Response
-import inc.combustion.framework.ble.uart.SessionInfoRequest
-import inc.combustion.framework.ble.uart.SessionInfoResponse
-import inc.combustion.framework.ble.uart.SetColorRequest
-import inc.combustion.framework.ble.uart.SetColorResponse
-import inc.combustion.framework.ble.uart.SetIDRequest
-import inc.combustion.framework.ble.uart.SetIDResponse
-import inc.combustion.framework.ble.uart.SetPowerModeRequest
-import inc.combustion.framework.ble.uart.SetPowerModeResponse
-import inc.combustion.framework.ble.uart.SetPredictionRequest
-import inc.combustion.framework.ble.uart.SetPredictionResponse
-import inc.combustion.framework.ble.uart.SetProbeHighLowAlarmRequest
-import inc.combustion.framework.ble.uart.SetProbeHighLowAlarmResponse
-import inc.combustion.framework.service.CombustionProductType
-import inc.combustion.framework.service.DebugSettings
-import inc.combustion.framework.service.DeviceConnectionState
-import inc.combustion.framework.service.FirmwareVersion
-import inc.combustion.framework.service.FoodSafeData
-import inc.combustion.framework.service.ModelInformation
-import inc.combustion.framework.service.ProbeColor
-import inc.combustion.framework.service.ProbeHighLowAlarmStatus
-import inc.combustion.framework.service.ProbeID
-import inc.combustion.framework.service.ProbePowerMode
-import inc.combustion.framework.service.ProbePredictionMode
+import inc.combustion.framework.ble.uart.*
+import inc.combustion.framework.service.*
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -414,7 +383,10 @@ internal class ProbeBleDevice(
                     is ResetFoodSafeResponse -> resetFoodSafeHandler.handled(response.success, null)
                     is SetPowerModeResponse -> setPowerModeHandler.handled(response.success, null)
                     is ResetProbeResponse -> resetProbeHandler.handled(response.success, null)
-                    is SetProbeHighLowAlarmResponse -> setProbeHighLowAlarmStatusHandler.handled(response.success, null)
+                    is SetProbeHighLowAlarmResponse -> setProbeHighLowAlarmStatusHandler.handled(
+                        response.success,
+                        null,
+                    )
                 }
             }
         }

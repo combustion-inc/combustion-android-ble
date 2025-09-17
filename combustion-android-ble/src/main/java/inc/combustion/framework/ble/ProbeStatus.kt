@@ -27,19 +27,7 @@
  */
 package inc.combustion.framework.ble
 
-import android.util.Log
-import inc.combustion.framework.service.FoodSafeData
-import inc.combustion.framework.service.FoodSafeStatus
-import inc.combustion.framework.service.OverheatingSensors
-import inc.combustion.framework.service.PredictionStatus
-import inc.combustion.framework.service.ProbeBatteryStatus
-import inc.combustion.framework.service.ProbeColor
-import inc.combustion.framework.service.ProbeHighLowAlarmStatus
-import inc.combustion.framework.service.ProbeID
-import inc.combustion.framework.service.ProbeMode
-import inc.combustion.framework.service.ProbeTemperatures
-import inc.combustion.framework.service.ProbeVirtualSensors
-import inc.combustion.framework.service.ThermometerPreferences
+import inc.combustion.framework.service.*
 
 /**
  * Data object for the Probe Status packet.
@@ -170,7 +158,6 @@ internal data class ProbeStatus(
             } else {
                 ProbeHighLowAlarmStatus.DEFAULT
             }
-            Log.v("D3V", "ProbeStatus.fromRawData, highLowAlarms = $highLowAlarms")
 
             return ProbeStatus(
                 minSequenceNumber = minSequenceNumber,

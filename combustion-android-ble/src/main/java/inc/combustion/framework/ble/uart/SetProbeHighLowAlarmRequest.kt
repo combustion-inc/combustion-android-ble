@@ -41,7 +41,7 @@ internal class SetProbeHighLowAlarmRequest(
     init {
         val headerSize = HEADER_SIZE.toInt()
         val rawHighLowAlarmStatus = probeHighLowAlarmStatus.toRawData()
-        Log.v("D3V", "SetProbeHighLowAlarmRequest: payload, $data")
+        Log.v("D3V", "SetProbeHighLowAlarmRequest: payload = $rawHighLowAlarmStatus")
         rawHighLowAlarmStatus.copyInto(
             destination = data,
             destinationOffset = headerSize,

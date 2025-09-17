@@ -30,7 +30,7 @@ package inc.combustion.framework.ble.uart
 
 internal class SetProbeHighLowAlarmResponse(
     success: Boolean,
-    payLoadLength: UInt
+    payLoadLength: UInt,
 ) : Response(success, payLoadLength) {
 
     companion object {

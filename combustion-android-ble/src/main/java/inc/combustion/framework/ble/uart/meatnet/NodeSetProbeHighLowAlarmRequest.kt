@@ -28,6 +28,7 @@
 
 package inc.combustion.framework.ble.uart.meatnet
 
+import android.util.Log
 import inc.combustion.framework.ble.putLittleEndianUInt32At
 import inc.combustion.framework.service.ProbeHighLowAlarmStatus
 
@@ -63,6 +64,7 @@ internal class NodeSetProbeHighLowAlarmRequest(
 
             // Encode alarm status in payload
             val rawHighLowAlarmStatus = highLowAlarmStatus.toRawData()
+            Log.v("D3V", "NodeSetProbeHighLowAlarmRequest: payload = $rawHighLowAlarmStatus")
             rawHighLowAlarmStatus.copyInto(
                 destination = payload,
                 destinationOffset = payload.size - rawHighLowAlarmStatus.size,

@@ -70,14 +70,6 @@ data class ProbeHighLowAlarmStatus(
                 val lowBytes =
                     data.sliceArray(LOW_ALARMS_STATUS_INDEX + idx until LOW_ALARMS_STATUS_INDEX + idx + 2)
                 val sensorStatus = getSensorStatus(highBytes, lowBytes)
-                Log.v(
-                    "D3V",
-                    "ProbeHighLowAlarmStatus.fromRawData, sensorIdx = $sensorIdx, idx = $idx, highBytes = $highBytes, lowBytes = $lowBytes"
-                )
-                Log.v(
-                    "D3V",
-                    "ProbeHighLowAlarmStatus.fromRawData, sensorIdx = $sensorIdx, idx = $idx, sensorStatus = $sensorStatus"
-                )
 
                 status = when (sensorIdx) {
                     0 -> status.copy(t1 = sensorStatus)
