@@ -122,7 +122,7 @@ data class Probe(
     val foodSafeData: FoodSafeData? = null,
     val foodSafeStatus: FoodSafeStatus? = null,
     val thermometerPrefs: ThermometerPreferences? = null,
-    val highLowAlarmStatus: ProbeHighLowAlarmStatus = ProbeHighLowAlarmStatus.DEFAULT,
+    val highLowAlarmStatus: ProbeHighLowAlarmStatus? = null,
 ) : SpecializedDevice {
     override val lowBattery: Boolean
         get() = batteryStatus.isLowBattery

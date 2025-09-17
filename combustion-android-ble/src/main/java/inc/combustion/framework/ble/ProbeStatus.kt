@@ -50,7 +50,7 @@ internal data class ProbeStatus(
     val foodSafeStatus: FoodSafeStatus?,
     val overheatingSensors: OverheatingSensors,
     val thermometerPrefs: ThermometerPreferences,
-    val probeHighLowAlarmStatus: ProbeHighLowAlarmStatus,
+    val probeHighLowAlarmStatus: ProbeHighLowAlarmStatus?,
 ) : SpecializedDeviceStatus {
     val virtualCoreTemperature: Double
         get() {
@@ -156,7 +156,7 @@ internal data class ProbeStatus(
             val highLowAlarms = if (data.size > highLowAlarmsRange.last) {
                 ProbeHighLowAlarmStatus.fromRawData(data.sliceArray(highLowAlarmsRange))
             } else {
-                ProbeHighLowAlarmStatus.DEFAULT
+                null
             }
 
             return ProbeStatus(

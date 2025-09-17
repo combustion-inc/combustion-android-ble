@@ -1212,12 +1212,15 @@ internal class ProbeManager(
     }
 
     private fun updateHighLowAlarms(
-        probeHighLowAlarmStatus: ProbeHighLowAlarmStatus,
+        probeHighLowAlarmStatus: ProbeHighLowAlarmStatus?,
         currentProbe: Probe,
     ): Probe {
-        return currentProbe.copy(
-            highLowAlarmStatus = probeHighLowAlarmStatus,
-        )
+        // ignore if probeHighLowAlarmStatus is null since possibly should be a nonnull value that was not supported by firmware
+        return probeHighLowAlarmStatus?.let {
+            currentProbe.copy(
+                highLowAlarmStatus = it,
+            )
+        } ?: currentProbe
     }
 
     private fun updateLink(currentProbe: Probe): Probe {
