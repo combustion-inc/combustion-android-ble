@@ -43,6 +43,73 @@ data class ProbeHighLowAlarmStatus(
     val virtualSurface: HighLowAlarmStatus = HighLowAlarmStatus.DEFAULT,
     val virtualAmbient: HighLowAlarmStatus = HighLowAlarmStatus.DEFAULT,
 ) {
+    val orderedSensorList: List<HighLowAlarmStatus> =
+        listOf(t1, t2, t3, t4, t5, t6, t7, t8, virtualCore, virtualSurface, virtualAmbient)
+
+    fun anySensor(predicate: HighLowAlarmStatus.() -> Boolean): Boolean {
+        return orderedSensorList.any { it.predicate() }
+    }
+
+    val isAlarming: Boolean
+        get() = anySensor { isAlarming }
+
+    val isSet: Boolean
+        get() = anySensor { isSet }
+
+    val isTripped: Boolean
+        get() = anySensor { isTripped }
+
+    fun copyWithAlarmingDisabled(): ProbeHighLowAlarmStatus {
+        var status = this
+        for (sensorIdx in 0 until SENSOR_COUNT) {
+            val sensor = orderedSensorList[sensorIdx]
+            if (sensor.isAlarming) {
+                val updatedSensor = sensor.copy(
+                    lowStatus = sensor.lowStatus.copy(alarming = false),
+                    highStatus = sensor.highStatus.copy(alarming = false)
+                )
+                status = when (sensorIdx) {
+                    0 -> status.copy(t1 = updatedSensor)
+                    1 -> status.copy(t2 = updatedSensor)
+                    2 -> status.copy(t3 = updatedSensor)
+                    3 -> status.copy(t4 = updatedSensor)
+                    4 -> status.copy(t5 = updatedSensor)
+                    5 -> status.copy(t6 = updatedSensor)
+                    6 -> status.copy(t7 = updatedSensor)
+                    7 -> status.copy(t8 = updatedSensor)
+                    8 -> status.copy(virtualCore = updatedSensor)
+                    9 -> status.copy(virtualSurface = updatedSensor)
+                    10 -> status.copy(virtualAmbient = updatedSensor)
+                    else -> throw IndexOutOfBoundsException("probeHighLowAlarmStatus sensor index $sensorIdx is out of bounds")
+                }
+            }
+        }
+        return status
+    }
+
+    internal fun toRawData(): UByteArray {
+        val data = UByteArray(PROBE_HIGH_LOW_ALARMS_SIZE_BYTES)
+        for (sensorIdx in 0 until SENSOR_COUNT) {
+            val sensor = orderedSensorList[sensorIdx]
+            val idx = sensorIdx * 2
+            val highBytes = sensor.highStatus.toBytes()
+            val lowBytes = sensor.lowStatus.toBytes()
+//            Log.v(
+//                "D3V",
+//                "toRawData: sensorIdx = $sensorIdx, idx = $idx, highBytes, $highBytes",
+//            )
+//            Log.v(
+//                "D3V",
+//                "toRawData: sensorIdx = $sensorIdx, idx = $idx, lowBytes, $lowBytes",
+//            )
+            data[HIGH_ALARMS_STATUS_INDEX + idx + 0] = highBytes[0]
+            data[HIGH_ALARMS_STATUS_INDEX + idx + 1] = highBytes[1]
+            data[LOW_ALARMS_STATUS_INDEX + idx + 0] = lowBytes[0]
+            data[LOW_ALARMS_STATUS_INDEX + idx + 1] = lowBytes[1]
+        }
+        return data
+    }
+
     companion object {
         internal const val PROBE_HIGH_LOW_ALARMS_SIZE_BYTES = 44
         internal const val SENSOR_COUNT = 11
@@ -86,43 +153,9 @@ data class ProbeHighLowAlarmStatus(
                     else -> throw IndexOutOfBoundsException("probeHighLowAlarmStatus sensor index $idx is out of bounds")
                 }
             }
-            return status
-        }
-    }
-
-    internal fun toRawData(): UByteArray {
-        val data = UByteArray(PROBE_HIGH_LOW_ALARMS_SIZE_BYTES)
-        for (sensorIdx in 0 until SENSOR_COUNT) {
-            val sensor = when (sensorIdx) {
-                0 -> t1
-                1 -> t2
-                2 -> t3
-                3 -> t4
-                4 -> t5
-                5 -> t6
-                6 -> t7
-                7 -> t8
-                8 -> virtualCore
-                9 -> virtualSurface
-                10 -> virtualAmbient
-                else -> throw IndexOutOfBoundsException("probeHighLowAlarmStatus sensor index $sensorIdx is out of bounds")
+            return status.also {
+                Log.v("D3V", "fromRawData = $it")
             }
-            val idx = sensorIdx * 2
-            val highBytes = sensor.highStatus.toBytes()
-            val lowBytes = sensor.lowStatus.toBytes()
-            Log.v(
-                "D3V",
-                "toRawData: sensorIdx = $sensorIdx, idx = $idx, highBytes, $highBytes",
-            )
-            Log.v(
-                "D3V",
-                "toRawData: sensorIdx = $sensorIdx, idx = $idx, lowBytes, $lowBytes",
-            )
-            data[HIGH_ALARMS_STATUS_INDEX + idx + 0] = highBytes[0]
-            data[HIGH_ALARMS_STATUS_INDEX + idx + 1] = highBytes[1]
-            data[LOW_ALARMS_STATUS_INDEX + idx + 0] = lowBytes[0]
-            data[LOW_ALARMS_STATUS_INDEX + idx + 1] = lowBytes[1]
         }
-        return data
     }
 }

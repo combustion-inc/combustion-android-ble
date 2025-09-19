@@ -27,6 +27,7 @@
  */
 package inc.combustion.framework.ble
 
+import android.util.Log
 import inc.combustion.framework.service.*
 
 /**
@@ -154,8 +155,10 @@ internal data class ProbeStatus(
             val highLowAlarmsRange =
                 highLowAlarmsByteStartIndex until highLowAlarmsByteStartIndex + ProbeHighLowAlarmStatus.PROBE_HIGH_LOW_ALARMS_SIZE_BYTES
             val highLowAlarms = if (data.size > highLowAlarmsRange.last) {
+                Log.v("D3V", "ProbeStatus.fromRawData, valid bytes")
                 ProbeHighLowAlarmStatus.fromRawData(data.sliceArray(highLowAlarmsRange))
             } else {
+                Log.v("D3V", "ProbeStatus.fromRawData, NULL")
                 null
             }
 

@@ -319,6 +319,7 @@ internal class ProbeBleDevice(
                         Log.i(LOG_TAG, "Device Status Characteristic Monitor Catch: $it")
                     }
                     .collect { data ->
+                        Log.v("D3V", "DIRECT ProbeStatus.fromRawData")
                         ProbeStatus.fromRawData(data.toUByteArray())?.let { status ->
                             callback?.let {
                                 it(status, hopCount)
