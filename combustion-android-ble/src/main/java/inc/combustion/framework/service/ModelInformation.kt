@@ -30,12 +30,30 @@ package inc.combustion.framework.service
 
 import inc.combustion.framework.service.dfu.DfuProductType
 
+private const val SKU_MIN_LENGTH = 4
+
 data class ModelInformation(
     val productType: CombustionProductType,
     val dfuProductType: DfuProductType,
     val sku: String,
     val manufacturingLot: String
 ) {
+    val strippedSku: String
+        get() = sku.trimStart('0').takeIf { it.length >= SKU_MIN_LENGTH } ?: sku.takeLast(
+            SKU_MIN_LENGTH
+        )
+
+    val skuProductCode: Char?
+        get() = strippedSku.getOrNull(0)
+
+    val skuBrandCode: Char?
+        get() = strippedSku.getOrNull(1)
+
+    val skuVersionCode: Char?
+        get() = strippedSku.getOrNull(2)
+
+    val skuColorCode: Char?
+        get() = strippedSku.getOrNull(3)
 
     companion object {
         /**
