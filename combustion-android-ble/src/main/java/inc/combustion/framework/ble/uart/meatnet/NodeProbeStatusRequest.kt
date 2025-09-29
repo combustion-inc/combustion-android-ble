@@ -76,7 +76,7 @@ internal class NodeProbeStatusRequest(
             val overheatRangeStart = ProbeStatus.RAW_SIZE_INCLUDING_FOOD_SAFE + 1
             val overheatRange = overheatRangeStart until overheatRangeStart + OverheatingSensors.SIZE_BYTES
 
-            Log.v("D3V", "NODE ProbeStatus.fromRawData")
+            Log.v("D3V", "NODE ProbeStatus.fromRawData, range.last = ${probeStatusRange.last}")
             val probeStatus: ProbeStatus =
                 ProbeStatus.fromRawData(data.slice(probeStatusRange).toUByteArray(), overheatRange) ?: return null
 

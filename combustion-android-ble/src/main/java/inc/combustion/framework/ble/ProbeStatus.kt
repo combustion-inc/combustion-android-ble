@@ -155,10 +155,10 @@ internal data class ProbeStatus(
             val highLowAlarmsRange =
                 highLowAlarmsByteStartIndex until highLowAlarmsByteStartIndex + ProbeHighLowAlarmStatus.PROBE_HIGH_LOW_ALARMS_SIZE_BYTES
             val highLowAlarms = if (data.size > highLowAlarmsRange.last) {
-                Log.v("D3V", "ProbeStatus.fromRawData, valid bytes")
+                Log.v("D3V", "ProbeStatus.fromRawData, valid bytes, data.size = ${data.size}, highLowAlarmsRange.last = ${highLowAlarmsRange.last}")
                 ProbeHighLowAlarmStatus.fromRawData(data.sliceArray(highLowAlarmsRange))
             } else {
-                Log.v("D3V", "ProbeStatus.fromRawData, NULL")
+                Log.v("D3V", "ProbeStatus.fromRawData, NULL, data.size = ${data.size}, highLowAlarmsRange.last = ${highLowAlarmsRange.last}")
                 null
             }
 
