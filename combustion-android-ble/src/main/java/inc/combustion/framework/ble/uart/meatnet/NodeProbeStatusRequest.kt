@@ -35,11 +35,11 @@ import inc.combustion.framework.service.HopCount
 import inc.combustion.framework.service.OverheatingSensors
 
 internal class NodeProbeStatusRequest(
-    requestId : UInt,
-    payloadLength : UByte,
+    requestId: UInt,
+    payloadLength: UByte,
     serialNumber: String,
     val hopCount: HopCount,
-    val probeStatus: ProbeStatus
+    val probeStatus: ProbeStatus,
 ) : NodeRequest(requestId, payloadLength, NodeMessageType.PROBE_STATUS, serialNumber) {
 
     companion object {
@@ -56,14 +56,19 @@ internal class NodeProbeStatusRequest(
         /**
          * Factory function that creates an instance of this object from raw message data.
          */
-        fun fromRaw(data: UByteArray, requestId: UInt, payloadLength: UByte) : NodeProbeStatusRequest? {
+        fun fromRaw(
+            data: UByteArray,
+            requestId: UInt,
+            payloadLength: UByte,
+        ): NodeProbeStatusRequest? {
             if (payloadLength < MINIMUM_PAYLOAD_LENGTH.toUInt()) {
                 return null
             }
 
             val serialNumber: UInt = data.getLittleEndianUInt32At(SERIAL_NUMBER_INDEX)
 
-            val probeStatusIndexEnd = PROBE_STATUS_INDEX + if (payloadLength.toInt() == MINIMUM_PAYLOAD_LENGTH) {
+            val probeStatusIndexEnd =
+                PROBE_STATUS_INDEX + if (payloadLength.toInt() == MINIMUM_PAYLOAD_LENGTH) {
                     ProbeStatus.MIN_RAW_SIZE
                 } else {
                     ProbeStatus.RAW_SIZE_INCLUDING_FOOD_SAFE
@@ -74,15 +79,26 @@ internal class NodeProbeStatusRequest(
             // The overheating flags are stored after the hop count for the node messages
             // so the range is updated to take that into account
             val overheatRangeStart = ProbeStatus.RAW_SIZE_INCLUDING_FOOD_SAFE + 1
-            val overheatRange = overheatRangeStart until overheatRangeStart + OverheatingSensors.SIZE_BYTES
+            val overheatRange =
+                overheatRangeStart until overheatRangeStart + OverheatingSensors.SIZE_BYTES
 
-            Log.v("D3V", "NODE ProbeStatus.fromRawData, range.last = ${probeStatusRange.last}")
+            Log.v(
+                "D3V",
+                "NODE ProbeStatus.fromRawData, data.size = ${data.size}, requestLength = ${payloadLength + HEADER_SIZE}, probeStatusRange.last = ${probeStatusRange.last}"
+            )
             val probeStatus: ProbeStatus =
-                ProbeStatus.fromRawData(data.slice(probeStatusRange).toUByteArray(), overheatRange) ?: return null
+                ProbeStatus.fromRawData(data.slice(probeStatusRange).toUByteArray(), overheatRange)
+                    ?: return null
 
             val hopCount: HopCount = HopCount.fromUByte(data[probeStatusIndexEnd])
 
-            return NodeProbeStatusRequest(requestId, payloadLength, Integer.toHexString(serialNumber.toInt()).uppercase(), hopCount, probeStatus)
+            return NodeProbeStatusRequest(
+                requestId,
+                payloadLength,
+                Integer.toHexString(serialNumber.toInt()).uppercase(),
+                hopCount,
+                probeStatus,
+            )
         }
     }
 }
