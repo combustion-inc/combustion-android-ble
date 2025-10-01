@@ -940,6 +940,7 @@ internal class NetworkManager(
             if (connectionState == DeviceConnectionState.CONNECTED) {
                 device.firmwareVersion ?: run {
                     device.readFirmwareVersion()
+                    device.readModelInformation()
 
                     device.firmwareVersion?.let { firmwareVersion ->
                         // Add to firmware state map
