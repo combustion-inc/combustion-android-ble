@@ -575,10 +575,6 @@ internal class ProbeManager(
         probeHighLowAlarmStatus: ProbeHighLowAlarmStatus,
         completionHandler: (Boolean) -> Unit,
     ) {
-        Log.v(
-            "D3V",
-            "setProbeHighLowAlarmStatus: probeHighLowAlarmStatus = $probeHighLowAlarmStatus, directLink = ${arbitrator.directLink}"
-        )
         val onCompletion: (Boolean) -> Unit = { success ->
             if (success) {
                 _deviceFlow.update {
@@ -595,7 +591,6 @@ internal class ProbeManager(
         } ?: run {
             val requestId = makeRequestId()
             arbitrator.directLink?.sendSetProbeHighLowAlarmStatus(probeHighLowAlarmStatus) { status, _ ->
-                Log.v("D3V", "setProbeHighLowAlarmStatus direct, status = $status")
                 onCompletion(status)
             } ?: run {
                 val nodeLinks = arbitrator.connectedNodeLinks
@@ -606,10 +601,6 @@ internal class ProbeManager(
                             probeHighLowAlarmStatus,
                             requestId,
                         ) { status, _ ->
-                            Log.v(
-                                "D3V",
-                                "setProbeHighLowAlarmStatus repeater, handled = $handled, status = $status",
-                            )
                             if (!handled) {
                                 handled = true
                                 onCompletion(status)

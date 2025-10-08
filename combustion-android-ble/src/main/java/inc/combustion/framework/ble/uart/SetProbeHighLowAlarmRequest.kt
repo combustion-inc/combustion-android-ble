@@ -28,7 +28,6 @@
 
 package inc.combustion.framework.ble.uart
 
-import android.util.Log
 import inc.combustion.framework.service.ProbeHighLowAlarmStatus
 
 internal class SetProbeHighLowAlarmRequest(
@@ -41,7 +40,6 @@ internal class SetProbeHighLowAlarmRequest(
     init {
         val headerSize = HEADER_SIZE.toInt()
         val rawHighLowAlarmStatus = probeHighLowAlarmStatus.toRawData()
-        Log.v("D3V", "SetProbeHighLowAlarmRequest: payload = $rawHighLowAlarmStatus")
         rawHighLowAlarmStatus.copyInto(
             destination = data,
             destinationOffset = headerSize,
