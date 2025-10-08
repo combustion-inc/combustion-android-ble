@@ -161,6 +161,15 @@ internal open class Response(
                         ::SetProbeHighLowAlarmResponse,
                     )
                 }
+
+                MessageType.SILENCE_PROBE_ALARMS -> {
+                    createGenericResponse(
+                        success,
+                        SilenceProbeAlarmsResponse.PAYLOAD_LENGTH,
+                        length.toUInt(),
+                        ::SilenceProbeAlarmsResponse,
+                    )
+                }
             }
         }
 

@@ -957,7 +957,10 @@ class DeviceManager(
         probeHighLowAlarmStatus: ProbeHighLowAlarmStatus,
         completionHandler: (Boolean) -> Unit
     ) {
-        Log.i(LOG_TAG, "Setting probe $serialNumber's highLowAlarmStatuses to $probeHighLowAlarmStatus")
+        Log.i(
+            LOG_TAG,
+            "Setting probe $serialNumber's highLowAlarmStatuses to $probeHighLowAlarmStatus"
+        )
         doWhenNetworkManagerInitialized {
             it.setProbeHighLowAlarmStatus(serialNumber, probeHighLowAlarmStatus, completionHandler)
         }
@@ -975,6 +978,16 @@ class DeviceManager(
         Log.i(LOG_TAG, "Setting gauge $serialNumber's highLowAlarmStatus to $highLowAlarmStatus")
         doWhenNetworkManagerInitialized {
             it.setGaugeHighLowAlarmStatus(serialNumber, highLowAlarmStatus, completionHandler)
+        }
+    }
+
+    /**
+     * Silence alarms on all devices.
+     */
+    fun silenceAllAlarms(completionHandler: ((Boolean) -> Unit)?) {
+        Log.i(LOG_TAG, "Silence all alarms")
+        doWhenNetworkManagerInitialized {
+            it.silenceAllAlarms(completionHandler)
         }
     }
 

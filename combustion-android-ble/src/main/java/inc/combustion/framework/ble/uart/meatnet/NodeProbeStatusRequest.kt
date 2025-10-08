@@ -28,7 +28,6 @@
 
 package inc.combustion.framework.ble.uart.meatnet
 
-import android.util.Log
 import inc.combustion.framework.ble.ProbeStatus
 import inc.combustion.framework.ble.getLittleEndianUInt32At
 import inc.combustion.framework.service.HopCount
@@ -82,10 +81,6 @@ internal class NodeProbeStatusRequest(
             val overheatRange =
                 overheatRangeStart until overheatRangeStart + OverheatingSensors.SIZE_BYTES
 
-            Log.v(
-                "D3V",
-                "NODE ProbeStatus.fromRawData, data.size = ${data.size}, requestLength = ${payloadLength + HEADER_SIZE}, probeStatusRange.last = ${probeStatusRange.last}"
-            )
             val probeStatus: ProbeStatus =
                 ProbeStatus.fromRawData(data.slice(probeStatusRange).toUByteArray(), overheatRange)
                     ?: return null

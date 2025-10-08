@@ -66,6 +66,8 @@ internal enum class NodeMessageType(override val value: UByte) : NodeMessage {
     GAUGE_STATUS(0x60u),
     SET_GAUGE_HIGH_LOW_ALARM(0x61u),
     GAUGE_LOG(0x62u),
+
+    SILENCE_ALARMS(0x0Cu),
     ;
 
     companion object {

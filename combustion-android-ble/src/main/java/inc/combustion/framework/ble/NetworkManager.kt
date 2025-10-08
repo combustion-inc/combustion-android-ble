@@ -37,18 +37,7 @@ import android.util.Log
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.device.DeviceID
-import inc.combustion.framework.ble.device.DeviceInformationBleDevice
-import inc.combustion.framework.ble.device.GaugeBleDevice
-import inc.combustion.framework.ble.device.LinkID
-import inc.combustion.framework.ble.device.NodeBleDevice
-import inc.combustion.framework.ble.device.NodeHybridDevice
-import inc.combustion.framework.ble.device.ProbeBleDevice
-import inc.combustion.framework.ble.device.ProximityDevice
-import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
-import inc.combustion.framework.ble.device.SimulatedGaugeBleDevice
-import inc.combustion.framework.ble.device.SimulatedProbeBleDevice
-import inc.combustion.framework.ble.device.UartCapableProbe
+import inc.combustion.framework.ble.device.*
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.DeviceScanner
 import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
@@ -57,36 +46,18 @@ import inc.combustion.framework.ble.uart.meatnet.GenericNodeRequest
 import inc.combustion.framework.ble.uart.meatnet.GenericNodeResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.log.LogManager
-import inc.combustion.framework.service.CombustionProductType
+import inc.combustion.framework.service.*
 import inc.combustion.framework.service.CombustionProductType.GAUGE
 import inc.combustion.framework.service.CombustionProductType.NODE
 import inc.combustion.framework.service.CombustionProductType.PROBE
-import inc.combustion.framework.service.DeviceConnectionState
-import inc.combustion.framework.service.DeviceDiscoveryEvent
-import inc.combustion.framework.service.DeviceInProximityEvent
-import inc.combustion.framework.service.DeviceManager
-import inc.combustion.framework.service.FirmwareState
-import inc.combustion.framework.service.FoodSafeData
-import inc.combustion.framework.service.Gauge
-import inc.combustion.framework.service.HighLowAlarmStatus
-import inc.combustion.framework.service.NetworkState
-import inc.combustion.framework.service.Probe
-import inc.combustion.framework.service.ProbeColor
-import inc.combustion.framework.service.ProbeHighLowAlarmStatus
-import inc.combustion.framework.service.ProbeID
-import inc.combustion.framework.service.ProbePowerMode
-import inc.combustion.framework.service.ProbePredictionMode
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.random.Random
+import kotlin.random.nextUInt
 
 private val SPECIALIZED_DEVICES = setOf(PROBE, GAUGE)
 
@@ -563,10 +534,52 @@ internal class NetworkManager(
         probeHighLowAlarmStatus: ProbeHighLowAlarmStatus,
         completionHandler: (Boolean) -> Unit,
     ) {
-        probeManagers[serialNumber]?.setProbeHighLowAlarmStatus(probeHighLowAlarmStatus, completionHandler)
-            ?: run {
-                completionHandler(false)
+        probeManagers[serialNumber]?.setProbeHighLowAlarmStatus(
+            probeHighLowAlarmStatus,
+            completionHandler,
+        ) ?: run {
+            completionHandler(false)
+        }
+    }
+
+    internal fun silenceAllAlarms(completionHandler: ((Boolean) -> Unit)?) {
+        var handled = false
+
+        val connectedRepeaterNodes = devices.getRepeaterNodes()
+            .filter {
+                it.isConnected
             }
+        if (connectedRepeaterNodes.isNotEmpty()) {
+            val requestId = Random.nextUInt()
+            connectedRepeaterNodes.forEach { node ->
+                node.silenceAllAlarms(
+                    reqId = requestId,
+                ) { success, _ ->
+                    if (!handled) {
+                        handled = true
+                        completionHandler?.invoke(success)
+                    }
+                }
+            }
+        }
+
+        val connectedProbes = devices.getProbes().filter {
+            it.isConnected
+        }
+        if (connectedProbes.isNotEmpty()) {
+            connectedProbes.forEach { probe ->
+                probe.silenceProbeAlarms { success, _ ->
+                    if (!handled) {
+                        handled = true
+                        completionHandler?.invoke(success)
+                    }
+                }
+            }
+        }
+
+        if (connectedRepeaterNodes.isEmpty() && connectedProbes.isEmpty()) {
+            completionHandler?.invoke(true)
+        }
     }
 
     internal suspend fun sendNodeRequestRequiringWiFi(
@@ -1111,4 +1124,16 @@ internal class NetworkManager(
 
     private val DeviceHolder?.hybridDeviceChild: NodeHybridDevice?
         get() = (this as? DeviceHolder.RepeaterHolder)?.repeater?.hybridDeviceChild
+
+    private fun Map<DeviceID, DeviceHolder>.getRepeaterNodes(): List<NodeBleDevice> =
+        values.toList().filterIsInstance<DeviceHolder.RepeaterHolder>()
+            .map {
+                it.repeater
+            }
+
+    private fun Map<DeviceID, DeviceHolder>.getProbes(): List<ProbeBleDevice> =
+        values.toList().filterIsInstance<DeviceHolder.ProbeHolder>()
+            .map {
+                it.probe
+            }
 }

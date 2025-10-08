@@ -28,8 +28,6 @@
 
 package inc.combustion.framework.service
 
-import android.util.Log
-
 data class ProbeHighLowAlarmStatus(
     val t1: HighLowAlarmStatus = HighLowAlarmStatus.DEFAULT,
     val t2: HighLowAlarmStatus = HighLowAlarmStatus.DEFAULT,
@@ -94,14 +92,6 @@ data class ProbeHighLowAlarmStatus(
             val idx = sensorIdx * 2
             val highBytes = sensor.highStatus.toBytes()
             val lowBytes = sensor.lowStatus.toBytes()
-//            Log.v(
-//                "D3V",
-//                "toRawData: sensorIdx = $sensorIdx, idx = $idx, highBytes, $highBytes",
-//            )
-//            Log.v(
-//                "D3V",
-//                "toRawData: sensorIdx = $sensorIdx, idx = $idx, lowBytes, $lowBytes",
-//            )
             data[HIGH_ALARMS_STATUS_INDEX + idx + 0] = highBytes[0]
             data[HIGH_ALARMS_STATUS_INDEX + idx + 1] = highBytes[1]
             data[LOW_ALARMS_STATUS_INDEX + idx + 0] = lowBytes[0]
@@ -153,9 +143,7 @@ data class ProbeHighLowAlarmStatus(
                     else -> throw IndexOutOfBoundsException("probeHighLowAlarmStatus sensor index $idx is out of bounds")
                 }
             }
-            return status.also {
-                Log.v("D3V", "fromRawData = $it")
-            }
+            return status
         }
     }
 }

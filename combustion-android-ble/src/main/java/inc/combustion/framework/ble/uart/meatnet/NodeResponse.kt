@@ -261,6 +261,16 @@ internal open class NodeResponse(
                     )
                 }
 
+                NodeMessageType.SILENCE_ALARMS -> {
+                    NodeSilenceAlarmsResponse.fromData(
+                        data,
+                        success,
+                        requestId,
+                        responseId,
+                        payloadLength,
+                    )
+                }
+
                 else -> {
                     // The message didn't match any of the defined types, so check if it matches a custom type
                     return DeviceManager.instance.settings.messageTypeCallback(rawMessageType)

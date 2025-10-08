@@ -155,6 +155,8 @@ internal class ProbeBleDevice(
 
     private var logResponseCallback: (suspend (ProbeLogResponse) -> Unit)? = null
 
+    private val silenceAlarmsHandler = UartBleDevice.MessageCompletionHandler()
+
     init {
         processUartResponses()
     }
@@ -239,6 +241,17 @@ internal class ProbeBleDevice(
         sendUartRequest(SetProbeHighLowAlarmRequest(highLowAlarmStatus))
     }
 
+    fun silenceProbeAlarms(callback: ((Boolean, Any?) -> Unit)?) {
+        silenceAlarmsHandler.wait(
+            owner = uart.owner,
+            duration = PROBE_MESSAGE_RESPONSE_TIMEOUT_MS,
+            reqId = null,
+            callback = callback,
+            )
+        sendUartRequest(SilenceProbeAlarmsRequest())
+    }
+
+
     override suspend fun readSerialNumber() = uart.readSerialNumber()
     override suspend fun readFirmwareVersion() = uart.readFirmwareVersion()
     override suspend fun readHardwareRevision() = uart.readHardwareRevision()
@@ -316,10 +329,9 @@ internal class ProbeBleDevice(
                         Log.d(LOG_TAG, "Device Status Characteristic Monitor Complete")
                     }
                     .catch {
-                        Log.i(LOG_TAG, "Device Status Characteristic Monitor Catch: $it")
+                        Log.w(LOG_TAG, "Device Status Characteristic Monitor Catch: $it")
                     }
                     .collect { data ->
-                        Log.v("D3V", "DIRECT ProbeStatus.fromRawData")
                         ProbeStatus.fromRawData(data.toUByteArray())?.let { status ->
                             callback?.let {
                                 it(status, hopCount)
@@ -388,6 +400,10 @@ internal class ProbeBleDevice(
                         response.success,
                         null,
                     )
+                    is SilenceProbeAlarmsResponse -> silenceAlarmsHandler.handled(
+                        response.success,
+                        null,
+                        )
                 }
             }
         }

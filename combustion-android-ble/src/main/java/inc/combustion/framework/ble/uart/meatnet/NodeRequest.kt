@@ -38,7 +38,7 @@ import inc.combustion.framework.service.DeviceManager
 internal open class NodeRequest(
     messageId: NodeMessage,
     payloadLength: UByte,
-    val serialNumber: String,
+    val serialNumber: String?,
 ) : NodeUARTMessage(
     messageId,
     payloadLength,
@@ -166,7 +166,7 @@ internal open class NodeRequest(
         outgoingPayload: UByteArray,
         messageType: NodeMessage,
         requestId: UInt? = null,
-        serialNumber: String,
+        serialNumber: String?,
     ) : this(
         messageType,
         outgoingPayload.size.toUByte(),
