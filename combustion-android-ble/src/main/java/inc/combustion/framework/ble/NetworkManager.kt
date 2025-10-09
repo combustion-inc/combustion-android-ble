@@ -867,12 +867,9 @@ internal class NetworkManager(
                         advertisement = advertisement,
                     )
                     manager.addRepeaters {
-                        devices.values.toList().filterIsInstance<DeviceHolder.RepeaterHolder>()
+                        devices.getRepeaterNodes()
                             .filter {
-                                it.gauge?.serialNumber != gaugeBleDevice.serialNumber
-                            }
-                            .map {
-                                it.repeater
+                                it.gaugeHybridDevice?.serialNumber != gaugeBleDevice.serialNumber
                             }
                     }
                 }
