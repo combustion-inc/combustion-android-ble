@@ -39,36 +39,8 @@ import inc.combustion.framework.ble.device.UartCapableProbe.Companion.PROBE_MESS
 import inc.combustion.framework.ble.device.UartCapableProbe.Companion.makeLinkId
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
-import inc.combustion.framework.ble.uart.ConfigureFoodSafeRequest
-import inc.combustion.framework.ble.uart.ConfigureFoodSafeResponse
-import inc.combustion.framework.ble.uart.ProbeLogRequest
-import inc.combustion.framework.ble.uart.ProbeLogResponse
-import inc.combustion.framework.ble.uart.Request
-import inc.combustion.framework.ble.uart.ResetFoodSafeRequest
-import inc.combustion.framework.ble.uart.ResetFoodSafeResponse
-import inc.combustion.framework.ble.uart.ResetProbeRequest
-import inc.combustion.framework.ble.uart.ResetProbeResponse
-import inc.combustion.framework.ble.uart.Response
-import inc.combustion.framework.ble.uart.SessionInfoRequest
-import inc.combustion.framework.ble.uart.SessionInfoResponse
-import inc.combustion.framework.ble.uart.SetColorRequest
-import inc.combustion.framework.ble.uart.SetColorResponse
-import inc.combustion.framework.ble.uart.SetIDRequest
-import inc.combustion.framework.ble.uart.SetIDResponse
-import inc.combustion.framework.ble.uart.SetPowerModeRequest
-import inc.combustion.framework.ble.uart.SetPowerModeResponse
-import inc.combustion.framework.ble.uart.SetPredictionRequest
-import inc.combustion.framework.ble.uart.SetPredictionResponse
-import inc.combustion.framework.service.CombustionProductType
-import inc.combustion.framework.service.DebugSettings
-import inc.combustion.framework.service.DeviceConnectionState
-import inc.combustion.framework.service.FirmwareVersion
-import inc.combustion.framework.service.FoodSafeData
-import inc.combustion.framework.service.ModelInformation
-import inc.combustion.framework.service.ProbeColor
-import inc.combustion.framework.service.ProbeID
-import inc.combustion.framework.service.ProbePowerMode
-import inc.combustion.framework.service.ProbePredictionMode
+import inc.combustion.framework.ble.uart.*
+import inc.combustion.framework.service.*
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -183,6 +155,8 @@ internal class ProbeBleDevice(
 
     private var logResponseCallback: (suspend (ProbeLogResponse) -> Unit)? = null
 
+    private val silenceAlarmsHandler = UartBleDevice.MessageCompletionHandler()
+
     init {
         processUartResponses()
     }
@@ -252,6 +226,31 @@ internal class ProbeBleDevice(
         logResponseCallback = callback
         sendUartRequest(ProbeLogRequest(minSequence, maxSequence))
     }
+
+    override fun sendSetProbeHighLowAlarmStatus(
+        highLowAlarmStatus: ProbeHighLowAlarmStatus,
+        reqId: UInt?,
+        callback: ((Boolean, Any?) -> Unit)?,
+    ) {
+        setProbeHighLowAlarmStatusHandler.wait(
+            uart.owner,
+            PROBE_MESSAGE_RESPONSE_TIMEOUT_MS,
+            reqId,
+            callback,
+        )
+        sendUartRequest(SetProbeHighLowAlarmRequest(highLowAlarmStatus))
+    }
+
+    fun silenceProbeAlarms(callback: ((Boolean, Any?) -> Unit)?) {
+        silenceAlarmsHandler.wait(
+            owner = uart.owner,
+            duration = PROBE_MESSAGE_RESPONSE_TIMEOUT_MS,
+            reqId = null,
+            callback = callback,
+            )
+        sendUartRequest(SilenceProbeAlarmsRequest())
+    }
+
 
     override suspend fun readSerialNumber() = uart.readSerialNumber()
     override suspend fun readFirmwareVersion() = uart.readFirmwareVersion()
@@ -330,7 +329,7 @@ internal class ProbeBleDevice(
                         Log.d(LOG_TAG, "Device Status Characteristic Monitor Complete")
                     }
                     .catch {
-                        Log.i(LOG_TAG, "Device Status Characteristic Monitor Catch: $it")
+                        Log.w(LOG_TAG, "Device Status Characteristic Monitor Catch: $it")
                     }
                     .collect { data ->
                         ProbeStatus.fromRawData(data.toUByteArray())?.let { status ->
@@ -383,7 +382,7 @@ internal class ProbeBleDevice(
                     is ProbeLogResponse -> logResponseCallback?.let { it(response) }
                     is SessionInfoResponse -> sessionInfoHandler.handled(
                         response.success,
-                        response.sessionInformation
+                        response.sessionInformation,
                     )
 
                     is SetColorResponse -> setColorHandler.handled(response.success, null)
@@ -391,12 +390,20 @@ internal class ProbeBleDevice(
                     is SetPredictionResponse -> setPredictionHandler.handled(response.success, null)
                     is ConfigureFoodSafeResponse -> configureFoodSafeHandler.handled(
                         response.success,
-                        null
+                        null,
                     )
 
                     is ResetFoodSafeResponse -> resetFoodSafeHandler.handled(response.success, null)
                     is SetPowerModeResponse -> setPowerModeHandler.handled(response.success, null)
                     is ResetProbeResponse -> resetProbeHandler.handled(response.success, null)
+                    is SetProbeHighLowAlarmResponse -> setProbeHighLowAlarmStatusHandler.handled(
+                        response.success,
+                        null,
+                    )
+                    is SilenceProbeAlarmsResponse -> silenceAlarmsHandler.handled(
+                        response.success,
+                        null,
+                        )
                 }
             }
         }

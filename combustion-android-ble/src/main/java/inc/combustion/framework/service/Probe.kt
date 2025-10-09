@@ -91,7 +91,7 @@ data class Probe(
     override val maxSequence: UInt? = null,
     @Deprecated(
         message = "This field will be removed in a future release",
-        level = DeprecationLevel.WARNING
+        level = DeprecationLevel.WARNING,
     )
     val minSequenceNumber: UInt = minSequence ?: 0u,
     @Deprecated(
@@ -122,6 +122,7 @@ data class Probe(
     val foodSafeData: FoodSafeData? = null,
     val foodSafeStatus: FoodSafeStatus? = null,
     val thermometerPrefs: ThermometerPreferences? = null,
+    val highLowAlarmStatus: ProbeHighLowAlarmStatus? = null,
 ) : SpecializedDevice {
     override val lowBattery: Boolean
         get() = batteryStatus.isLowBattery

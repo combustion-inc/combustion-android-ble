@@ -34,24 +34,7 @@ import inc.combustion.framework.ble.ProbeStatus
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
 import inc.combustion.framework.ble.uart.ProbeLogResponse
-import inc.combustion.framework.service.CombustionProductType
-import inc.combustion.framework.service.DeviceConnectionState
-import inc.combustion.framework.service.FirmwareVersion
-import inc.combustion.framework.service.FoodSafeData
-import inc.combustion.framework.service.FoodSafeStatus
-import inc.combustion.framework.service.ModelInformation
-import inc.combustion.framework.service.OverheatingSensors
-import inc.combustion.framework.service.PredictionStatus
-import inc.combustion.framework.service.ProbeBatteryStatus
-import inc.combustion.framework.service.ProbeColor
-import inc.combustion.framework.service.ProbeID
-import inc.combustion.framework.service.ProbeMode
-import inc.combustion.framework.service.ProbePowerMode
-import inc.combustion.framework.service.ProbePredictionMode
-import inc.combustion.framework.service.ProbeTemperatures
-import inc.combustion.framework.service.ProbeVirtualSensors
-import inc.combustion.framework.service.SessionInformation
-import inc.combustion.framework.service.ThermometerPreferences
+import inc.combustion.framework.service.*
 import inc.combustion.framework.service.dfu.DfuProductType
 import kotlinx.coroutines.launch
 import kotlin.concurrent.fixedRateTimer
@@ -202,6 +185,7 @@ internal class SimulatedProbeBleDevice(
                                     probeTemperatures
                                 ),
                                 thermometerPrefs = ThermometerPreferences.DEFAULT,
+                                probeHighLowAlarmStatus = ProbeHighLowAlarmStatus.DEFAULT,
                             ),
                             null,
                         )
@@ -344,6 +328,14 @@ internal class SimulatedProbeBleDevice(
     }
 
     override fun sendResetProbe(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
+        callback?.let { it(true, null) }
+    }
+
+    override fun sendSetProbeHighLowAlarmStatus(
+        highLowAlarmStatus: ProbeHighLowAlarmStatus,
+        reqId: UInt?,
+        callback: ((Boolean, Any?) -> Unit)?
+    ) {
         callback?.let { it(true, null) }
     }
 

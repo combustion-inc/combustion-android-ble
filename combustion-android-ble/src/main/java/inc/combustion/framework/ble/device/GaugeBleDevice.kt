@@ -199,7 +199,7 @@ internal class GaugeBleDevice(
         reqId: UInt?,
         callback: ((Boolean, Any?) -> Unit)?,
     ) {
-        nodeParent.sendSetHighLowAlarmStatus(
+        nodeParent.sendSetGaugeHighLowAlarmStatus(
             serialNumber,
             highLowAlarmStatus,
             reqId,

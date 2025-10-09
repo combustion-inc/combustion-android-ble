@@ -18,10 +18,12 @@ import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeResponse
-import inc.combustion.framework.ble.uart.meatnet.NodeSetHighLowAlarmRequest
-import inc.combustion.framework.ble.uart.meatnet.NodeSetHighLowAlarmResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeSetGaugeHighLowAlarmRequest
+import inc.combustion.framework.ble.uart.meatnet.NodeSetGaugeHighLowAlarmResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeSilenceAlarmsRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.ble.uart.meatnet.TargetedNodeResponse
+import inc.combustion.framework.service.CombustionProductType
 import inc.combustion.framework.service.DebugSettings
 import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.service.HighLowAlarmStatus
@@ -44,7 +46,8 @@ internal class NodeBleDevice(
 
     private val genericRequestHandler = UartBleDevice.MessageCompletionHandler()
     private val readFeatureFlagsRequest = UartBleDevice.MessageCompletionHandler()
-    private val setHighLowAlarmStatusHandler = UartBleDevice.MessageCompletionHandler()
+    private val setGaugeHighLowAlarmStatusHandler = UartBleDevice.MessageCompletionHandler()
+    private val silenceAlarmsHandler = UartBleDevice.MessageCompletionHandler()
 
     companion object {
         const val NODE_MESSAGE_RESPONSE_TIMEOUT_MS = 120000L
@@ -130,19 +133,19 @@ internal class NodeBleDevice(
         sendUartRequest(NodeReadFeatureFlagsRequest(nodeSerialNumber, reqId))
     }
 
-    fun sendSetHighLowAlarmStatus(
+    fun sendSetGaugeHighLowAlarmStatus(
         serialNumber: String,
         highLowAlarmStatus: HighLowAlarmStatus,
         reqId: UInt?,
         callback: ((Boolean, Any?) -> Unit)?,
     ) {
-        setHighLowAlarmStatusHandler.wait(
+        setGaugeHighLowAlarmStatusHandler.wait(
             uart.owner,
             MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS,
             reqId,
             callback,
         )
-        sendUartRequest(NodeSetHighLowAlarmRequest(serialNumber, highLowAlarmStatus, reqId))
+        sendUartRequest(NodeSetGaugeHighLowAlarmRequest(serialNumber, highLowAlarmStatus, reqId))
     }
 
     fun sendGaugeLogRequest(
@@ -154,6 +157,42 @@ internal class NodeBleDevice(
     ) {
         logResponseCallbackForSerialNumber[serialNumber] = callback
         sendUartRequest(NodeReadGaugeLogsRequest(serialNumber, minSequence, maxSequence, reqId))
+    }
+
+    fun silenceAllAlarms(
+        reqId: UInt,
+        callback: ((Boolean, Any?) -> Unit)?,
+    ) {
+        silenceAlarms(
+            global = true,
+            productType = CombustionProductType.UNKNOWN,
+            serialNumber = null,
+            reqId = reqId,
+            callback = callback,
+        )
+    }
+
+    private fun silenceAlarms(
+        global: Boolean,
+        productType: CombustionProductType,
+        serialNumber: String?,
+        reqId: UInt,
+        callback: ((Boolean, Any?) -> Unit)?,
+    ) {
+        silenceAlarmsHandler.wait(
+            uart.owner,
+            MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS,
+            reqId,
+            callback,
+        )
+        sendUartRequest(
+            NodeSilenceAlarmsRequest(
+                serialNumber = serialNumber,
+                global = global,
+                productType = productType,
+                reqId
+            )
+        )
     }
 
     override fun connect() {
@@ -239,8 +278,8 @@ internal class NodeBleDevice(
                         NetworkManager.flowHolder.mutableGenericNodeMessageFlow.emit(message)
                     }
 
-                    message is NodeSetHighLowAlarmResponse -> {
-                        setHighLowAlarmStatusHandler.handled(
+                    message is NodeSetGaugeHighLowAlarmResponse -> {
+                        setGaugeHighLowAlarmStatusHandler.handled(
                             message.success,
                             null,
                             message.requestId
@@ -252,7 +291,9 @@ internal class NodeBleDevice(
                     }
 
                     message is NodeGaugeStatusRequest -> {
-                        observeGaugeStatusCallback(message.serialNumber, message.gaugeStatus)
+                        message.serialNumber?.let { serialNumber ->
+                            observeGaugeStatusCallback(serialNumber, message.gaugeStatus)
+                        }
                     }
 
                     (message is NodeRequest) && (message.serialNumber == hybridDeviceChild?.serialNumber) -> {

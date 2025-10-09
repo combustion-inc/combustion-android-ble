@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: NodeSetHighLowAlarmResponse.kt
+ * File: SetProbeHighLowAlarmResponse.kt
  * Author:
  *
  * MIT License
@@ -26,43 +26,14 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble.uart.meatnet
+package inc.combustion.framework.ble.uart
 
-internal class NodeSetHighLowAlarmResponse(
+internal class SetProbeHighLowAlarmResponse(
     success: Boolean,
-    requestId: UInt,
-    responseId: UInt,
-    payloadLength: UByte,
-) : NodeResponse(
-    success,
-    requestId,
-    responseId,
-    payloadLength,
-    NodeMessageType.SET_HIGH_LOW_ALARM,
-) {
-    override fun toString(): String {
-        return "${super.toString()} $success"
-    }
+    payLoadLength: UInt,
+) : Response(success, payLoadLength) {
 
     companion object {
-        private const val PAYLOAD_LENGTH: UByte = 0u
-
-        fun fromData(
-            success: Boolean,
-            requestId: UInt,
-            responseId: UInt,
-            payloadLength: UByte,
-        ): NodeSetHighLowAlarmResponse? {
-            if (payloadLength < PAYLOAD_LENGTH) {
-                return null
-            }
-
-            return NodeSetHighLowAlarmResponse(
-                success,
-                requestId,
-                responseId,
-                payloadLength
-            )
-        }
+        const val PAYLOAD_LENGTH: UInt = 0u
     }
 }

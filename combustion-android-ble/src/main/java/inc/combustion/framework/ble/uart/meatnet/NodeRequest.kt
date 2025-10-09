@@ -38,10 +38,10 @@ import inc.combustion.framework.service.DeviceManager
 internal open class NodeRequest(
     messageId: NodeMessage,
     payloadLength: UByte,
-    val serialNumber: String,
+    val serialNumber: String?,
 ) : NodeUARTMessage(
     messageId,
-    payloadLength
+    payloadLength,
 ) {
     override fun toString(): String {
         return "REQ  $messageId (REQID: ${String.format("%08x", requestId.toInt())})"
@@ -56,11 +56,11 @@ internal open class NodeRequest(
          * @param data Raw data to parse
          * @return Instant of request if found or null if one could not be parsed from the data
          */
-        fun requestFromData(data : UByteArray) : NodeUARTMessage? {
+        fun requestFromData(data: UByteArray): NodeUARTMessage? {
             // Sync bytes
             val syncBytes = data.slice(0..1)
             val expectedSync = listOf<UByte>(202u, 254u) // 0xCA, 0xFE
-            if(syncBytes != expectedSync) {
+            if (syncBytes != expectedSync) {
                 return null
             }
 
@@ -90,7 +90,7 @@ internal open class NodeRequest(
 
             val calculatedCRC = crcData.getCRC16CCITT()
 
-            if(crc != calculatedCRC) {
+            if (crc != calculatedCRC) {
                 Log.w(LOG_TAG, "Invalid CRC for request of messageType $messageType")
                 return null
             }
@@ -98,41 +98,48 @@ internal open class NodeRequest(
             val requestLength = payloadLength.toInt() + HEADER_SIZE.toInt()
 
             // Invalid number of bytes
-            if(data.size < requestLength) {
+            if (data.size < requestLength) {
                 Log.w(LOG_TAG, "Invalid data length")
                 return null
             }
 
-            return when(messageType) {
+            // NB, data may contain more than a single request's bytes -
+            // limit to data specified by payloadLength
+            val requestData = data.copyOfRange(0, requestLength)
+
+            return when (messageType) {
                 NodeMessageType.PROBE_STATUS -> {
                     NodeProbeStatusRequest.fromRaw(
-                        data,
+                        requestData,
                         requestId,
-                        payloadLength
+                        payloadLength,
                     )
                 }
+
                 NodeMessageType.HEARTBEAT -> {
                     NodeHeartbeatRequest.fromRaw(
-                        data,
+                        requestData,
                         requestId,
-                        payloadLength
+                        payloadLength,
                     )
                 }
+
                 NodeMessageType.GAUGE_STATUS -> {
                     NodeGaugeStatusRequest.fromRaw(
-                        data,
+                        requestData,
                         requestId,
-                        payloadLength
+                        payloadLength,
                     )
                 }
+
                 else -> {
                     DeviceManager.instance.settings.messageTypeCallback(rawMessageType)?.let {
                         return GenericNodeRequest.fromRaw(
-                            data,
+                            requestData,
                             requestId,
                             payloadLength,
-                            it
-                       )
+                            it,
+                        )
                     }
                 }
             }
@@ -152,14 +159,14 @@ internal open class NodeRequest(
      * Constructor for generating a new outgoing Request object.
      *
      * @param outgoingPayload data containing outgoing payload
-     * @param type type of request message
+     * @param messageType type of request message
      * @param requestId optional request id
      */
     constructor(
         outgoingPayload: UByteArray,
         messageType: NodeMessage,
         requestId: UInt? = null,
-        serialNumber: String,
+        serialNumber: String?,
     ) : this(
         messageType,
         outgoingPayload.size.toUByte(),

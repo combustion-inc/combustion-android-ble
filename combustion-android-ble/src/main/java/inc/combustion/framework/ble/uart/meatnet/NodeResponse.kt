@@ -233,6 +233,15 @@ internal open class NodeResponse(
                     )
                 }
 
+                NodeMessageType.SET_PROBE_HIGH_LOW_ALARM -> {
+                    NodeSetProbeHighLowAlarmResponse.fromData(
+                        success,
+                        requestId,
+                        responseId,
+                        payloadLength,
+                    )
+                }
+
                 NodeMessageType.GAUGE_LOG -> {
                     NodeReadGaugeLogsResponse.fromData(
                         data,
@@ -243,8 +252,18 @@ internal open class NodeResponse(
                     )
                 }
 
-                NodeMessageType.SET_HIGH_LOW_ALARM -> {
-                    NodeSetHighLowAlarmResponse.fromData(
+                NodeMessageType.SET_GAUGE_HIGH_LOW_ALARM -> {
+                    NodeSetGaugeHighLowAlarmResponse.fromData(
+                        success,
+                        requestId,
+                        responseId,
+                        payloadLength,
+                    )
+                }
+
+                NodeMessageType.SILENCE_ALARMS -> {
+                    NodeSilenceAlarmsResponse.fromData(
+                        data,
                         success,
                         requestId,
                         responseId,

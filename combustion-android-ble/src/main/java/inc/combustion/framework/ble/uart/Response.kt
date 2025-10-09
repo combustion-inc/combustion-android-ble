@@ -54,14 +54,13 @@ internal open class Response(
 
             var numberBytesRead = 0
 
-            while(numberBytesRead < data.size) {
+            while (numberBytesRead < data.size) {
                 val bytesToDecode = data.copyOfRange(numberBytesRead, data.size)
                 val response = responseFromData(bytesToDecode)
                 if (response != null) {
                     responses.add(response)
                     numberBytesRead += (response.payLoadLength + HEADER_SIZE).toInt()
-                }
-                else {
+                } else {
                     // Found invalid response, break out of while loop
                     break
                 }
@@ -70,10 +69,10 @@ internal open class Response(
             return responses
         }
 
-        private fun responseFromData(data: UByteArray) : Response? {
+        private fun responseFromData(data: UByteArray): Response? {
 
             // Validate Sync Bytes { 0xCA, 0xFE }
-            if((data[0].toUInt() != 0xCAu) or (data[1].toUInt() != 0xFEu)) {
+            if ((data[0].toUInt() != 0xCAu) or (data[1].toUInt() != 0xFEu)) {
                 return null
             }
 
@@ -89,31 +88,102 @@ internal open class Response(
             // Validate CRC--omit the first 4 elements (sync bytes and CRC), add 3 to payload length
             // for message type, success, and payload length. Note that we slice data here because
             // it potentially contains more than one packet.
-            val calculatedCrc: UShort = data.drop(4).slice(0 until length.toInt() + 3).toUByteArray().getCRC16CCITT()
+            val calculatedCrc: UShort =
+                data.drop(4).slice(0 until length.toInt() + 3).toUByteArray().getCRC16CCITT()
             val sentCrc: UShort = data.getLittleEndianUShortAt(2)
 
             if (sentCrc != calculatedCrc) {
                 return null
             }
 
-            return when(messageType) {
+            return when (messageType) {
                 MessageType.PROBE_LOG -> ProbeLogResponse.fromData(data, success, length.toUInt())
-                MessageType.SET_PROBE_COLOR -> createGenericResponse(success,  SetColorResponse.PAYLOAD_LENGTH, length.toUInt(), ::SetColorResponse)
-                MessageType.SET_PROBE_ID -> createGenericResponse(success, SetIDResponse.PAYLOAD_LENGTH, length.toUInt(), ::SetIDResponse)
-                MessageType.READ_SESSION_INFO -> SessionInfoResponse.fromData(data, success, length.toUInt())
-                MessageType.SET_PREDICTION -> createGenericResponse(success, SetPredictionResponse.PAYLOAD_LENGTH, length.toUInt(), ::SetPredictionResponse)
-                MessageType.CONFIGURE_FOOD_SAFE -> createGenericResponse(success, ConfigureFoodSafeResponse.PAYLOAD_LENGTH, length.toUInt(), ::ConfigureFoodSafeResponse)
-                MessageType.RESET_FOOD_SAFE -> createGenericResponse(success, ResetFoodSafeResponse.PAYLOAD_LENGTH, length.toUInt(), ::ResetFoodSafeResponse)
-                MessageType.SET_POWER_MODE -> createGenericResponse(success, SetPowerModeResponse.PAYLOAD_LENGTH, length.toUInt(), ::SetPowerModeResponse)
-                MessageType.RESET_PROBE -> createGenericResponse(success, ResetProbeResponse.PAYLOAD_LENGTH, length.toUInt(), ::ResetProbeResponse)
+                MessageType.SET_PROBE_COLOR -> createGenericResponse(
+                    success,
+                    SetColorResponse.PAYLOAD_LENGTH,
+                    length.toUInt(),
+                    ::SetColorResponse,
+                )
+
+                MessageType.SET_PROBE_ID -> createGenericResponse(
+                    success,
+                    SetIDResponse.PAYLOAD_LENGTH,
+                    length.toUInt(),
+                    ::SetIDResponse,
+                )
+
+                MessageType.READ_SESSION_INFO -> SessionInfoResponse.fromData(
+                    data,
+                    success,
+                    length.toUInt(),
+                )
+
+                MessageType.SET_PREDICTION -> createGenericResponse(
+                    success,
+                    SetPredictionResponse.PAYLOAD_LENGTH,
+                    length.toUInt(),
+                    ::SetPredictionResponse,
+                )
+
+                MessageType.CONFIGURE_FOOD_SAFE -> createGenericResponse(
+                    success,
+                    ConfigureFoodSafeResponse.PAYLOAD_LENGTH,
+                    length.toUInt(),
+                    ::ConfigureFoodSafeResponse,
+                )
+
+                MessageType.RESET_FOOD_SAFE -> createGenericResponse(
+                    success,
+                    ResetFoodSafeResponse.PAYLOAD_LENGTH,
+                    length.toUInt(),
+                    ::ResetFoodSafeResponse,
+                )
+
+                MessageType.SET_POWER_MODE -> createGenericResponse(
+                    success,
+                    SetPowerModeResponse.PAYLOAD_LENGTH,
+                    length.toUInt(),
+                    ::SetPowerModeResponse,
+                )
+
+                MessageType.RESET_PROBE -> createGenericResponse(
+                    success,
+                    ResetProbeResponse.PAYLOAD_LENGTH,
+                    length.toUInt(),
+                    ::ResetProbeResponse,
+                )
+
+                MessageType.SET_PROBE_HIGH_LOW_ALARM -> {
+                    createGenericResponse(
+                        success,
+                        SetProbeHighLowAlarmResponse.PAYLOAD_LENGTH,
+                        length.toUInt(),
+                        ::SetProbeHighLowAlarmResponse,
+                    )
+                }
+
+                MessageType.SILENCE_PROBE_ALARMS -> {
+                    createGenericResponse(
+                        success,
+                        SilenceProbeAlarmsResponse.PAYLOAD_LENGTH,
+                        length.toUInt(),
+                        ::SilenceProbeAlarmsResponse,
+                    )
+                }
             }
         }
 
-        private fun <T> createGenericResponse(success: Boolean, minPayloadLength: UInt, payloadLength: UInt, factory: (Boolean, UInt) -> T) : T? {
-            return if (minPayloadLength >= payloadLength)
+        private fun <T> createGenericResponse(
+            success: Boolean,
+            minPayloadLength: UInt,
+            payloadLength: UInt,
+            factory: (Boolean, UInt) -> T
+        ): T? {
+            return if (minPayloadLength >= payloadLength) {
                 factory(success, payloadLength)
-            else
+            } else {
                 null
+            }
         }
     }
 }

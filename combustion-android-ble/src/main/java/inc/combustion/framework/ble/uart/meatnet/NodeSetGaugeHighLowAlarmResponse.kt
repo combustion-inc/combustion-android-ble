@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: ProbeBleDeviceBase.kt
- * Author: http://github.com/miwright2
+ * File: NodeSetHighLowAlarmResponse.kt
+ * Author:
  *
  * MIT License
  *
- * Copyright (c) 2023. Combustion Inc.
+ * Copyright (c) 2025. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,22 +25,44 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package inc.combustion.framework.ble.device
 
-internal abstract class ProbeBleDeviceBase : UartCapableProbe {
+package inc.combustion.framework.ble.uart.meatnet
 
-    // message completion handlers
-    protected val sessionInfoHandler = UartBleDevice.MessageCompletionHandler()
-    protected val setColorHandler = UartBleDevice.MessageCompletionHandler()
-    protected val setIdHandler = UartBleDevice.MessageCompletionHandler()
-    protected val setPredictionHandler = UartBleDevice.MessageCompletionHandler()
-    protected val configureFoodSafeHandler = UartBleDevice.MessageCompletionHandler()
-    protected val resetFoodSafeHandler = UartBleDevice.MessageCompletionHandler()
-    protected val resetProbeHandler = UartBleDevice.MessageCompletionHandler()
-    protected val setPowerModeHandler = UartBleDevice.MessageCompletionHandler()
-    protected val setProbeHighLowAlarmStatusHandler = UartBleDevice.MessageCompletionHandler()
-
+internal class NodeSetGaugeHighLowAlarmResponse(
+    success: Boolean,
+    requestId: UInt,
+    responseId: UInt,
+    payloadLength: UByte,
+) : NodeResponse(
+    success,
+    requestId,
+    responseId,
+    payloadLength,
+    NodeMessageType.SET_GAUGE_HIGH_LOW_ALARM,
+) {
     override fun toString(): String {
-        return "$mac $serialNumber $linkId $connectionState"
+        return "${super.toString()} $success"
+    }
+
+    companion object {
+        private const val PAYLOAD_LENGTH: UByte = 0u
+
+        fun fromData(
+            success: Boolean,
+            requestId: UInt,
+            responseId: UInt,
+            payloadLength: UByte,
+        ): NodeSetGaugeHighLowAlarmResponse? {
+            if (payloadLength < PAYLOAD_LENGTH) {
+                return null
+            }
+
+            return NodeSetGaugeHighLowAlarmResponse(
+                success,
+                requestId,
+                responseId,
+                payloadLength
+            )
+        }
     }
 }

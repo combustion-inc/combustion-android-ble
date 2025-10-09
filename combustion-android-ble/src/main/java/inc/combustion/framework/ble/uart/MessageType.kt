@@ -42,9 +42,11 @@ internal enum class MessageType(val value: UByte) {
     RESET_FOOD_SAFE(0x08u),
     SET_POWER_MODE(0x09u),
     RESET_PROBE(0x0Au),
+    SET_PROBE_HIGH_LOW_ALARM(0x0Bu),
+    SILENCE_PROBE_ALARMS(0x0Cu),
     ;
 
     companion object {
-        fun fromUByte(value: UByte) = values().firstOrNull { it.value == value }
+        fun fromUByte(value: UByte) = entries.firstOrNull { it.value == value }
     }
 }

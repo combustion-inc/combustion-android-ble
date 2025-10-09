@@ -60,11 +60,14 @@ internal enum class NodeMessageType(override val value: UByte) : NodeMessage {
     PROBE_FIRMWARE_REVISION(0X46u),
     PROBE_HARDWARE_REVISION(0X47u),
     PROBE_MODEL_INFORMATION(0X48u),
+    SET_PROBE_HIGH_LOW_ALARM(0x0Bu),
     HEARTBEAT(0X49u),
 
     GAUGE_STATUS(0x60u),
-    SET_HIGH_LOW_ALARM(0x61u),
+    SET_GAUGE_HIGH_LOW_ALARM(0x61u),
     GAUGE_LOG(0x62u),
+
+    SILENCE_ALARMS(0x0Cu),
     ;
 
     companion object {
