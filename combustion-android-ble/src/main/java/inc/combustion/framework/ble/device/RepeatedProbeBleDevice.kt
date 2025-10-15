@@ -39,45 +39,8 @@ import inc.combustion.framework.ble.device.UartCapableProbe.Companion.makeLinkId
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
 import inc.combustion.framework.ble.uart.ProbeLogResponse
-import inc.combustion.framework.ble.uart.meatnet.NodeConfigureFoodSafeRequest
-import inc.combustion.framework.ble.uart.meatnet.NodeConfigureFoodSafeResponse
-import inc.combustion.framework.ble.uart.meatnet.NodeGaugeStatusRequest
-import inc.combustion.framework.ble.uart.meatnet.NodeHeartbeatRequest
-import inc.combustion.framework.ble.uart.meatnet.NodeMessageType
-import inc.combustion.framework.ble.uart.meatnet.NodeProbeStatusRequest
-import inc.combustion.framework.ble.uart.meatnet.NodeReadFirmwareRevisionRequest
-import inc.combustion.framework.ble.uart.meatnet.NodeReadFirmwareRevisionResponse
-import inc.combustion.framework.ble.uart.meatnet.NodeReadHardwareRevisionRequest
-import inc.combustion.framework.ble.uart.meatnet.NodeReadHardwareRevisionResponse
-import inc.combustion.framework.ble.uart.meatnet.NodeReadModelInfoRequest
-import inc.combustion.framework.ble.uart.meatnet.NodeReadModelInfoResponse
-import inc.combustion.framework.ble.uart.meatnet.NodeReadProbeLogsRequest
-import inc.combustion.framework.ble.uart.meatnet.NodeReadProbeLogsResponse
-import inc.combustion.framework.ble.uart.meatnet.NodeReadSessionInfoRequest
-import inc.combustion.framework.ble.uart.meatnet.NodeReadSessionInfoResponse
-import inc.combustion.framework.ble.uart.meatnet.NodeRequest
-import inc.combustion.framework.ble.uart.meatnet.NodeResetFoodSafeRequest
-import inc.combustion.framework.ble.uart.meatnet.NodeResetFoodSafeResponse
-import inc.combustion.framework.ble.uart.meatnet.NodeResetProbeRequest
-import inc.combustion.framework.ble.uart.meatnet.NodeResetProbeResponse
-import inc.combustion.framework.ble.uart.meatnet.NodeResponse
-import inc.combustion.framework.ble.uart.meatnet.NodeSetPowerModeRequest
-import inc.combustion.framework.ble.uart.meatnet.NodeSetPowerModeResponse
-import inc.combustion.framework.ble.uart.meatnet.NodeSetPredictionRequest
-import inc.combustion.framework.ble.uart.meatnet.NodeSetPredictionResponse
-import inc.combustion.framework.ble.uart.meatnet.NodeSetProbeHighLowAlarmRequest
-import inc.combustion.framework.ble.uart.meatnet.NodeSetProbeHighLowAlarmResponse
-import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
-import inc.combustion.framework.service.CombustionProductType
-import inc.combustion.framework.service.DeviceConnectionState
-import inc.combustion.framework.service.FirmwareVersion
-import inc.combustion.framework.service.FoodSafeData
-import inc.combustion.framework.service.ModelInformation
-import inc.combustion.framework.service.ProbeColor
-import inc.combustion.framework.service.ProbeHighLowAlarmStatus
-import inc.combustion.framework.service.ProbeID
-import inc.combustion.framework.service.ProbePowerMode
-import inc.combustion.framework.service.ProbePredictionMode
+import inc.combustion.framework.ble.uart.meatnet.*
+import inc.combustion.framework.service.*
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -688,7 +651,7 @@ internal class RepeatedProbeBleDevice(
                         // Heartbeat message not processed
                     }
 
-                    is NodeGaugeStatusRequest -> {
+                    is NodeGaugeStatusRequest, is NodeSilenceAlarmsRequest -> {
                         // Processed in NodeBleDevice
                     }
                 }

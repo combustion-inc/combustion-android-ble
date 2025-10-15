@@ -428,6 +428,20 @@ class DeviceManager(
     val analyticsExceptionsFlow: SharedFlow<ExceptionEvent>
         get() = AnalyticsTracker.instance.exceptionEventFlow
 
+    /**
+     * Returns a flow of [SilenceAlarmsRequest], requests from MeatNet devices to silence alarms in app.
+     */
+    val silenceAlarmsRequestFlow: SharedFlow<SilenceAlarmsRequest>
+        get() = NetworkManager.instanceFlow
+            .flatMapLatest { mgr ->
+                // If there's no manager yet, placeholder flow
+                mgr?.silenceAlarmsRequestFlow?.distinctUntilChanged() ?: MutableSharedFlow()
+            }
+            .shareIn(
+                scope = requireNotNull(defaultCoroutineScope),
+                started = SharingStarted.Lazily,
+            )
+
     private fun doWhenNetworkManagerInitialized(onInitialized: suspend (NetworkManager) -> Unit) {
         mainCoroutineScope?.launch {
             NetworkManager.instanceFlow.first { it != null }?.let {
