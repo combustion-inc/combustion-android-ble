@@ -680,6 +680,7 @@ internal class NetworkManager(
                 gaugeManagers[serialNumber]?.observedGaugeStatus(gaugeStatus)
             },
             observeSilenceAlarmsCallback = { request ->
+                Log.v(LOG_TAG, "observeSilenceAlarms: $request")
                 _silenceAlarmsRequestFlow.tryEmit(request)
             },
         )
