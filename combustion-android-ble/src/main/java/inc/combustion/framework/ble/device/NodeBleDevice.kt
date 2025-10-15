@@ -281,14 +281,6 @@ internal class NodeBleDevice(
                         }
                     }
 
-                    (message is NodeRequest) && (message.serialNumber == hybridDeviceChild?.serialNumber) -> {
-                        hybridDeviceChild?.processNodeRequest(message)
-                    }
-
-                    (message is NodeResponse) && (message is TargetedNodeResponse) && (message.serialNumber == hybridDeviceChild?.serialNumber) -> {
-                        hybridDeviceChild?.processNodeResponse(message)
-                    }
-
                     message is NodeSilenceAlarmsRequest -> {
                         when (message.global) {
                             true -> SilenceAlarmsRequest.All(message.requestId)
@@ -301,6 +293,14 @@ internal class NodeBleDevice(
                         }?.let {
                             observeSilenceAlarmsCallback(it)
                         }
+                    }
+
+                    (message is NodeRequest) && (message.serialNumber == hybridDeviceChild?.serialNumber) -> {
+                        hybridDeviceChild?.processNodeRequest(message)
+                    }
+
+                    (message is NodeResponse) && (message is TargetedNodeResponse) && (message.serialNumber == hybridDeviceChild?.serialNumber) -> {
+                        hybridDeviceChild?.processNodeResponse(message)
                     }
 
                     else -> {
