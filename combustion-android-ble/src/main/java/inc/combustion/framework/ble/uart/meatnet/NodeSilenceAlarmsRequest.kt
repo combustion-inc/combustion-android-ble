@@ -28,14 +28,16 @@
 
 package inc.combustion.framework.ble.uart.meatnet
 
+import inc.combustion.framework.ble.getLittleEndianUInt32At
 import inc.combustion.framework.ble.putLittleEndianUInt32At
 import inc.combustion.framework.copyInUtf8SerialNumber
+import inc.combustion.framework.getUtf8SerialNumber
 import inc.combustion.framework.service.CombustionProductType
 
 internal class NodeSilenceAlarmsRequest(
     serialNumber: String?,
-    global: Boolean,
-    productType: CombustionProductType = CombustionProductType.UNKNOWN,
+    val global: Boolean,
+    val productType: CombustionProductType = CombustionProductType.UNKNOWN,
     requestId: UInt? = null,
 ) : NodeRequest(
     outgoingPayload = populatePayload(
@@ -48,16 +50,19 @@ internal class NodeSilenceAlarmsRequest(
     serialNumber = serialNumber,
 ) {
     override fun toString(): String {
-        return "${super.toString()} $serialNumber $requestId"
+        return "${super.toString()} $serialNumber $global $productType"
     }
 
     companion object {
         private const val PAYLOAD_LENGTH: UByte = 16u
-        private const val IDX_GLOBAL = 0
-        private const val IDX_PRODUCT_TYPE = 1
-        private const val IDX_SERIAL_NUMBER = 2
+        private val IDX_RAW_PAYLOAD_START = HEADER_SIZE.toInt()
+        private const val IDX_PAYLOAD_GLOBAL = 0
+        private const val IDX_PAYLOAD_PRODUCT_TYPE = 1
+        private const val IDX_PAYLOAD_PROBE_SERIAL_NUMBER = 2
+        private const val IDX_PAYLOAD_NON_PROBE_SERIAL_NUMBER = 6
 
-        private const val PADDING_BYTE: UByte = 0u
+        private const val BYTE_PADDING: UByte = 0u
+        private const val BYTE_TRUE: UByte = 1u
 
         /**
          * Helper function that builds up payload of request.
@@ -67,26 +72,68 @@ internal class NodeSilenceAlarmsRequest(
             global: Boolean,
             productType: CombustionProductType,
         ): UByteArray {
-            val payload = UByteArray(PAYLOAD_LENGTH.toInt()) { PADDING_BYTE }
-            if (global) {
-                payload[IDX_GLOBAL] = 1u
-            }
-            payload[IDX_PRODUCT_TYPE] = productType.type
+            val payload = UByteArray(PAYLOAD_LENGTH.toInt()) { BYTE_PADDING }
+            payload[IDX_PAYLOAD_PRODUCT_TYPE] = productType.type
 
-            if (!global) {
+            if (global) {
+                payload[IDX_PAYLOAD_GLOBAL] = BYTE_TRUE
+            } else {
                 val productSerialNumber =
                     requireNotNull(serialNumber) { "Silencing non-global alarms require non-null serialNumber" }
-                if (productType == CombustionProductType.PROBE) {
-                    payload.putLittleEndianUInt32At(
-                        IDX_SERIAL_NUMBER,
+                when (productType) {
+                    CombustionProductType.PROBE -> payload.putLittleEndianUInt32At(
+                        IDX_PAYLOAD_PROBE_SERIAL_NUMBER,
                         productSerialNumber.toLong(radix = 16).toUInt(),
                     )
-                } else {
-                    payload.copyInUtf8SerialNumber(productSerialNumber, IDX_SERIAL_NUMBER)
+
+                    else -> payload.copyInUtf8SerialNumber(
+                        productSerialNumber,
+                        IDX_PAYLOAD_NON_PROBE_SERIAL_NUMBER,
+                    )
                 }
             }
 
             return payload
+        }
+
+        /**
+         * Factory function that creates an instance of this object from raw message data.
+         */
+        fun fromRaw(
+            data: UByteArray,
+            requestId: UInt,
+            payloadLength: UByte,
+        ): NodeSilenceAlarmsRequest? {
+            if (payloadLength < PAYLOAD_LENGTH.toUInt()) {
+                return null
+            }
+            val productType =
+                CombustionProductType.fromUByte(data[IDX_RAW_PAYLOAD_START + IDX_PAYLOAD_PRODUCT_TYPE])
+            return if (data[IDX_RAW_PAYLOAD_START + IDX_PAYLOAD_GLOBAL] == BYTE_TRUE) {
+                NodeSilenceAlarmsRequest(
+                    serialNumber = null,
+                    global = true,
+                    productType = productType,
+                    requestId = requestId,
+                )
+            } else {
+                val serialNumber = when (productType) {
+                    CombustionProductType.PROBE -> {
+                        val serialUInt = data.getLittleEndianUInt32At(
+                            IDX_RAW_PAYLOAD_START + IDX_PAYLOAD_PROBE_SERIAL_NUMBER,
+                        )
+                        Integer.toHexString(serialUInt.toInt()).uppercase()
+                    }
+
+                    else -> data.getUtf8SerialNumber(IDX_RAW_PAYLOAD_START + IDX_PAYLOAD_NON_PROBE_SERIAL_NUMBER)
+                }
+                NodeSilenceAlarmsRequest(
+                    serialNumber = serialNumber,
+                    global = false,
+                    productType = productType,
+                    requestId = requestId,
+                )
+            }
         }
     }
 }

@@ -259,6 +259,15 @@ internal class NetworkManager(
     internal val discoveredWiFiNodesFlow: StateFlow<List<String>>
         get() = wifiNodesManager.discoveredWiFiNodesFlow
 
+    private val _silenceAlarmsRequestFlow =
+        MutableSharedFlow<SilenceAlarmsRequest>(
+            extraBufferCapacity = 5,
+            onBufferOverflow = BufferOverflow.DROP_OLDEST,
+        )
+
+    val silenceAlarmsRequestFlow: SharedFlow<SilenceAlarmsRequest>
+        get() = _silenceAlarmsRequestFlow.asSharedFlow()
+
     fun setDeviceAllowlist(allowlist: Set<String>?) {
         // Make sure that the new allowlist is set before we get another advertisement sneak in and
         // try to kick off a connection to a probe that is no longer in the allowlist.
@@ -669,6 +678,10 @@ internal class NetworkManager(
             adapter,
             observeGaugeStatusCallback = { serialNumber, gaugeStatus ->
                 gaugeManagers[serialNumber]?.observedGaugeStatus(gaugeStatus)
+            },
+            observeSilenceAlarmsCallback = { request ->
+                Log.v(LOG_TAG, "observeSilenceAlarms: $request")
+                _silenceAlarmsRequestFlow.tryEmit(request)
             },
         )
         publishNodeFirmwareOnConnectedState(device.getDevice())

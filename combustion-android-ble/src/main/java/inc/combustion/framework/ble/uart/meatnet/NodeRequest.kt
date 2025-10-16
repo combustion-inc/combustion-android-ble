@@ -132,6 +132,14 @@ internal open class NodeRequest(
                     )
                 }
 
+                NodeMessageType.SILENCE_ALARMS -> {
+                    NodeSilenceAlarmsRequest.fromRaw(
+                        requestData,
+                        requestId,
+                        payloadLength,
+                    )
+                }
+
                 else -> {
                     DeviceManager.instance.settings.messageTypeCallback(rawMessageType)?.let {
                         return GenericNodeRequest.fromRaw(

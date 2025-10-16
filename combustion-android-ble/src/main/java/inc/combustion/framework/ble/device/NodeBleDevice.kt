@@ -9,24 +9,8 @@ import inc.combustion.framework.ble.GaugeStatus
 import inc.combustion.framework.ble.NetworkManager
 import inc.combustion.framework.ble.device.UartCapableProbe.Companion.MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
-import inc.combustion.framework.ble.uart.meatnet.GenericNodeRequest
-import inc.combustion.framework.ble.uart.meatnet.GenericNodeResponse
-import inc.combustion.framework.ble.uart.meatnet.NodeGaugeStatusRequest
-import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsRequest
-import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsResponse
-import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsRequest
-import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
-import inc.combustion.framework.ble.uart.meatnet.NodeRequest
-import inc.combustion.framework.ble.uart.meatnet.NodeResponse
-import inc.combustion.framework.ble.uart.meatnet.NodeSetGaugeHighLowAlarmRequest
-import inc.combustion.framework.ble.uart.meatnet.NodeSetGaugeHighLowAlarmResponse
-import inc.combustion.framework.ble.uart.meatnet.NodeSilenceAlarmsRequest
-import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
-import inc.combustion.framework.ble.uart.meatnet.TargetedNodeResponse
-import inc.combustion.framework.service.CombustionProductType
-import inc.combustion.framework.service.DebugSettings
-import inc.combustion.framework.service.DeviceConnectionState
-import inc.combustion.framework.service.HighLowAlarmStatus
+import inc.combustion.framework.ble.uart.meatnet.*
+import inc.combustion.framework.service.*
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -39,6 +23,7 @@ internal class NodeBleDevice(
     adapter: BluetoothAdapter,
     private val uart: UartBleDevice = UartBleDevice(mac, nodeAdvertisingData, owner, adapter),
     private val observeGaugeStatusCallback: suspend (String, GaugeStatus) -> Unit,
+    private val observeSilenceAlarmsCallback: suspend (SilenceAlarmsRequest) -> Unit,
 ) : UartCapableDevice {
 
     override val id: DeviceID
@@ -293,6 +278,20 @@ internal class NodeBleDevice(
                     message is NodeGaugeStatusRequest -> {
                         message.serialNumber?.let { serialNumber ->
                             observeGaugeStatusCallback(serialNumber, message.gaugeStatus)
+                        }
+                    }
+
+                    message is NodeSilenceAlarmsRequest -> {
+                        when (message.global) {
+                            true -> SilenceAlarmsRequest.All(message.requestId)
+                            else -> message.serialNumber?.let {
+                                SilenceAlarmsRequest.Device(
+                                    serialNumber = it,
+                                    id = message.requestId,
+                                )
+                            }
+                        }?.let {
+                            observeSilenceAlarmsCallback(it)
                         }
                     }
 
