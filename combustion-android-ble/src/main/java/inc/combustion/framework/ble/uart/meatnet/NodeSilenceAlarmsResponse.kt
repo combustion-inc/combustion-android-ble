@@ -28,10 +28,13 @@
 
 package inc.combustion.framework.ble.uart.meatnet
 
-import inc.combustion.framework.utf8StringFromRange
+import inc.combustion.framework.ble.getLittleEndianUInt32At
+import inc.combustion.framework.getUtf8SerialNumber
+import inc.combustion.framework.service.CombustionProductType
 
 internal class NodeSilenceAlarmsResponse(
-    val serialNumber: String,
+    val serialNumber: String?,
+    val productType: CombustionProductType?,
     success: Boolean,
     requestId: UInt,
     responseId: UInt,
@@ -44,12 +47,15 @@ internal class NodeSilenceAlarmsResponse(
     NodeMessageType.SILENCE_ALARMS,
 ) {
     override fun toString(): String {
-        return "${super.toString()} $success $serialNumber"
+        return "${super.toString()} $success $serialNumber $productType"
     }
 
     companion object {
-        private const val PAYLOAD_LENGTH: UByte = 10u
-        private val SERIAL_RANGE = HEADER_SIZE.toInt() until (HEADER_SIZE + PAYLOAD_LENGTH).toInt()
+        private const val PAYLOAD_LENGTH: UByte = 15u
+        private val IDX_RAW_PAYLOAD_START = HEADER_SIZE.toInt()
+        private val IDX_PAYLOAD_PRODUCT_TYPE = IDX_RAW_PAYLOAD_START
+        private val IDX_PAYLOAD_PROBE_SERIAL_NUMBER = IDX_RAW_PAYLOAD_START + 1
+        private val IDX_PAYLOAD_NON_PROBE_SERIAL_NUMBER = IDX_RAW_PAYLOAD_START + 5
 
         fun fromData(
             payload: UByteArray,
@@ -62,14 +68,37 @@ internal class NodeSilenceAlarmsResponse(
                 return null
             }
 
-            val serialNumber = payload.utf8StringFromRange(SERIAL_RANGE)
-            return NodeSilenceAlarmsResponse(
-                serialNumber = serialNumber,
-                success,
-                requestId,
-                responseId,
-                payloadLength
-            )
+            return if (success) {
+                val productType =
+                    CombustionProductType.fromUByte(payload[IDX_PAYLOAD_PRODUCT_TYPE])
+
+                val serialNumber = when (productType) {
+                    CombustionProductType.PROBE -> {
+                        val serialUInt =
+                            payload.getLittleEndianUInt32At(IDX_PAYLOAD_PROBE_SERIAL_NUMBER)
+                        Integer.toHexString(serialUInt.toInt()).uppercase()
+                    }
+
+                    else -> payload.getUtf8SerialNumber(IDX_PAYLOAD_NON_PROBE_SERIAL_NUMBER)
+                }
+                NodeSilenceAlarmsResponse(
+                    serialNumber = serialNumber,
+                    productType = productType,
+                    success = true,
+                    requestId,
+                    responseId,
+                    payloadLength
+                )
+            } else {
+                NodeSilenceAlarmsResponse(
+                    serialNumber = null,
+                    productType = null,
+                    success = false,
+                    requestId,
+                    responseId,
+                    payloadLength
+                )
+            }
         }
     }
 }
