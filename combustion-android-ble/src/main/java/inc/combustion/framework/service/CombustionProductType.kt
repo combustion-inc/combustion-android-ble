@@ -28,6 +28,7 @@
 
 package inc.combustion.framework.service
 
+import inc.combustion.framework.service.dfu.DfuProductType
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -60,6 +61,14 @@ enum class CombustionProductType(val type: UByte) {
                 else -> UNKNOWN
             }
         }
+
+        fun fromDfuProductType(productType: DfuProductType): CombustionProductType =
+            when (productType) {
+                DfuProductType.PROBE -> PROBE
+                DfuProductType.GAUGE -> GAUGE
+                DfuProductType.CHARGER, DfuProductType.CHARGER -> NODE
+                else -> UNKNOWN
+            }
     }
 
     val isRepeater: Boolean get() = (this != PROBE) && (this != UNKNOWN)
