@@ -49,12 +49,12 @@ data class FirmwareVersion(
         if (patch > other.patch) return 1
         if (patch < other.patch) return -1
 
-        if(commit == null && other.commit == null) return 0
-        if(other.commit == null) return 1
-        if(commit == null) return -1
+        if (commit == null && other.commit == null) return 0
+        if (other.commit == null) return 1
+        if (commit == null) return -1
 
-        if(commit > other.commit) return 1
-        if(commit < other.commit) return -1
+        if (commit > other.commit) return 1
+        if (commit < other.commit) return -1
 
         return 0
     }
@@ -90,8 +90,9 @@ data class FirmwareVersion(
          * when the version identifiers aren't valid decimal (base ten) numbers.
          */
         fun fromString(versionString: String): FirmwareVersion {
+            val inCorrectVersionBaseMessage = "Incorrect firmware version \"${versionString}\". "
             if (!versionString.startsWith("v") || versionString.count { it == '.' } != 2) {
-                throw IllegalArgumentException("Versions must start with 'v'")
+                throw IllegalArgumentException(inCorrectVersionBaseMessage + "Versions must start with 'v'")
             }
 
             // Remove leading 'v'
@@ -102,15 +103,15 @@ data class FirmwareVersion(
 
             val versionIds = versionAndSha[0].split('.')
             if (versionIds.size != 3) {
-                throw IllegalArgumentException("Versions must be of the form major.minor.patch[-gitsha]")
+                throw IllegalArgumentException(inCorrectVersionBaseMessage + "Versions must be of the form major.minor.patch[-gitsha]")
             }
 
-            val major = versionIds[0].toIntOrNull(10) ?:
-            throw IllegalArgumentException("Major version must be an integer")
-            val minor = versionIds[1].toIntOrNull(10) ?:
-            throw IllegalArgumentException("Minor version must be an integer")
-            val patch = versionIds[2].toIntOrNull(10) ?:
-            throw IllegalArgumentException("Patch version must be an integer")
+            val major = versionIds[0].toIntOrNull(10)
+                ?: throw IllegalArgumentException(inCorrectVersionBaseMessage + "Major version must be an integer")
+            val minor = versionIds[1].toIntOrNull(10)
+                ?: throw IllegalArgumentException(inCorrectVersionBaseMessage + "Minor version must be an integer")
+            val patch = versionIds[2].toIntOrNull(10)
+                ?: throw IllegalArgumentException(inCorrectVersionBaseMessage + "Patch version must be an integer")
             val commit = if (versionAndSha.size == 3) versionAndSha[1].toIntOrNull() else null
             val sha = if (versionAndSha.size == 3) versionAndSha[2] else null
 
