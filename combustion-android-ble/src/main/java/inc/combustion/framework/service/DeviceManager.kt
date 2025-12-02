@@ -112,7 +112,7 @@ class DeviceManager(
         private val connection = object : ServiceConnection {
 
             override fun onServiceConnected(className: ComponentName, serviceBinder: IBinder) {
-                val binder = serviceBinder as CombustionService.CombustionServiceBinder
+                val binder = serviceBinder as CombustionServiceBinder
                 INSTANCE.serviceFlow.value = binder.getService()
 
                 connected.set(true)

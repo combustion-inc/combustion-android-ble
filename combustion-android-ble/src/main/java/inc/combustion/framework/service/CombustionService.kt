@@ -58,7 +58,7 @@ import kotlin.random.asKotlinRandom
 @ExperimentalCoroutinesApi
 class CombustionService : LifecycleService() {
 
-    private val binder = CombustionServiceBinder()
+    private val binder = CombustionServiceBinder(this)
 
     internal var dfuManager: DfuManager? = null
 
@@ -117,10 +117,6 @@ class CombustionService : LifecycleService() {
                 context.stopService(intent)
             }
         }
-    }
-
-    inner class CombustionServiceBinder : Binder() {
-        fun getService(): CombustionService = this@CombustionService
     }
 
     private fun startForeground() {
@@ -227,6 +223,7 @@ class CombustionService : LifecycleService() {
 
         Log.d(LOG_TAG, "Combustion Android Service Destroyed...")
         super.onDestroy()
+        binder.clear()
     }
 
     internal fun startDfuMode() {
@@ -237,5 +234,16 @@ class CombustionService : LifecycleService() {
     internal fun stopDfuMode() {
         dfuManager?.stop()
         NetworkManager.instance.stopDfuMode()
+    }
+}
+
+internal class CombustionServiceBinder(
+    private var service: CombustionService?,
+) : Binder() {
+
+    fun getService(): CombustionService? = service
+
+    fun clear() {
+        service = null
     }
 }
