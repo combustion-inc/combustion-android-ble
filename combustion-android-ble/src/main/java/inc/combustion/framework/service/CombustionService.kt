@@ -166,7 +166,7 @@ class CombustionService : Service() {
                 dfuManager =
                     DfuManager(
                         serviceScope,
-                        this,
+                        applicationContext,
                         bluetooth.adapter,
                         dfuNotificationTarget,
                         latestFirmware
