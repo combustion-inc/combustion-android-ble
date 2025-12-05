@@ -31,6 +31,7 @@ import android.app.Activity
 import android.app.Application
 import android.app.Notification
 import android.content.ComponentName
+import android.content.Context
 import android.content.ServiceConnection
 import android.net.Uri
 import android.os.IBinder
@@ -92,19 +93,26 @@ class DeviceManager(
     )
 
     companion object {
+        const val MINIMUM_PREDICTION_SETPOINT_CELSIUS = 0.0
+        const val MAXIMUM_PREDICTION_SETPOINT_CELSIUS = 100.0
+
         private lateinit var INSTANCE: DeviceManager
-        private lateinit var app: Application
+
+        private lateinit var appContext: Context
         private lateinit var onServiceBound: (deviceManager: DeviceManager) -> Unit
 
-        // DeviceManager created once
+        // Prevent creating Singleton more than once
         private val initialized = AtomicBoolean(false)
 
+        // Prevent duplicate service start/stop
         // startCombustionService() - stopCombustionService()
         private val serviceRunning = AtomicBoolean(false)
 
+        // Prevent duplicate service binding/unbinding
         // bindCombustionService() - unbindCombustionService()
         private val bindingInProgress = AtomicBoolean(false)
 
+        // True if service has been connected
         // onServiceConnected() - onServiceDisconnected()/unbindCombustionService()
         private val connected = AtomicBoolean(false)
 
@@ -131,9 +139,6 @@ class DeviceManager(
             }
         }
 
-        const val MINIMUM_PREDICTION_SETPOINT_CELSIUS = 0.0
-        const val MAXIMUM_PREDICTION_SETPOINT_CELSIUS = 100.0
-
         /**
          * Instance property for the singleton
          */
@@ -150,7 +155,7 @@ class DeviceManager(
             onBound: (deviceManager: DeviceManager) -> Unit = { _ -> }
         ) {
             if (!initialized.getAndSet(true)) {
-                app = application
+                appContext = application.applicationContext
                 onServiceBound = onBound
                 INSTANCE = DeviceManager(settings)
             }
@@ -181,7 +186,7 @@ class DeviceManager(
             }
 
             return CombustionService.start(
-                app.applicationContext,
+                appContext,
                 notification,
                 dfuNotificationTarget,
                 INSTANCE.settings,
@@ -213,7 +218,7 @@ class DeviceManager(
                 Log.d(LOG_TAG, "Binding Service")
             }
 
-            CombustionService.bind(app.applicationContext, connection)
+            CombustionService.bind(appContext, connection)
         }
 
         /**
@@ -234,7 +239,7 @@ class DeviceManager(
                 Log.d(LOG_TAG, "Unbinding Service")
             }
 
-            app.unbindService(connection)
+            appContext.unbindService(connection)
             return true
         }
 
@@ -263,7 +268,7 @@ class DeviceManager(
             // do our best effort to stop the service, and log a message if we fall
             // into this occasional situation.
             try {
-                CombustionService.stop(app.applicationContext)
+                CombustionService.stop(appContext)
             } catch (e: Exception) {
                 Log.w(LOG_TAG, "Exception stopping service ${e.stackTrace}")
             }
