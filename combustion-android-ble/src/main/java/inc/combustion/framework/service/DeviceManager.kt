@@ -95,18 +95,17 @@ class DeviceManager(
         private lateinit var INSTANCE: DeviceManager
         private lateinit var app: Application
         private lateinit var onServiceBound: (deviceManager: DeviceManager) -> Unit
+
+        // DeviceManager created once
         private val initialized = AtomicBoolean(false)
 
-        /**
-         * Is true if binding application to the unbound service was called.
-         * Is false if not yet binding or application was unbounded.
-         */
-        private val activeBind = AtomicBoolean(false)
+        // startCombustionService() - stopCombustionService()
+        private val serviceRunning = AtomicBoolean(false)
 
-        /**
-         * Is true if the application was successfully bound/connected to the service.
-         * Is false if the application was not yet bound to the service or was unbounded.
-         */
+        // bindCombustionService() - unbindCombustionService()
+        private val bindingInProgress = AtomicBoolean(false)
+
+        // onServiceConnected() - onServiceDisconnected()/unbindCombustionService()
         private val connected = AtomicBoolean(false)
 
         private val appApiScope =
@@ -115,19 +114,19 @@ class DeviceManager(
         private val connection = object : ServiceConnection {
 
             override fun onServiceConnected(className: ComponentName, serviceBinder: IBinder) {
+                connected.set(true)
                 val binder = serviceBinder as CombustionServiceBinder
                 INSTANCE.serviceFlow.value = binder.getService()
 
-                connected.set(true)
                 onServiceBound(INSTANCE)
-
                 INSTANCE.onBoundInitList.forEach { initCallback ->
                     initCallback()
                 }
                 INSTANCE.onBoundInitList.clear()
             }
 
-            override fun onServiceDisconnected(arg0: ComponentName) {
+            override fun onServiceDisconnected(name: ComponentName) {
+                // Android disconnected service
                 connected.set(false)
             }
         }
@@ -172,22 +171,24 @@ class DeviceManager(
             onServiceStarted: (() -> Unit)? = null,
         ): Int {
             Log.v("D3V", "startCombustionService")
-            if (!connected.get()) {
-                if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
-                    Log.d(LOG_TAG, "Start Service")
-
-                return CombustionService.start(
-                    app.applicationContext,
-                    notification,
-                    dfuNotificationTarget,
-                    INSTANCE.settings,
-                    latestFirmware,
-                    onServiceStarted,
-                )
-            } else {
-                Log.w(LOG_TAG, "`Start Service: service already connected.")
+            if (serviceRunning.get()) {
+                Log.w(LOG_TAG, "Start Service: service already started")
+                return 0
             }
-            return 0
+            serviceRunning.set(true)
+
+            if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE) {
+                Log.d(LOG_TAG, "Start Service")
+            }
+
+            return CombustionService.start(
+                app.applicationContext,
+                notification,
+                dfuNotificationTarget,
+                INSTANCE.settings,
+                latestFirmware,
+                onServiceStarted,
+            )
         }
 
         /**
@@ -195,15 +196,26 @@ class DeviceManager(
          * Must be called after starting service with [startCombustionService].
          */
         fun bindCombustionService() {
-            Log.v("D3V", "bindCombustionService")
-            if (!activeBind.getAndSet(true)) {
-                if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
-                    Log.d(LOG_TAG, "Binding Service")
-
-                CombustionService.bind(app.applicationContext, connection)
-            } else {
-                Log.w(LOG_TAG, "Binding Service: service already binding.")
+            if (!serviceRunning.get()) {
+                Log.e(
+                    LOG_TAG,
+                    "Binding Service: service not running; call startCombustionService() first"
+                )
+                return
             }
+
+            if (bindingInProgress.get()) {
+                Log.w(LOG_TAG, "Binding Service: already binding or bound")
+                return
+            }
+            bindingInProgress.set(true)
+
+            Log.v("D3V", "bindCombustionService")
+            if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE) {
+                Log.d(LOG_TAG, "Binding Service")
+            }
+
+            CombustionService.bind(app.applicationContext, connection)
         }
 
         /**
@@ -214,21 +226,22 @@ class DeviceManager(
         fun unbindCombustionService(): Boolean {
             Log.v(
                 "D3V",
-                "unbindCombustionService, activeBind = ${activeBind.get()}, connected = ${connected.get()}"
+                "unbindCombustionService, bindingInProgress = ${bindingInProgress.get()}, connected = ${connected.get()}"
             )
-            return if (connected.get() && activeBind.get()) {
-                if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE) {
-                    Log.d(LOG_TAG, "Unbinding Service")
-                }
-
-                activeBind.set(false)
-                connected.set(false)
-                app.unbindService(connection)
-                true
-            } else {
-                Log.w(LOG_TAG, "Unbinding Service: service already unbound.")
-                false
+            if (!bindingInProgress.get()) {
+                Log.w(LOG_TAG, "Unbinding Service: not bound")
+                return false
             }
+            bindingInProgress.set(false)
+            // app voluntarily terminated the connection
+            connected.set(false)
+
+            if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE) {
+                Log.d(LOG_TAG, "Unbinding Service")
+            }
+
+            app.unbindService(connection)
+            return true
         }
 
         /**
@@ -238,10 +251,15 @@ class DeviceManager(
          */
         fun stopCombustionService(): Boolean {
             Log.v("D3V", "stopCombustionService, connected = ${connected.get()}")
-            if (connected.get()) {
-                Log.w(LOG_TAG, "Stopping Service: requires unbinding service first")
+            if (!serviceRunning.get()) {
+                Log.w(LOG_TAG, "stopCombustionService: already stopped")
                 return false
             }
+            if (bindingInProgress.get() || connected.get()) {
+                Log.e(LOG_TAG, "stopCombustionService: must unbind first")
+                return false
+            }
+            serviceRunning.set(false)
 
             if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE) {
                 Log.d(LOG_TAG, "Stopping Service")
