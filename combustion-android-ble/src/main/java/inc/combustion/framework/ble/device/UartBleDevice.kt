@@ -163,7 +163,7 @@ internal open class UartBleDevice(
                 try {
                     peripheral.write(UART_RX_CHARACTERISTIC, data, WriteType.WithoutResponse)
                 } catch (e: Exception) {
-                    Log.w(LOG_TAG, "UART-TX: Unable to write to RX characteristic.")
+                    Log.w(LOG_TAG, "UART-TX: Unable to write to RX characteristic.", e)
                 }
             }
         }

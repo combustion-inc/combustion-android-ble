@@ -47,7 +47,7 @@ import kotlinx.coroutines.flow.*
  * manages only direct links to temperature probes.  The class is responsible for presenting
  * a common interface over both scenarios.
  *
- * @property owner LifecycleOwner for coroutine scope.
+ * @property scope Coroutine scope.
  * @property settings Service settings.
  * @constructor
  * Constructs a probe manager

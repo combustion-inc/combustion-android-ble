@@ -45,7 +45,7 @@ import kotlinx.coroutines.flow.*
  * manages only direct links to the gauge. The class is responsible for presenting
  * a common interface over both scenarios.
  *
- * @property owner LifecycleOwner for coroutine scope.
+ * @property scope Coroutine scope.
  * @property settings Service settings.
  * @constructor
  * Constructs a gauge manager
@@ -621,7 +621,7 @@ internal class GaugeManager(
         ) ?: run {
             val nodeLinks = arbitrator.connectedNodeLinks
             if (nodeLinks.isNotEmpty()) {
-                var handledSequenceNumbers = mutableSetOf<UInt>()
+                val handledSequenceNumbers = mutableSetOf<UInt>()
                 nodeLinks.forEach { node ->
                     node.sendGaugeLogRequest(
                         serialNumber,

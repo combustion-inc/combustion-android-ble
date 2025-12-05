@@ -50,7 +50,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * Base class for Combustion Devices.
  *
  * @property mac Bluetooth MAC address of device.
- * @property owner Owner of the instance's coroutine scope.
+ * @property scope Coroutine scope.
  * @constructor Creates a new Device with the specified MAC.
  *
  * @param adapter Android BluetoothAdapter.
