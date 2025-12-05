@@ -32,8 +32,6 @@ import android.bluetooth.BluetoothAdapter
 import android.content.Context
 import android.net.Uri
 import android.util.Log
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.dfu.DfuCapableDevice
 import inc.combustion.framework.ble.dfu.PerformDfuDelegate
@@ -41,6 +39,7 @@ import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.service.dfu.DfuState
 import inc.combustion.framework.service.dfu.DfuStatus
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -52,10 +51,10 @@ import no.nordicsemi.android.dfu.DfuServiceListenerHelper
 internal class DfuBleDevice(
     deviceStateFlow: MutableStateFlow<DfuState>,
     private val context: Context,
-    owner: LifecycleOwner,
+    scope: CoroutineScope,
     adapter: BluetoothAdapter,
     advertisingData: DeviceAdvertisingData,
-) : DeviceInformationBleDevice(advertisingData.mac, advertisingData, owner, adapter),
+) : DeviceInformationBleDevice(advertisingData.mac, advertisingData, scope, adapter),
     DfuProgressListener,
     DfuLogListener,
     DfuCapableDevice {
@@ -86,7 +85,7 @@ internal class DfuBleDevice(
             }
 
             DeviceConnectionState.CONNECTED -> {
-                owner.lifecycleScope.launch(Dispatchers.IO) {
+                scope.launch(Dispatchers.IO) {
                     readSerialNumber()
                     readFirmwareVersion()
                     readHardwareRevision()

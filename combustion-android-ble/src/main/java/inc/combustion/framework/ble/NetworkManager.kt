@@ -34,8 +34,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.util.Log
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.device.*
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
@@ -51,6 +49,7 @@ import inc.combustion.framework.service.CombustionProductType.GAUGE
 import inc.combustion.framework.service.CombustionProductType.NODE
 import inc.combustion.framework.service.CombustionProductType.PROBE
 import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
@@ -68,9 +67,9 @@ private val SUPPORTED_ADVERTISING_PRODUCTS = setOf(
 )
 
 internal class NetworkManager(
-    private var owner: LifecycleOwner,
-    private var adapter: BluetoothAdapter,
-    private var settings: DeviceManager.Settings,
+    private val scope: CoroutineScope,
+    private val adapter: BluetoothAdapter,
+    private val settings: DeviceManager.Settings,
 ) {
     private sealed class DeviceHolder {
         data class ProbeHolder(val probe: ProbeBleDevice) : DeviceHolder()
@@ -116,22 +115,31 @@ internal class NetworkManager(
         )
 
         fun initialize(
-            owner: LifecycleOwner,
+            scope: CoroutineScope,
             adapter: BluetoothAdapter,
             settings: DeviceManager.Settings,
         ) {
-            if (!initialized.getAndSet(true)) {
-                INSTANCE = NetworkManager(owner, adapter, settings)
-                _instanceFlow.value = INSTANCE
+            Log.v("D3V", "NetworkManager initialize")
+            val shouldRecreate = if (!initialized.get()) {
+                true
             } else {
-                // assumption is that CombustionService will correctly manage things as part of its
-                // lifecycle, clearing this manager when the service is stopped.
-                INSTANCE.owner = owner
-                INSTANCE.adapter = adapter
-                INSTANCE.settings = settings
+                // INSTANCE is guaranteed safe to access here
+                (INSTANCE.adapter != adapter) || (INSTANCE.settings != settings)
             }
 
-            INSTANCE.initialize()
+            if (shouldRecreate) {
+                if (initialized.get()) {
+                    // Only call finish() if an old instance exists
+                    INSTANCE.finish()
+                }
+
+                INSTANCE = NetworkManager(scope, adapter, settings)
+                _instanceFlow.value = INSTANCE
+                initialized.set(true)
+            }
+
+            // Always initialize the active instance
+            INSTANCE.start()
         }
 
         val instance: NetworkManager
@@ -179,7 +187,7 @@ internal class NetworkManager(
     private val gaugeManagers = hashMapOf<String, GaugeManager>()
     private val deviceInformationDevices = hashMapOf<DeviceID, DeviceInformationBleDevice>()
     private var proximityDevices = hashMapOf<String, ProximityDevice>()
-    private val wifiNodesManager = WiFiNodesManager { deviceId ->
+    private val wifiNodesManager = WiFiNodesManager(scope) { deviceId ->
         when (val node = devices[deviceId]) {
             is DeviceHolder.ProbeHolder -> NOT_IMPLEMENTED("getNodeDevice is not implemented for probe with id = $deviceId, type = ${node.probe.productType}, and serialNumber = ${node.probe.serialNumber}")
             is DeviceHolder.RepeaterHolder -> node.repeater
@@ -210,7 +218,7 @@ internal class NetworkManager(
 
                     BluetoothAdapter.STATE_ON -> {
                         if (scanningForDevices) {
-                            DeviceScanner.scan(owner)
+                            DeviceScanner.scan(scope)
                         }
                         flowHolder.mutableNetworkState.value =
                             flowHolder.mutableNetworkState.value.copy(bluetoothOn = true)
@@ -294,7 +302,7 @@ internal class NetworkManager(
         }
 
         if (scanningForDevices) {
-            DeviceScanner.scan(owner)
+            DeviceScanner.scan(scope)
             flowHolder.mutableNetworkState.value =
                 flowHolder.mutableNetworkState.value.copy(scanningOn = true)
         }
@@ -379,20 +387,20 @@ internal class NetworkManager(
     }
 
     fun addSimulatedProbe() {
-        val probe = SimulatedProbeBleDevice(owner)
+        val probe = SimulatedProbeBleDevice(scope)
         val manager = ProbeManager(
             serialNumber = probe.serialNumber,
-            owner = owner,
+            scope = scope,
             settings = settings,
             dfuDisconnectedNodeCallback = { }
         )
 
         probeManagers[manager.serialNumber] = manager
-        LogManager.instance.manageProbe(owner, manager)
+        LogManager.instance.manageProbe(scope, manager)
 
         manager.addSimulatedProbe(probe)
 
-        owner.lifecycleScope.launch {
+        scope.launch {
             flowHolder.mutableDiscoveredDevicesFlow.emit(
                 DeviceDiscoveryEvent.ProbeDiscovered(probe.serialNumber)
             )
@@ -400,21 +408,21 @@ internal class NetworkManager(
     }
 
     fun addSimulatedGauge() {
-        val gauge = SimulatedGaugeBleDevice(owner)
+        val gauge = SimulatedGaugeBleDevice(scope)
         val manager = GaugeManager(
             mac = gauge.mac,
             serialNumber = gauge.serialNumber,
-            owner = owner,
+            scope = scope,
             settings = settings,
-            dfuDisconnectedNodeCallback = { }
+            dfuDisconnectedNodeCallback = { },
         )
 
         gaugeManagers[manager.serialNumber] = manager
-        LogManager.instance.manageGauge(owner, manager)
+        LogManager.instance.manageGauge(scope, manager)
 
         manager.addSimulatedGauge(gauge)
 
-        owner.lifecycleScope.launch {
+        scope.launch {
             flowHolder.mutableDiscoveredDevicesFlow.emit(
                 DeviceDiscoveryEvent.GaugeDiscovered(gauge.serialNumber)
             )
@@ -621,9 +629,12 @@ internal class NetworkManager(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     fun finish() {
+        Log.v("D3V", "NetworkManager finish")
         DeviceScanner.stop()
         jobManager.cancelJobs()
         clearDevices()
+        _instanceFlow.value = null
+        initialized.set(false)
     }
 
     /**
@@ -637,7 +648,7 @@ internal class NetworkManager(
             val deviceHolder = when (advertisement.productType) {
                 PROBE -> {
                     DeviceHolder.ProbeHolder(
-                        ProbeBleDevice(advertisement.mac, owner, advertisement, adapter)
+                        ProbeBleDevice(advertisement.mac, scope = scope, advertisement, adapter)
                     )
                 }
 
@@ -673,7 +684,7 @@ internal class NetworkManager(
     private fun createNodeBleDevice(advertisement: DeviceAdvertisingData): NodeBleDevice {
         val device = NodeBleDevice(
             advertisement.mac,
-            owner,
+            scope = scope,
             advertisement,
             adapter,
             observeGaugeStatusCallback = { serialNumber, gaugeStatus ->
@@ -696,7 +707,7 @@ internal class NetworkManager(
         if (!probeManagers.containsKey(probeSerialNumber)) {
             val manager = ProbeManager(
                 serialNumber = probeSerialNumber,
-                owner = owner,
+                scope = scope,
                 settings = settings,
                 // called by the ProbeManager whenever a MeatNet node is disconnected
                 dfuDisconnectedNodeCallback = {
@@ -710,7 +721,7 @@ internal class NetworkManager(
             )
 
             probeManagers[probeSerialNumber] = manager
-            LogManager.instance.manageProbe(owner, manager)
+            LogManager.instance.manageProbe(scope, manager)
 
             wifiNodesManager.subscribeToNodeFlow(manager)
             true
@@ -727,7 +738,7 @@ internal class NetworkManager(
             val manager = GaugeManager(
                 mac = mac,
                 serialNumber = gaugeSerialNumber,
-                owner = owner,
+                scope = scope,
                 settings = settings,
                 dfuDisconnectedNodeCallback = {
                     firmwareStateOfNetwork.remove(it)
@@ -740,7 +751,7 @@ internal class NetworkManager(
             )
 
             gaugeManagers[gaugeSerialNumber] = manager
-            LogManager.instance.manageGauge(owner, manager)
+            LogManager.instance.manageGauge(scope, manager)
 
             wifiNodesManager.subscribeToNodeFlow(manager)
             true
@@ -989,10 +1000,10 @@ internal class NetworkManager(
         false
     }
 
-    private fun initialize() {
-        wifiNodesManager.initialize(owner)
+    private fun start() {
+        Log.v("D3V", "NetworkManager start")
         jobManager.addJob(
-            owner.lifecycleScope.launch(CoroutineName("collectAdvertisingData")) {
+            scope.launch(CoroutineName("collectAdvertisingData")) {
                 collectAdvertisingData()
             }
         )
@@ -1002,7 +1013,7 @@ internal class NetworkManager(
         // in that case, the client app needs to start scanning once bluetooth permissions are allowed.
         if (settings.meatNetEnabled) {
             jobManager.addJob(
-                owner.lifecycleScope.launch(CoroutineName("networkStateFlow")) {
+                scope.launch(CoroutineName("networkStateFlow")) {
                     var bluetoothIsOn = false
                     networkStateFlow.collect {
                         if (!bluetoothIsOn && it.bluetoothOn) {
@@ -1025,7 +1036,7 @@ internal class NetworkManager(
 
             if (settings.meatNetEnabled) {
                 // MeatNet automatically starts scanning without API call.
-                DeviceScanner.scan(owner)
+                DeviceScanner.scan(scope)
                 startScanForDevices()
             }
         } else {

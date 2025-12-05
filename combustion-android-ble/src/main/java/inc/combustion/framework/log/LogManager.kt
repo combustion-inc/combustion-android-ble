@@ -28,34 +28,15 @@
 package inc.combustion.framework.log
 
 import android.util.Log
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.SingletonHolder
-import inc.combustion.framework.ble.BleManager
-import inc.combustion.framework.ble.GaugeManager
-import inc.combustion.framework.ble.GaugeStatus
-import inc.combustion.framework.ble.ProbeManager
-import inc.combustion.framework.ble.ProbeStatus
-import inc.combustion.framework.service.DebugSettings
-import inc.combustion.framework.service.DeviceManager
-import inc.combustion.framework.service.LoggedDataPoint
-import inc.combustion.framework.service.LoggedGaugeDataPoint
-import inc.combustion.framework.service.LoggedProbeDataPoint
-import inc.combustion.framework.service.ProbeMode
-import inc.combustion.framework.service.ProbeUploadState
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineName
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
+import inc.combustion.framework.ble.*
+import inc.combustion.framework.service.*
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onCompletion
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import java.util.Date
 import java.util.SortedMap
 import kotlin.math.ceil
@@ -74,7 +55,7 @@ internal class LogManager {
     private fun temperatureLog(serialNumber: String): TemperatureLog<out LoggedDataPoint>? =
         probeTemperatureLogs[serialNumber] ?: gaugeTemperatureLogs[serialNumber]
 
-    fun manageProbe(owner: LifecycleOwner, probeManager: ProbeManager) {
+    fun manageProbe(scope: CoroutineScope, probeManager: ProbeManager) {
         if (probes.containsKey(probeManager.serialNumber)) return
 
         // add legacyProbeManager
@@ -90,14 +71,14 @@ internal class LogManager {
         val temperatureLog = probeTemperatureLogs.getValue(probeManager.serialNumber)
 
         manageDevice(
-            owner,
+            scope,
             probeManager,
             temperatureLog,
         )
     }
 
     private fun manageDevice(
-        owner: LifecycleOwner,
+        scope: CoroutineScope,
         manager: BleManager,
         temperatureLog: TemperatureLog<*>,
     ) {
@@ -108,186 +89,182 @@ internal class LogManager {
         // monitor this device's status flow
         manager.addJob(
             serialNumber = manager.serialNumber,
-            job = owner.lifecycleScope.launch(
+            job = scope.launch(
                 CoroutineName("${manager.serialNumber}.LogManager.probeStatusFlow")
             ) {
-                owner.repeatOnLifecycle(Lifecycle.State.CREATED) {
-                    manager.normalModeStatusFlow
-                        .onCompletion {
-                            Log.d(LOG_TAG, "Gauge Status Flow Complete")
+                manager.normalModeStatusFlow
+                    .onCompletion {
+                        Log.d(LOG_TAG, "Gauge Status Flow Complete")
+                    }
+                    .catch {
+                        Log.w(LOG_TAG, "Gauge Status Flow Catch: $it")
+                    }
+                    .collect { deviceStatus ->
+                        // LogManager only operates on Normal mode status updates, only
+                        // Normal Mode packets should be published to the flow.  Defensive
+                        // check and log message.
+                        if (deviceStatus.mode != ProbeMode.NORMAL) {
+                            Log.w(LOG_TAG, "Non-Normal mode packet collected on flow!")
+                            return@collect
                         }
-                        .catch {
-                            Log.w(LOG_TAG, "Gauge Status Flow Catch: $it")
-                        }
-                        .collect { deviceStatus ->
-                            // LogManager only operates on Normal mode status updates, only
-                            // Normal Mode packets should be published to the flow.  Defensive
-                            // check and log message.
-                            if (deviceStatus.mode != ProbeMode.NORMAL) {
-                                Log.w(LOG_TAG, "Non-Normal mode packet collected on flow!")
-                                return@collect
+
+                        when (manager.uploadState) {
+                            // if upload state is currently unavailable, and we now have a
+                            // ProbeStatus, then we have everything we need to start an upload.
+                            //
+                            // event the new upload state to the client, and they can initiate
+                            // the record transfer when they are ready.
+                            ProbeUploadState.Unavailable -> {
+                                if (DeviceManager.instance.settings.autoLogTransfer) {
+                                    manager.sessionInfo?.let {
+                                        // note, this will transfer to ProbeUploadInProgress
+                                        requestLogsFromDevice(
+                                            serialNumber = manager.serialNumber,
+                                            minSequenceNumber = deviceStatus.minSequenceNumber,
+                                            maxSequenceNumber = deviceStatus.maxSequenceNumber,
+                                        )
+                                    }
+                                } else {
+                                    manager.uploadState =
+                                        ProbeUploadState.ProbeUploadNeeded
+                                }
                             }
 
-                            when (manager.uploadState) {
-                                // if upload state is currently unavailable, and we now have a
-                                // ProbeStatus, then we have everything we need to start an upload.
-                                //
-                                // event the new upload state to the client, and they can initiate
-                                // the record transfer when they are ready.
-                                ProbeUploadState.Unavailable -> {
-                                    if (DeviceManager.instance.settings.autoLogTransfer) {
-                                        manager.sessionInfo?.let {
-                                            // note, this will transfer to ProbeUploadInProgress
-                                            requestLogsFromDevice(
-                                                serialNumber = manager.serialNumber,
-                                                minSequenceNumber = deviceStatus.minSequenceNumber,
-                                                maxSequenceNumber = deviceStatus.maxSequenceNumber,
-                                            )
-                                        }
-                                    } else {
-                                        manager.uploadState =
-                                            ProbeUploadState.ProbeUploadNeeded
-                                    }
+                            ProbeUploadState.ProbeUploadNeeded -> {
+                                // else, do nothing, wait for the client to request the transfer
+                            }
+
+                            is ProbeUploadState.ProbeUploadInProgress -> {
+                                // add device status data points to the log while the upload
+                                // is in progress.  don't event the status, because we will
+                                // do that below in processing the log response.
+                                temperatureLog.addFromDeviceStatus(deviceStatus)
+
+                                // update the count of records downlåoaded
+                                manager.recordsDownloaded =
+                                    temperatureLog.dataPointCount
+
+                                // complete the request, and change the state to complete
+                                if (temperatureLog.logRequestIsComplete()) {
+                                    val sessionStatus = temperatureLog.completeLogRequest()
+                                    manager.uploadState =
+                                        sessionStatus.toProbeUploadState()
                                 }
 
-                                ProbeUploadState.ProbeUploadNeeded -> {
-                                    // else, do nothing, wait for the client to request the transfer
+                            }
+
+                            is ProbeUploadState.ProbeUploadComplete -> {
+                                if (DebugSettings.DEBUG_LOG_LOG_MANAGER_IO) {
+                                    Log.d(
+                                        LOG_TAG,
+                                        "STATUS-RX : ${deviceStatus.maxSequenceNumber}"
+                                    )
                                 }
 
-                                is ProbeUploadState.ProbeUploadInProgress -> {
-                                    // add device status data points to the log while the upload
-                                    // is in progress.  don't event the status, because we will
-                                    // do that below in processing the log response.
+                                // add the device status to the temperature log
+                                val sessionStatus =
                                     temperatureLog.addFromDeviceStatus(deviceStatus)
 
-                                    // update the count of records downlåoaded
-                                    manager.recordsDownloaded =
-                                        temperatureLog.dataPointCount
+                                // update the count of records downloaded
+                                manager.recordsDownloaded =
+                                    temperatureLog.dataPointCount
 
-                                    // complete the request, and change the state to complete
-                                    if (temperatureLog.logRequestIsComplete()) {
-                                        val sessionStatus = temperatureLog.completeLogRequest()
-                                        manager.uploadState =
-                                            sessionStatus.toProbeUploadState()
-                                    }
-
-                                }
-
-                                is ProbeUploadState.ProbeUploadComplete -> {
-                                    if (DebugSettings.DEBUG_LOG_LOG_MANAGER_IO) {
-                                        Log.d(
-                                            LOG_TAG,
-                                            "STATUS-RX : ${deviceStatus.maxSequenceNumber}"
-                                        )
-                                    }
-
-                                    // add the device status to the temperature log
-                                    val sessionStatus =
-                                        temperatureLog.addFromDeviceStatus(deviceStatus)
-
-                                    // update the count of records downloaded
-                                    manager.recordsDownloaded =
-                                        temperatureLog.dataPointCount
-
-                                    // if we have any dropped records then initiate a log request to
-                                    // backfill from the missing records.
-                                    val missingRecords = temperatureLog.missingRecordRange(
-                                        deviceStatus.minSequenceNumber,
+                                // if we have any dropped records then initiate a log request to
+                                // backfill from the missing records.
+                                val missingRecords = temperatureLog.missingRecordRange(
+                                    deviceStatus.minSequenceNumber,
+                                    deviceStatus.maxSequenceNumber
+                                )
+                                if (missingRecords != null) {
+                                    startBackfillLogRequest(
+                                        temperatureLog,
+                                        manager,
+                                        missingRecords,
                                         deviceStatus.maxSequenceNumber
                                     )
-                                    if (missingRecords != null) {
-                                        startBackfillLogRequest(
-                                            temperatureLog,
-                                            manager,
-                                            missingRecords,
-                                            deviceStatus.maxSequenceNumber
-                                        )
-                                    }
-                                    // we've synchronized the log on the device here, now maintain
-                                    // the log with the data points from the device status message.
-                                    // and report out the progress as part of the complete state.
-                                    else {
-                                        manager.uploadState =
-                                            sessionStatus.toProbeUploadState()
-                                    }
+                                }
+                                // we've synchronized the log on the device here, now maintain
+                                // the log with the data points from the device status message.
+                                // and report out the progress as part of the complete state.
+                                else {
+                                    manager.uploadState =
+                                        sessionStatus.toProbeUploadState()
                                 }
                             }
-
-                            // calculate the percent of the logs on the probe that have made it
-                            // over to the app.
-                            temperatureLog.missingRecordsForRange(
-                                deviceStatus.minSequenceNumber, deviceStatus.maxSequenceNumber
-                            )?.let {
-                                if (deviceStatus.maxSequenceNumber > deviceStatus.minSequenceNumber) {
-                                    val total =
-                                        (deviceStatus.maxSequenceNumber - deviceStatus.minSequenceNumber + 1u).toDouble()
-                                    val have = total - it.toDouble()
-                                    manager.logUploadPercent =
-                                        ceil((have / total) * 100).toUInt()
-                                }
-                            } ?: run {
-                                temperatureLog.currentSessionStartTime?.let {
-                                    manager.logUploadPercent = 100u
-                                } ?: run {
-                                    manager.logUploadPercent = 0u
-                                }
-                            }
-
                         }
-                }
+
+                        // calculate the percent of the logs on the probe that have made it
+                        // over to the app.
+                        temperatureLog.missingRecordsForRange(
+                            deviceStatus.minSequenceNumber, deviceStatus.maxSequenceNumber
+                        )?.let {
+                            if (deviceStatus.maxSequenceNumber > deviceStatus.minSequenceNumber) {
+                                val total =
+                                    (deviceStatus.maxSequenceNumber - deviceStatus.minSequenceNumber + 1u).toDouble()
+                                val have = total - it.toDouble()
+                                manager.logUploadPercent =
+                                    ceil((have / total) * 100).toUInt()
+                            }
+                        } ?: run {
+                            temperatureLog.currentSessionStartTime?.let {
+                                manager.logUploadPercent = 100u
+                            } ?: run {
+                                manager.logUploadPercent = 0u
+                            }
+                        }
+
+                    }
             })
         // monitor this probes log response flow
         manager.addJob(
             serialNumber = manager.serialNumber,
-            job = owner.lifecycleScope.launch(
+            job = scope.launch(
                 CoroutineName("${manager.serialNumber}.LogManager.logResponseFlow")
             ) {
-                owner.repeatOnLifecycle(Lifecycle.State.CREATED) {
-                    manager.logResponseFlow
-                        .onCompletion {
-                            Log.d(LOG_TAG, "Log Response Flow Complete")
+                manager.logResponseFlow
+                    .onCompletion {
+                        Log.d(LOG_TAG, "Log Response Flow Complete")
+                    }
+                    .catch {
+                        Log.w(LOG_TAG, "Log Response Flow Catch: $it")
+                    }
+                    .collect { response ->
+
+                        // debug log BLE IO if enabled.
+                        if (DebugSettings.DEBUG_LOG_LOG_MANAGER_IO) {
+                            Log.d(LOG_TAG, "LOG-RX    : ${response.sequenceNumber}")
                         }
-                        .catch {
-                            Log.w(LOG_TAG, "Log Response Flow Catch: $it")
-                        }
-                        .collect { response ->
 
-                            // debug log BLE IO if enabled.
-                            if (DebugSettings.DEBUG_LOG_LOG_MANAGER_IO) {
-                                Log.d(LOG_TAG, "LOG-RX    : ${response.sequenceNumber}")
-                            }
+                        // Do not store the data point if its sequence number is greater than
+                        // the probe's max sequence number. This is a safety check for the
+                        // probe/node sending a record with an invalid sequence number.
+                        manager.maxSequenceNumber?.let {
+                            if (response.sequenceNumber <= it) {
+                                // add the response to the temperature log and set upload
+                                // progress
+                                val uploadProgress =
+                                    temperatureLog.addFromLogResponse(response)
 
-                            // Do not store the data point if its sequence number is greater than
-                            // the probe's max sequence number. This is a safety check for the
-                            // probe/node sending a record with an invalid sequence number.
-                            manager.maxSequenceNumber?.let {
-                                if (response.sequenceNumber <= it) {
-                                    // add the response to the temperature log and set upload
-                                    // progress
-                                    val uploadProgress =
-                                        temperatureLog.addFromLogResponse(response)
+                                // update the count of records downloaded
+                                manager.recordsDownloaded =
+                                    temperatureLog.dataPointCount
 
-                                    // update the count of records downloaded
-                                    manager.recordsDownloaded =
-                                        temperatureLog.dataPointCount
-
-                                    // update ProbeManager state
-                                    manager.uploadState =
-                                        uploadProgress.toProbeUploadState()
-                                } else {
-                                    Log.e(
-                                        LOG_TAG,
-                                        "Discarding invalid log response: ${response.sequenceNumber}"
-                                    )
-                                }
+                                // update ProbeManager state
+                                manager.uploadState =
+                                    uploadProgress.toProbeUploadState()
+                            } else {
+                                Log.e(
+                                    LOG_TAG,
+                                    "Discarding invalid log response: ${response.sequenceNumber}"
+                                )
                             }
                         }
-                }
+                    }
             }
         )
     }
 
-    fun manageGauge(owner: LifecycleOwner, gaugeManager: GaugeManager) {
+    fun manageGauge(scope: CoroutineScope, gaugeManager: GaugeManager) {
         if (gauges.containsKey(gaugeManager.serialNumber)) return
         gauges[gaugeManager.serialNumber] = gaugeManager
 
@@ -300,7 +277,7 @@ internal class LogManager {
         // maintain reference to log for further processing
         val temperatureLog = gaugeTemperatureLogs.getValue(gaugeManager.serialNumber)
         manageDevice(
-            owner,
+            scope,
             gaugeManager,
             temperatureLog,
         )

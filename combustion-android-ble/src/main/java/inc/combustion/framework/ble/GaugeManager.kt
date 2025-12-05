@@ -29,38 +29,14 @@
 package inc.combustion.framework.ble
 
 import android.util.Log
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.device.DeviceID
-import inc.combustion.framework.ble.device.DeviceInformationBleDevice
-import inc.combustion.framework.ble.device.GaugeBleDevice
-import inc.combustion.framework.ble.device.NodeBleDevice
-import inc.combustion.framework.ble.device.SimulatedGaugeBleDevice
-import inc.combustion.framework.ble.device.UartCapableGauge
+import inc.combustion.framework.ble.device.*
 import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
 import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
-import inc.combustion.framework.service.DeviceConnectionState
-import inc.combustion.framework.service.DeviceManager
-import inc.combustion.framework.service.FirmwareVersion
-import inc.combustion.framework.service.Gauge
-import inc.combustion.framework.service.HighLowAlarmStatus
-import inc.combustion.framework.service.ModelInformation
-import inc.combustion.framework.service.ProbeUploadState
-import inc.combustion.framework.service.SessionInformation
-import kotlinx.coroutines.CoroutineName
-import kotlinx.coroutines.Dispatchers
+import inc.combustion.framework.service.*
+import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.*
 
 /**
  * This class is responsible for managing and arbitrating the data links to a gauge.
@@ -79,7 +55,7 @@ import kotlinx.coroutines.launch
 internal class GaugeManager(
     mac: String,
     serialNumber: String,
-    val owner: LifecycleOwner,
+    val scope: CoroutineScope,
     private val settings: DeviceManager.Settings,
     private val dfuDisconnectedNodeCallback: (DeviceID) -> Unit,
 ) : BleManager() {
@@ -200,7 +176,7 @@ internal class GaugeManager(
     private fun monitorStatusNotifications() {
         addJob(
             serialNumber,
-            owner.lifecycleScope.launch(
+            scope.launch(
                 CoroutineName("${serialNumber}.monitorStatusNotifications") + Dispatchers.IO
             ) {
                 // Wait before starting to monitor prediction status, this allows for initial

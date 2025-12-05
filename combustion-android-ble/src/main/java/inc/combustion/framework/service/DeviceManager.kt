@@ -51,8 +51,11 @@ import inc.combustion.framework.service.DeviceManager.Companion.stopCombustionSe
 import inc.combustion.framework.service.DeviceManager.Companion.unbindCombustionService
 import inc.combustion.framework.service.dfu.DfuProductType
 import inc.combustion.framework.service.dfu.DfuSystemState
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Date
@@ -106,8 +109,8 @@ class DeviceManager(
          */
         private val connected = AtomicBoolean(false)
 
-        private var defaultCoroutineScope: CoroutineScope? = null
-        private var mainCoroutineScope: CoroutineScope? = null
+        private val appApiScope =
+            CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
         private val connection = object : ServiceConnection {
 
@@ -121,6 +124,7 @@ class DeviceManager(
                 INSTANCE.onBoundInitList.forEach { initCallback ->
                     initCallback()
                 }
+                INSTANCE.onBoundInitList.clear()
             }
 
             override fun onServiceDisconnected(arg0: ComponentName) {
@@ -167,11 +171,10 @@ class DeviceManager(
             latestFirmware: Map<DfuProductType, Uri> = emptyMap(),
             onServiceStarted: (() -> Unit)? = null,
         ): Int {
+            Log.v("D3V", "startCombustionService")
             if (!connected.get()) {
                 if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
                     Log.d(LOG_TAG, "Start Service")
-                defaultCoroutineScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
-                mainCoroutineScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
                 return CombustionService.start(
                     app.applicationContext,
@@ -192,6 +195,7 @@ class DeviceManager(
          * Must be called after starting service with [startCombustionService].
          */
         fun bindCombustionService() {
+            Log.v("D3V", "bindCombustionService")
             if (!activeBind.getAndSet(true)) {
                 if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
                     Log.d(LOG_TAG, "Binding Service")
@@ -208,6 +212,10 @@ class DeviceManager(
          * @return true if the service was unbound, false otherwise.
          */
         fun unbindCombustionService(): Boolean {
+            Log.v(
+                "D3V",
+                "unbindCombustionService, activeBind = ${activeBind.get()}, connected = ${connected.get()}"
+            )
             return if (connected.get() && activeBind.get()) {
                 if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE) {
                     Log.d(LOG_TAG, "Unbinding Service")
@@ -229,6 +237,7 @@ class DeviceManager(
          * @return true if the service was stopped, false otherwise.
          */
         fun stopCombustionService(): Boolean {
+            Log.v("D3V", "stopCombustionService, connected = ${connected.get()}")
             if (connected.get()) {
                 Log.w(LOG_TAG, "Stopping Service: requires unbinding service first")
                 return false
@@ -237,11 +246,6 @@ class DeviceManager(
             if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE) {
                 Log.d(LOG_TAG, "Stopping Service")
             }
-
-            defaultCoroutineScope?.cancel()
-            defaultCoroutineScope = null
-            mainCoroutineScope?.cancel()
-            mainCoroutineScope = null
 
             // we might run into situations where the service isn't fully started
             // by the time we reach this call since the operation is asynchronous.
@@ -300,7 +304,7 @@ class DeviceManager(
                     is DeviceDiscoveryEvent.DevicesCleared -> ProbeDiscoveredEvent.DevicesCleared
                     else -> null
                 }
-            }.shareIn(requireNotNull(defaultCoroutineScope), SharingStarted.Lazily)
+            }.shareIn(appApiScope, SharingStarted.Lazily)
         }
 
     /**
@@ -336,7 +340,7 @@ class DeviceManager(
                     is DeviceInProximityEvent.DevicesCleared -> DeviceDiscoveredEvent.DevicesCleared
                     else -> null
                 }
-            }.shareIn(requireNotNull(defaultCoroutineScope), SharingStarted.Lazily)
+            }.shareIn(appApiScope, SharingStarted.Lazily)
         }
 
     /**
@@ -412,7 +416,20 @@ class DeviceManager(
      * This will exclude any probe devices.
      */
     val discoveredWiFiNodesFlow: StateFlow<List<String>>
-        get() = NetworkManager.instance.discoveredWiFiNodesFlow
+        get() {
+            val initial: List<String> =
+                NetworkManager.instanceFlow.value?.discoveredWiFiNodesFlow?.value ?: emptyList()
+
+            return NetworkManager.instanceFlow
+                .flatMapLatest { mgr ->
+                    mgr?.discoveredWiFiNodesFlow ?: flowOf(emptyList())
+                }
+                .stateIn(
+                    scope = appApiScope,
+                    started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
+                    initialValue = initial,
+                )
+        }
 
     /**
      * Returns a flow of [AnalyticsEvent], tracked analytics events.
@@ -435,15 +452,15 @@ class DeviceManager(
         get() = NetworkManager.instanceFlow
             .flatMapLatest { mgr ->
                 // If there's no manager yet, placeholder flow
-                mgr?.silenceAlarmsRequestFlow?.distinctUntilChanged() ?: MutableSharedFlow()
+                mgr?.silenceAlarmsRequestFlow?.distinctUntilChanged() ?: emptyFlow()
             }
             .shareIn(
-                scope = requireNotNull(defaultCoroutineScope),
+                scope = appApiScope,
                 started = SharingStarted.Lazily,
             )
 
     private fun doWhenNetworkManagerInitialized(onInitialized: suspend (NetworkManager) -> Unit) {
-        mainCoroutineScope?.launch {
+        appApiScope.launch {
             NetworkManager.instanceFlow.first { it != null }?.let {
                 onInitialized(it)
             } ?: run {
@@ -453,7 +470,7 @@ class DeviceManager(
     }
 
     private fun doWhenServiceInitialized(onInitialized: suspend (CombustionService) -> Unit) {
-        mainCoroutineScope?.launch {
+        appApiScope.launch {
             serviceFlow.first { it != null }?.let {
                 onInitialized(it)
             } ?: run {
@@ -623,7 +640,15 @@ class DeviceManager(
      * from [deviceInProximityFlow] for [serialNumber].
      */
     fun deviceSmoothedRssiFlow(serialNumber: String): StateFlow<Double?>? {
-        return NetworkManager.instance.deviceSmoothedRssiFlow(serialNumber)
+        return NetworkManager.instanceFlow
+            .flatMapLatest { mgr ->
+                mgr?.deviceSmoothedRssiFlow(serialNumber) ?: flowOf<Double?>(null)
+            }
+            .stateIn(
+                scope = appApiScope,
+                started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
+                initialValue = null,
+            )
     }
 
     /**
@@ -1018,7 +1043,7 @@ class DeviceManager(
     fun startDfuMode() {
         pendingDfuMode.set(true)
         doWhenServiceInitialized { service ->
-            pendingDfuMode.getAndSet(false).takeIf { it }?.let {
+            if (pendingDfuMode.compareAndSet(true, false)) {
                 service.startDfuMode()
             }
         }

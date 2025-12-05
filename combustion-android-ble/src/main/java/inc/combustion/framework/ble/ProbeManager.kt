@@ -28,8 +28,6 @@
 package inc.combustion.framework.ble
 
 import android.util.Log
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.InstantReadFilter
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.device.*
@@ -58,7 +56,7 @@ import kotlinx.coroutines.flow.*
  */
 internal class ProbeManager(
     serialNumber: String,
-    private val owner: LifecycleOwner,
+    private val scope: CoroutineScope,
     private val settings: DeviceManager.Settings,
     private val dfuDisconnectedNodeCallback: (DeviceID) -> Unit
 ) : BleManager() {
@@ -667,7 +665,7 @@ internal class ProbeManager(
     private fun monitorStatusNotifications() {
         addJob(
             serialNumber,
-            owner.lifecycleScope.launch(
+            scope.launch(
                 CoroutineName("${serialNumber}.monitorStatusNotifications") + Dispatchers.IO
             ) {
                 // Wait before starting to monitor prediction status, this allows for initial

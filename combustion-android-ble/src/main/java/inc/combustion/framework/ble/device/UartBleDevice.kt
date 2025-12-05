@@ -29,27 +29,22 @@ package inc.combustion.framework.ble.device
 
 import android.bluetooth.BluetoothAdapter
 import android.util.Log
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.lifecycleScope
 import com.juul.kable.WriteType
 import com.juul.kable.characteristicOf
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.service.DebugSettings
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.onCompletion
-import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 
 internal open class UartBleDevice(
     mac: String,
     advertisement: DeviceAdvertisingData,
-    owner: LifecycleOwner,
+    scope: CoroutineScope,
     adapter: BluetoothAdapter
-) : DeviceInformationBleDevice(mac, advertisement, owner, adapter) {
+) : DeviceInformationBleDevice(mac, advertisement, scope, adapter) {
 
     class MessageCompletionHandler {
         private val waiting = AtomicBoolean(false)
@@ -93,7 +88,7 @@ internal open class UartBleDevice(
         }
 
         fun wait(
-            owner: LifecycleOwner,
+            scope: CoroutineScope,
             duration: Long,
             reqId: UInt? = null,
             callback: ((Boolean, Any?) -> Unit)?,
@@ -126,10 +121,12 @@ internal open class UartBleDevice(
             completionCallback = callback
             requestId = reqId
 
-            job = owner.lifecycleScope.launch {
+            job = scope.launch {
                 delay(duration)
                 if (waiting.getAndSet(false)) {
-                    callback?.let { it(false, null) }
+                    withContext(Dispatchers.Main) {
+                        callback?.let { it(false, null) }
+                    }
                     cleanup()
                 }
             }
@@ -162,7 +159,7 @@ internal open class UartBleDevice(
 
     fun writeUartCharacteristic(data: ByteArray) {
         if (isConnected.get()) {
-            owner.lifecycleScope.launch(Dispatchers.IO) {
+            scope.launch(Dispatchers.IO) {
                 try {
                     peripheral.write(UART_RX_CHARACTERISTIC, data, WriteType.WithoutResponse)
                 } catch (e: Exception) {

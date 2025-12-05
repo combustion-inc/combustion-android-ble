@@ -29,7 +29,6 @@
 package inc.combustion.framework.ble.device
 
 import android.util.Log
-import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.IdleMonitor
 import inc.combustion.framework.ble.NOT_IMPLEMENTED
@@ -42,9 +41,11 @@ import inc.combustion.framework.ble.uart.ProbeLogResponse
 import inc.combustion.framework.ble.uart.meatnet.*
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Class representing a probe connected through one or more MeatNet nodes.
@@ -226,7 +227,7 @@ internal class RepeatedProbeBleDevice(
         if (!sessionInfoHandler.isWaiting) {
             // arm the handler if we are not yet waiting for the response
             sessionInfoHandler.wait(
-                uart.owner,
+                uart.scope,
                 MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS,
                 reqId,
                 callback
@@ -250,7 +251,7 @@ internal class RepeatedProbeBleDevice(
         reqId: UInt?,
         callback: ((Boolean, Any?) -> Unit)?
     ) {
-        setPredictionHandler.wait(uart.owner, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
+        setPredictionHandler.wait(uart.scope, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
         sendUartRequest(NodeSetPredictionRequest(serialNumber, setPointTemperatureC, mode, reqId))
     }
 
@@ -260,7 +261,7 @@ internal class RepeatedProbeBleDevice(
         callback: ((Boolean, Any?) -> Unit)?
     ) {
         configureFoodSafeHandler.wait(
-            uart.owner,
+            uart.scope,
             MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS,
             reqId,
             callback
@@ -269,7 +270,7 @@ internal class RepeatedProbeBleDevice(
     }
 
     override fun sendResetFoodSafe(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
-        resetFoodSafeHandler.wait(uart.owner, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
+        resetFoodSafeHandler.wait(uart.scope, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
         sendUartRequest(NodeResetFoodSafeRequest(serialNumber, reqId))
     }
 
@@ -287,12 +288,12 @@ internal class RepeatedProbeBleDevice(
         reqId: UInt?,
         callback: ((Boolean, Any?) -> Unit)?,
     ) {
-        setPowerModeHandler.wait(uart.owner, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
+        setPowerModeHandler.wait(uart.scope, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
         sendUartRequest(NodeSetPowerModeRequest(serialNumber, powerMode, reqId))
     }
 
     override fun sendResetProbe(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
-        resetProbeHandler.wait(uart.owner, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
+        resetProbeHandler.wait(uart.scope, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
         sendUartRequest(NodeResetProbeRequest(serialNumber, reqId))
     }
 
@@ -302,7 +303,7 @@ internal class RepeatedProbeBleDevice(
         callback: ((Boolean, Any?) -> Unit)?,
     ) {
         setProbeHighLowAlarmStatusHandler.wait(
-            uart.owner,
+            uart.scope,
             MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS,
             reqId,
             callback,
@@ -316,7 +317,7 @@ internal class RepeatedProbeBleDevice(
     override suspend fun readModelInformation() = uart.readModelInformation()
 
     override fun readFirmwareVersionAsync(callback: (FirmwareVersion) -> Unit) {
-        uart.owner.lifecycleScope.launch {
+        uart.scope.launch {
             readFirmwareVersion()
         }.invokeOnCompletion {
             deviceInfoFirmwareVersion?.let {
@@ -326,7 +327,7 @@ internal class RepeatedProbeBleDevice(
     }
 
     override fun readHardwareRevisionAsync(callback: (String) -> Unit) {
-        uart.owner.lifecycleScope.launch {
+        uart.scope.launch {
             readHardwareRevision()
         }.invokeOnCompletion {
             deviceInfoHardwareRevision?.let {
@@ -336,7 +337,7 @@ internal class RepeatedProbeBleDevice(
     }
 
     override fun readModelInformationAsync(callback: (ModelInformation) -> Unit) {
-        uart.owner.lifecycleScope.launch {
+        uart.scope.launch {
             readModelInformation()
         }.invokeOnCompletion {
             deviceInfoModelInformation?.let {
@@ -352,7 +353,7 @@ internal class RepeatedProbeBleDevice(
     fun readProbeFirmwareVersion(reqId: UInt?, callback: (FirmwareVersion) -> Unit) {
         if (!probeFirmwareRevisionHandler.isWaiting) {
             probeFirmwareRevisionHandler.wait(
-                uart.owner,
+                uart.scope,
                 MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS,
                 reqId
             ) { success, response ->
@@ -375,7 +376,7 @@ internal class RepeatedProbeBleDevice(
     fun readProbeHardwareRevision(reqId: UInt?, callback: (String) -> Unit) {
         if (!probeHardwareRevisionHandler.isWaiting) {
             probeHardwareRevisionHandler.wait(
-                uart.owner,
+                uart.scope,
                 MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS,
                 reqId
             ) { success, response ->
@@ -398,7 +399,7 @@ internal class RepeatedProbeBleDevice(
     fun readProbeModelInformation(reqId: UInt?, callback: (ModelInformation) -> Unit) {
         if (!probeModelInfoHandler.isWaiting) {
             probeModelInfoHandler.wait(
-                uart.owner,
+                uart.scope,
                 MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS,
                 reqId
             ) { success, response ->
@@ -469,7 +470,7 @@ internal class RepeatedProbeBleDevice(
     fun observeMeatNetNodeTimeout(timeout: Long) {
         uart.jobManager.addJob(
             key = serialNumber,
-            job = uart.owner.lifecycleScope.launch(
+            job = uart.scope.launch(
                 CoroutineName("${serialNumber}.observeMeatNetNodeTimeout")
             ) {
                 while (isActive) {
@@ -484,27 +485,26 @@ internal class RepeatedProbeBleDevice(
     private fun observeUartMessages(callback: (suspend (responses: List<NodeUARTMessage>) -> Unit)? = null) {
         uart.jobManager.addJob(
             key = serialNumber,
-            job = uart.owner.lifecycleScope.launch(
-                CoroutineName("${serialNumber}.observeUartMessages")
-            ) {
+            job = uart.scope.launch(CoroutineName("${serialNumber}.observeUartMessages")) {
                 uart.observeUartCharacteristic { data ->
+                    withContext(Dispatchers.Main) {
+                        callback?.let {
+                            val message = NodeUARTMessage.fromData(data.toUByteArray())
 
-                    callback?.let {
-                        val message = NodeUARTMessage.fromData(data.toUByteArray())
-
-                        if (INFO_LOG_MEATNET_TRACE && INFO_LOG_MEATNET_UART_TRACE) {
-                            message.forEach { uartMessage ->
-                                MEATNET_TRACE_INCLUSION_FILTER.firstOrNull { it == uartMessage.messageId }
-                                    ?.let {
-                                        val packet = data.joinToString("") {
-                                            it.toString(16).padStart(2, '0').uppercase()
+                            if (INFO_LOG_MEATNET_TRACE && INFO_LOG_MEATNET_UART_TRACE) {
+                                message.forEach { uartMessage ->
+                                    MEATNET_TRACE_INCLUSION_FILTER.firstOrNull { it == uartMessage.messageId }
+                                        ?.let {
+                                            val packet = data.joinToString("") {
+                                                it.toString(16).padStart(2, '0').uppercase()
+                                            }
+                                            Log.i(LOG_TAG, "UART-RX: $packet")
                                         }
-                                        Log.i(LOG_TAG, "UART-RX: $packet")
-                                    }
+                                }
                             }
-                        }
 
-                        it(message)
+                            it(message)
+                        }
                     }
                 }
             }
