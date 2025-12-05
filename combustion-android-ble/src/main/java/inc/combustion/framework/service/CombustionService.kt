@@ -81,7 +81,6 @@ class CombustionService : Service() {
             latestFirmware: Map<DfuProductType, Uri>,
             onServiceStartedCallback: (() -> Unit)?,
         ): Int {
-            Log.v("D3V", "start, serviceStartRequested = ${serviceStartRequested.get()}")
             if (serviceStartRequested.compareAndSet(false, true)) {
                 settings = serviceSettings
                 serviceNotification = notification
@@ -106,7 +105,6 @@ class CombustionService : Service() {
         }
 
         fun bind(context: Context, connection: ServiceConnection) {
-            Log.v("D3V", "bind")
             Intent(context, CombustionService::class.java).also { intent ->
                 val flags = BIND_AUTO_CREATE
                 context.bindService(intent, connection, flags)
@@ -114,7 +112,6 @@ class CombustionService : Service() {
         }
 
         fun stop(context: Context) {
-            Log.v("D3V", "stop")
             Intent(context, CombustionService::class.java).also { intent ->
                 context.stopService(intent)
             }
@@ -141,7 +138,6 @@ class CombustionService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        Log.v("D3V", "CombustionService onCreate")
         serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
         val bluetooth = getSystemService(BLUETOOTH_SERVICE) as BluetoothManager
@@ -197,7 +193,6 @@ class CombustionService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
-        Log.v("D3V", "CombustionService onStartCommand")
         startForeground()
         return START_NOT_STICKY
     }
@@ -205,7 +200,6 @@ class CombustionService : Service() {
     override fun onBind(intent: Intent): IBinder = binder
 
     override fun onDestroy() {
-        Log.v("D3V", "CombustionService onDestroy")
         // stop the service notification
         stopForeground()
         serviceNotification = null

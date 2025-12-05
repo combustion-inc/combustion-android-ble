@@ -119,7 +119,6 @@ internal class NetworkManager(
             adapter: BluetoothAdapter,
             settings: DeviceManager.Settings,
         ) {
-            Log.v("D3V", "NetworkManager initialize")
             val shouldRecreate = if (!initialized.get()) {
                 true
             } else {
@@ -629,7 +628,6 @@ internal class NetworkManager(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     fun finish() {
-        Log.v("D3V", "NetworkManager finish")
         DeviceScanner.stop()
         jobManager.cancelJobs()
         clearDevices()
@@ -1001,7 +999,6 @@ internal class NetworkManager(
     }
 
     private fun start() {
-        Log.v("D3V", "NetworkManager start")
         jobManager.addJob(
             scope.launch(CoroutineName("collectAdvertisingData")) {
                 collectAdvertisingData()

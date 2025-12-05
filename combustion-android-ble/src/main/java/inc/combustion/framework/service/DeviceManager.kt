@@ -170,7 +170,6 @@ class DeviceManager(
             latestFirmware: Map<DfuProductType, Uri> = emptyMap(),
             onServiceStarted: (() -> Unit)? = null,
         ): Int {
-            Log.v("D3V", "startCombustionService")
             if (serviceRunning.get()) {
                 Log.w(LOG_TAG, "Start Service: service already started")
                 return 0
@@ -210,7 +209,6 @@ class DeviceManager(
             }
             bindingInProgress.set(true)
 
-            Log.v("D3V", "bindCombustionService")
             if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE) {
                 Log.d(LOG_TAG, "Binding Service")
             }
@@ -224,10 +222,6 @@ class DeviceManager(
          * @return true if the service was unbound, false otherwise.
          */
         fun unbindCombustionService(): Boolean {
-            Log.v(
-                "D3V",
-                "unbindCombustionService, bindingInProgress = ${bindingInProgress.get()}, connected = ${connected.get()}"
-            )
             if (!bindingInProgress.get()) {
                 Log.w(LOG_TAG, "Unbinding Service: not bound")
                 return false
@@ -250,7 +244,6 @@ class DeviceManager(
          * @return true if the service was stopped, false otherwise.
          */
         fun stopCombustionService(): Boolean {
-            Log.v("D3V", "stopCombustionService, connected = ${connected.get()}")
             if (!serviceRunning.get()) {
                 Log.w(LOG_TAG, "stopCombustionService: already stopped")
                 return false
