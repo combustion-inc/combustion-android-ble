@@ -2,8 +2,6 @@ package inc.combustion.framework.ble.device
 
 import android.bluetooth.BluetoothAdapter
 import android.util.Log
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.GaugeStatus
 import inc.combustion.framework.ble.NetworkManager
@@ -12,16 +10,18 @@ import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.uart.meatnet.*
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 internal class NodeBleDevice(
     mac: String,
-    owner: LifecycleOwner,
+    scope: CoroutineScope,
     nodeAdvertisingData: DeviceAdvertisingData,
     adapter: BluetoothAdapter,
-    private val uart: UartBleDevice = UartBleDevice(mac, nodeAdvertisingData, owner, adapter),
+    private val uart: UartBleDevice = UartBleDevice(mac, nodeAdvertisingData, scope, adapter),
     private val observeGaugeStatusCallback: suspend (String, GaugeStatus) -> Unit,
     private val observeSilenceAlarmsCallback: suspend (SilenceAlarmsRequest) -> Unit,
 ) : UartCapableDevice {
@@ -104,7 +104,7 @@ internal class NodeBleDevice(
     fun sendNodeRequest(request: GenericNodeRequest, callback: ((Boolean, Any?) -> Unit)?) {
         val nodeRequest = request.toNodeRequest()
         genericRequestHandler.wait(
-            uart.owner,
+            uart.scope,
             NODE_MESSAGE_RESPONSE_TIMEOUT_MS,
             nodeRequest.requestId,
             callback,
@@ -114,7 +114,7 @@ internal class NodeBleDevice(
 
     fun sendFeatureFlagRequest(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
         val nodeSerialNumber = deviceInfoSerialNumber ?: return
-        readFeatureFlagsRequest.wait(uart.owner, NODE_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
+        readFeatureFlagsRequest.wait(uart.scope, NODE_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
         sendUartRequest(NodeReadFeatureFlagsRequest(nodeSerialNumber, reqId))
     }
 
@@ -125,7 +125,7 @@ internal class NodeBleDevice(
         callback: ((Boolean, Any?) -> Unit)?,
     ) {
         setGaugeHighLowAlarmStatusHandler.wait(
-            uart.owner,
+            uart.scope,
             MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS,
             reqId,
             callback,
@@ -165,7 +165,7 @@ internal class NodeBleDevice(
         callback: ((Boolean, Any?) -> Unit)?,
     ) {
         silenceAlarmsHandler.wait(
-            uart.owner,
+            uart.scope,
             MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS,
             reqId,
             callback,
@@ -209,7 +209,7 @@ internal class NodeBleDevice(
     }
 
     private fun sendUartRequest(request: NodeRequest) {
-        uart.owner.lifecycleScope.launch(Dispatchers.IO) {
+        uart.scope.launch(Dispatchers.IO) {
             if (DebugSettings.DEBUG_LOG_BLE_UART_IO) {
                 val packet = request.data.joinToString("") {
                     it.toString(16).padStart(2, '0').uppercase()
@@ -223,12 +223,12 @@ internal class NodeBleDevice(
     private fun observeUartMessages(callback: (suspend (messages: List<NodeUARTMessage>) -> Unit)) {
         uart.jobManager.addJob(
             key = uart.serialNumber,
-            job = uart.owner.lifecycleScope.launch(
-                CoroutineName("UartResponseObserver"),
-            ) {
+            job = uart.scope.launch(CoroutineName("UartResponseObserver")) {
                 uart.observeUartCharacteristic { data ->
                     val messages = NodeUARTMessage.fromData(data.toUByteArray())
-                    callback.invoke(messages)
+                    withContext(Dispatchers.Main) {
+                        callback.invoke(messages)
+                    }
                 }
             }
         )

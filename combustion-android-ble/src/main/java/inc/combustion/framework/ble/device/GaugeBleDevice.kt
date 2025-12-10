@@ -28,17 +28,12 @@
 
 package inc.combustion.framework.ble.device
 
-import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
 import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeResponse
-import inc.combustion.framework.service.CombustionProductType
-import inc.combustion.framework.service.DeviceConnectionState
-import inc.combustion.framework.service.FirmwareVersion
-import inc.combustion.framework.service.HighLowAlarmStatus
-import inc.combustion.framework.service.ModelInformation
+import inc.combustion.framework.service.*
 import kotlinx.coroutines.launch
 
 internal class GaugeBleDevice(
@@ -124,7 +119,7 @@ internal class GaugeBleDevice(
     override suspend fun readModelInformation() = uart.readModelInformation()
 
     override fun readFirmwareVersionAsync(callback: (FirmwareVersion) -> Unit) {
-        uart.owner.lifecycleScope.launch {
+        uart.scope.launch {
             readFirmwareVersion()
         }.invokeOnCompletion {
             deviceInfoFirmwareVersion?.let {
@@ -134,7 +129,7 @@ internal class GaugeBleDevice(
     }
 
     override fun readHardwareRevisionAsync(callback: (String) -> Unit) {
-        uart.owner.lifecycleScope.launch {
+        uart.scope.launch {
             readHardwareRevision()
         }.invokeOnCompletion {
             deviceInfoHardwareRevision?.let {
@@ -144,7 +139,7 @@ internal class GaugeBleDevice(
     }
 
     override fun readModelInformationAsync(callback: (ModelInformation) -> Unit) {
-        uart.owner.lifecycleScope.launch {
+        uart.scope.launch {
             readModelInformation()
         }.invokeOnCompletion {
             deviceInfoModelInformation?.let {

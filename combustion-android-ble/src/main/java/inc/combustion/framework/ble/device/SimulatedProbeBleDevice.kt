@@ -28,20 +28,19 @@
 
 package inc.combustion.framework.ble.device
 
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.ble.ProbeStatus
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
 import inc.combustion.framework.ble.uart.ProbeLogResponse
 import inc.combustion.framework.service.*
 import inc.combustion.framework.service.dfu.DfuProductType
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlin.concurrent.fixedRateTimer
 import kotlin.random.Random
 
 internal class SimulatedProbeBleDevice(
-    private val owner: LifecycleOwner,
+    private val scope: CoroutineScope,
     override val mac: String = "%02X:%02X:%02X:%02X:%02X:%02X".format(
         Random.nextBytes(1).first(),
         Random.nextBytes(1).first(),
@@ -141,7 +140,7 @@ internal class SimulatedProbeBleDevice(
 
     init {
         fixedRateTimer(name = "SimAdvertising", initialDelay = 1000, period = 1000) {
-            owner.lifecycleScope.launch {
+            scope.launch {
                 observeAdvertisingCallback?.let {
                     if (!isConnected) {
                         it(
@@ -163,7 +162,7 @@ internal class SimulatedProbeBleDevice(
         }
 
         fixedRateTimer(name = "SimStatusNotifications", initialDelay = 1000, period = 5000) {
-            owner.lifecycleScope.launch {
+            scope.launch {
                 maxSequence += 1u
                 observeStatusUpdatesCallback?.let {
                     val probeTemperatures = ProbeTemperatures.withRandomData()
@@ -209,7 +208,7 @@ internal class SimulatedProbeBleDevice(
             manufacturingLot = "98765"
         )
         observeConnectionStateCallback?.let {
-            owner.lifecycleScope.launch {
+            scope.launch {
                 it(connectionState)
             }
         }
@@ -353,7 +352,7 @@ internal class SimulatedProbeBleDevice(
 
     private fun publishConnectionState() {
         observeConnectionStateCallback?.let {
-            owner.lifecycleScope.launch {
+            scope.launch {
                 it(connectionState)
             }
         }

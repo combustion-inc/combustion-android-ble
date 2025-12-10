@@ -31,6 +31,7 @@ import android.app.Activity
 import android.app.Application
 import android.app.Notification
 import android.content.ComponentName
+import android.content.Context
 import android.content.ServiceConnection
 import android.net.Uri
 import android.os.IBinder
@@ -51,8 +52,11 @@ import inc.combustion.framework.service.DeviceManager.Companion.stopCombustionSe
 import inc.combustion.framework.service.DeviceManager.Companion.unbindCombustionService
 import inc.combustion.framework.service.dfu.DfuProductType
 import inc.combustion.framework.service.dfu.DfuSystemState
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Date
@@ -89,47 +93,51 @@ class DeviceManager(
     )
 
     companion object {
+        const val MINIMUM_PREDICTION_SETPOINT_CELSIUS = 0.0
+        const val MAXIMUM_PREDICTION_SETPOINT_CELSIUS = 100.0
+
         private lateinit var INSTANCE: DeviceManager
-        private lateinit var app: Application
+
+        private lateinit var appContext: Context
         private lateinit var onServiceBound: (deviceManager: DeviceManager) -> Unit
+
+        // Prevent creating Singleton more than once
         private val initialized = AtomicBoolean(false)
 
-        /**
-         * Is true if binding application to the unbound service was called.
-         * Is false if not yet binding or application was unbounded.
-         */
-        private val activeBind = AtomicBoolean(false)
+        // Prevent duplicate service start/stop
+        // startCombustionService() - stopCombustionService()
+        private val serviceRunning = AtomicBoolean(false)
 
-        /**
-         * Is true if the application was successfully bound/connected to the service.
-         * Is false if the application was not yet bound to the service or was unbounded.
-         */
+        // Prevent duplicate service binding/unbinding
+        // bindCombustionService() - unbindCombustionService()
+        private val bindingInProgress = AtomicBoolean(false)
+
+        // True if service has been connected
+        // onServiceConnected() - onServiceDisconnected()/unbindCombustionService()
         private val connected = AtomicBoolean(false)
 
-        private var defaultCoroutineScope: CoroutineScope? = null
-        private var mainCoroutineScope: CoroutineScope? = null
+        private val appApiScope =
+            CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
         private val connection = object : ServiceConnection {
 
             override fun onServiceConnected(className: ComponentName, serviceBinder: IBinder) {
-                val binder = serviceBinder as CombustionService.CombustionServiceBinder
+                connected.set(true)
+                val binder = serviceBinder as CombustionServiceBinder
                 INSTANCE.serviceFlow.value = binder.getService()
 
-                connected.set(true)
                 onServiceBound(INSTANCE)
-
                 INSTANCE.onBoundInitList.forEach { initCallback ->
                     initCallback()
                 }
+                INSTANCE.onBoundInitList.clear()
             }
 
-            override fun onServiceDisconnected(arg0: ComponentName) {
+            override fun onServiceDisconnected(name: ComponentName) {
+                // Android disconnected service
                 connected.set(false)
             }
         }
-
-        const val MINIMUM_PREDICTION_SETPOINT_CELSIUS = 0.0
-        const val MAXIMUM_PREDICTION_SETPOINT_CELSIUS = 100.0
 
         /**
          * Instance property for the singleton
@@ -147,7 +155,7 @@ class DeviceManager(
             onBound: (deviceManager: DeviceManager) -> Unit = { _ -> }
         ) {
             if (!initialized.getAndSet(true)) {
-                app = application
+                appContext = application.applicationContext
                 onServiceBound = onBound
                 INSTANCE = DeviceManager(settings)
             }
@@ -167,24 +175,24 @@ class DeviceManager(
             latestFirmware: Map<DfuProductType, Uri> = emptyMap(),
             onServiceStarted: (() -> Unit)? = null,
         ): Int {
-            if (!connected.get()) {
-                if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
-                    Log.d(LOG_TAG, "Start Service")
-                defaultCoroutineScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
-                mainCoroutineScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-
-                return CombustionService.start(
-                    app.applicationContext,
-                    notification,
-                    dfuNotificationTarget,
-                    INSTANCE.settings,
-                    latestFirmware,
-                    onServiceStarted,
-                )
-            } else {
-                Log.w(LOG_TAG, "`Start Service: service already connected.")
+            if (serviceRunning.get()) {
+                Log.w(LOG_TAG, "Start Service: service already started")
+                return 0
             }
-            return 0
+            serviceRunning.set(true)
+
+            if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE) {
+                Log.d(LOG_TAG, "Start Service")
+            }
+
+            return CombustionService.start(
+                appContext,
+                notification,
+                dfuNotificationTarget,
+                INSTANCE.settings,
+                latestFirmware,
+                onServiceStarted,
+            )
         }
 
         /**
@@ -192,14 +200,25 @@ class DeviceManager(
          * Must be called after starting service with [startCombustionService].
          */
         fun bindCombustionService() {
-            if (!activeBind.getAndSet(true)) {
-                if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE)
-                    Log.d(LOG_TAG, "Binding Service")
-
-                CombustionService.bind(app.applicationContext, connection)
-            } else {
-                Log.w(LOG_TAG, "Binding Service: service already binding.")
+            if (!serviceRunning.get()) {
+                Log.e(
+                    LOG_TAG,
+                    "Binding Service: service not running; call startCombustionService() first"
+                )
+                return
             }
+
+            if (bindingInProgress.get()) {
+                Log.w(LOG_TAG, "Binding Service: already binding or bound")
+                return
+            }
+            bindingInProgress.set(true)
+
+            if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE) {
+                Log.d(LOG_TAG, "Binding Service")
+            }
+
+            CombustionService.bind(appContext, connection)
         }
 
         /**
@@ -208,19 +227,20 @@ class DeviceManager(
          * @return true if the service was unbound, false otherwise.
          */
         fun unbindCombustionService(): Boolean {
-            return if (connected.get() && activeBind.get()) {
-                if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE) {
-                    Log.d(LOG_TAG, "Unbinding Service")
-                }
-
-                activeBind.set(false)
-                connected.set(false)
-                app.unbindService(connection)
-                true
-            } else {
-                Log.w(LOG_TAG, "Unbinding Service: service already unbound.")
-                false
+            if (!bindingInProgress.get()) {
+                Log.w(LOG_TAG, "Unbinding Service: not bound")
+                return false
             }
+            bindingInProgress.set(false)
+            // app voluntarily terminated the connection
+            connected.set(false)
+
+            if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE) {
+                Log.d(LOG_TAG, "Unbinding Service")
+            }
+
+            appContext.unbindService(connection)
+            return true
         }
 
         /**
@@ -229,26 +249,26 @@ class DeviceManager(
          * @return true if the service was stopped, false otherwise.
          */
         fun stopCombustionService(): Boolean {
-            if (connected.get()) {
-                Log.w(LOG_TAG, "Stopping Service: requires unbinding service first")
+            if (!serviceRunning.get()) {
+                Log.w(LOG_TAG, "stopCombustionService: already stopped")
                 return false
             }
+            if (bindingInProgress.get() || connected.get()) {
+                Log.e(LOG_TAG, "stopCombustionService: must unbind first")
+                return false
+            }
+            serviceRunning.set(false)
 
             if (DebugSettings.DEBUG_LOG_SERVICE_LIFECYCLE) {
                 Log.d(LOG_TAG, "Stopping Service")
             }
-
-            defaultCoroutineScope?.cancel()
-            defaultCoroutineScope = null
-            mainCoroutineScope?.cancel()
-            mainCoroutineScope = null
 
             // we might run into situations where the service isn't fully started
             // by the time we reach this call since the operation is asynchronous.
             // do our best effort to stop the service, and log a message if we fall
             // into this occasional situation.
             try {
-                CombustionService.stop(app.applicationContext)
+                CombustionService.stop(appContext)
             } catch (e: Exception) {
                 Log.w(LOG_TAG, "Exception stopping service ${e.stackTrace}")
             }
@@ -300,7 +320,7 @@ class DeviceManager(
                     is DeviceDiscoveryEvent.DevicesCleared -> ProbeDiscoveredEvent.DevicesCleared
                     else -> null
                 }
-            }.shareIn(requireNotNull(defaultCoroutineScope), SharingStarted.Lazily)
+            }.shareIn(appApiScope, SharingStarted.Lazily)
         }
 
     /**
@@ -336,7 +356,7 @@ class DeviceManager(
                     is DeviceInProximityEvent.DevicesCleared -> DeviceDiscoveredEvent.DevicesCleared
                     else -> null
                 }
-            }.shareIn(requireNotNull(defaultCoroutineScope), SharingStarted.Lazily)
+            }.shareIn(appApiScope, SharingStarted.Lazily)
         }
 
     /**
@@ -412,7 +432,20 @@ class DeviceManager(
      * This will exclude any probe devices.
      */
     val discoveredWiFiNodesFlow: StateFlow<List<String>>
-        get() = NetworkManager.instance.discoveredWiFiNodesFlow
+        get() {
+            val initial: List<String> =
+                NetworkManager.instanceFlow.value?.discoveredWiFiNodesFlow?.value ?: emptyList()
+
+            return NetworkManager.instanceFlow
+                .flatMapLatest { mgr ->
+                    mgr?.discoveredWiFiNodesFlow ?: flowOf(emptyList())
+                }
+                .stateIn(
+                    scope = appApiScope,
+                    started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
+                    initialValue = initial,
+                )
+        }
 
     /**
      * Returns a flow of [AnalyticsEvent], tracked analytics events.
@@ -435,15 +468,15 @@ class DeviceManager(
         get() = NetworkManager.instanceFlow
             .flatMapLatest { mgr ->
                 // If there's no manager yet, placeholder flow
-                mgr?.silenceAlarmsRequestFlow?.distinctUntilChanged() ?: MutableSharedFlow()
+                mgr?.silenceAlarmsRequestFlow?.distinctUntilChanged() ?: emptyFlow()
             }
             .shareIn(
-                scope = requireNotNull(defaultCoroutineScope),
+                scope = appApiScope,
                 started = SharingStarted.Lazily,
             )
 
     private fun doWhenNetworkManagerInitialized(onInitialized: suspend (NetworkManager) -> Unit) {
-        mainCoroutineScope?.launch {
+        appApiScope.launch {
             NetworkManager.instanceFlow.first { it != null }?.let {
                 onInitialized(it)
             } ?: run {
@@ -453,7 +486,7 @@ class DeviceManager(
     }
 
     private fun doWhenServiceInitialized(onInitialized: suspend (CombustionService) -> Unit) {
-        mainCoroutineScope?.launch {
+        appApiScope.launch {
             serviceFlow.first { it != null }?.let {
                 onInitialized(it)
             } ?: run {
@@ -623,7 +656,16 @@ class DeviceManager(
      * from [deviceInProximityFlow] for [serialNumber].
      */
     fun deviceSmoothedRssiFlow(serialNumber: String): StateFlow<Double?>? {
-        return NetworkManager.instance.deviceSmoothedRssiFlow(serialNumber)
+        val initial = NetworkManager.instanceFlow.value?.deviceSmoothedRssiFlow(serialNumber)?.value
+        return NetworkManager.instanceFlow
+            .flatMapLatest { mgr ->
+                mgr?.deviceSmoothedRssiFlow(serialNumber) ?: flowOf<Double?>(null)
+            }
+            .stateIn(
+                scope = appApiScope,
+                started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
+                initialValue = initial,
+            )
     }
 
     /**
@@ -1018,7 +1060,7 @@ class DeviceManager(
     fun startDfuMode() {
         pendingDfuMode.set(true)
         doWhenServiceInitialized { service ->
-            pendingDfuMode.getAndSet(false).takeIf { it }?.let {
+            if (pendingDfuMode.compareAndSet(true, false)) {
                 service.startDfuMode()
             }
         }

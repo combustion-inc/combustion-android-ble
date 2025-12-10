@@ -28,25 +28,18 @@
 
 package inc.combustion.framework.ble.device
 
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
 import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
-import inc.combustion.framework.service.CombustionProductType
-import inc.combustion.framework.service.DeviceConnectionState
-import inc.combustion.framework.service.FirmwareVersion
-import inc.combustion.framework.service.GaugeStatusFlags
-import inc.combustion.framework.service.HighLowAlarmStatus
-import inc.combustion.framework.service.ModelInformation
-import inc.combustion.framework.service.SensorTemperature
+import inc.combustion.framework.service.*
 import inc.combustion.framework.service.dfu.DfuProductType
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlin.concurrent.fixedRateTimer
 import kotlin.random.Random
 
 internal class SimulatedGaugeBleDevice(
-    private val owner: LifecycleOwner,
+    private val scope: CoroutineScope,
     override val mac: String = "%02X:%02X:%02X:%02X:%02X:%02X".format(
         Random.nextBytes(1).first(),
         Random.nextBytes(1).first(),
@@ -150,7 +143,7 @@ internal class SimulatedGaugeBleDevice(
 
     init {
         fixedRateTimer(name = "SimAdvertising", initialDelay = 1000, period = 1000) {
-            owner.lifecycleScope.launch {
+            scope.launch {
                 observeAdvertisingCallback?.let {
                     if (!isConnected) {
                         it(
@@ -179,7 +172,7 @@ internal class SimulatedGaugeBleDevice(
             manufacturingLot = "98765"
         )
         observeConnectionStateCallback?.let {
-            owner.lifecycleScope.launch {
+            scope.launch {
                 it(connectionState)
             }
         }
@@ -248,7 +241,7 @@ internal class SimulatedGaugeBleDevice(
 
     private fun publishConnectionState() {
         observeConnectionStateCallback?.let {
-            owner.lifecycleScope.launch {
+            scope.launch {
                 it(connectionState)
             }
         }

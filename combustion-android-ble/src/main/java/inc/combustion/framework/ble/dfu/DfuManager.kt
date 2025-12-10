@@ -33,8 +33,6 @@ import android.bluetooth.BluetoothAdapter
 import android.content.Context
 import android.net.Uri
 import android.util.Log
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.analytics.AnalyticsTracker
 import inc.combustion.framework.analytics.ExceptionEvent
@@ -47,14 +45,10 @@ import inc.combustion.framework.service.dfu.DfuProductType
 import inc.combustion.framework.service.dfu.DfuState
 import inc.combustion.framework.service.dfu.DfuStatus
 import inc.combustion.framework.service.dfu.DfuSystemState
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -62,7 +56,7 @@ private const val BOOTLOADER_STUCK_TIMEOUT_MILLIS = 10000L
 private const val DFU_RETRY_MAX_COUNT = 3
 
 internal class DfuManager(
-    private var owner: LifecycleOwner,
+    private var scope: CoroutineScope,
     private var context: Context,
     private var adapter: BluetoothAdapter, // TODO: Should this be nullable? Better to get from context?
     private val notificationTarget: Class<out Activity?>?,
@@ -243,46 +237,44 @@ internal class DfuManager(
     }
 
     private fun collectAdvertisingData() {
-        scanningJob = owner.lifecycleScope.let {
-            DeviceScanner.advertisements
-                .onEach { advertisingData ->
-                    val id = advertisingData.id
+        scanningJob = DeviceScanner.advertisements
+            .onEach { advertisingData ->
+                val id = advertisingData.id
 
-                    if (enabled && (activeRetryDfuContext?.standardId != id)) {
+                if (enabled && (activeRetryDfuContext?.standardId != id)) {
 
-                        // if device is visible here then it exited bootLoading and can be removed
-                        bootLoaderDevices.remove(id)?.finish()
+                    // if device is visible here then it exited bootLoading and can be removed
+                    bootLoaderDevices.remove(id)?.finish()
 
-                        // Add the device to our list of devices if it doesn't exist yet.
-                        if (!devices.containsKey(id)) {
-                            Log.i(LOG_TAG, "DFU manager encountered new device $id")
+                    // Add the device to our list of devices if it doesn't exist yet.
+                    if (!devices.containsKey(id)) {
+                        Log.i(LOG_TAG, "DFU manager encountered new device $id")
 
-                            // This needs to happen before the DeviceDiscovered event is emitted.
-                            devices[id] = DfuBleDevice(
-                                getDeviceStateFlow(id),
-                                context,
-                                owner,
-                                adapter,
-                                advertisingData
-                            )
+                        // This needs to happen before the DeviceDiscovered event is emitted.
+                        devices[id] = DfuBleDevice(
+                            getDeviceStateFlow(id),
+                            context,
+                            scope,
+                            adapter,
+                            advertisingData
+                        )
 
-                            // If a DFU is in progress, disable the device.
-                            if (dfuInProgress.get()) {
-                                Log.i(LOG_TAG, "DFU in progress, disabling device $id")
-                                devices[id]?.setEnabled(false)
-                            }
-
-                            // Tell clients that the device was discovered.
-                            _systemState.tryEmit(DfuSystemState.DeviceDiscovered(id))
+                        // If a DFU is in progress, disable the device.
+                        if (dfuInProgress.get()) {
+                            Log.i(LOG_TAG, "DFU in progress, disabling device $id")
+                            devices[id]?.setEnabled(false)
                         }
+
+                        // Tell clients that the device was discovered.
+                        _systemState.tryEmit(DfuSystemState.DeviceDiscovered(id))
                     }
                 }
-                .launchIn(it)
-        }
+            }
+            .launchIn(scope)
     }
 
     private fun collectBootloaderDevices() {
-        checkStuckDfuJob = owner.lifecycleScope.launch {
+        checkStuckDfuJob = scope.launch {
             DeviceScanner.bootloadingAdvertisements.collect { advertisingData ->
                 val standardId = advertisingData.standardId()
                 val existingBootloaderDevice = bootLoaderDevices[standardId]

@@ -28,18 +28,18 @@
 package inc.combustion.framework.ble.device
 
 import android.bluetooth.BluetoothAdapter
-import androidx.lifecycle.LifecycleOwner
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.service.FirmwareVersion
 import inc.combustion.framework.service.ModelInformation
 import inc.combustion.framework.service.dfu.DfuProductType
+import kotlinx.coroutines.CoroutineScope
 
 internal open class DeviceInformationBleDevice(
     mac: String,
     advertisement: DeviceAdvertisingData,
-    owner: LifecycleOwner,
+    scope: CoroutineScope,
     adapter: BluetoothAdapter,
-) : BleDevice(mac, advertisement, owner, adapter) {
+) : BleDevice(mac, advertisement, scope, adapter) {
 
     var serialNumber: String? = null
     var firmwareVersion: FirmwareVersion? = null

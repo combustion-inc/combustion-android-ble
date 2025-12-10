@@ -29,8 +29,6 @@
 package inc.combustion.framework.ble
 
 import android.util.Log
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.lifecycleScope
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.device.NodeBleDevice
 import inc.combustion.framework.ble.uart.meatnet.GenericNodeRequest
@@ -39,13 +37,7 @@ import inc.combustion.framework.ble.uart.meatnet.NodeReadFeatureFlagsResponse
 import inc.combustion.framework.service.utils.StateFlowMutableMap
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import java.util.UUID
@@ -54,24 +46,15 @@ import kotlin.random.Random
 import kotlin.random.nextUInt
 
 internal class WiFiNodesManager(
+    private val scope: CoroutineScope,
     private val getNodeDevice: (deviceId: String) -> NodeBleDevice,
 ) {
     private val connectedWiFiNodes = StateFlowMutableMap<String, NodeBleDevice>()
     private val nonWiFiNodes: MutableSet<String> = mutableSetOf()
     private val nodeToMutexMap: MutableMap<String, Semaphore> = ConcurrentHashMap()
-    private val coroutineScope = CoroutineScope(SupervisorJob())
 
-    private lateinit var lifecycleChildScope: CoroutineScope
-    private lateinit var lifecycleChildJob: Job
-
-    fun initialize(owner: LifecycleOwner) {
-        lifecycleChildJob = SupervisorJob()
-        lifecycleChildScope =
-            CoroutineScope(owner.lifecycleScope.coroutineContext + lifecycleChildJob)
-    }
 
     fun clear() {
-        lifecycleChildJob.cancel()
         connectedWiFiNodes.clear()
     }
 
@@ -79,7 +62,7 @@ internal class WiFiNodesManager(
         val mutableDiscoveredWiFiNodesFlow = MutableStateFlow<List<String>>(emptyList())
         connectedWiFiNodes.stateFlow.onEach { nodes ->
             mutableDiscoveredWiFiNodesFlow.value = nodes.keys.toList()
-        }.launchIn(coroutineScope)
+        }.launchIn(scope)
         mutableDiscoveredWiFiNodesFlow.asStateFlow()
     }
 
@@ -106,7 +89,7 @@ internal class WiFiNodesManager(
     }
 
     fun subscribeToNodeFlow(deviceManager: BleManager) {
-        lifecycleChildScope.launch(CoroutineName("NodeConnectionFlow")) {
+        scope.launch(CoroutineName("NodeConnectionFlow")) {
             deviceManager.nodeConnectionFlow
                 .collect { deviceIds ->
                     deviceIds.forEach { deviceId ->

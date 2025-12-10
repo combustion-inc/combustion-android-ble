@@ -29,13 +29,7 @@ package inc.combustion.framework.ble.device
 
 import android.bluetooth.BluetoothAdapter
 import android.util.Log
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.lifecycleScope
-import com.juul.kable.Characteristic
-import com.juul.kable.Peripheral
-import com.juul.kable.State
-import com.juul.kable.characteristicOf
-import com.juul.kable.peripheral
+import com.juul.kable.*
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.IdleMonitor
 import inc.combustion.framework.ble.JobManager
@@ -43,18 +37,12 @@ import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.DeviceScanner
 import inc.combustion.framework.service.CombustionProductType
 import inc.combustion.framework.service.DeviceConnectionState
-import kotlinx.coroutines.CoroutineName
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.onCompletion
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -62,7 +50,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * Base class for Combustion Devices.
  *
  * @property mac Bluetooth MAC address of device.
- * @property owner Owner of the instance's coroutine scope.
+ * @property scope Coroutine scope.
  * @constructor Creates a new Device with the specified MAC.
  *
  * @param adapter Android BluetoothAdapter.
@@ -70,7 +58,7 @@ import java.util.concurrent.atomic.AtomicInteger
 internal open class BleDevice(
     val mac: String,
     advertisement: DeviceAdvertisingData,
-    val owner: LifecycleOwner,
+    val scope: CoroutineScope,
     adapter: BluetoothAdapter,
     val productType: CombustionProductType = advertisement.productType,
 ) {
@@ -107,17 +95,16 @@ internal open class BleDevice(
 
     val jobManager = JobManager()
     private val rssiCallbacks = mutableListOf<(suspend (rssi: Int) -> Unit)>()
-    var peripheral: Peripheral =
-        owner.lifecycleScope.peripheral(adapter.getRemoteDevice(mac)) {
-            logging {
-                /* The following enables logging in Kable
-                // engine = SystemLogEngine
-                // level = Logging.Level.Events
-                // format = Logging.Format.Multiline
-                // data = Hex
-                 */
-            }
+    var peripheral: Peripheral = scope.peripheral(adapter.getRemoteDevice(mac)) {
+        logging {
+            /* The following enables logging in Kable
+            // engine = SystemLogEngine
+            // level = Logging.Level.Events
+            // format = Logging.Format.Multiline
+            // data = Hex
+             */
         }
+    }
 
     private val remoteRssi = AtomicInteger(0)
     private val connectionMonitor = IdleMonitor()
@@ -143,7 +130,7 @@ internal open class BleDevice(
     open fun connect(numAttempts: Int = 1) {
         assert(numAttempts > 0)
 
-        owner.lifecycleScope.launch {
+        scope.launch {
             for (attempt in 1..numAttempts) {
                 Log.d(LOG_TAG, "Connecting to $mac (attempt $attempt / $numAttempts)")
                 try {
@@ -162,7 +149,7 @@ internal open class BleDevice(
     open fun disconnect() {
         Log.d(LOG_TAG, "BleDevice.disconnect($mac)")
 
-        owner.lifecycleScope.launch {
+        scope.launch {
             withTimeoutOrNull(DISCONNECT_TIMEOUT_MS) {
                 peripheral.disconnect()
             }
@@ -188,13 +175,13 @@ internal open class BleDevice(
 
     private fun dispatchOnDefault(callback: (suspend () -> Unit)) {
         // run the code on the default coroutine scope
-        owner.lifecycleScope.launch {
+        scope.launch {
             callback()
         }
     }
 
     fun observeConnectionState(callback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)? = null) {
-        jobManager.addJob(owner.lifecycleScope.launch {
+        jobManager.addJob(scope.launch {
             peripheral.state.onCompletion {
                 Log.d(LOG_TAG, "Connection State Monitor Complete")
             }
@@ -225,7 +212,7 @@ internal open class BleDevice(
     }
 
     fun observeOutOfRange(timeout: Long, callback: (suspend () -> Unit)? = null) {
-        jobManager.addJob(owner.lifecycleScope.launch(Dispatchers.IO) {
+        jobManager.addJob(scope.launch(Dispatchers.IO) {
             while (isActive) {
                 delay(IDLE_TIMEOUT_POLL_RATE_MS)
                 val isIdle = connectionMonitor.isIdle(timeout)
@@ -267,7 +254,7 @@ internal open class BleDevice(
     ) {
         jobManager.addJob(
             key = jobKey,
-            job = owner.lifecycleScope.launch(
+            job = scope.launch(
                 CoroutineName("${jobKey}.observeAdvertisingPackets") + Dispatchers.IO
             ) {
                 DeviceScanner.advertisements.filter {

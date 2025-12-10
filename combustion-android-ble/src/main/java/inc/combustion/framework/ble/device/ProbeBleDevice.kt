@@ -30,8 +30,6 @@ package inc.combustion.framework.ble.device
 
 import android.bluetooth.BluetoothAdapter
 import android.util.Log
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.lifecycleScope
 import com.juul.kable.characteristicOf
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.ProbeStatus
@@ -41,12 +39,9 @@ import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
 import inc.combustion.framework.ble.uart.*
 import inc.combustion.framework.service.*
-import kotlinx.coroutines.CoroutineName
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.onCompletion
-import kotlinx.coroutines.launch
 
 /**
  * Class representing a directly-connected probe.
@@ -57,10 +52,10 @@ import kotlinx.coroutines.launch
  */
 internal class ProbeBleDevice(
     mac: String,
-    owner: LifecycleOwner,
+    scope: CoroutineScope,
     private var probeAdvertisingData: ProbeAdvertisingData,
     adapter: BluetoothAdapter,
-    private val uart: UartBleDevice = UartBleDevice(mac, probeAdvertisingData, owner, adapter),
+    private val uart: UartBleDevice = UartBleDevice(mac, probeAdvertisingData, scope, adapter),
 ) : ProbeBleDeviceBase() {
 
     companion object {
@@ -166,17 +161,17 @@ internal class ProbeBleDevice(
     override fun disconnect() = uart.disconnect()
 
     override fun sendSessionInformationRequest(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
-        sessionInfoHandler.wait(uart.owner, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
+        sessionInfoHandler.wait(uart.scope, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
         sendUartRequest(SessionInfoRequest())
     }
 
     override fun sendSetProbeColor(color: ProbeColor, callback: ((Boolean, Any?) -> Unit)?) {
-        setColorHandler.wait(uart.owner, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
+        setColorHandler.wait(uart.scope, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
         sendUartRequest(SetColorRequest(color))
     }
 
     override fun sendSetProbeID(id: ProbeID, callback: ((Boolean, Any?) -> Unit)?) {
-        setIdHandler.wait(uart.owner, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
+        setIdHandler.wait(uart.scope, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
         sendUartRequest(SetIDRequest(id))
     }
 
@@ -186,7 +181,7 @@ internal class ProbeBleDevice(
         reqId: UInt?,
         callback: ((Boolean, Any?) -> Unit)?
     ) {
-        setPredictionHandler.wait(uart.owner, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
+        setPredictionHandler.wait(uart.scope, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
         sendUartRequest(SetPredictionRequest(setPointTemperatureC, mode))
     }
 
@@ -195,17 +190,17 @@ internal class ProbeBleDevice(
         reqId: UInt?,
         callback: ((Boolean, Any?) -> Unit)?
     ) {
-        configureFoodSafeHandler.wait(uart.owner, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
+        configureFoodSafeHandler.wait(uart.scope, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
         sendUartRequest(ConfigureFoodSafeRequest(foodSafeData = foodSafeData))
     }
 
     override fun sendResetFoodSafe(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
-        resetFoodSafeHandler.wait(uart.owner, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
+        resetFoodSafeHandler.wait(uart.scope, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
         sendUartRequest(ResetFoodSafeRequest())
     }
 
     override fun sendResetProbe(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
-        resetProbeHandler.wait(uart.owner, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
+        resetProbeHandler.wait(uart.scope, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
         sendUartRequest(ResetProbeRequest())
     }
 
@@ -214,7 +209,7 @@ internal class ProbeBleDevice(
         reqId: UInt?,
         callback: ((Boolean, Any?) -> Unit)?
     ) {
-        setPowerModeHandler.wait(uart.owner, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
+        setPowerModeHandler.wait(uart.scope, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
         sendUartRequest(SetPowerModeRequest(powerMode))
     }
 
@@ -233,7 +228,7 @@ internal class ProbeBleDevice(
         callback: ((Boolean, Any?) -> Unit)?,
     ) {
         setProbeHighLowAlarmStatusHandler.wait(
-            uart.owner,
+            uart.scope,
             PROBE_MESSAGE_RESPONSE_TIMEOUT_MS,
             reqId,
             callback,
@@ -243,11 +238,11 @@ internal class ProbeBleDevice(
 
     fun silenceProbeAlarms(callback: ((Boolean, Any?) -> Unit)?) {
         silenceAlarmsHandler.wait(
-            owner = uart.owner,
+            scope = uart.scope,
             duration = PROBE_MESSAGE_RESPONSE_TIMEOUT_MS,
             reqId = null,
             callback = callback,
-            )
+        )
         sendUartRequest(SilenceProbeAlarmsRequest())
     }
 
@@ -258,7 +253,7 @@ internal class ProbeBleDevice(
     override suspend fun readModelInformation() = uart.readModelInformation()
 
     override fun readFirmwareVersionAsync(callback: (FirmwareVersion) -> Unit) {
-        uart.owner.lifecycleScope.launch {
+        uart.scope.launch {
             readFirmwareVersion()
         }.invokeOnCompletion {
             deviceInfoFirmwareVersion?.let {
@@ -268,7 +263,7 @@ internal class ProbeBleDevice(
     }
 
     override fun readHardwareRevisionAsync(callback: (String) -> Unit) {
-        uart.owner.lifecycleScope.launch {
+        uart.scope.launch {
             readHardwareRevision()
         }.invokeOnCompletion {
             deviceInfoHardwareRevision?.let {
@@ -278,7 +273,7 @@ internal class ProbeBleDevice(
     }
 
     override fun readModelInformationAsync(callback: (ModelInformation) -> Unit) {
-        uart.owner.lifecycleScope.launch {
+        uart.scope.launch {
             readModelInformation()
         }.invokeOnCompletion {
             deviceInfoModelInformation?.let {
@@ -321,7 +316,7 @@ internal class ProbeBleDevice(
         callback: (suspend (status: ProbeStatus, hopCount: UInt?) -> Unit)?
     ) {
         if (probeStatusJob?.isActive != true) {
-            val job = uart.owner.lifecycleScope.launch(
+            val job = uart.scope.launch(
                 CoroutineName("$serialNumber.observeProbeStatusUpdates")
             ) {
                 uart.peripheral.observe(DEVICE_STATUS_CHARACTERISTIC)
@@ -351,12 +346,14 @@ internal class ProbeBleDevice(
     private fun observeUartResponses(callback: (suspend (responses: List<Response>) -> Unit)? = null) {
         uart.jobManager.addJob(
             key = serialNumber,
-            job = uart.owner.lifecycleScope.launch(
-                CoroutineName("$serialNumber.observeUartResponses")
+            job = uart.scope.launch(
+                CoroutineName("$serialNumber.observeUartResponses"),
             ) {
-                uart.observeUartCharacteristic { data ->
-                    callback?.let {
-                        it(Response.fromData(data.toUByteArray()))
+                withContext(Dispatchers.Main) {
+                    uart.observeUartCharacteristic { data ->
+                        callback?.let {
+                            it(Response.fromData(data.toUByteArray()))
+                        }
                     }
                 }
             }
@@ -364,7 +361,7 @@ internal class ProbeBleDevice(
     }
 
     private fun sendUartRequest(request: Request) {
-        uart.owner.lifecycleScope.launch(Dispatchers.IO) {
+        uart.scope.launch(Dispatchers.IO) {
             if (DebugSettings.DEBUG_LOG_BLE_UART_IO) {
                 val packet = request.data.joinToString("") {
                     it.toString(16).padStart(2, '0').uppercase()
@@ -400,10 +397,11 @@ internal class ProbeBleDevice(
                         response.success,
                         null,
                     )
+
                     is SilenceProbeAlarmsResponse -> silenceAlarmsHandler.handled(
                         response.success,
                         null,
-                        )
+                    )
                 }
             }
         }
