@@ -656,6 +656,7 @@ class DeviceManager(
      * from [deviceInProximityFlow] for [serialNumber].
      */
     fun deviceSmoothedRssiFlow(serialNumber: String): StateFlow<Double?>? {
+        val initial = NetworkManager.instanceFlow.value?.deviceSmoothedRssiFlow(serialNumber)?.value
         return NetworkManager.instanceFlow
             .flatMapLatest { mgr ->
                 mgr?.deviceSmoothedRssiFlow(serialNumber) ?: flowOf<Double?>(null)
@@ -663,7 +664,7 @@ class DeviceManager(
             .stateIn(
                 scope = appApiScope,
                 started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
-                initialValue = null,
+                initialValue = initial,
             )
     }
 
