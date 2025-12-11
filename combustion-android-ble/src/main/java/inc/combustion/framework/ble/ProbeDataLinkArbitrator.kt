@@ -44,6 +44,7 @@ import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.service.DeviceManager
 import inc.combustion.framework.service.ProbeMode
 import inc.combustion.framework.service.SessionInformation
+import java.util.concurrent.ConcurrentHashMap
 
 // Number of seconds to ignore other lower-priority (higher hop count) sources of information for Instant Read
 private const val INSTANT_READ_IDLE_TIMEOUT = 1000L
@@ -55,7 +56,7 @@ internal class ProbeDataLinkArbitrator(
 ) : DataLinkArbitrator<ProbeBleDeviceBase, ProbeAdvertisingData> {
 
     // meatnet network nodes
-    private val networkNodes = hashMapOf<DeviceID, DeviceInformationBleDevice>()
+    private val networkNodes = ConcurrentHashMap<DeviceID, DeviceInformationBleDevice>()
 
     // advertising data arbitration
     private val advertisingArbitrator = AdvertisingArbitrator()
