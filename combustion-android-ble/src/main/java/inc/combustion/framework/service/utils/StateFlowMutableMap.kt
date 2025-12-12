@@ -30,87 +30,100 @@ package inc.combustion.framework.service.utils
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 
 /**
- * A StateFlow with an interface similar to a mutable map.
+ * A StateFlow with an interface similar to a mutable map. Is Thread-safe.
  * Note, does not implement the [MutableMap] interface, e.g. cant modify its entries and keys directly.
  */
 @Suppress("unused")
 class StateFlowMutableMap<K, V>(initialMap: Map<K, V> = emptyMap()) {
-    private val mutableMap: MutableMap<K, V> = initialMap.toMutableMap()
+
     private val _stateFlow = MutableStateFlow(initialMap)
     val stateFlow: StateFlow<Map<K, V>> get() = _stateFlow
 
-    private fun emitChange() {
-        _stateFlow.value = mutableMap.toMap() // Emit a new copy
+    private inline fun updateMap(transform: (MutableMap<K, V>) -> Unit) {
+        _stateFlow.update { current ->
+            current.toMutableMap().apply(transform)
+        }
     }
 
-    @Suppress("MemberVisibilityCanBePrivate")
     fun put(key: K, value: V): V? {
-        val prevValue = mutableMap.put(key, value)
-        emitChange()
-        return prevValue
-    }
-
-    fun remove(key: K): V? {
-        val removedValue = mutableMap.remove(key)
-        emitChange()
-        return removedValue
+        var previous: V? = null
+        updateMap { map ->
+            previous = map.put(key, value)
+        }
+        return previous
     }
 
     operator fun set(key: K, value: V) {
         put(key, value)
     }
 
-    operator fun get(key: K): V? = mutableMap[key]
-
-    val entries: Set<Map.Entry<K, V>>
-        get() = mutableMap.entries.toSet()
-
-    val keys: Set<K>
-        get() = mutableMap.keys.toSet()
-
-    val size: Int
-        get() = mutableMap.size
-
-    val values: Set<V>
-        get() = mutableMap.values.toSet()
-
-    fun clear() {
-        mutableMap.clear()
-        emitChange()
-    }
-
-    fun isEmpty(): Boolean = mutableMap.isEmpty()
-
-    fun containsValue(value: V): Boolean = mutableMap.containsValue(value)
-
-    fun containsKey(key: K): Boolean = mutableMap.containsKey(key)
-
-    fun putAll(from: Map<out K, V>) {
-        mutableMap.putAll(from)
-        emitChange()
-    }
-
-    fun removeIf(filter: (Map.Entry<K, V>) -> Boolean): Boolean {
-        var removed = false
-        mutableMap.toMap().forEach { entry ->
-            if (filter(entry)) {
-                mutableMap.remove(entry.key)
-                removed = true
-            }
-        }
-        if (removed) {
-            emitChange()
+    fun remove(key: K): V? {
+        var removed: V? = null
+        updateMap { map ->
+            removed = map.remove(key)
         }
         return removed
     }
 
-    fun toMap(): Map<K, V> = this.mutableMap.toMap()
+    operator fun get(key: K): V? = _stateFlow.value[key]
+
+    val entries: Set<Map.Entry<K, V>>
+        get() = _stateFlow.value.entries
+
+    val keys: Set<K>
+        get() = _stateFlow.value.keys
+
+    val values: Collection<V>
+        get() = _stateFlow.value.values
+
+    val size: Int
+        get() = _stateFlow.value.size
+
+    fun clear() {
+        _stateFlow.value = emptyMap()
+    }
+
+    fun isEmpty(): Boolean = _stateFlow.value.isEmpty()
+
+    fun containsKey(key: K): Boolean = _stateFlow.value.containsKey(key)
+
+    fun containsValue(value: V): Boolean = _stateFlow.value.containsValue(value)
+
+    fun putAll(from: Map<out K, V>) {
+        updateMap { map ->
+            map.putAll(from)
+        }
+    }
+
+    fun filter(predicate: (Map.Entry<K, V>) -> Boolean): Map<K, V> {
+        return _stateFlow.value
+            .entries
+            .asSequence()
+            .filter(predicate)
+            .associate { it.key to it.value }
+    }
+
+    fun removeIf(filter: (Map.Entry<K, V>) -> Boolean): Boolean {
+        var removed = false
+        updateMap { map ->
+            val iterator = map.entries.iterator()
+            while (iterator.hasNext()) {
+                val entry = iterator.next()
+                if (filter(entry)) {
+                    iterator.remove()
+                    removed = true
+                }
+            }
+        }
+        return removed
+    }
+
+    fun toMap(): Map<K, V> = _stateFlow.value
 
     fun asStateFlow(): StateFlow<Map<K, V>> = stateFlow
 
-    override fun toString(): String {
-        return mutableMap.toString()
-    }
+    override fun toString(): String = _stateFlow.value.toString()
 }

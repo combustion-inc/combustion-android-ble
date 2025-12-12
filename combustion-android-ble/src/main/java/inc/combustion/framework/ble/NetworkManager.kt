@@ -54,6 +54,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.random.Random
 import kotlin.random.nextUInt
@@ -230,7 +231,7 @@ internal class NetworkManager(
     }
 
     // map tracking the firmware of devices
-    private val firmwareStateOfNetwork = hashMapOf<DeviceID, FirmwareState.Node>()
+    private val firmwareStateOfNetwork = ConcurrentHashMap<DeviceID, FirmwareState.Node>()
 
     internal val bluetoothIsEnabled: Boolean
         get() {

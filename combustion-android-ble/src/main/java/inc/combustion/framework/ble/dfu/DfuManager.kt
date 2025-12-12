@@ -50,6 +50,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 private const val BOOTLOADER_STUCK_TIMEOUT_MILLIS = 10000L
@@ -63,14 +64,15 @@ internal class DfuManager(
     private val latestFirmware: Map<DfuProductType, Uri>,
     private val analyticsTracker: AnalyticsTracker = AnalyticsTracker.instance,
 ) {
-    private val deviceStateFlows: MutableMap<DeviceID, MutableStateFlow<DfuState>> = mutableMapOf()
-    private val devices = hashMapOf<DeviceID, DfuBleDevice>()
+    private val deviceStateFlows: ConcurrentHashMap<DeviceID, MutableStateFlow<DfuState>> =
+        ConcurrentHashMap()
+    private val devices = ConcurrentHashMap<DeviceID, DfuBleDevice>()
     private var scanningJob: Job? = null
 
     @Volatile
     private var activeRetryDfuContext: RetryDfuContext? = null
-    private val bootLoaderDevices = mutableMapOf<DeviceID, BootLoaderDevice>()
-    private val retryDfuHistory = mutableMapOf<DeviceID, RetryDfuContext>()
+    private val bootLoaderDevices = ConcurrentHashMap<DeviceID, BootLoaderDevice>()
+    private val retryDfuHistory = ConcurrentHashMap<DeviceID, RetryDfuContext>()
     private var checkStuckDfuJob: Job? = null
 
     private val _initialized = AtomicBoolean(false)
