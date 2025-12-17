@@ -153,6 +153,7 @@ class CombustionService : Service() {
             // Initialize Network Manager
             NetworkManager.initialize(
                 scope = serviceScope,
+                context = applicationContext,
                 adapter = bluetooth.adapter,
                 settings = settings,
             )

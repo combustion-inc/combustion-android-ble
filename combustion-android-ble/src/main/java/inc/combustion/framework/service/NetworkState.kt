@@ -31,7 +31,40 @@ package inc.combustion.framework.service
  * Enumerates the current network state
  */
 data class NetworkState(
-    val bluetoothOn: Boolean = false,
+    val bluetoothAvailability: BluetoothAvailability = BluetoothAvailability.AdapterOff,
     val scanningOn: Boolean = false,
     val dfuModeOn: Boolean = false
-)
+) {
+    val bluetoothReady: Boolean
+        get() = bluetoothAvailability is BluetoothAvailability.Available
+
+    @Deprecated(
+        message = "bluetoothOn is deprecated, use bluetoothReady or bluetoothAvailability instead.",
+        level = DeprecationLevel.WARNING,
+    )
+    val bluetoothOn: Boolean
+        get() = bluetoothAvailability !is BluetoothAvailability.AdapterOff
+}
+
+sealed interface BluetoothAvailability {
+    object Available : BluetoothAvailability
+    object AdapterOff : BluetoothAvailability
+    object LocationOff : BluetoothAvailability   // API ≤ 30 only
+
+    companion object {
+        fun computeBluetoothAvailability(
+            bluetoothAdapterEnabled: Boolean,
+            locationServiceRequiredForBluetooth: Boolean,
+            locationServiceEnabled: Boolean,
+        ): BluetoothAvailability {
+            return when {
+                !bluetoothAdapterEnabled -> AdapterOff
+
+                locationServiceRequiredForBluetooth && !locationServiceEnabled ->
+                    LocationOff
+
+                else -> Available
+            }
+        }
+    }
+}

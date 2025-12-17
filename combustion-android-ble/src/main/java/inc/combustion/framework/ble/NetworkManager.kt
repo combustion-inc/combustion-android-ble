@@ -28,11 +28,14 @@
 
 package inc.combustion.framework.ble
 
+import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.location.LocationManager
+import android.os.Build
 import android.util.Log
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.device.*
@@ -69,6 +72,7 @@ private val SUPPORTED_ADVERTISING_PRODUCTS = setOf(
 
 internal class NetworkManager(
     private val scope: CoroutineScope,
+    private val context: Context, // Application context
     private val adapter: BluetoothAdapter,
     private val settings: DeviceManager.Settings,
 ) {
@@ -117,6 +121,7 @@ internal class NetworkManager(
 
         fun initialize(
             scope: CoroutineScope,
+            context: Context, // Application context
             adapter: BluetoothAdapter,
             settings: DeviceManager.Settings,
         ) {
@@ -133,7 +138,7 @@ internal class NetworkManager(
                     INSTANCE.finish()
                 }
 
-                INSTANCE = NetworkManager(scope, adapter, settings)
+                INSTANCE = NetworkManager(scope, context, adapter, settings)
                 _instanceFlow.value = INSTANCE
                 initialized.set(true)
             }
@@ -200,28 +205,27 @@ internal class NetworkManager(
 
     internal val bluetoothAdapterStateIntentFilter =
         IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
+
     internal val bluetoothAdapterStateReceiver: BroadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent) {
             val action = intent.action
             if (action == BluetoothAdapter.ACTION_STATE_CHANGED) {
                 val state = intent.getIntExtra(
                     BluetoothAdapter.EXTRA_STATE,
-                    BluetoothAdapter.ERROR
+                    BluetoothAdapter.ERROR,
                 )
                 when (state) {
-                    BluetoothAdapter.STATE_OFF -> {
-                        if (scanningForDevices) {
-                            DeviceScanner.stop()
-                        }
-                        flowHolder.mutableNetworkState.value = NetworkState()
-                    }
-
-                    BluetoothAdapter.STATE_ON -> {
-                        if (scanningForDevices) {
-                            DeviceScanner.scan(scope)
-                        }
+                    BluetoothAdapter.STATE_OFF, BluetoothAdapter.STATE_ON -> {
                         flowHolder.mutableNetworkState.value =
-                            flowHolder.mutableNetworkState.value.copy(bluetoothOn = true)
+                            flowHolder.mutableNetworkState.value.copy(bluetoothAvailability = computeBluetoothAvailability())
+
+                        if (shouldBeScanningForDevices) {
+                            if (networkStateFlow.value.bluetoothReady) {
+                                DeviceScanner.scan(scope)
+                            } else {
+                                DeviceScanner.stop()
+                            }
+                        }
                     }
 
                     else -> {}
@@ -230,15 +234,59 @@ internal class NetworkManager(
         }
     }
 
+    private val locationStateIntentFilter =
+        IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION)
+
+    @Volatile
+    private var lastLocationEnabled: Boolean = locationServiceEnabled
+
+    private val locationStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (!locationServiceRequiredForBluetooth) return
+            if (intent?.action != LocationManager.PROVIDERS_CHANGED_ACTION) return
+
+            val nowEnabled = locationServiceEnabled
+            val wasEnabled = lastLocationEnabled
+            lastLocationEnabled = nowEnabled
+            if (nowEnabled == wasEnabled) return
+
+            flowHolder.mutableNetworkState.value = flowHolder.mutableNetworkState.value.copy(
+                bluetoothAvailability = computeBluetoothAvailability()
+            )
+
+            if (shouldBeScanningForDevices) {
+                if (networkStateFlow.value.bluetoothReady) {
+                    DeviceScanner.scan(scope)
+                } else {
+                    DeviceScanner.stop()
+                }
+            }
+        }
+    }
+
     // map tracking the firmware of devices
     private val firmwareStateOfNetwork = ConcurrentHashMap<DeviceID, FirmwareState.Node>()
 
-    internal val bluetoothIsEnabled: Boolean
+    internal val bluetoothAdapterEnabled: Boolean
         get() {
             return adapter.isEnabled
         }
 
-    internal var scanningForDevices: Boolean = false
+    private val locationServiceRequiredForBluetooth: Boolean
+        get() = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+
+    private val locationServiceEnabled: Boolean
+        get() {
+            if (!locationServiceRequiredForBluetooth) return true
+
+            val locationManager =
+                context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+
+            return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+                    locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+        }
+
+    internal var shouldBeScanningForDevices: Boolean = false
         private set
 
     internal var dfuModeEnabled: Boolean = false
@@ -276,6 +324,19 @@ internal class NetworkManager(
     val silenceAlarmsRequestFlow: SharedFlow<SilenceAlarmsRequest>
         get() = _silenceAlarmsRequestFlow.asSharedFlow()
 
+    init {
+        require(context.applicationContext === context) {
+            "NetworkManager must be given application context"
+        }
+    }
+
+    private fun computeBluetoothAvailability(): BluetoothAvailability =
+        BluetoothAvailability.computeBluetoothAvailability(
+            bluetoothAdapterEnabled = bluetoothAdapterEnabled,
+            locationServiceRequiredForBluetooth = locationServiceRequiredForBluetooth,
+            locationServiceEnabled = locationServiceEnabled,
+        )
+
     fun setDeviceAllowlist(allowlist: Set<String>?) {
         // Make sure that the new allowlist is set before we get another advertisement sneak in and
         // try to kick off a connection to a probe that is no longer in the allowlist.
@@ -297,17 +358,17 @@ internal class NetworkManager(
     }
 
     fun startScanForDevices(): Boolean {
-        if (bluetoothIsEnabled) {
-            scanningForDevices = true
-        }
+        if (shouldBeScanningForDevices) return true
 
-        if (scanningForDevices) {
+        shouldBeScanningForDevices = true
+        flowHolder.mutableNetworkState.value =
+            flowHolder.mutableNetworkState.value.copy(scanningOn = true)
+
+        if (networkStateFlow.value.bluetoothReady) {
             DeviceScanner.scan(scope)
-            flowHolder.mutableNetworkState.value =
-                flowHolder.mutableNetworkState.value.copy(scanningOn = true)
         }
 
-        return scanningForDevices
+        return shouldBeScanningForDevices
     }
 
     /**
@@ -315,16 +376,10 @@ internal class NetworkManager(
      * NB, dont stop the actual scanning since needed for DFU
      */
     fun stopScanForDevices(): Boolean {
-        if (bluetoothIsEnabled) {
-            scanningForDevices = false
-        }
-
-        if (!scanningForDevices) {
-            flowHolder.mutableNetworkState.value =
-                flowHolder.mutableNetworkState.value.copy(scanningOn = false)
-        }
-
-        return scanningForDevices
+        shouldBeScanningForDevices = false
+        flowHolder.mutableNetworkState.value =
+            flowHolder.mutableNetworkState.value.copy(scanningOn = false)
+        return shouldBeScanningForDevices
     }
 
     fun startDfuMode() {
@@ -629,6 +684,15 @@ internal class NetworkManager(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     fun finish() {
+        try {
+            if (locationServiceRequiredForBluetooth) {
+                context.unregisterReceiver(locationStateReceiver)
+            }
+        } catch (_: IllegalArgumentException) {
+            // Receiver already unregistered — safe to ignore
+        }
+
+
         DeviceScanner.stop()
         jobManager.cancelJobs()
         clearDevices()
@@ -904,7 +968,7 @@ internal class NetworkManager(
 
     private suspend fun collectAdvertisingData() {
         DeviceScanner.advertisements.collect { advertisingData ->
-            if (scanningForDevices) {
+            if (shouldBeScanningForDevices) {
                 val serialNumber = advertisingData.serialNumber
                 val productType = advertisingData.productType
                 if (!SUPPORTED_ADVERTISING_PRODUCTS.contains(productType)) return@collect
@@ -1000,6 +1064,10 @@ internal class NetworkManager(
     }
 
     private fun start() {
+        flowHolder.mutableNetworkState.value = flowHolder.mutableNetworkState.value.copy(
+            bluetoothAvailability = computeBluetoothAvailability()
+        )
+
         jobManager.addJob(
             scope.launch(CoroutineName("collectAdvertisingData")) {
                 collectAdvertisingData()
@@ -1012,25 +1080,33 @@ internal class NetworkManager(
         if (settings.meatNetEnabled) {
             jobManager.addJob(
                 scope.launch(CoroutineName("networkStateFlow")) {
-                    var bluetoothIsOn = false
+                    var bluetoothIsReady = false
                     networkStateFlow.collect {
-                        if (!bluetoothIsOn && it.bluetoothOn) {
+                        if (!bluetoothIsReady && it.bluetoothReady) {
                             startScanForDevices()
                         }
 
-                        if (bluetoothIsOn && !it.bluetoothOn) {
+                        if (bluetoothIsReady && !it.bluetoothReady) {
                             stopScanForDevices()
                         }
 
-                        bluetoothIsOn = it.bluetoothOn
+                        bluetoothIsReady = it.bluetoothReady
                     }
                 }
             )
         }
 
-        if (bluetoothIsEnabled) {
+        if (locationServiceRequiredForBluetooth) {
+            @SuppressLint("UnspecifiedRegisterReceiverFlag")
+            context.registerReceiver(
+                locationStateReceiver,
+                locationStateIntentFilter,
+            )
+        }
+
+        if (networkStateFlow.value.bluetoothReady) {
             flowHolder.mutableNetworkState.value =
-                flowHolder.mutableNetworkState.value.copy(bluetoothOn = true)
+                flowHolder.mutableNetworkState.value.copy(bluetoothAvailability = computeBluetoothAvailability())
 
             if (settings.meatNetEnabled) {
                 // MeatNet automatically starts scanning without API call.
@@ -1039,7 +1115,7 @@ internal class NetworkManager(
             }
         } else {
             flowHolder.mutableNetworkState.value =
-                flowHolder.mutableNetworkState.value.copy(bluetoothOn = false)
+                flowHolder.mutableNetworkState.value.copy(bluetoothAvailability = computeBluetoothAvailability())
         }
     }
 
