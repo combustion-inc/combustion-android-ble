@@ -218,14 +218,6 @@ internal class NetworkManager(
                     BluetoothAdapter.STATE_OFF, BluetoothAdapter.STATE_ON -> {
                         flowHolder.mutableNetworkState.value =
                             flowHolder.mutableNetworkState.value.copy(bluetoothAvailability = computeBluetoothAvailability())
-
-                        if (shouldBeScanningForDevices) {
-                            if (networkStateFlow.value.bluetoothReady) {
-                                DeviceScanner.scan(scope)
-                            } else {
-                                DeviceScanner.stop()
-                            }
-                        }
                     }
 
                     else -> {}
@@ -253,14 +245,6 @@ internal class NetworkManager(
             flowHolder.mutableNetworkState.value = flowHolder.mutableNetworkState.value.copy(
                 bluetoothAvailability = computeBluetoothAvailability()
             )
-
-            if (shouldBeScanningForDevices) {
-                if (networkStateFlow.value.bluetoothReady) {
-                    DeviceScanner.scan(scope)
-                } else {
-                    DeviceScanner.stop()
-                }
-            }
         }
     }
 
@@ -286,11 +270,14 @@ internal class NetworkManager(
                     locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
         }
 
-    internal var shouldBeScanningForDevices: Boolean = false
-        private set
+    internal val deviceDiscoveryModeEnabled: Boolean
+        get() = networkStateFlow.value.scanningPurpose == ScanningPurpose.DeviceDiscovery
 
-    internal var dfuModeEnabled: Boolean = false
-        private set
+    private var modeOnDfuCompletion: ScanningPurpose =
+        ScanningPurpose.Idle
+
+    internal val dfuModeEnabled: Boolean
+        get() = networkStateFlow.value.scanningPurpose == ScanningPurpose.Dfu
 
     internal val discoveredProbes: List<String>
         get() {
@@ -357,88 +344,72 @@ internal class NetworkManager(
         }
     }
 
-    fun startScanForDevices(): Boolean {
-        if (shouldBeScanningForDevices) return true
-
-        shouldBeScanningForDevices = true
-        flowHolder.mutableNetworkState.value =
-            flowHolder.mutableNetworkState.value.copy(scanningOn = true)
-
-        if (networkStateFlow.value.bluetoothReady) {
-            DeviceScanner.scan(scope)
-        }
-
-        return shouldBeScanningForDevices
+    /**
+     * Start interpreting DeviceScanner's scanned advertisements to for devices. e.g. finding devices.
+     */
+    fun enableDeviceDiscovery(): Boolean {
+        switchScanningPurpose(ScanningPurpose.DeviceDiscovery)
+        return deviceDiscoveryModeEnabled
     }
 
     /**
-     * Stops interpreting DeviceScanner's scanned advertisements to find devices.
-     * NB, dont stop the actual scanning since needed for DFU
+     * Stops interpreting DeviceScanner's scanned advertisements for devices.
+     * NB, doesn't stop the actual scanning since needed for DFU
      */
-    fun stopScanForDevices(): Boolean {
-        shouldBeScanningForDevices = false
+    fun disableDeviceDiscovery(): Boolean {
+        if (networkStateFlow.value.scanningPurpose == ScanningPurpose.DeviceDiscovery) {
+            switchScanningPurpose(ScanningPurpose.Idle)
+        }
+        modeOnDfuCompletion = ScanningPurpose.Idle
+        return deviceDiscoveryModeEnabled
+    }
+
+    private fun switchScanningPurpose(mode: ScanningPurpose) {
         flowHolder.mutableNetworkState.value =
-            flowHolder.mutableNetworkState.value.copy(scanningOn = false)
-        return shouldBeScanningForDevices
+            flowHolder.mutableNetworkState.value.copy(scanningPurpose = mode)
     }
 
     fun startDfuMode() {
-        if (!dfuModeEnabled) {
+        if (dfuModeEnabled) return
+        modeOnDfuCompletion = networkStateFlow.value.scanningPurpose
 
-            // if MeatNet is managing network, then stop returning probe scan results
-            if (settings.meatNetEnabled) {
-                stopScanForDevices()
-            }
+        // if MeatNet is managing network, then stop returning probe scan results
+        switchScanningPurpose(ScanningPurpose.Dfu)
 
-            // disconnect any active connection
-            dfuModeEnabled = true
+        // disconnect everything at this level
+        devices.forEach { (_, device) ->
+            when (device) {
+                is DeviceHolder.ProbeHolder -> {
+                    device.probe.isInDfuMode = true
+                    device.probe.disconnect()
+                }
 
-            // disconnect everything at this level
-            devices.forEach { (_, device) ->
-                when (device) {
-                    is DeviceHolder.ProbeHolder -> {
-                        device.probe.isInDfuMode = true
-                        device.probe.disconnect()
-                    }
-
-                    is DeviceHolder.RepeaterHolder -> {
-                        device.repeater.isInDfuMode = true
-                        device.repeater.disconnect()
-                    }
+                is DeviceHolder.RepeaterHolder -> {
+                    device.repeater.isInDfuMode = true
+                    device.repeater.disconnect()
                 }
             }
-
-            flowHolder.mutableNetworkState.value =
-                flowHolder.mutableNetworkState.value.copy(dfuModeOn = true)
         }
     }
 
     fun stopDfuMode() {
-        if (dfuModeEnabled) {
-            dfuModeEnabled = false
+        if (!dfuModeEnabled) return
 
-            // if MeatNet is managing network, then start returning probe scan results
-            if (settings.meatNetEnabled) {
-                startScanForDevices()
-            }
+        // take all of the devices out of DFU mode.  we will automatically reconnect to
+        // them as they are discovered during scanning
+        devices.forEach { (_, device) ->
+            when (device) {
+                is DeviceHolder.ProbeHolder -> {
+                    device.probe.isInDfuMode = false
+                }
 
-            // take all of the devices out of DFU mode.  we will automatically reconnect to
-            // them as they are discovered during scanning
-            devices.forEach { (_, device) ->
-                when (device) {
-                    is DeviceHolder.ProbeHolder -> {
-                        device.probe.isInDfuMode = false
-                    }
-
-                    is DeviceHolder.RepeaterHolder -> {
-                        device.repeater.isInDfuMode = false
-                    }
+                is DeviceHolder.RepeaterHolder -> {
+                    device.repeater.isInDfuMode = false
                 }
             }
-
-            flowHolder.mutableNetworkState.value =
-                flowHolder.mutableNetworkState.value.copy(dfuModeOn = false)
         }
+
+        switchScanningPurpose(modeOnDfuCompletion)
     }
 
     fun addSimulatedProbe() {
@@ -691,7 +662,6 @@ internal class NetworkManager(
         } catch (_: IllegalArgumentException) {
             // Receiver already unregistered — safe to ignore
         }
-
 
         DeviceScanner.stop()
         jobManager.cancelJobs()
@@ -968,33 +938,34 @@ internal class NetworkManager(
 
     private suspend fun collectAdvertisingData() {
         DeviceScanner.advertisements.collect { advertisingData ->
-            if (shouldBeScanningForDevices) {
-                val serialNumber = advertisingData.serialNumber
-                val productType = advertisingData.productType
-                if (!SUPPORTED_ADVERTISING_PRODUCTS.contains(productType)) return@collect
-                when (advertisingData) {
-                    is ProbeAdvertisingData -> if (serialNumber == REPEATER_NO_PROBES_SERIAL_NUMBER) {
-                        manageNodeWithoutProbe(advertisingData)
-                    } else if (manageMeatNetDeviceWithProbe(advertisingData)) {
-                        flowHolder.mutableDiscoveredDevicesFlow.emit(
-                            DeviceDiscoveryEvent.ProbeDiscovered(
-                                serialNumber
-                            )
-                        )
-                    }
+            if (!deviceDiscoveryModeEnabled) return@collect
 
-                    is GaugeAdvertisingData -> if (manageGaugeDevice(advertisingData)) {
-                        flowHolder.mutableDiscoveredDevicesFlow.emit(
-                            DeviceDiscoveryEvent.GaugeDiscovered(
-                                serialNumber
-                            )
+            val serialNumber = advertisingData.serialNumber
+            val productType = advertisingData.productType
+            if (!SUPPORTED_ADVERTISING_PRODUCTS.contains(productType)) return@collect
+
+            when (advertisingData) {
+                is ProbeAdvertisingData -> if (serialNumber == REPEATER_NO_PROBES_SERIAL_NUMBER) {
+                    manageNodeWithoutProbe(advertisingData)
+                } else if (manageMeatNetDeviceWithProbe(advertisingData)) {
+                    flowHolder.mutableDiscoveredDevicesFlow.emit(
+                        DeviceDiscoveryEvent.ProbeDiscovered(
+                            serialNumber
                         )
-                    }
+                    )
                 }
 
-                if (SPECIALIZED_DEVICES.contains(productType)) {
-                    updateDeviceProximity(serialNumber, productType, advertisingData.rssi)
+                is GaugeAdvertisingData -> if (manageGaugeDevice(advertisingData)) {
+                    flowHolder.mutableDiscoveredDevicesFlow.emit(
+                        DeviceDiscoveryEvent.GaugeDiscovered(
+                            serialNumber
+                        )
+                    )
                 }
+            }
+
+            if (SPECIALIZED_DEVICES.contains(productType)) {
+                updateDeviceProximity(serialNumber, productType, advertisingData.rssi)
             }
         }
     }
@@ -1065,7 +1036,8 @@ internal class NetworkManager(
 
     private fun start() {
         flowHolder.mutableNetworkState.value = flowHolder.mutableNetworkState.value.copy(
-            bluetoothAvailability = computeBluetoothAvailability()
+            bluetoothAvailability = computeBluetoothAvailability(),
+            scanningRequested = settings.meatNetEnabled,
         )
 
         jobManager.addJob(
@@ -1082,18 +1054,25 @@ internal class NetworkManager(
                 scope.launch(CoroutineName("networkStateFlow")) {
                     var bluetoothIsReady = false
                     networkStateFlow.collect {
-                        if (!bluetoothIsReady && it.bluetoothReady) {
-                            startScanForDevices()
-                        }
+                        when {
+                            !bluetoothIsReady && it.bluetoothReady -> DeviceScanner.ensureScanning(
+                                scope
+                            )
 
-                        if (bluetoothIsReady && !it.bluetoothReady) {
-                            stopScanForDevices()
+                            bluetoothIsReady && !it.bluetoothReady -> DeviceScanner.stop()
+                            else -> {}
                         }
 
                         bluetoothIsReady = it.bluetoothReady
                     }
                 }
             )
+
+            // MeatNet automatically starts scanning without API call.
+            enableDeviceDiscovery()
+            if (networkStateFlow.value.bluetoothReady) {
+                DeviceScanner.ensureScanning(scope)
+            }
         }
 
         if (locationServiceRequiredForBluetooth) {
@@ -1102,20 +1081,6 @@ internal class NetworkManager(
                 locationStateReceiver,
                 locationStateIntentFilter,
             )
-        }
-
-        if (networkStateFlow.value.bluetoothReady) {
-            flowHolder.mutableNetworkState.value =
-                flowHolder.mutableNetworkState.value.copy(bluetoothAvailability = computeBluetoothAvailability())
-
-            if (settings.meatNetEnabled) {
-                // MeatNet automatically starts scanning without API call.
-                DeviceScanner.scan(scope)
-                startScanForDevices()
-            }
-        } else {
-            flowHolder.mutableNetworkState.value =
-                flowHolder.mutableNetworkState.value.copy(bluetoothAvailability = computeBluetoothAvailability())
         }
     }
 

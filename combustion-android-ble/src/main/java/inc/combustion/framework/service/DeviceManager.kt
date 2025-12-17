@@ -83,7 +83,7 @@ class DeviceManager(
     data class Settings(
         val autoReconnect: Boolean = false,
         val autoLogTransfer: Boolean = false,
-        val meatNetEnabled: Boolean = false,
+        val meatNetEnabled: Boolean = true,
         val probeAllowlist: Set<String>? = null,
         val messageTypeCallback: (UByte) -> NodeMessage? = { messageType: UByte ->
             NodeMessageType.fromUByte(
@@ -291,7 +291,7 @@ class DeviceManager(
      */
     val scanningForProbes: Boolean
         get() {
-            return NetworkManager.instance.shouldBeScanningForDevices
+            return NetworkManager.instance.deviceDiscoveryModeEnabled
         }
 
     /**
@@ -529,7 +529,7 @@ class DeviceManager(
      * @see DeviceDiscoveryEvent
      */
     fun startScanningForDevices(): Boolean {
-        return NetworkManager.instance.startScanForDevices()
+        return NetworkManager.instance.enableDeviceDiscovery()
     }
 
     @Deprecated(
@@ -588,7 +588,7 @@ class DeviceManager(
      * @see DeviceDiscoveryEvent
      */
     fun stopScanningForDevices(): Boolean {
-        return NetworkManager.instance.stopScanForDevices()
+        return NetworkManager.instance.disableDeviceDiscovery()
     }
 
     /**

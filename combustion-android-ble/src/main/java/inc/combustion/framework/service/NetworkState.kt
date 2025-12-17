@@ -31,9 +31,9 @@ package inc.combustion.framework.service
  * Enumerates the current network state
  */
 data class NetworkState(
+    val scanningRequested: Boolean = false,
     val bluetoothAvailability: BluetoothAvailability = BluetoothAvailability.AdapterOff,
-    val scanningOn: Boolean = false,
-    val dfuModeOn: Boolean = false
+    val scanningPurpose: ScanningPurpose = ScanningPurpose.Idle,
 ) {
     val bluetoothReady: Boolean
         get() = bluetoothAvailability is BluetoothAvailability.Available
@@ -44,6 +44,16 @@ data class NetworkState(
     )
     val bluetoothOn: Boolean
         get() = bluetoothAvailability !is BluetoothAvailability.AdapterOff
+
+    @Deprecated(
+        message = "scanningOn is deprecated, use scanningMode instead.",
+        level = DeprecationLevel.WARNING,
+    )
+    val scanningOn: Boolean // Scanning for devices
+        get() = (scanningPurpose == ScanningPurpose.DeviceDiscovery) && bluetoothReady && scanningRequested
+
+    val dfuModeOn: Boolean
+        get() = scanningPurpose == ScanningPurpose.Dfu
 }
 
 sealed interface BluetoothAvailability {
@@ -67,4 +77,16 @@ sealed interface BluetoothAvailability {
             }
         }
     }
+}
+
+sealed interface ScanningPurpose {
+
+    /** No interpretation of advertisements */
+    data object Idle : ScanningPurpose
+
+    /** Interpret advertisements and discover devices */
+    data object DeviceDiscovery : ScanningPurpose
+
+    /** DFU is active; advertisements are used only for DFU */
+    data object Dfu : ScanningPurpose
 }
