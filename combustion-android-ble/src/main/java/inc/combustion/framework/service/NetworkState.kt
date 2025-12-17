@@ -37,13 +37,22 @@ data class NetworkState(
 ) {
     val bluetoothReady: Boolean
         get() = bluetoothAvailability is BluetoothAvailability.Available
-
+    
     @Deprecated(
-        message = "bluetoothOn is deprecated, use bluetoothReady or bluetoothAvailability instead.",
+        message = "Bluetooth Adapter is enabled but bluetooth is not necessarily ready. Rather use bluetoothReady or bluetoothAdapterEnabled",
         level = DeprecationLevel.WARNING,
     )
     val bluetoothOn: Boolean
+        get() = bluetoothAdapterEnabled
+
+    val bluetoothAdapterEnabled: Boolean
         get() = bluetoothAvailability !is BluetoothAvailability.AdapterOff
+
+    /**
+     * API ≤ 30 only
+     */
+    val locationServiceEnabled: Boolean
+        get() = bluetoothAvailability !is BluetoothAvailability.LocationOff
 
     @Deprecated(
         message = "scanningOn is deprecated, use scanningMode instead.",
@@ -57,9 +66,9 @@ data class NetworkState(
 }
 
 sealed interface BluetoothAvailability {
-    object Available : BluetoothAvailability
-    object AdapterOff : BluetoothAvailability
-    object LocationOff : BluetoothAvailability   // API ≤ 30 only
+    data object Available : BluetoothAvailability
+    data object AdapterOff : BluetoothAvailability
+    data object LocationOff : BluetoothAvailability   // API ≤ 30 only
 
     companion object {
         fun computeBluetoothAvailability(

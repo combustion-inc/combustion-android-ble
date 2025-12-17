@@ -83,7 +83,7 @@ class DeviceManager(
     data class Settings(
         val autoReconnect: Boolean = false,
         val autoLogTransfer: Boolean = false,
-        val meatNetEnabled: Boolean = true,
+        val meatNetEnabled: Boolean = false,
         val probeAllowlist: Set<String>? = null,
         val messageTypeCallback: (UByte) -> NodeMessage? = { messageType: UByte ->
             NodeMessageType.fromUByte(
