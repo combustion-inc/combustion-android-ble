@@ -283,7 +283,7 @@ class DeviceManager(
      */
     val bluetoothIsEnabled: Boolean
         get() {
-            return NetworkManager.instance.bluetoothIsEnabled
+            return NetworkManager.instance.bluetoothAdapterEnabled
         }
 
     /**
@@ -291,7 +291,7 @@ class DeviceManager(
      */
     val scanningForProbes: Boolean
         get() {
-            return NetworkManager.instance.scanningForDevices
+            return NetworkManager.instance.deviceDiscoveryModeEnabled
         }
 
     /**
@@ -529,7 +529,7 @@ class DeviceManager(
      * @see DeviceDiscoveryEvent
      */
     fun startScanningForDevices(): Boolean {
-        return NetworkManager.instance.startScanForDevices()
+        return NetworkManager.instance.enableDeviceDiscovery()
     }
 
     @Deprecated(
@@ -588,7 +588,7 @@ class DeviceManager(
      * @see DeviceDiscoveryEvent
      */
     fun stopScanningForDevices(): Boolean {
-        return NetworkManager.instance.stopScanForDevices()
+        return NetworkManager.instance.disableDeviceDiscovery()
     }
 
     /**

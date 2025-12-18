@@ -65,7 +65,10 @@ internal class DeviceScanner private constructor() {
         val bootloadingAdvertisements: SharedFlow<BootloadingAdvertisingData> =
             _bootloadingAdvertisements.asSharedFlow()
 
-        fun scan(scope: CoroutineScope) {
+        /**
+         * Ensure that scanning is happening. No action if already scanning.
+         */
+        fun ensureScanning(scope: CoroutineScope) {
             if (!atomicIsScanning.getAndSet(true)) {
                 // NB, repeatOnLifecycle only works if lifecycleScope launches on Main (its default)
                 allMatchesScanJob = scope.launch {
@@ -101,6 +104,9 @@ internal class DeviceScanner private constructor() {
             }
         }
 
+        /**
+         * Stops scanning.
+         */
         fun stop() {
             allMatchesScanJob?.cancelChildren()
             allMatchesScanJob = null

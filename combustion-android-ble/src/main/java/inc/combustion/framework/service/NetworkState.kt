@@ -31,7 +31,71 @@ package inc.combustion.framework.service
  * Enumerates the current network state
  */
 data class NetworkState(
-    val bluetoothOn: Boolean = false,
-    val scanningOn: Boolean = false,
-    val dfuModeOn: Boolean = false
-)
+    val scanningRequested: Boolean = false,
+    val bluetoothAvailability: BluetoothAvailability = BluetoothAvailability.AdapterOff,
+    val scanningPurpose: ScanningPurpose = ScanningPurpose.Idle,
+) {
+    val bluetoothReady: Boolean
+        get() = bluetoothAvailability is BluetoothAvailability.Available
+    
+    @Deprecated(
+        message = "Bluetooth Adapter is enabled but bluetooth is not necessarily ready. Rather use bluetoothReady or bluetoothAdapterEnabled",
+        level = DeprecationLevel.WARNING,
+    )
+    val bluetoothOn: Boolean
+        get() = bluetoothAdapterEnabled
+
+    val bluetoothAdapterEnabled: Boolean
+        get() = bluetoothAvailability !is BluetoothAvailability.AdapterOff
+
+    /**
+     * API ≤ 30 only
+     */
+    val locationServiceEnabled: Boolean
+        get() = bluetoothAvailability !is BluetoothAvailability.LocationOff
+
+    @Deprecated(
+        message = "scanningOn is deprecated, use scanningMode instead.",
+        level = DeprecationLevel.WARNING,
+    )
+    val scanningOn: Boolean // Scanning for devices
+        get() = (scanningPurpose == ScanningPurpose.DeviceDiscovery) && bluetoothReady && scanningRequested
+
+    val dfuModeOn: Boolean
+        get() = scanningPurpose == ScanningPurpose.Dfu
+}
+
+sealed interface BluetoothAvailability {
+    data object Available : BluetoothAvailability
+    data object AdapterOff : BluetoothAvailability
+    data object LocationOff : BluetoothAvailability   // API ≤ 30 only
+
+    companion object {
+        fun computeBluetoothAvailability(
+            bluetoothAdapterEnabled: Boolean,
+            locationServiceRequiredForBluetooth: Boolean,
+            locationServiceEnabled: Boolean,
+        ): BluetoothAvailability {
+            return when {
+                !bluetoothAdapterEnabled -> AdapterOff
+
+                locationServiceRequiredForBluetooth && !locationServiceEnabled ->
+                    LocationOff
+
+                else -> Available
+            }
+        }
+    }
+}
+
+sealed interface ScanningPurpose {
+
+    /** No interpretation of advertisements */
+    data object Idle : ScanningPurpose
+
+    /** Interpret advertisements and discover devices */
+    data object DeviceDiscovery : ScanningPurpose
+
+    /** DFU is active; advertisements are used only for DFU */
+    data object Dfu : ScanningPurpose
+}

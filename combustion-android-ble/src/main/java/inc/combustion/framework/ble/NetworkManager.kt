@@ -28,11 +28,14 @@
 
 package inc.combustion.framework.ble
 
+import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.location.LocationManager
+import android.os.Build
 import android.util.Log
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.device.*
@@ -69,6 +72,7 @@ private val SUPPORTED_ADVERTISING_PRODUCTS = setOf(
 
 internal class NetworkManager(
     private val scope: CoroutineScope,
+    private val context: Context, // Application context
     private val adapter: BluetoothAdapter,
     private val settings: DeviceManager.Settings,
 ) {
@@ -117,6 +121,7 @@ internal class NetworkManager(
 
         fun initialize(
             scope: CoroutineScope,
+            context: Context, // Application context
             adapter: BluetoothAdapter,
             settings: DeviceManager.Settings,
         ) {
@@ -133,7 +138,7 @@ internal class NetworkManager(
                     INSTANCE.finish()
                 }
 
-                INSTANCE = NetworkManager(scope, adapter, settings)
+                INSTANCE = NetworkManager(scope, context, adapter, settings)
                 _instanceFlow.value = INSTANCE
                 initialized.set(true)
             }
@@ -200,28 +205,19 @@ internal class NetworkManager(
 
     internal val bluetoothAdapterStateIntentFilter =
         IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
+
     internal val bluetoothAdapterStateReceiver: BroadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent) {
             val action = intent.action
             if (action == BluetoothAdapter.ACTION_STATE_CHANGED) {
                 val state = intent.getIntExtra(
                     BluetoothAdapter.EXTRA_STATE,
-                    BluetoothAdapter.ERROR
+                    BluetoothAdapter.ERROR,
                 )
                 when (state) {
-                    BluetoothAdapter.STATE_OFF -> {
-                        if (scanningForDevices) {
-                            DeviceScanner.stop()
-                        }
-                        flowHolder.mutableNetworkState.value = NetworkState()
-                    }
-
-                    BluetoothAdapter.STATE_ON -> {
-                        if (scanningForDevices) {
-                            DeviceScanner.scan(scope)
-                        }
+                    BluetoothAdapter.STATE_OFF, BluetoothAdapter.STATE_ON -> {
                         flowHolder.mutableNetworkState.value =
-                            flowHolder.mutableNetworkState.value.copy(bluetoothOn = true)
+                            flowHolder.mutableNetworkState.value.copy(bluetoothAvailability = computeBluetoothAvailability())
                     }
 
                     else -> {}
@@ -230,19 +226,58 @@ internal class NetworkManager(
         }
     }
 
+    private val locationStateIntentFilter =
+        IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION)
+
+    @Volatile
+    private var lastLocationEnabled: Boolean = locationServiceEnabled
+
+    private val locationStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (!locationServiceRequiredForBluetooth) return
+            if (intent?.action != LocationManager.PROVIDERS_CHANGED_ACTION) return
+
+            val nowEnabled = locationServiceEnabled
+            val wasEnabled = lastLocationEnabled
+            lastLocationEnabled = nowEnabled
+            if (nowEnabled == wasEnabled) return
+
+            flowHolder.mutableNetworkState.value = flowHolder.mutableNetworkState.value.copy(
+                bluetoothAvailability = computeBluetoothAvailability()
+            )
+        }
+    }
+
     // map tracking the firmware of devices
     private val firmwareStateOfNetwork = ConcurrentHashMap<DeviceID, FirmwareState.Node>()
 
-    internal val bluetoothIsEnabled: Boolean
+    internal val bluetoothAdapterEnabled: Boolean
         get() {
             return adapter.isEnabled
         }
 
-    internal var scanningForDevices: Boolean = false
-        private set
+    private val locationServiceRequiredForBluetooth: Boolean
+        get() = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
 
-    internal var dfuModeEnabled: Boolean = false
-        private set
+    private val locationServiceEnabled: Boolean
+        get() {
+            if (!locationServiceRequiredForBluetooth) return true
+
+            val locationManager =
+                context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+
+            return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+                    locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+        }
+
+    internal val deviceDiscoveryModeEnabled: Boolean
+        get() = networkStateFlow.value.scanningPurpose == ScanningPurpose.DeviceDiscovery
+
+    private var modeOnDfuCompletion: ScanningPurpose =
+        ScanningPurpose.Idle
+
+    internal val dfuModeEnabled: Boolean
+        get() = networkStateFlow.value.scanningPurpose == ScanningPurpose.Dfu
 
     internal val discoveredProbes: List<String>
         get() {
@@ -276,6 +311,19 @@ internal class NetworkManager(
     val silenceAlarmsRequestFlow: SharedFlow<SilenceAlarmsRequest>
         get() = _silenceAlarmsRequestFlow.asSharedFlow()
 
+    init {
+        require(context.applicationContext === context) {
+            "NetworkManager must be given application context"
+        }
+    }
+
+    private fun computeBluetoothAvailability(): BluetoothAvailability =
+        BluetoothAvailability.computeBluetoothAvailability(
+            bluetoothAdapterEnabled = bluetoothAdapterEnabled,
+            locationServiceRequiredForBluetooth = locationServiceRequiredForBluetooth,
+            locationServiceEnabled = locationServiceEnabled,
+        )
+
     fun setDeviceAllowlist(allowlist: Set<String>?) {
         // Make sure that the new allowlist is set before we get another advertisement sneak in and
         // try to kick off a connection to a probe that is no longer in the allowlist.
@@ -296,94 +344,72 @@ internal class NetworkManager(
         }
     }
 
-    fun startScanForDevices(): Boolean {
-        if (bluetoothIsEnabled) {
-            scanningForDevices = true
-        }
-
-        if (scanningForDevices) {
-            DeviceScanner.scan(scope)
-            flowHolder.mutableNetworkState.value =
-                flowHolder.mutableNetworkState.value.copy(scanningOn = true)
-        }
-
-        return scanningForDevices
+    /**
+     * Start interpreting DeviceScanner's scanned advertisements to for devices. e.g. finding devices.
+     */
+    fun enableDeviceDiscovery(): Boolean {
+        switchScanningPurpose(ScanningPurpose.DeviceDiscovery)
+        return deviceDiscoveryModeEnabled
     }
 
     /**
-     * Stops interpreting DeviceScanner's scanned advertisements to find devices.
-     * NB, dont stop the actual scanning since needed for DFU
+     * Stops interpreting DeviceScanner's scanned advertisements for devices.
+     * NB, doesn't stop the actual scanning since needed for DFU
      */
-    fun stopScanForDevices(): Boolean {
-        if (bluetoothIsEnabled) {
-            scanningForDevices = false
+    fun disableDeviceDiscovery(): Boolean {
+        if (networkStateFlow.value.scanningPurpose == ScanningPurpose.DeviceDiscovery) {
+            switchScanningPurpose(ScanningPurpose.Idle)
         }
+        modeOnDfuCompletion = ScanningPurpose.Idle
+        return deviceDiscoveryModeEnabled
+    }
 
-        if (!scanningForDevices) {
-            flowHolder.mutableNetworkState.value =
-                flowHolder.mutableNetworkState.value.copy(scanningOn = false)
-        }
-
-        return scanningForDevices
+    private fun switchScanningPurpose(mode: ScanningPurpose) {
+        flowHolder.mutableNetworkState.value =
+            flowHolder.mutableNetworkState.value.copy(scanningPurpose = mode)
     }
 
     fun startDfuMode() {
-        if (!dfuModeEnabled) {
+        if (dfuModeEnabled) return
+        modeOnDfuCompletion = networkStateFlow.value.scanningPurpose
 
-            // if MeatNet is managing network, then stop returning probe scan results
-            if (settings.meatNetEnabled) {
-                stopScanForDevices()
-            }
+        // if MeatNet is managing network, then stop returning probe scan results
+        switchScanningPurpose(ScanningPurpose.Dfu)
 
-            // disconnect any active connection
-            dfuModeEnabled = true
+        // disconnect everything at this level
+        devices.forEach { (_, device) ->
+            when (device) {
+                is DeviceHolder.ProbeHolder -> {
+                    device.probe.isInDfuMode = true
+                    device.probe.disconnect()
+                }
 
-            // disconnect everything at this level
-            devices.forEach { (_, device) ->
-                when (device) {
-                    is DeviceHolder.ProbeHolder -> {
-                        device.probe.isInDfuMode = true
-                        device.probe.disconnect()
-                    }
-
-                    is DeviceHolder.RepeaterHolder -> {
-                        device.repeater.isInDfuMode = true
-                        device.repeater.disconnect()
-                    }
+                is DeviceHolder.RepeaterHolder -> {
+                    device.repeater.isInDfuMode = true
+                    device.repeater.disconnect()
                 }
             }
-
-            flowHolder.mutableNetworkState.value =
-                flowHolder.mutableNetworkState.value.copy(dfuModeOn = true)
         }
     }
 
     fun stopDfuMode() {
-        if (dfuModeEnabled) {
-            dfuModeEnabled = false
+        if (!dfuModeEnabled) return
 
-            // if MeatNet is managing network, then start returning probe scan results
-            if (settings.meatNetEnabled) {
-                startScanForDevices()
-            }
+        // take all of the devices out of DFU mode.  we will automatically reconnect to
+        // them as they are discovered during scanning
+        devices.forEach { (_, device) ->
+            when (device) {
+                is DeviceHolder.ProbeHolder -> {
+                    device.probe.isInDfuMode = false
+                }
 
-            // take all of the devices out of DFU mode.  we will automatically reconnect to
-            // them as they are discovered during scanning
-            devices.forEach { (_, device) ->
-                when (device) {
-                    is DeviceHolder.ProbeHolder -> {
-                        device.probe.isInDfuMode = false
-                    }
-
-                    is DeviceHolder.RepeaterHolder -> {
-                        device.repeater.isInDfuMode = false
-                    }
+                is DeviceHolder.RepeaterHolder -> {
+                    device.repeater.isInDfuMode = false
                 }
             }
-
-            flowHolder.mutableNetworkState.value =
-                flowHolder.mutableNetworkState.value.copy(dfuModeOn = false)
         }
+
+        switchScanningPurpose(modeOnDfuCompletion)
     }
 
     fun addSimulatedProbe() {
@@ -629,6 +655,14 @@ internal class NetworkManager(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     fun finish() {
+        try {
+            if (locationServiceRequiredForBluetooth) {
+                context.unregisterReceiver(locationStateReceiver)
+            }
+        } catch (_: IllegalArgumentException) {
+            // Receiver already unregistered — safe to ignore
+        }
+
         DeviceScanner.stop()
         jobManager.cancelJobs()
         clearDevices()
@@ -904,33 +938,34 @@ internal class NetworkManager(
 
     private suspend fun collectAdvertisingData() {
         DeviceScanner.advertisements.collect { advertisingData ->
-            if (scanningForDevices) {
-                val serialNumber = advertisingData.serialNumber
-                val productType = advertisingData.productType
-                if (!SUPPORTED_ADVERTISING_PRODUCTS.contains(productType)) return@collect
-                when (advertisingData) {
-                    is ProbeAdvertisingData -> if (serialNumber == REPEATER_NO_PROBES_SERIAL_NUMBER) {
-                        manageNodeWithoutProbe(advertisingData)
-                    } else if (manageMeatNetDeviceWithProbe(advertisingData)) {
-                        flowHolder.mutableDiscoveredDevicesFlow.emit(
-                            DeviceDiscoveryEvent.ProbeDiscovered(
-                                serialNumber
-                            )
-                        )
-                    }
+            if (!deviceDiscoveryModeEnabled) return@collect
 
-                    is GaugeAdvertisingData -> if (manageGaugeDevice(advertisingData)) {
-                        flowHolder.mutableDiscoveredDevicesFlow.emit(
-                            DeviceDiscoveryEvent.GaugeDiscovered(
-                                serialNumber
-                            )
+            val serialNumber = advertisingData.serialNumber
+            val productType = advertisingData.productType
+            if (!SUPPORTED_ADVERTISING_PRODUCTS.contains(productType)) return@collect
+
+            when (advertisingData) {
+                is ProbeAdvertisingData -> if (serialNumber == REPEATER_NO_PROBES_SERIAL_NUMBER) {
+                    manageNodeWithoutProbe(advertisingData)
+                } else if (manageMeatNetDeviceWithProbe(advertisingData)) {
+                    flowHolder.mutableDiscoveredDevicesFlow.emit(
+                        DeviceDiscoveryEvent.ProbeDiscovered(
+                            serialNumber
                         )
-                    }
+                    )
                 }
 
-                if (SPECIALIZED_DEVICES.contains(productType)) {
-                    updateDeviceProximity(serialNumber, productType, advertisingData.rssi)
+                is GaugeAdvertisingData -> if (manageGaugeDevice(advertisingData)) {
+                    flowHolder.mutableDiscoveredDevicesFlow.emit(
+                        DeviceDiscoveryEvent.GaugeDiscovered(
+                            serialNumber
+                        )
+                    )
                 }
+            }
+
+            if (SPECIALIZED_DEVICES.contains(productType)) {
+                updateDeviceProximity(serialNumber, productType, advertisingData.rssi)
             }
         }
     }
@@ -1000,6 +1035,11 @@ internal class NetworkManager(
     }
 
     private fun start() {
+        flowHolder.mutableNetworkState.value = flowHolder.mutableNetworkState.value.copy(
+            bluetoothAvailability = computeBluetoothAvailability(),
+            scanningRequested = settings.meatNetEnabled,
+        )
+
         jobManager.addJob(
             scope.launch(CoroutineName("collectAdvertisingData")) {
                 collectAdvertisingData()
@@ -1012,34 +1052,35 @@ internal class NetworkManager(
         if (settings.meatNetEnabled) {
             jobManager.addJob(
                 scope.launch(CoroutineName("networkStateFlow")) {
-                    var bluetoothIsOn = false
+                    var bluetoothIsReady = false
                     networkStateFlow.collect {
-                        if (!bluetoothIsOn && it.bluetoothOn) {
-                            startScanForDevices()
+                        when {
+                            !bluetoothIsReady && it.bluetoothReady -> DeviceScanner.ensureScanning(
+                                scope
+                            )
+
+                            bluetoothIsReady && !it.bluetoothReady -> DeviceScanner.stop()
+                            else -> {}
                         }
 
-                        if (bluetoothIsOn && !it.bluetoothOn) {
-                            stopScanForDevices()
-                        }
-
-                        bluetoothIsOn = it.bluetoothOn
+                        bluetoothIsReady = it.bluetoothReady
                     }
                 }
             )
+
+            // MeatNet automatically starts scanning without API call.
+            enableDeviceDiscovery()
+            if (networkStateFlow.value.bluetoothReady) {
+                DeviceScanner.ensureScanning(scope)
+            }
         }
 
-        if (bluetoothIsEnabled) {
-            flowHolder.mutableNetworkState.value =
-                flowHolder.mutableNetworkState.value.copy(bluetoothOn = true)
-
-            if (settings.meatNetEnabled) {
-                // MeatNet automatically starts scanning without API call.
-                DeviceScanner.scan(scope)
-                startScanForDevices()
-            }
-        } else {
-            flowHolder.mutableNetworkState.value =
-                flowHolder.mutableNetworkState.value.copy(bluetoothOn = false)
+        if (locationServiceRequiredForBluetooth) {
+            @SuppressLint("UnspecifiedRegisterReceiverFlag")
+            context.registerReceiver(
+                locationStateReceiver,
+                locationStateIntentFilter,
+            )
         }
     }
 
