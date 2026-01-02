@@ -39,12 +39,18 @@ import kotlinx.coroutines.flow.update
 @Suppress("unused")
 class StateFlowMutableMap<K, V>(initialMap: Map<K, V> = emptyMap()) {
 
-    private val _stateFlow = MutableStateFlow(initialMap)
+    private val _stateFlow = MutableStateFlow(initialMap.toMap())
     val stateFlow: StateFlow<Map<K, V>> get() = _stateFlow
 
     private inline fun updateMap(transform: (MutableMap<K, V>) -> Unit) {
         _stateFlow.update { current ->
-            current.toMutableMap().apply(transform)
+            current.toMutableMap().apply(transform).toMap()
+        }
+    }
+
+    fun batchUpdate(block: MutableMap<K, V>.() -> Unit) {
+        _stateFlow.update { current ->
+            current.toMutableMap().apply(block).toMap()
         }
     }
 
