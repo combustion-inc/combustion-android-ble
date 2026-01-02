@@ -186,12 +186,12 @@ internal class NetworkManager(
     }
 
     private val jobManager = JobManager()
-    private val devices = hashMapOf<DeviceID, DeviceHolder>()
-    private val meatNetLinks = hashMapOf<LinkID, LinkHolder>()
-    private val probeManagers = hashMapOf<String, ProbeManager>()
-    private val gaugeManagers = hashMapOf<String, GaugeManager>()
-    private val deviceInformationDevices = hashMapOf<DeviceID, DeviceInformationBleDevice>()
-    private var proximityDevices = hashMapOf<String, ProximityDevice>()
+    private val devices = ConcurrentHashMap<DeviceID, DeviceHolder>()
+    private val meatNetLinks = ConcurrentHashMap<LinkID, LinkHolder>()
+    private val probeManagers = ConcurrentHashMap<String, ProbeManager>()
+    private val gaugeManagers = ConcurrentHashMap<String, GaugeManager>()
+    private val deviceInformationDevices = ConcurrentHashMap<DeviceID, DeviceInformationBleDevice>()
+    private var proximityDevices = ConcurrentHashMap<String, ProximityDevice>()
     private val wifiNodesManager = WiFiNodesManager(scope) { deviceId ->
         when (val node = devices[deviceId]) {
             is DeviceHolder.ProbeHolder -> NOT_IMPLEMENTED("getNodeDevice is not implemented for probe with id = $deviceId, type = ${node.probe.productType}, and serialNumber = ${node.probe.serialNumber}")
