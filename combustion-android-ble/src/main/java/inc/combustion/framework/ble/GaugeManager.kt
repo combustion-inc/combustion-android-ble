@@ -374,7 +374,7 @@ internal class GaugeManager(
 
     private fun fetchFirmwareVersion() {
         // if we don't know the gauge's firmware version
-        if (_deviceFlow.value.fwVersion == null) {
+        if (!_deviceFlow.value.fwVersion.isValid()) {
 
             // if direct link, then get the gauge version over that link
             arbitrator.directLink?.readFirmwareVersionAsync { fwVersion ->
