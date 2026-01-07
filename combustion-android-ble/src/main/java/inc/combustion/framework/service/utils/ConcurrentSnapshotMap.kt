@@ -30,20 +30,31 @@ package inc.combustion.framework.service.utils
 
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.locks.ReentrantReadWriteLock
-import kotlin.concurrent.read
 import kotlin.concurrent.write
 
 /**
- * Backed by ConcurrentHashMap and uses ReentrantReadWriteLock for explicit Snapshot Lock
- * provides: occasional strong snapshots, but fast concurrent mutation most of the time.
- * Note, snapshot blocks writers briefly, but writers do not block each other
+ * Concurrent map with cooperative strong snapshot support.
+ *
+ * Normal operations are lock-free and rely on ConcurrentHashMap.
+ * Snapshot operations take a write lock to briefly block writers
+ * that also cooperate via this class -- e.g. taking a [snapshot]
+ * while [removeIf] is in progress will not return a half-applied removal.
+ *
+ * Invariant:
+ *  - All mutations must go through this class.
+ *  - Snapshot consistency relies on cooperative locking.
  */
+@Suppress("unused")
 class ConcurrentSnapshotMap<K : Any, V : Any>(
     initial: Map<K, V> = emptyMap(),
 ) {
 
     private val map = ConcurrentHashMap<K, V>(initial)
-    private val lock = ReentrantReadWriteLock()
+
+    /**
+     * Used ONLY to coordinate snapshot consistency.
+     */
+    private val snapshotLock = ReentrantReadWriteLock()
 
     /* ---------------------------
      * Basic Map Operations
@@ -51,36 +62,28 @@ class ConcurrentSnapshotMap<K : Any, V : Any>(
 
     operator fun get(key: K): V? = map[key]
 
-    fun put(key: K, value: V): V? =
-        lock.read {
-            map.put(key, value)
-        }
+    fun put(key: K, value: V): V? = map.put(key, value)
 
     operator fun set(key: K, value: V) {
         put(key, value)
     }
 
-    fun remove(key: K): V? =
-        lock.read {
-            map.remove(key)
-        }
+    fun remove(key: K): V? = map.remove(key)
 
-    fun clear() =
-        lock.read {
-            map.clear()
-        }
+    fun clear() {
+        map.clear()
+    }
 
-    fun putAll(from: Map<out K, V>) =
-        lock.read {
-            map.putAll(from)
-        }
+    fun putAll(from: Map<out K, V>) {
+        map.putAll(from)
+    }
 
-    operator fun plus(other: Map<K, V>): Map<K, V> =
-        lock.write {
-            HashMap(map).apply {
-                putAll(other)
-            }
+    operator fun plus(other: Map<K, V>): Map<K, V> {
+        val map = snapshot()
+        return HashMap(map).apply {
+            putAll(other)
         }
+    }
 
     operator fun plus(other: ConcurrentSnapshotMap<K, V>): Map<K, V> {
         // Take snapshots independently to avoid lock ordering issues
@@ -104,7 +107,7 @@ class ConcurrentSnapshotMap<K : Any, V : Any>(
      * --------------------------- */
 
     fun removeIf(predicate: (Map.Entry<K, V>) -> Boolean): Boolean =
-        lock.write {
+        snapshotLock.write {
             var removed = false
             val iterator = map.entries.iterator()
             while (iterator.hasNext()) {
@@ -117,28 +120,16 @@ class ConcurrentSnapshotMap<K : Any, V : Any>(
             removed
         }
 
-    fun putIfAbsent(key: K, value: V): V? =
-        lock.read {
-            map.putIfAbsent(key, value)
-        }
+    fun putIfAbsent(key: K, value: V): V? = map.putIfAbsent(key, value)
 
-    fun computeIfAbsent(key: K, mapping: (K) -> V): V =
-        lock.read {
-            map.computeIfAbsent(key, mapping)
-        }
+    fun computeIfAbsent(key: K, mapping: (K) -> V): V = map.computeIfAbsent(key, mapping)
 
     fun compute(
         key: K,
-        remapping: (K, V?) -> V?
-    ): V? =
-        lock.read {
-            map.compute(key, remapping)
-        }
+        remapping: (K, V?) -> V?,
+    ): V? = map.compute(key, remapping)
 
-    fun remove(key: K, value: V): Boolean =
-        lock.read {
-            map.remove(key, value)
-        }
+    fun remove(key: K, value: V): Boolean = map.remove(key, value)
 
     /* ---------------------------
      * Query Operations
@@ -158,24 +149,21 @@ class ConcurrentSnapshotMap<K : Any, V : Any>(
 
     /**
      * Returns a STRONGLY CONSISTENT snapshot.
-     * Blocks writers briefly.
+     * Blocks cooperative writers briefly.
      */
     fun snapshot(): Map<K, V> =
-        lock.write {
+        snapshotLock.write {
             HashMap(map)
         }
 
     /**
      * Snapshot entries for iteration safety.
      */
-    fun snapshotEntries(): Set<Map.Entry<K, V>> =
-        snapshot().entries
+    fun snapshotEntries(): Set<Map.Entry<K, V>> = snapshot().entries
 
-    fun snapshotKeys(): Set<K> =
-        snapshot().keys
+    fun snapshotKeys(): Set<K> = snapshot().keys
 
-    fun snapshotValues(): Collection<V> =
-        snapshot().values
+    fun snapshotValues(): Collection<V> = snapshot().values
 
     /* ---------------------------
      * Iteration (weakly consistent)
@@ -193,7 +181,7 @@ class ConcurrentSnapshotMap<K : Any, V : Any>(
      * Weakly consistent iteration.
      * Fast, but NOT snapshot-safe.
      */
-    fun forEach(action: (Map.Entry<K, V>) -> Unit): Unit {
+    fun forEach(action: (Map.Entry<K, V>) -> Unit) {
         map.forEach(action)
     }
 
@@ -201,8 +189,10 @@ class ConcurrentSnapshotMap<K : Any, V : Any>(
      * Debug / Diagnostics
      * --------------------------- */
 
-    override fun toString(): String =
-        "SnapshotMap(size=${map.size})"
+    override fun toString(): String {
+        val snap = snapshot()
+        return "ConcurrentSnapshotMap(size=${snap.size}, snapshot=$snap)"
+    }
 }
 
 operator fun <K : Any, V, R : Any> ConcurrentSnapshotMap<K, V>.plus(
