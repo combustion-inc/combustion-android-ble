@@ -28,6 +28,8 @@
 package inc.combustion.framework.ble.device
 
 import android.bluetooth.BluetoothAdapter
+import android.util.Log
+import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.service.FirmwareVersion
 import inc.combustion.framework.service.ModelInformation
@@ -68,8 +70,13 @@ internal open class DeviceInformationBleDevice(
 
     suspend fun readFirmwareVersion() {
         if (isConnected.get()) {
-            firmwareVersion = readFirmwareVersionCharacteristic()?.let { versionString ->
-                FirmwareVersion.fromString(versionString = versionString)
+            firmwareVersion = try {
+                readFirmwareVersionCharacteristic()?.let { versionString ->
+                    FirmwareVersion.fromString(versionString = versionString)
+                }
+            } catch (e: IllegalArgumentException) {
+                Log.e(LOG_TAG, "Parsing firmware version failed, message = ${e.message}", e)
+                FirmwareVersion.INVALID
             }
         }
     }

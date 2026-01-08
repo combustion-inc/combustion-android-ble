@@ -33,18 +33,13 @@ import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.DataLinkArbitrator.Companion.MULTINODE_PROBE_SETTLING_TIMEOUT_MS
 import inc.combustion.framework.ble.DataLinkArbitrator.Companion.USE_SIMPLE_MEATNET_CONNECTION_SCHEME
 import inc.combustion.framework.ble.DataLinkArbitrator.Companion.USE_STATIC_LINK
-import inc.combustion.framework.ble.device.DeviceID
-import inc.combustion.framework.ble.device.DeviceInformationBleDevice
-import inc.combustion.framework.ble.device.ProbeBleDevice
-import inc.combustion.framework.ble.device.ProbeBleDeviceBase
-import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
-import inc.combustion.framework.ble.device.SimulatedProbeBleDevice
+import inc.combustion.framework.ble.device.*
 import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
 import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.service.DeviceManager
 import inc.combustion.framework.service.ProbeMode
 import inc.combustion.framework.service.SessionInformation
-import java.util.concurrent.ConcurrentHashMap
+import inc.combustion.framework.service.utils.ConcurrentSnapshotMap
 
 // Number of seconds to ignore other lower-priority (higher hop count) sources of information for Instant Read
 private const val INSTANT_READ_IDLE_TIMEOUT = 1000L
@@ -56,7 +51,7 @@ internal class ProbeDataLinkArbitrator(
 ) : DataLinkArbitrator<ProbeBleDeviceBase, ProbeAdvertisingData> {
 
     // meatnet network nodes
-    private val networkNodes = ConcurrentHashMap<DeviceID, DeviceInformationBleDevice>()
+    private val networkNodes = ConcurrentSnapshotMap<DeviceID, DeviceInformationBleDevice>()
 
     // advertising data arbitration
     private val advertisingArbitrator = AdvertisingArbitrator()
@@ -139,8 +134,7 @@ internal class ProbeDataLinkArbitrator(
         directConnectionAction: (ProbeBleDeviceBase) -> Unit,
     ) {
         Log.d(LOG_TAG, "ProbeDataLinkArbitrator.finish()")
-        networkNodes.values
-            .forEach { nodeAction(it) }
+        networkNodes.snapshotValues().forEach { nodeAction(it) }
 
         directLink?.let {
             directConnectionAction(it)
@@ -151,7 +145,10 @@ internal class ProbeDataLinkArbitrator(
         bleDevice = null
     }
 
-    override fun addDevice(device: ProbeBleDeviceBase, baseDevice: DeviceInformationBleDevice): Boolean {
+    override fun addDevice(
+        device: ProbeBleDeviceBase,
+        baseDevice: DeviceInformationBleDevice
+    ): Boolean {
         if (bleDevice == null) {
             Log.d(
                 LOG_TAG,

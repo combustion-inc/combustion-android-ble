@@ -119,3 +119,7 @@ data class FirmwareVersion(
         }
     }
 }
+
+fun FirmwareVersion?.isValid(): Boolean {
+    return (this != null) && (this != FirmwareVersion.INVALID)
+}

@@ -51,13 +51,14 @@ import inc.combustion.framework.service.*
 import inc.combustion.framework.service.CombustionProductType.GAUGE
 import inc.combustion.framework.service.CombustionProductType.NODE
 import inc.combustion.framework.service.CombustionProductType.PROBE
+import inc.combustion.framework.service.utils.ConcurrentSnapshotMap
+import inc.combustion.framework.service.utils.plus
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.random.Random
 import kotlin.random.nextUInt
@@ -186,12 +187,13 @@ internal class NetworkManager(
     }
 
     private val jobManager = JobManager()
-    private val devices = hashMapOf<DeviceID, DeviceHolder>()
-    private val meatNetLinks = hashMapOf<LinkID, LinkHolder>()
-    private val probeManagers = hashMapOf<String, ProbeManager>()
-    private val gaugeManagers = hashMapOf<String, GaugeManager>()
-    private val deviceInformationDevices = hashMapOf<DeviceID, DeviceInformationBleDevice>()
-    private var proximityDevices = hashMapOf<String, ProximityDevice>()
+    private val devices = ConcurrentSnapshotMap<DeviceID, DeviceHolder>()
+    private val meatNetLinks = ConcurrentSnapshotMap<LinkID, LinkHolder>()
+    private val probeManagers = ConcurrentSnapshotMap<String, ProbeManager>()
+    private val gaugeManagers = ConcurrentSnapshotMap<String, GaugeManager>()
+    private val deviceInformationDevices =
+        ConcurrentSnapshotMap<DeviceID, DeviceInformationBleDevice>()
+    private var proximityDevices = ConcurrentSnapshotMap<String, ProximityDevice>()
     private val wifiNodesManager = WiFiNodesManager(scope) { deviceId ->
         when (val node = devices[deviceId]) {
             is DeviceHolder.ProbeHolder -> NOT_IMPLEMENTED("getNodeDevice is not implemented for probe with id = $deviceId, type = ${node.probe.productType}, and serialNumber = ${node.probe.serialNumber}")
@@ -249,7 +251,7 @@ internal class NetworkManager(
     }
 
     // map tracking the firmware of devices
-    private val firmwareStateOfNetwork = ConcurrentHashMap<DeviceID, FirmwareState.Node>()
+    private val firmwareStateOfNetwork = ConcurrentSnapshotMap<DeviceID, FirmwareState.Node>()
 
     internal val bluetoothAdapterEnabled: Boolean
         get() {
@@ -281,12 +283,12 @@ internal class NetworkManager(
 
     internal val discoveredProbes: List<String>
         get() {
-            return probeManagers.keys.toList()
+            return probeManagers.snapshotKeys().toList()
         }
 
     internal val discoveredGauges: List<String>
         get() {
-            return gaugeManagers.keys.toList()
+            return gaugeManagers.snapshotKeys().toList()
         }
 
     internal val discoveredSpecializedDevices: List<String>
@@ -636,7 +638,7 @@ internal class NetworkManager(
     @ExperimentalCoroutinesApi
     fun clearDevices() {
         (probeManagers + gaugeManagers).forEach { (_, manager) -> manager.finish() }
-        deviceInformationDevices.forEach { (_, device) -> device.finish() }
+        deviceInformationDevices.snapshot().forEach { (_, device) -> device.finish() }
         deviceInformationDevices.clear()
         probeManagers.clear()
         gaugeManagers.clear()
@@ -748,7 +750,7 @@ internal class NetworkManager(
 
                     // publish the list of firmware details for the network
                     flowHolder.mutableFirmwareUpdateState.value = FirmwareState(
-                        nodes = firmwareStateOfNetwork.values.toList()
+                        nodes = firmwareStateOfNetwork.snapshotValues().toList()
                     )
                 }
             )
@@ -778,7 +780,7 @@ internal class NetworkManager(
 
                     // publish the list of firmware details for the network
                     flowHolder.mutableFirmwareUpdateState.value = FirmwareState(
-                        nodes = firmwareStateOfNetwork.values.toList()
+                        nodes = firmwareStateOfNetwork.snapshotValues().toList()
                     )
                 }
             )
@@ -977,7 +979,7 @@ internal class NetworkManager(
     ) {
         // If we haven't seen this probe before, then add it to our list of devices
         // that we track proximity for and publish the addition.
-        if (!proximityDevices.contains(serialNumber)) {
+        if (!proximityDevices.containsKey(serialNumber)) {
             Log.i(LOG_TAG, "Adding ${productType.name} $serialNumber to devices in proximity")
 
             // Guarantee that the device has a valid RSSI value before flowing out
@@ -1022,7 +1024,7 @@ internal class NetworkManager(
 
                         // publish the list of firmware details for the network
                         flowHolder.mutableFirmwareUpdateState.value = FirmwareState(
-                            nodes = firmwareStateOfNetwork.values.toList()
+                            nodes = firmwareStateOfNetwork.snapshotValues().toList()
                         )
                     }
                 }
@@ -1116,22 +1118,24 @@ internal class NetworkManager(
         // The difference in these sets is the set of repeated devices that only repeat this serial
         // number.
 
+        val meatNetLinkHolders = meatNetLinks.snapshotValues()
+
         // Set of all Device IDs of nodes (repeated devices) that do provide this serial number
-        val providers = meatNetLinks.values
+        val providers = meatNetLinkHolders
             .filterIsInstance<LinkHolder.RepeatedProbeHolder>()
             .filter { it.repeatedProbe.serialNumber == serialNumber }
             .map { it.repeatedProbe.id }
             .toSet()
 
         // Set of all Device IDs of nodes (repeated devices) that provide other serial numbers
-        val nonProviders = meatNetLinks.values
+        val nonProviders = meatNetLinkHolders
             .filterIsInstance<LinkHolder.RepeatedProbeHolder>()
             .filterNot { it.repeatedProbe.serialNumber == serialNumber }
             .map { it.repeatedProbe.id }
             .toSet()
 
         val soleProviders = (providers - nonProviders).mapNotNull { id ->
-            meatNetLinks.values
+            meatNetLinkHolders
                 .filterIsInstance<LinkHolder.RepeatedProbeHolder>()
                 .firstOrNull { it.repeatedProbe.id == id }
         }
@@ -1141,13 +1145,14 @@ internal class NetworkManager(
         }
 
         // Remove the MeatNet links supporting this probe
-        meatNetLinks.values.removeIf {
-            when (it) {
+        meatNetLinks.removeIf { entry ->
+            val value = entry.value
+            when (value) {
                 is LinkHolder.ProbeHolder ->
-                    it.probe.serialNumber == serialNumber
+                    value.probe.serialNumber == serialNumber
 
                 is LinkHolder.RepeatedProbeHolder ->
-                    it.repeatedProbe.serialNumber == serialNumber
+                    value.repeatedProbe.serialNumber == serialNumber
             }
         }
 
@@ -1185,14 +1190,14 @@ internal class NetworkManager(
     private val DeviceHolder?.hybridDeviceChild: NodeHybridDevice?
         get() = (this as? DeviceHolder.RepeaterHolder)?.repeater?.hybridDeviceChild
 
-    private fun Map<DeviceID, DeviceHolder>.getRepeaterNodes(): List<NodeBleDevice> =
-        values.toList().filterIsInstance<DeviceHolder.RepeaterHolder>()
+    private fun ConcurrentSnapshotMap<DeviceID, DeviceHolder>.getRepeaterNodes(): List<NodeBleDevice> =
+        snapshotValues().toList().filterIsInstance<DeviceHolder.RepeaterHolder>()
             .map {
                 it.repeater
             }
 
-    private fun Map<DeviceID, DeviceHolder>.getProbes(): List<ProbeBleDevice> =
-        values.toList().filterIsInstance<DeviceHolder.ProbeHolder>()
+    private fun ConcurrentSnapshotMap<DeviceID, DeviceHolder>.getProbes(): List<ProbeBleDevice> =
+        snapshotValues().toList().filterIsInstance<DeviceHolder.ProbeHolder>()
             .map {
                 it.probe
             }

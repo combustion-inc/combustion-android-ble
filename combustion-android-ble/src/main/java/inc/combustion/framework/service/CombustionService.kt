@@ -70,7 +70,7 @@ class CombustionService : Service() {
         private var latestFirmware: Map<DfuProductType, Uri> = emptyMap()
         var serviceNotification: Notification? = null
         var notificationId = 0
-        lateinit var settings: DeviceManager.Settings
+        var settings: DeviceManager.Settings = DeviceManager.Settings()
         private var onServiceStartedCallback: (() -> Unit)? = null
 
         fun start(

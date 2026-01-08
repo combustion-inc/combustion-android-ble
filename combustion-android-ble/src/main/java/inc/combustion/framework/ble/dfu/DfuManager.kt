@@ -45,12 +45,12 @@ import inc.combustion.framework.service.dfu.DfuProductType
 import inc.combustion.framework.service.dfu.DfuState
 import inc.combustion.framework.service.dfu.DfuStatus
 import inc.combustion.framework.service.dfu.DfuSystemState
+import inc.combustion.framework.service.utils.ConcurrentSnapshotMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 private const val BOOTLOADER_STUCK_TIMEOUT_MILLIS = 10000L
@@ -64,15 +64,15 @@ internal class DfuManager(
     private val latestFirmware: Map<DfuProductType, Uri>,
     private val analyticsTracker: AnalyticsTracker = AnalyticsTracker.instance,
 ) {
-    private val deviceStateFlows: ConcurrentHashMap<DeviceID, MutableStateFlow<DfuState>> =
-        ConcurrentHashMap()
-    private val devices = ConcurrentHashMap<DeviceID, DfuBleDevice>()
+    private val deviceStateFlows: ConcurrentSnapshotMap<DeviceID, MutableStateFlow<DfuState>> =
+        ConcurrentSnapshotMap()
+    private val devices = ConcurrentSnapshotMap<DeviceID, DfuBleDevice>()
     private var scanningJob: Job? = null
 
     @Volatile
     private var activeRetryDfuContext: RetryDfuContext? = null
-    private val bootLoaderDevices = ConcurrentHashMap<DeviceID, BootLoaderDevice>()
-    private val retryDfuHistory = ConcurrentHashMap<DeviceID, RetryDfuContext>()
+    private val bootLoaderDevices = ConcurrentSnapshotMap<DeviceID, BootLoaderDevice>()
+    private val retryDfuHistory = ConcurrentSnapshotMap<DeviceID, RetryDfuContext>()
     private var checkStuckDfuJob: Job? = null
 
     private val _initialized = AtomicBoolean(false)
@@ -86,7 +86,7 @@ internal class DfuManager(
 
     val availableDevices: Set<DeviceID>
         get() = ((activeRetryDfuContext?.standardId?.let { setOf(it) }
-            ?: emptySet()) + devices.keys)
+            ?: emptySet()) + devices.snapshotKeys())
 
     fun dfuFlowForDevice(id: DeviceID): StateFlow<DfuState>? = getDeviceStateFlow(id)
 
@@ -103,12 +103,14 @@ internal class DfuManager(
 
     private fun clearDevices() {
         // Release listener resources for each device
-        devices.values.toList().forEach { it.finish() }
+        val devicesSnapshotValues = devices.snapshotValues()
         devices.clear()
+        devicesSnapshotValues.forEach { it.finish() }
         deviceStateFlows.clear()
 
-        bootLoaderDevices.values.toList().forEach { it.finish() }
+        val bootLoaderDevicesSnapshotValues = bootLoaderDevices.snapshotValues()
         bootLoaderDevices.clear()
+        bootLoaderDevicesSnapshotValues.forEach { it.finish() }
         retryDfuHistory.clear()
 
         // reset _dfuInProgress
@@ -222,7 +224,7 @@ internal class DfuManager(
             }
 
             // Re-enable all devices when DFU is complete
-            devices.toMap().forEach { (_, device) ->
+            devices.snapshot().forEach { (_, device) ->
                 device.setEnabled(true)
             }
 
