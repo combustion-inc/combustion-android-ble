@@ -38,7 +38,7 @@ interface NodeMessage {
  */
 internal enum class NodeMessageType(override val value: UByte) : NodeMessage {
 
-    SET_ID(0x1u),
+    SET_PROBE_ID(0x1u),
     SET_COLOR(0x2u),
     SESSION_INFO(0x3u),
     PROBE_LOG(0x4u),

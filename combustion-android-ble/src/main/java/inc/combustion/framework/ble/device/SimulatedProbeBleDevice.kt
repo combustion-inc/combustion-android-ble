@@ -292,8 +292,8 @@ internal class SimulatedProbeBleDevice(
         callback?.let { it(true, null) }
     }
 
-    override fun sendSetProbeID(id: ProbeID, callback: ((Boolean, Any?) -> Unit)?) {
-        probeID = id
+    override fun sendSetProbeID(probeId: ProbeID, reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
+        probeID = probeId
         callback?.let { it(true, null) }
     }
 

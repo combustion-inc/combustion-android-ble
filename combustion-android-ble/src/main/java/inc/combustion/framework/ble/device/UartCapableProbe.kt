@@ -31,12 +31,7 @@ package inc.combustion.framework.ble.device
 import inc.combustion.framework.ble.ProbeStatus
 import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
 import inc.combustion.framework.ble.uart.ProbeLogResponse
-import inc.combustion.framework.service.FoodSafeData
-import inc.combustion.framework.service.ProbeColor
-import inc.combustion.framework.service.ProbeHighLowAlarmStatus
-import inc.combustion.framework.service.ProbeID
-import inc.combustion.framework.service.ProbePowerMode
-import inc.combustion.framework.service.ProbePredictionMode
+import inc.combustion.framework.service.*
 
 typealias LinkID = String
 
@@ -57,17 +52,54 @@ internal interface UartCapableProbe : UartCapableSpecializedDevice {
     val advertisement: ProbeAdvertisingData?
 
     // probe status updates
-    fun observeProbeStatusUpdates(hopCount: UInt?, callback: (suspend (status: ProbeStatus, hopCount: UInt?) -> Unit)? = null)
+    fun observeProbeStatusUpdates(
+        hopCount: UInt?,
+        callback: (suspend (status: ProbeStatus, hopCount: UInt?) -> Unit)? = null,
+    )
 
     // Probe UART Command APIs
-    fun sendSessionInformationRequest(reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)? = null)
+    fun sendSessionInformationRequest(
+        reqId: UInt? = null,
+        callback: ((Boolean, Any?) -> Unit)? = null,
+    )
+
     fun sendSetProbeColor(color: ProbeColor, callback: ((Boolean, Any?) -> Unit)? = null)
-    fun sendSetProbeID(id: ProbeID, callback: ((Boolean, Any?) -> Unit)? = null)
-    fun sendSetPrediction(setPointTemperatureC: Double, mode: ProbePredictionMode, reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)? = null)
-    fun sendConfigureFoodSafe(foodSafeData: FoodSafeData, reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)? = null)
+    fun sendSetProbeID(
+        probeId: ProbeID,
+        reqId: UInt? = null,
+        callback: ((Boolean, Any?) -> Unit)? = null,
+    )
+
+    fun sendSetPrediction(
+        setPointTemperatureC: Double,
+        mode: ProbePredictionMode,
+        reqId: UInt? = null,
+        callback: ((Boolean, Any?) -> Unit)? = null,
+    )
+
+    fun sendConfigureFoodSafe(
+        foodSafeData: FoodSafeData,
+        reqId: UInt? = null,
+        callback: ((Boolean, Any?) -> Unit)? = null,
+    )
+
     fun sendResetFoodSafe(reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)? = null)
-    fun sendLogRequest(minSequence: UInt, maxSequence: UInt, callback: (suspend (ProbeLogResponse) -> Unit)? = null)
-    fun sendSetPowerMode(powerMode: ProbePowerMode, reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)?)
+    fun sendLogRequest(
+        minSequence: UInt,
+        maxSequence: UInt,
+        callback: (suspend (ProbeLogResponse) -> Unit)? = null,
+    )
+
+    fun sendSetPowerMode(
+        powerMode: ProbePowerMode,
+        reqId: UInt? = null,
+        callback: ((Boolean, Any?) -> Unit)?,
+    )
+
     fun sendResetProbe(reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)?)
-    fun sendSetProbeHighLowAlarmStatus(highLowAlarmStatus: ProbeHighLowAlarmStatus, reqId: UInt? = null, callback: ((Boolean, Any?) -> Unit)?)
+    fun sendSetProbeHighLowAlarmStatus(
+        highLowAlarmStatus: ProbeHighLowAlarmStatus,
+        reqId: UInt? = null,
+        callback: ((Boolean, Any?) -> Unit)?,
+    )
 }

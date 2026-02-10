@@ -399,15 +399,30 @@ internal class ProbeManager(
         }
     }
 
-    fun setProbeID(id: ProbeID, completionHandler: (Boolean) -> Unit) {
-        simulatedProbe?.sendSetProbeID(id) { status, _ ->
+    fun setProbeID(probeId: ProbeID, completionHandler: (Boolean) -> Unit) {
+        simulatedProbe?.sendSetProbeID(probeId) { status, _ ->
             completionHandler(status)
         } ?: run {
             // Note: not supported by MeatNet
-            arbitrator.directLink?.sendSetProbeID(id) { status, _ ->
+            arbitrator.directLink?.sendSetProbeID(probeId) { status, _ ->
                 completionHandler(status)
             } ?: run {
-                completionHandler(false)
+                val nodeLinks = arbitrator.connectedNodeLinks
+                if (nodeLinks.isNotEmpty()) {
+                    var handled = false
+                    val requestId = makeRequestId()
+                    nodeLinks.forEach {
+                        it.sendSetProbeID(probeId = probeId, requestId) { status, _ ->
+                            if (!handled) {
+                                handled = true
+                                completionHandler(status)
+                            }
+                        }
+                    }
+
+                } else {
+                    completionHandler(false)
+                }
             }
         }
     }

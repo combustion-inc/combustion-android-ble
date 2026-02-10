@@ -219,8 +219,9 @@ internal class RepeatedProbeBleDevice(
         NOT_IMPLEMENTED("Not able to set probe color over MeatNet")
     }
 
-    override fun sendSetProbeID(id: ProbeID, callback: ((Boolean, Any?) -> Unit)?) {
-        NOT_IMPLEMENTED("Not able to set probe ID over MeatNet")
+    override fun sendSetProbeID(probeId: ProbeID, reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
+        setIdHandler.wait(uart.scope, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
+        sendUartRequest(NodeSetProbeIDRequest(serialNumber, probeId, reqId))
     }
 
     override fun sendSessionInformationRequest(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {

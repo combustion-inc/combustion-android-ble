@@ -170,9 +170,9 @@ internal class ProbeBleDevice(
         sendUartRequest(SetColorRequest(color))
     }
 
-    override fun sendSetProbeID(id: ProbeID, callback: ((Boolean, Any?) -> Unit)?) {
+    override fun sendSetProbeID(probeId: ProbeID, reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
         setIdHandler.wait(uart.scope, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
-        sendUartRequest(SetIDRequest(id))
+        sendUartRequest(SetProbeIDRequest(probeId))
     }
 
     override fun sendSetPrediction(
@@ -383,7 +383,7 @@ internal class ProbeBleDevice(
                     )
 
                     is SetColorResponse -> setColorHandler.handled(response.success, null)
-                    is SetIDResponse -> setIdHandler.handled(response.success, null)
+                    is SetProbeIDResponse -> setIdHandler.handled(response.success, null)
                     is SetPredictionResponse -> setPredictionHandler.handled(response.success, null)
                     is ConfigureFoodSafeResponse -> configureFoodSafeHandler.handled(
                         response.success,

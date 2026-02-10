@@ -127,6 +127,16 @@ internal open class NodeResponse(
             }
 
             return when (messageType) {
+
+                NodeMessageType.SET_PROBE_ID -> {
+                    NodeSetProbeIDResponse.fromData(
+                        success,
+                        requestId,
+                        responseId,
+                        payloadLength
+                    )
+                }
+
                 NodeMessageType.PROBE_LOG -> {
                     NodeReadProbeLogsResponse.fromData(
                         data,
