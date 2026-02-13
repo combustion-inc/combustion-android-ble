@@ -53,12 +53,10 @@ import inc.combustion.framework.service.CombustionProductType.NODE
 import inc.combustion.framework.service.CombustionProductType.PROBE
 import inc.combustion.framework.service.utils.ConcurrentSnapshotMap
 import inc.combustion.framework.service.utils.plus
-import kotlinx.coroutines.CoroutineName
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.random.Random
 import kotlin.random.nextUInt
@@ -201,6 +199,9 @@ internal class NetworkManager(
             else -> NOT_IMPLEMENTED("getNodeDevice is not implemented for unknown device $node with id = $deviceId")
         }
     }
+
+    private val knownProbeIdAssignedToDevice = ConcurrentHashMap<ProbeID, String>()
+    private val probeIdObservations = ConcurrentHashMap<String, Job>()
 
     var deviceAllowlist: Set<String>? = settings.probeAllowlist
         private set
@@ -499,10 +500,21 @@ internal class NetworkManager(
 
     internal fun setProbeID(
         serialNumber: String,
-        id: ProbeID,
+        probeId: ProbeID,
         completionHandler: (Boolean) -> Unit,
     ) {
-        probeManagers[serialNumber]?.setProbeID(id, completionHandler) ?: run {
+        Log.v(LOG_TAG, "setProbeID: assign $probeId to $serialNumber")
+        removeProbeIdAssignmentsToDevice(serialNumber, except = probeId)
+        val currentDeviceAssigned = knownProbeIdAssignedToDevice[probeId]
+        knownProbeIdAssignedToDevice[probeId] = serialNumber
+        if ((currentDeviceAssigned != null) && (currentDeviceAssigned != serialNumber)) {
+            Log.v(
+                LOG_TAG,
+                "setProbeID: assign $probeId to $serialNumber but currently assigned to $currentDeviceAssigned -- resolving"
+            )
+            avoidProbeIdConflict(currentDeviceAssigned, probeId)
+        }
+        probeManagers[serialNumber]?.setProbeID(probeId, completionHandler) ?: run {
             completionHandler(false)
         }
     }
@@ -638,6 +650,9 @@ internal class NetworkManager(
     @ExperimentalCoroutinesApi
     fun clearDevices() {
         (probeManagers + gaugeManagers).forEach { (_, manager) -> manager.finish() }
+        knownProbeIdAssignedToDevice.clear()
+        probeIdObservations.values.toList().forEach { it.cancel() }
+        probeIdObservations.clear()
         deviceInformationDevices.snapshot().forEach { (_, device) -> device.finish() }
         deviceInformationDevices.clear()
         probeManagers.clear()
@@ -757,12 +772,130 @@ internal class NetworkManager(
 
             probeManagers[probeSerialNumber] = manager
             LogManager.instance.manageProbe(scope, manager)
-
             wifiNodesManager.subscribeToNodeFlow(manager)
+
+            probeIdObservations[probeSerialNumber] = scope.launch {
+                manager.deviceFlow
+                    .filter {
+                        !it.isEmpty()
+                    }.map { it.id }
+                    .distinctUntilChanged()
+                    .collect { probeId ->
+                        Log.v(
+                            LOG_TAG,
+                            "Detect probeId $probeId is assigned to $probeSerialNumber"
+                        )
+                        removeProbeIdAssignmentsToDevice(probeSerialNumber, except = probeId)
+                        val currentDeviceForProbeId = knownProbeIdAssignedToDevice[probeId]
+                        if ((currentDeviceForProbeId != null) && (currentDeviceForProbeId != probeSerialNumber)) {
+                            resolveProbeIdConflict(
+                                newDeviceSerial = probeSerialNumber,
+                                currentDeviceSerial = currentDeviceForProbeId,
+                                conflictId = probeId,
+                            )
+                        } else {
+                            knownProbeIdAssignedToDevice[probeId] = probeSerialNumber
+                        }
+                    }
+            }
+
             true
         } else {
             false
         }
+
+    private fun findLowestAvailableProbeId(exceptConflictId: ProbeID): ProbeID? {
+        return ProbeID.entries.firstOrNull {
+            (knownProbeIdAssignedToDevice[it] == null) && (it != exceptConflictId)
+        }
+    }
+
+    private fun removeProbeIdAssignmentsToDevice(serialNumber: String, except: ProbeID?) {
+        return ProbeID.entries.forEach {
+            if ((it != except) && (knownProbeIdAssignedToDevice[it] == serialNumber)) {
+                knownProbeIdAssignedToDevice.remove(it)
+            }
+        }
+    }
+
+    private fun resolveProbeIdConflict(
+        newDeviceSerial: String,
+        currentDeviceSerial: String,
+        conflictId: ProbeID,
+    ) {
+        val newNumeric = newDeviceSerial.toLongOrNull() ?: return
+        val currentNumeric = currentDeviceSerial.toLongOrNull() ?: return
+        val lowestAvailableProbeId = findLowestAvailableProbeId(conflictId)
+
+        if (lowestAvailableProbeId == null) {
+            Log.v(
+                LOG_TAG,
+                "resolveProbeIdConflict: no available probeId found -- cancel resolving probeId conflict on $conflictId"
+            )
+            return
+        }
+
+        val (lowerProbeId, higherProbeId) = if (lowestAvailableProbeId < conflictId) {
+            Pair(lowestAvailableProbeId, conflictId)
+        } else {
+            Pair(conflictId, lowestAvailableProbeId)
+        }
+
+        // assign highest serialNumber to lowest ProbeId
+        val (newDeviceProbeId, currentDeviceProbeId) = if (newNumeric > currentNumeric) {
+            Pair(lowerProbeId, higherProbeId)
+        } else {
+            Pair(higherProbeId, lowerProbeId)
+        }
+
+        knownProbeIdAssignedToDevice[newDeviceProbeId] = newDeviceSerial
+        knownProbeIdAssignedToDevice[currentDeviceProbeId] = currentDeviceSerial
+        Log.v(
+            LOG_TAG,
+            "resolveProbeIdConflict: assign $newDeviceProbeId to $newDeviceSerial and $currentDeviceProbeId to $currentDeviceSerial",
+        )
+        setProbeID(newDeviceSerial, newDeviceProbeId) { success ->
+            if (!success) {
+                Log.v(
+                    LOG_TAG,
+                    "resolveProbeIdConflict: assign $newDeviceProbeId to $newDeviceSerial failed",
+                )
+            }
+        }
+        setProbeID(currentDeviceSerial, currentDeviceProbeId) { success ->
+            if (!success) {
+                Log.v(
+                    LOG_TAG,
+                    "resolveProbeIdConflict: assign $currentDeviceProbeId to $currentDeviceSerial failed",
+                )
+            }
+        }
+    }
+
+    private fun avoidProbeIdConflict(futureConflictDeviceId: String, conflictId: ProbeID) {
+        val lowestAvailableProbeId = findLowestAvailableProbeId(conflictId)
+        // assign to lowest available probeId
+        if ((lowestAvailableProbeId != null) && (lowestAvailableProbeId != conflictId)) {
+            Log.v(
+                LOG_TAG,
+                "avoidProbeIdConflict: assign $lowestAvailableProbeId to $futureConflictDeviceId"
+            )
+            knownProbeIdAssignedToDevice[lowestAvailableProbeId] = futureConflictDeviceId
+            setProbeID(futureConflictDeviceId, lowestAvailableProbeId) { success ->
+                if (!success) {
+                    Log.v(
+                        LOG_TAG,
+                        "avoidProbeIdConflict: assign $lowestAvailableProbeId to $futureConflictDeviceId failed"
+                    )
+                }
+            }
+        } else {
+            Log.v(
+                LOG_TAG,
+                "avoidProbeIdConflict: No available ProbeId found to avoid future probeId conflict on $conflictId"
+            )
+        }
+    }
 
     /**
      * if we haven't seen [gaugeSerialNumber], then create a manager for it.
@@ -1089,8 +1222,14 @@ internal class NetworkManager(
     private fun unlinkDevice(serialNumber: String) {
         Log.i(LOG_TAG, "Unlinking device: $serialNumber")
 
-        // Remove the device from the discovere devices list
+        // Remove the device from the discovered devices list
         val deviceManager = probeManagers.remove(serialNumber) ?: gaugeManagers.remove(serialNumber)
+
+        // Remove from probeId logic
+        if (deviceManager is ProbeManager) {
+            probeIdObservations.remove(serialNumber)?.cancel()
+            removeProbeIdAssignmentsToDevice(serialNumber, except = null)
+        }
 
         val deviceId = deviceManager?.device?.baseDevice?.id
 
