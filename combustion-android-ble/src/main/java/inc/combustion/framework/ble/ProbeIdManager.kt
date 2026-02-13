@@ -157,7 +157,7 @@ internal class ProbeIdManager(
         probeIdObservations[probeSerialNumber] = scope.launch {
             manager.deviceFlow
                 .filter {
-                    !it.isEmpty()
+                    !it.isPlaceholder()
                 }.map { it.id }
                 .distinctUntilChanged()
                 .collect { probeId ->
