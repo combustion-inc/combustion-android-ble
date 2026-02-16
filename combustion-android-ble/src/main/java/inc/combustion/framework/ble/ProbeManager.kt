@@ -39,6 +39,7 @@ import inc.combustion.framework.service.utils.PredictionManager
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * This class is responsible for managing and arbitrating the data links to a temperature
@@ -414,18 +415,16 @@ internal class ProbeManager(
         simulatedProbe?.sendSetProbeID(probeId) { status, _ ->
             onCompletion(status)
         } ?: run {
-            // Note: not supported by MeatNet
             arbitrator.directLink?.sendSetProbeID(probeId) { status, _ ->
                 onCompletion(status)
             } ?: run {
                 val nodeLinks = arbitrator.connectedNodeLinks
                 if (nodeLinks.isNotEmpty()) {
-                    var handled = false
+                    val handled = AtomicBoolean(false)
                     val requestId = makeRequestId()
                     nodeLinks.forEach {
                         it.sendSetProbeID(probeId = probeId, requestId) { status, _ ->
-                            if (!handled) {
-                                handled = true
+                            if (!handled.getAndSet(true)) {
                                 onCompletion(status)
                             }
                         }
@@ -452,12 +451,11 @@ internal class ProbeManager(
             } ?: run {
                 val nodeLinks = arbitrator.connectedNodeLinks
                 if (nodeLinks.isNotEmpty()) {
-                    var handled = false
+                    val handled = AtomicBoolean(false)
                     val requestId = makeRequestId()
                     nodeLinks.forEach {
                         it.sendSetPrediction(removalTemperatureC, mode, requestId) { status, _ ->
-                            if (!handled) {
-                                handled = true
+                            if (!handled.getAndSet(true)) {
                                 completionHandler(status)
                             }
                         }
@@ -480,12 +478,11 @@ internal class ProbeManager(
             } ?: run {
                 val nodeLinks = arbitrator.connectedNodeLinks
                 if (nodeLinks.isNotEmpty()) {
-                    var handled = false
+                    val handled = AtomicBoolean(false)
                     val requestId = makeRequestId()
                     nodeLinks.forEach {
                         it.sendConfigureFoodSafe(foodSafeData, requestId) { status, _ ->
-                            if (!handled) {
-                                handled = true
+                            if (!handled.getAndSet(true)) {
                                 completionHandler(status)
                             }
                         }
@@ -508,12 +505,11 @@ internal class ProbeManager(
             } ?: run {
                 val nodeLinks = arbitrator.connectedNodeLinks
                 if (nodeLinks.isNotEmpty()) {
-                    var handled = false
+                    val handled = AtomicBoolean(false)
                     val requestId = makeRequestId()
                     nodeLinks.forEach {
                         it.sendResetFoodSafe(requestId) { status, _ ->
-                            if (!handled) {
-                                handled = true
+                            if (!handled.getAndSet(true)) {
                                 completionHandler(status)
                             }
                         }
@@ -549,12 +545,11 @@ internal class ProbeManager(
             } ?: run {
                 val nodeLinks = arbitrator.connectedNodeLinks
                 if (nodeLinks.isNotEmpty()) {
-                    var handled = false
+                    val handled = AtomicBoolean(false)
                     val requestId = makeRequestId()
                     nodeLinks.forEach {
                         it.sendSetPowerMode(powerMode, requestId) { status, _ ->
-                            if (!handled) {
-                                handled = true
+                            if (!handled.getAndSet(true)) {
                                 onCompletion(status)
                             }
                         }
@@ -577,12 +572,11 @@ internal class ProbeManager(
             } ?: run {
                 val nodeLinks = arbitrator.connectedNodeLinks
                 if (nodeLinks.isNotEmpty()) {
-                    var handled = false
+                    val handled = AtomicBoolean(false)
                     val requestId = makeRequestId()
                     nodeLinks.forEach {
                         it.sendResetProbe(requestId) { status, _ ->
-                            if (!handled) {
-                                handled = true
+                            if (!handled.getAndSet(true)) {
                                 completionHandler(status)
                             }
                         }
@@ -619,14 +613,13 @@ internal class ProbeManager(
             } ?: run {
                 val nodeLinks = arbitrator.connectedNodeLinks
                 if (nodeLinks.isNotEmpty()) {
-                    var handled = false
+                    val handled = AtomicBoolean(false)
                     nodeLinks.forEach { node ->
                         node.sendSetProbeHighLowAlarmStatus(
                             probeHighLowAlarmStatus,
                             requestId,
                         ) { status, _ ->
-                            if (!handled) {
-                                handled = true
+                            if (!handled.getAndSet(true)) {
                                 onCompletion(status)
                             }
                         }
@@ -902,7 +895,7 @@ internal class ProbeManager(
                 // otherwise, use MeatNet is there is a connection
                 val nodeLinks = arbitrator.connectedNodeLinks
                 if (nodeLinks.isNotEmpty()) {
-                    var handled = false
+                    val handled = AtomicBoolean(false)
                     val requestId = makeRequestId()
 
                     // for each MeatNet link, send the request
@@ -910,8 +903,7 @@ internal class ProbeManager(
                         device.readProbeFirmwareVersion(requestId) { version ->
 
                             // on first response from network, use the value
-                            if (!handled) {
-                                handled = true
+                            if (!handled.getAndSet(true)) {
                                 _deviceFlow.update {
                                     it.copy(baseDevice = it.baseDevice.copy(fwVersion = version))
                                 }
@@ -939,7 +931,7 @@ internal class ProbeManager(
                 // otherwise, use MeatNet is there is a connection
                 val nodeLinks = arbitrator.connectedNodeLinks
                 if (nodeLinks.isNotEmpty()) {
-                    var handled = false
+                    val handled = AtomicBoolean(false)
                     val requestId = makeRequestId()
 
                     // for each MeatNet link, send the request
@@ -947,8 +939,7 @@ internal class ProbeManager(
                         device.readProbeHardwareRevision(requestId) { revision ->
 
                             // on first response from network, use the value
-                            if (!handled) {
-                                handled = true
+                            if (!handled.getAndSet(true)) {
                                 _deviceFlow.update {
                                     it.copy(
                                         baseDevice = it.baseDevice.copy(hwRevision = revision)
@@ -980,7 +971,7 @@ internal class ProbeManager(
                 // otherwise, use MeatNet is there is a connection
                 val nodeLinks = arbitrator.connectedNodeLinks
                 if (nodeLinks.isNotEmpty()) {
-                    var handled = false
+                    val handled = AtomicBoolean(false)
                     val requestId = makeRequestId()
 
                     // for each MeatNet link, send the request
@@ -988,8 +979,7 @@ internal class ProbeManager(
                         device.readProbeModelInformation(requestId) { info ->
 
                             // on first response from network, use the value
-                            if (!handled) {
-                                handled = true
+                            if (!handled.getAndSet(true)) {
                                 _deviceFlow.update {
                                     it.copy(baseDevice = it.baseDevice.copy(modelInformation = info))
                                 }
@@ -1018,13 +1008,12 @@ internal class ProbeManager(
                     // otherwise, use MeatNet is there is a connection
                     val nodeLinks = arbitrator.connectedNodeLinks
                     if (nodeLinks.isNotEmpty()) {
-                        var handled = false
+                        val handled = AtomicBoolean(false)
                         val requestId = makeRequestId()
                         nodeLinks.forEach {
                             it.sendSessionInformationRequest(requestId) { b, any ->
                                 // on first response from network, use the value
-                                if (!handled) {
-                                    handled = true
+                                if (!handled.getAndSet(true)) {
                                     nodeLinks.forEach { link ->
                                         if (link != it) {
                                             link.cancelSessionInfoRequest(requestId)

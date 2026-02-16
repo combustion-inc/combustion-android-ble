@@ -60,7 +60,7 @@ interface SpecializedDevice {
         get() = baseDevice.connectionState
 
     /**
-     * Returns true if not an actual full valid state but still hase placeholder values
+     * Returns true if not an actual full valid state but still has placeholder values
      */
     fun isPlaceholder(): Boolean {
         return (maxSequence == null) && (sessionInfo == null)

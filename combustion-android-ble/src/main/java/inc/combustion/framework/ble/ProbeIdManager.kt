@@ -61,19 +61,19 @@ internal class ProbeIdManager(
         }
     }
 
-    fun resolveProbeIdConflict(
+    private fun resolveProbeIdConflict(
         newDeviceSerial: String,
         currentDeviceSerial: String,
         conflictId: ProbeID,
     ) {
-        val newNumeric = newDeviceSerial.toLongOrNull() ?: return
-        val currentNumeric = currentDeviceSerial.toLongOrNull() ?: return
+        val newNumeric = newDeviceSerial.toLongOrNull(16) ?: return
+        val currentNumeric = currentDeviceSerial.toLongOrNull(16) ?: return
         val lowestAvailableProbeId = findLowestAvailableProbeId(conflictId)
 
         if (lowestAvailableProbeId == null) {
             Log.v(
                 LOG_TAG,
-                "resolveProbeIdConflict: no available probeId found -- cancel resolving probeId conflict on $conflictId"
+                "resolveProbeIdConflict: no available probeId found -- cancel resolving probeId conflict on $conflictId",
             )
             return
         }
@@ -99,6 +99,10 @@ internal class ProbeIdManager(
         )
         setProbeID(newDeviceSerial, newDeviceProbeId) { success ->
             if (!success) {
+                // revert change
+                if (knownProbeIdAssignedToDevice[newDeviceProbeId] == newDeviceSerial) {
+                    knownProbeIdAssignedToDevice.remove(newDeviceProbeId)
+                }
                 Log.v(
                     LOG_TAG,
                     "resolveProbeIdConflict: assign $newDeviceProbeId to $newDeviceSerial failed",
@@ -107,6 +111,10 @@ internal class ProbeIdManager(
         }
         setProbeID(currentDeviceSerial, currentDeviceProbeId) { success ->
             if (!success) {
+                // revert change
+                if (knownProbeIdAssignedToDevice[currentDeviceProbeId] == currentDeviceSerial) {
+                    knownProbeIdAssignedToDevice.remove(currentDeviceProbeId)
+                }
                 Log.v(
                     LOG_TAG,
                     "resolveProbeIdConflict: assign $currentDeviceProbeId to $currentDeviceSerial failed",
@@ -115,20 +123,24 @@ internal class ProbeIdManager(
         }
     }
 
-    private fun avoidProbeIdConflict(futureConflictDeviceId: String, conflictId: ProbeID) {
+    private fun avoidProbeIdConflict(futureConflictDeviceSerial: String, conflictId: ProbeID) {
         val lowestAvailableProbeId = findLowestAvailableProbeId(conflictId)
         // assign to lowest available probeId
         if ((lowestAvailableProbeId != null) && (lowestAvailableProbeId != conflictId)) {
             Log.v(
                 LOG_TAG,
-                "avoidProbeIdConflict: assign $lowestAvailableProbeId to $futureConflictDeviceId"
+                "avoidProbeIdConflict: assign $lowestAvailableProbeId to $futureConflictDeviceSerial"
             )
-            knownProbeIdAssignedToDevice[lowestAvailableProbeId] = futureConflictDeviceId
-            setProbeID(futureConflictDeviceId, lowestAvailableProbeId) { success ->
+            knownProbeIdAssignedToDevice[lowestAvailableProbeId] = futureConflictDeviceSerial
+            setProbeID(futureConflictDeviceSerial, lowestAvailableProbeId) { success ->
                 if (!success) {
+                    // revert change
+                    if (knownProbeIdAssignedToDevice[lowestAvailableProbeId] == futureConflictDeviceSerial) {
+                        knownProbeIdAssignedToDevice.remove(lowestAvailableProbeId)
+                    }
                     Log.v(
                         LOG_TAG,
-                        "avoidProbeIdConflict: assign $lowestAvailableProbeId to $futureConflictDeviceId failed"
+                        "avoidProbeIdConflict: assign $lowestAvailableProbeId to $futureConflictDeviceSerial failed"
                     )
                 }
             }
@@ -168,6 +180,10 @@ internal class ProbeIdManager(
                     removeProbeIdAssignmentsToDevice(probeSerialNumber, except = probeId)
                     val currentDeviceForProbeId = knownProbeIdAssignedToDevice[probeId]
                     if ((currentDeviceForProbeId != null) && (currentDeviceForProbeId != probeSerialNumber)) {
+                        Log.v(
+                            LOG_TAG,
+                            "Conflict on probeId $probeId: $probeSerialNumber and $currentDeviceForProbeId",
+                        )
                         resolveProbeIdConflict(
                             newDeviceSerial = probeSerialNumber,
                             currentDeviceSerial = currentDeviceForProbeId,
@@ -190,5 +206,6 @@ internal class ProbeIdManager(
         Log.v(LOG_TAG, "clear")
         probeIdObservations.values.toList().forEach { it.cancel() }
         probeIdObservations.clear()
+        knownProbeIdAssignedToDevice.clear()
     }
 }
