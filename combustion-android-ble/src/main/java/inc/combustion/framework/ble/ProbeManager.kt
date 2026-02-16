@@ -400,12 +400,23 @@ internal class ProbeManager(
     }
 
     fun setProbeID(probeId: ProbeID, completionHandler: (Boolean) -> Unit) {
+        val onCompletion: (Boolean) -> Unit = { success ->
+            if (success) {
+                _deviceFlow.update {
+                    it.copy(
+                        id = probeId,
+                    )
+                }
+            }
+            completionHandler(success)
+        }
+
         simulatedProbe?.sendSetProbeID(probeId) { status, _ ->
-            completionHandler(status)
+            onCompletion(status)
         } ?: run {
             // Note: not supported by MeatNet
             arbitrator.directLink?.sendSetProbeID(probeId) { status, _ ->
-                completionHandler(status)
+                onCompletion(status)
             } ?: run {
                 val nodeLinks = arbitrator.connectedNodeLinks
                 if (nodeLinks.isNotEmpty()) {
@@ -415,13 +426,13 @@ internal class ProbeManager(
                         it.sendSetProbeID(probeId = probeId, requestId) { status, _ ->
                             if (!handled) {
                                 handled = true
-                                completionHandler(status)
+                                onCompletion(status)
                             }
                         }
                     }
 
                 } else {
-                    completionHandler(false)
+                    onCompletion(false)
                 }
             }
         }
