@@ -27,7 +27,7 @@
  */
 package inc.combustion.framework.ble.uart
 
-internal class SetIDResponse (
+internal class SetProbeIDResponse (
     success: Boolean,
     payLoadLength: UInt
 ) : Response(success, payLoadLength) {

@@ -59,6 +59,13 @@ interface SpecializedDevice {
     val connectionState: DeviceConnectionState
         get() = baseDevice.connectionState
 
+    /**
+     * Returns true if not an actual full valid state but still has placeholder values
+     */
+    fun isPlaceholder(): Boolean {
+        return (maxSequence == null) && (sessionInfo == null)
+    }
+
     companion object {
         const val STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS = 15000L
     }

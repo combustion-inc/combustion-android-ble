@@ -37,6 +37,7 @@ import inc.combustion.framework.service.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * This class is responsible for managing and arbitrating the data links to a gauge.
@@ -583,15 +584,14 @@ internal class GaugeManager(
         } ?: run {
             val nodeLinks = arbitrator.connectedNodeLinks
             if (nodeLinks.isNotEmpty()) {
-                var handled = false
+                val handled = AtomicBoolean(false)
                 nodeLinks.forEach { node ->
                     node.sendSetGaugeHighLowAlarmStatus(
                         serialNumber,
                         highLowAlarmStatus,
                         requestId,
                     ) { status, _ ->
-                        if (!handled) {
-                            handled = true
+                        if (!handled.getAndSet(true)) {
                             onCompletion(status)
                         }
                     }

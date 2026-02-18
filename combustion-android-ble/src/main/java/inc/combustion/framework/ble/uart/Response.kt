@@ -107,9 +107,9 @@ internal open class Response(
 
                 MessageType.SET_PROBE_ID -> createGenericResponse(
                     success,
-                    SetIDResponse.PAYLOAD_LENGTH,
+                    SetProbeIDResponse.PAYLOAD_LENGTH,
                     length.toUInt(),
-                    ::SetIDResponse,
+                    ::SetProbeIDResponse,
                 )
 
                 MessageType.READ_SESSION_INFO -> SessionInfoResponse.fromData(

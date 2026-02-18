@@ -40,12 +40,7 @@ import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
 import inc.combustion.framework.ble.uart.ProbeLogResponse
 import inc.combustion.framework.ble.uart.meatnet.*
 import inc.combustion.framework.service.*
-import kotlinx.coroutines.CoroutineName
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 
 /**
  * Class representing a probe connected through one or more MeatNet nodes.
@@ -219,8 +214,13 @@ internal class RepeatedProbeBleDevice(
         NOT_IMPLEMENTED("Not able to set probe color over MeatNet")
     }
 
-    override fun sendSetProbeID(id: ProbeID, callback: ((Boolean, Any?) -> Unit)?) {
-        NOT_IMPLEMENTED("Not able to set probe ID over MeatNet")
+    override fun sendSetProbeID(
+        probeId: ProbeID,
+        reqId: UInt?,
+        callback: ((Boolean, Any?) -> Unit)?
+    ) {
+        setIdHandler.wait(uart.scope, MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS, reqId, callback)
+        sendUartRequest(NodeSetProbeIDRequest(serialNumber, probeId, reqId))
     }
 
     override fun sendSessionInformationRequest(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
@@ -584,6 +584,10 @@ internal class RepeatedProbeBleDevice(
                     }
 
                     // Synchronous Requests that are responded to with a single message
+                    is NodeSetProbeIDResponse -> {
+                        setIdHandler.handled(message.success, null, message.requestId)
+                    }
+
                     is NodeSetPredictionResponse -> {
                         setPredictionHandler.handled(message.success, null, message.requestId)
                     }

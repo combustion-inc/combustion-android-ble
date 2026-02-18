@@ -202,6 +202,8 @@ internal class NetworkManager(
         }
     }
 
+    private val probeIdManager = ProbeIdManager(::setProbeID, scope)
+
     var deviceAllowlist: Set<String>? = settings.probeAllowlist
         private set
 
@@ -499,10 +501,12 @@ internal class NetworkManager(
 
     internal fun setProbeID(
         serialNumber: String,
-        id: ProbeID,
+        probeId: ProbeID,
         completionHandler: (Boolean) -> Unit,
     ) {
-        probeManagers[serialNumber]?.setProbeID(id, completionHandler) ?: run {
+        Log.v(LOG_TAG, "setProbeID: assign $probeId to $serialNumber")
+        probeIdManager.checkAndAvoidProbeIdConflictOnSetProbeId(serialNumber, probeId)
+        probeManagers[serialNumber]?.setProbeID(probeId, completionHandler) ?: run {
             completionHandler(false)
         }
     }
@@ -638,6 +642,7 @@ internal class NetworkManager(
     @ExperimentalCoroutinesApi
     fun clearDevices() {
         (probeManagers + gaugeManagers).forEach { (_, manager) -> manager.finish() }
+        probeIdManager.clear()
         deviceInformationDevices.snapshot().forEach { (_, device) -> device.finish() }
         deviceInformationDevices.clear()
         probeManagers.clear()
@@ -757,8 +762,9 @@ internal class NetworkManager(
 
             probeManagers[probeSerialNumber] = manager
             LogManager.instance.manageProbe(scope, manager)
-
             wifiNodesManager.subscribeToNodeFlow(manager)
+            probeIdManager.addDevice(probeSerialNumber, manager)
+
             true
         } else {
             false
@@ -1089,8 +1095,13 @@ internal class NetworkManager(
     private fun unlinkDevice(serialNumber: String) {
         Log.i(LOG_TAG, "Unlinking device: $serialNumber")
 
-        // Remove the device from the discovere devices list
+        // Remove the device from the discovered devices list
         val deviceManager = probeManagers.remove(serialNumber) ?: gaugeManagers.remove(serialNumber)
+
+        // Remove from probeId logic
+        if (deviceManager is ProbeManager) {
+            probeIdManager.removeDevice(serialNumber)
+        }
 
         val deviceId = deviceManager?.device?.baseDevice?.id
 
