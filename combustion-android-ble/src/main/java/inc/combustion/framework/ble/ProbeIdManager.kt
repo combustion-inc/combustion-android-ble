@@ -34,7 +34,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 
@@ -170,7 +170,7 @@ internal class ProbeIdManager(
             manager.deviceFlow
                 .filter {
                     !it.isPlaceholder()
-                }.map { it.id }
+                }.mapNotNull { it.id }
                 .distinctUntilChanged()
                 .collect { probeId ->
                     Log.v(
