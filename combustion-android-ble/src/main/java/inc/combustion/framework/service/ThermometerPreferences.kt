@@ -28,15 +28,22 @@
 
 package inc.combustion.framework.service
 
-data class ThermometerPreferences(val powerMode: ProbePowerMode) {
+data class ThermometerPreferences(
+    val powerMode: ProbePowerMode,
+    val highRadioPower: Boolean = false,
+) {
 
     companion object {
         const val PROBE_PREFS_SIZE_BYTES = 1
 
-        val DEFAULT = ThermometerPreferences(powerMode = ProbePowerMode.NORMAL)
+        val DEFAULT = ThermometerPreferences(powerMode = ProbePowerMode.NORMAL, highRadioPower = false)
 
         fun fromUByte(byte: UByte): ThermometerPreferences {
-            return ThermometerPreferences(powerMode = ProbePowerMode.fromUByte(byte))
+            val highRadioPower = (byte.toInt() shr 2) and 0x1 != 0
+            return ThermometerPreferences(
+                powerMode = ProbePowerMode.fromUByte(byte),
+                highRadioPower = highRadioPower,
+            )
         }
     }
 }
