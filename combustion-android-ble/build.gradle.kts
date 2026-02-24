@@ -102,6 +102,7 @@ dependencies {
     implementation(frameworkLibs.appcompat)
     implementation(frameworkLibs.lifecycle.runtime)
     implementation(frameworkLibs.kotlinx.serialization.json)
+    implementation(frameworkLibs.kotlinx.collections.immutables)
     implementation(frameworkLibs.kable.core)
     implementation(frameworkLibs.lifecycle.service)
     implementation(frameworkLibs.nordicsemi.dfu)

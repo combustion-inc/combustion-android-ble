@@ -28,6 +28,9 @@
 
 package inc.combustion.framework.service.utils
 
+import kotlinx.collections.immutable.PersistentMap
+import kotlinx.collections.immutable.mutate
+import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -37,33 +40,71 @@ import kotlinx.coroutines.flow.update
  * Note, does not implement the [MutableMap] interface, e.g. cant modify its entries and keys directly.
  */
 @Suppress("unused")
-class StateFlowMutableMap<K, V>(initialMap: Map<K, V> = emptyMap()) {
+class StateFlowMutableMap<K, V>(initialMap: PersistentMap<K, V> = persistentMapOf()) {
 
-    private val _stateFlow = MutableStateFlow(initialMap.toMap())
-    val stateFlow: StateFlow<Map<K, V>> get() = _stateFlow
+    private val _stateFlow = MutableStateFlow(initialMap)
+    val stateFlow: StateFlow<PersistentMap<K, V>> get() = _stateFlow
 
-    private inline fun updateMap(transform: (MutableMap<K, V>) -> Unit) {
+    private inline fun updateMap(
+        transform: (MutableMap<K, V>) -> Unit
+    ) {
         _stateFlow.update { current ->
-            current.toMutableMap().apply(transform).toMap()
+            current.mutate { builder ->
+                transform(builder)
+            }
         }
     }
 
     fun batchUpdate(block: MutableMap<K, V>.() -> Unit) {
         _stateFlow.update { current ->
-            current.toMutableMap().apply(block).toMap()
+            current.mutate(block)
         }
     }
 
+    /**
+     * Inserts or replaces [key] with [value].
+     *
+     * Note, V must implement meaningful structural equality since If the existing value is structurally equal (`equals`) to [value],
+     * no new map instance is emitted.
+     */
     fun put(key: K, value: V): V? {
         var previous: V? = null
-        updateMap { map ->
-            previous = map.put(key, value)
+        _stateFlow.update { current ->
+            previous = current[key]
+            if (previous == value) {
+                current // no change → no emission
+            } else {
+                current.put(key, value)
+            }
         }
         return previous
     }
 
     operator fun set(key: K, value: V) {
         put(key, value)
+    }
+
+    /**
+     * Atomic operation
+     * Note, the supplier may be invoked even if another thread inserts the value concurrently,
+     * but it will never be invoked more than once per call.
+     */
+    fun computeIfAbsent(
+        key: K,
+        supplier: () -> V
+    ): V {
+        _stateFlow.value[key]?.let { return it }
+
+        val newValue = supplier()
+        while (true) {
+            val current = _stateFlow.value
+            val existing = current[key]
+            if (existing != null) return existing
+
+            if (_stateFlow.compareAndSet(current, current.put(key, newValue))) {
+                return newValue
+            }
+        }
     }
 
     fun remove(key: K): V? {
@@ -89,7 +130,7 @@ class StateFlowMutableMap<K, V>(initialMap: Map<K, V> = emptyMap()) {
         get() = _stateFlow.value.size
 
     fun clear() {
-        _stateFlow.value = emptyMap()
+        _stateFlow.update { persistentMapOf() }
     }
 
     fun isEmpty(): Boolean = _stateFlow.value.isEmpty()
@@ -113,6 +154,9 @@ class StateFlowMutableMap<K, V>(initialMap: Map<K, V> = emptyMap()) {
     }
 
     fun removeIf(filter: (Map.Entry<K, V>) -> Boolean): Boolean {
+        val shouldRemove = _stateFlow.value.entries.any(filter)
+        if (!shouldRemove) return false
+
         var removed = false
         updateMap { map ->
             val iterator = map.entries.iterator()

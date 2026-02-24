@@ -100,8 +100,8 @@ data class Probe(
     )
     val maxSequenceNumber: UInt = maxSequence ?: 0u,
     override val uploadState: ProbeUploadState = ProbeUploadState.Unavailable,
-    val id: ProbeID = ProbeID.ID1,
-    val color: ProbeColor = ProbeColor.COLOR1,
+    val id: ProbeID? = null,
+    val color: ProbeColor? = null,
     val batteryStatus: ProbeBatteryStatus = ProbeBatteryStatus.OK,
     val virtualSensors: ProbeVirtualSensors = ProbeVirtualSensors(),
     val predictionState: ProbePredictionState? = null,

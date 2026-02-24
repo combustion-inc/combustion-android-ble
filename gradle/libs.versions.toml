@@ -8,6 +8,7 @@ core-ktx = "1.15.0"
 kableCore = "0.32.0"
 kotlin = "2.1.0"
 kotlinxSerializationJson = "1.8.0"
+kotlinxImmutables = "0.4.0"
 nordicsemiDfu = "2.9.0"
 junit = "4.13.2"
 junitParams = "1.1.1"
@@ -22,6 +23,7 @@ appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "a
 lifecycle-runtime = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle" }
 lifecycle-service = { group = "androidx.lifecycle", name = "lifecycle-service", version.ref = "lifecycle" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
+kotlinx-collections-immutables = { group = "org.jetbrains.kotlinx", name = "kotlinx-collections-immutable", version.ref = "kotlinxImmutables" }
 androidx-test-ext = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExt" }
 androidx-test-espresso = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "androidxTestEspresso" }
 core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "core-ktx" }
