@@ -61,6 +61,12 @@ class StateFlowMutableMap<K, V>(initialMap: PersistentMap<K, V> = persistentMapO
         }
     }
 
+    /**
+     * Inserts or replaces [key] with [value].
+     *
+     * Note, V must implement meaningful structural equality since If the existing value is structurally equal (`equals`) to [value],
+     * no new map instance is emitted.
+     */
     fun put(key: K, value: V): V? {
         var previous: V? = null
         _stateFlow.update { current ->
@@ -80,6 +86,8 @@ class StateFlowMutableMap<K, V>(initialMap: PersistentMap<K, V> = persistentMapO
 
     /**
      * Atomic operation
+     * Note, the supplier may be invoked even if another thread inserts the value concurrently,
+     * but it will never be invoked more than once per call.
      */
     fun computeIfAbsent(
         key: K,
@@ -87,12 +95,11 @@ class StateFlowMutableMap<K, V>(initialMap: PersistentMap<K, V> = persistentMapO
     ): V {
         _stateFlow.value[key]?.let { return it }
 
+        val newValue = supplier()
         while (true) {
             val current = _stateFlow.value
             val existing = current[key]
             if (existing != null) return existing
-
-            val newValue = supplier()
 
             if (_stateFlow.compareAndSet(current, current.put(key, newValue))) {
                 return newValue
@@ -164,9 +171,9 @@ class StateFlowMutableMap<K, V>(initialMap: PersistentMap<K, V> = persistentMapO
         return removed
     }
 
-    fun toMap(): PersistentMap<K, V> = _stateFlow.value
+    fun toMap(): Map<K, V> = _stateFlow.value
 
-    fun asStateFlow(): StateFlow<PersistentMap<K, V>> = stateFlow
+    fun asStateFlow(): StateFlow<Map<K, V>> = stateFlow
 
     override fun toString(): String = _stateFlow.value.toString()
 }
