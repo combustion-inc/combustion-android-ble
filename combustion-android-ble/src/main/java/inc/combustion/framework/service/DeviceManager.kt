@@ -475,6 +475,19 @@ class DeviceManager(
                 started = SharingStarted.Lazily,
             )
 
+    /**
+     * Observe ProbeIDs that are not currently assigned to an active device.
+     */
+    val availableProbeIDs: StateFlow<List<ProbeID>> = NetworkManager.instanceFlow
+        .flatMapLatest { mgr ->
+            mgr?.availableProbeIDs ?: flowOf(ProbeID.entries)
+        }
+        .stateIn(
+            scope = appApiScope,
+            started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
+            initialValue = ProbeID.entries,
+        )
+
     private fun doWhenNetworkManagerInitialized(onInitialized: suspend (NetworkManager) -> Unit) {
         appApiScope.launch {
             NetworkManager.instanceFlow.first { it != null }?.let {

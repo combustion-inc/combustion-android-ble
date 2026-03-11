@@ -315,6 +315,8 @@ internal class NetworkManager(
     val silenceAlarmsRequestFlow: SharedFlow<SilenceAlarmsRequest>
         get() = _silenceAlarmsRequestFlow.asSharedFlow()
 
+    val availableProbeIDs: Flow<List<ProbeID>> = probeIdManager.availableProbeIds
+
     init {
         require(context.applicationContext === context) {
             "NetworkManager must be given application context"
@@ -505,9 +507,16 @@ internal class NetworkManager(
         completionHandler: (Boolean) -> Unit,
     ) {
         Log.v(LOG_TAG, "setProbeID: assign $probeId to $serialNumber")
-        probeIdManager.checkAndAvoidProbeIdConflictOnSetProbeId(serialNumber, probeId)
-        probeManagers[serialNumber]?.setProbeID(probeId, completionHandler) ?: run {
+        if (probeIdManager.hasProbeIdConflict(serialNumber, probeId)) {
+            Log.w(
+                LOG_TAG,
+                "setProbeID: unable to perform since there is an existing probe assigned to $probeId",
+            )
             completionHandler(false)
+        } else {
+            probeManagers[serialNumber]?.setProbeID(probeId, completionHandler) ?: run {
+                completionHandler(false)
+            }
         }
     }
 
