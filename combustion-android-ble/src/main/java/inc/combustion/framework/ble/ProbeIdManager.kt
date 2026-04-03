@@ -48,7 +48,7 @@ internal class ProbeIdManager(
 
     val availableProbeIds: Flow<List<ProbeID>> =
         knownProbeIdAssignedToDevice.stateFlow.map { map ->
-            ProbeID.entries.filterNot { map.keys.contains(it) }
+            ProbeID.entries.filterNot { it in map }
         }
 
     private fun findLowestAvailableProbeId(exceptConflictId: ProbeID): ProbeID? {
