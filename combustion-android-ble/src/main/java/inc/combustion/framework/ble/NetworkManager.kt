@@ -60,6 +60,8 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 import kotlin.random.Random
 import kotlin.random.nextUInt
 
@@ -203,6 +205,7 @@ internal class NetworkManager(
     }
 
     private val probeIdManager = ProbeIdManager(::setProbeID, scope)
+    private val setProbeIdLock = ReentrantLock()
 
     var deviceAllowlist: Set<String>? = settings.probeAllowlist
         private set
@@ -315,7 +318,7 @@ internal class NetworkManager(
     val silenceAlarmsRequestFlow: SharedFlow<SilenceAlarmsRequest>
         get() = _silenceAlarmsRequestFlow.asSharedFlow()
 
-    val availableProbeIDs: Flow<List<ProbeID>> = probeIdManager.availableProbeIds
+    val availableProbeIDs: Flow<List<ProbeID>> = probeIdManager.availableProbeIDs
 
     init {
         require(context.applicationContext === context) {
@@ -506,16 +509,17 @@ internal class NetworkManager(
         probeId: ProbeID,
         completionHandler: (Boolean) -> Unit,
     ) {
-        Log.v(LOG_TAG, "setProbeID: assign $probeId to $serialNumber")
-        if (probeIdManager.hasProbeIdConflict(serialNumber, probeId)) {
-            Log.w(
-                LOG_TAG,
-                "setProbeID: unable to perform since there is an existing probe assigned to $probeId",
-            )
-            completionHandler(false)
-        } else {
-            probeManagers[serialNumber]?.setProbeID(probeId, completionHandler) ?: run {
+        setProbeIdLock.withLock {
+            Log.v(LOG_TAG, "setProbeID: assign $probeId to $serialNumber")
+            if (probeIdManager.hasProbeIdConflict(serialNumber, probeId)) {
+                Log.w(
+                    LOG_TAG,
+                    "setProbeID: unable to perform since there is an existing probe assigned to $probeId",
+                )
                 completionHandler(false)
+            } else {
+                probeManagers[serialNumber]?.setProbeID(probeId, completionHandler)
+                    ?: completionHandler(false)
             }
         }
     }

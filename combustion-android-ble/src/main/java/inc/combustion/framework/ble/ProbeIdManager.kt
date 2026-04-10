@@ -46,7 +46,7 @@ internal class ProbeIdManager(
 ) {
     private val probeIdObservations = ConcurrentHashMap<String, Job>()
 
-    val availableProbeIds: Flow<List<ProbeID>> =
+    val availableProbeIDs: Flow<List<ProbeID>> =
         knownProbeIdAssignedToDevice.stateFlow.map { map ->
             ProbeID.entries.filterNot { it in map }
         }
