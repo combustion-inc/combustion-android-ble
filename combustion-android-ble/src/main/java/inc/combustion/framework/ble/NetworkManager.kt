@@ -53,15 +53,12 @@ import inc.combustion.framework.service.CombustionProductType.NODE
 import inc.combustion.framework.service.CombustionProductType.PROBE
 import inc.combustion.framework.service.utils.ConcurrentSnapshotMap
 import inc.combustion.framework.service.utils.plus
-import kotlinx.coroutines.CoroutineName
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.locks.ReentrantLock
-import kotlin.concurrent.withLock
 import kotlin.random.Random
 import kotlin.random.nextUInt
 
@@ -205,7 +202,7 @@ internal class NetworkManager(
     }
 
     private val probeIdManager = ProbeIdManager(::setProbeID, scope)
-    private val setProbeIdLock = ReentrantLock()
+    private val setProbeIdLock = Mutex()
 
     var deviceAllowlist: Set<String>? = settings.probeAllowlist
         private set
@@ -509,17 +506,19 @@ internal class NetworkManager(
         probeId: ProbeID,
         completionHandler: (Boolean) -> Unit,
     ) {
-        setProbeIdLock.withLock {
-            Log.v(LOG_TAG, "setProbeID: assign $probeId to $serialNumber")
-            if (probeIdManager.hasProbeIdConflict(serialNumber, probeId)) {
-                Log.w(
-                    LOG_TAG,
-                    "setProbeID: unable to perform since there is an existing probe assigned to $probeId",
-                )
-                completionHandler(false)
-            } else {
-                probeManagers[serialNumber]?.setProbeID(probeId, completionHandler)
-                    ?: completionHandler(false)
+        scope.launch(Dispatchers.Main) {
+            setProbeIdLock.withLock {
+                Log.v(LOG_TAG, "setProbeID: assign $probeId to $serialNumber")
+                if (probeIdManager.hasProbeIdConflict(serialNumber, probeId)) {
+                    Log.w(
+                        LOG_TAG,
+                        "setProbeID: unable to perform since there is an existing probe assigned to $probeId",
+                    )
+                    completionHandler(false)
+                } else {
+                    probeManagers[serialNumber]?.setProbeID(probeId, completionHandler)
+                        ?: completionHandler(false)
+                }
             }
         }
     }
