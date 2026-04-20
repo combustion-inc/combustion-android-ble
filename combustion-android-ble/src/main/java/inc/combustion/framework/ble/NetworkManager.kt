@@ -39,10 +39,7 @@ import android.os.Build
 import android.util.Log
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.device.*
-import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
-import inc.combustion.framework.ble.scanning.DeviceScanner
-import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
-import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
+import inc.combustion.framework.ble.scanning.*
 import inc.combustion.framework.ble.uart.meatnet.GenericNodeRequest
 import inc.combustion.framework.ble.uart.meatnet.GenericNodeResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
@@ -944,6 +941,12 @@ internal class NetworkManager(
         return isNewlyDiscovered
     }
 
+    private fun manageEngineDevice(
+        advertisement: EngineAdvertisingData,
+    ): Boolean {
+        TODO()
+    }
+
     private suspend fun collectAdvertisingData() {
         DeviceScanner.advertisements.collect { advertisingData ->
             if (!deviceDiscoveryModeEnabled) return@collect
@@ -957,17 +960,19 @@ internal class NetworkManager(
                     manageNodeWithoutProbe(advertisingData)
                 } else if (manageMeatNetDeviceWithProbe(advertisingData)) {
                     flowHolder.mutableDiscoveredDevicesFlow.emit(
-                        DeviceDiscoveryEvent.ProbeDiscovered(
-                            serialNumber
-                        )
+                        DeviceDiscoveryEvent.ProbeDiscovered(serialNumber)
                     )
                 }
 
                 is GaugeAdvertisingData -> if (manageGaugeDevice(advertisingData)) {
                     flowHolder.mutableDiscoveredDevicesFlow.emit(
-                        DeviceDiscoveryEvent.GaugeDiscovered(
-                            serialNumber
-                        )
+                        DeviceDiscoveryEvent.GaugeDiscovered(serialNumber)
+                    )
+                }
+
+                is EngineAdvertisingData -> if (manageEngineDevice(advertisingData)) {
+                    flowHolder.mutableDiscoveredDevicesFlow.emit(
+                        DeviceDiscoveryEvent.EngineDiscovered(serialNumber)
                     )
                 }
             }

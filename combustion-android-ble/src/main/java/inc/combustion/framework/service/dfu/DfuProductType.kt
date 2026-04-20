@@ -37,7 +37,8 @@ enum class DfuProductType {
     PROBE,
     DISPLAY,
     CHARGER,
-    GAUGE;
+    GAUGE,
+    ENGINE;
 
     companion object {
 
@@ -64,6 +65,7 @@ enum class DfuProductType {
                 CombustionProductType.PROBE -> PROBE
                 CombustionProductType.GAUGE -> GAUGE
                 CombustionProductType.NODE -> UNKNOWN
+                CombustionProductType.ENGINE -> ENGINE
                 else -> UNKNOWN
             }
     }

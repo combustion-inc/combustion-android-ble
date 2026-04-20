@@ -36,7 +36,8 @@ enum class CombustionProductType(val type: UByte) {
     UNKNOWN(0x00u),
     PROBE(0x01u),
     NODE(0x02u),
-    GAUGE(0x03u);
+    GAUGE(0x03u),
+    ENGINE(0x06u);
 
     companion object {
         fun fromUByte(byte: UByte): CombustionProductType {
@@ -44,6 +45,7 @@ enum class CombustionProductType(val type: UByte) {
                 PROBE.type -> PROBE
                 NODE.type -> NODE
                 GAUGE.type -> GAUGE
+                ENGINE.type -> ENGINE
                 else -> UNKNOWN
             }
         }
@@ -66,7 +68,8 @@ enum class CombustionProductType(val type: UByte) {
             when (productType) {
                 DfuProductType.PROBE -> PROBE
                 DfuProductType.GAUGE -> GAUGE
-                DfuProductType.CHARGER, DfuProductType.CHARGER -> NODE
+                DfuProductType.CHARGER, DfuProductType.DISPLAY -> NODE
+                DfuProductType.ENGINE -> ENGINE
                 else -> UNKNOWN
             }
     }
