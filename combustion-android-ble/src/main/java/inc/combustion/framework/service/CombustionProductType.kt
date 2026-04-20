@@ -66,7 +66,7 @@ enum class CombustionProductType(val type: UByte) {
             when (productType) {
                 DfuProductType.PROBE -> PROBE
                 DfuProductType.GAUGE -> GAUGE
-                DfuProductType.CHARGER, DfuProductType.CHARGER -> NODE
+                DfuProductType.CHARGER, DfuProductType.DISPLAY -> NODE
                 else -> UNKNOWN
             }
     }
