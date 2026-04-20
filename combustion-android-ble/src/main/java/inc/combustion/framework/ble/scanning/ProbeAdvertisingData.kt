@@ -29,15 +29,7 @@
 package inc.combustion.framework.ble.scanning
 
 import com.juul.kable.Identifier
-import inc.combustion.framework.service.CombustionProductType
-import inc.combustion.framework.service.HopCount
-import inc.combustion.framework.service.OverheatingSensors
-import inc.combustion.framework.service.ProbeBatteryStatus
-import inc.combustion.framework.service.ProbeColor
-import inc.combustion.framework.service.ProbeID
-import inc.combustion.framework.service.ProbeMode
-import inc.combustion.framework.service.ProbeTemperatures
-import inc.combustion.framework.service.ProbeVirtualSensors
+import inc.combustion.framework.service.*
 
 /**
  * Advertises probe data - source can be a probe or a repeater node.
@@ -57,6 +49,7 @@ internal class ProbeAdvertisingData(
     val virtualSensors: ProbeVirtualSensors,
     val overheatingSensors: OverheatingSensors,
     val hopCount: UInt = 0u,
+    val thermometerPreferences: ThermometerPreferences?,
 ) : BaseAdvertisingData(mac, name, rssi, productType, isConnectable), DeviceAdvertisingData {
 
     companion object {
@@ -65,6 +58,7 @@ internal class ProbeAdvertisingData(
         private val MODE_COLOR_ID_RANGE = 18..18
         private val STATUS_RANGE = 19..19
         private val NETWORK_INFO_RANGE = 20..20
+        private val PREFERENCES_RANGE = 22..22
 
         fun create(
             address: Identifier,
@@ -115,6 +109,14 @@ internal class ProbeAdvertisingData(
             else
                 0u
 
+            val preferences = if (manufacturerData.size > PREFERENCES_RANGE.last) {
+                ThermometerPreferences.fromUByte(
+                    manufacturerData.copyOf().sliceArray(PREFERENCES_RANGE)[0]
+                )
+            } else {
+                null
+            }
+
             val probeColor =
                 modeColorId?.let { ProbeColor.fromUByte(it) } ?: run { ProbeColor.COLOR1 }
             val probeID = modeColorId?.let { ProbeID.fromUByte(it) } ?: run { ProbeID.ID1 }
@@ -140,6 +142,7 @@ internal class ProbeAdvertisingData(
                 virtualSensors = virtualSensors,
                 overheatingSensors = overheatingSensors,
                 hopCount = hopCount,
+                thermometerPreferences = preferences,
             )
         }
     }

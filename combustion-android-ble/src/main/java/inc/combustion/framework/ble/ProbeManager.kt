@@ -1090,6 +1090,12 @@ internal class ProbeManager(
             }
         }
 
+        advertisement.thermometerPreferences?.let {
+            updatedProbe = updatedProbe.copy(
+                thermometerPrefs = it
+            )
+        }
+
         return updateBatteryIdColor(
             advertisement.batteryStatus,
             advertisement.probeID,

@@ -44,6 +44,8 @@ interface SpecializedDevice {
 
     val isOverheating: Boolean
 
+    val highRadioPower: Boolean
+
     val serialNumber: String
         get() = baseDevice.serialNumber
     val mac: String

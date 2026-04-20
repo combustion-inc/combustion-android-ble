@@ -46,6 +46,7 @@ data class Gauge(
     val logUploadPercent: UInt = 0u,
     val newRecordFlag: Boolean = false,
     override val hopCount: UInt? = null,
+    val gaugePrefs: GaugePreferences? = null,
 ) : SpecializedDevice {
     override val lowBattery: Boolean
         get() = gaugeStatusFlags.lowBattery
@@ -63,4 +64,6 @@ data class Gauge(
 
     override val isOverheating: Boolean
         get() = gaugeStatusFlags.sensorOverheating
+    override val highRadioPower: Boolean
+        get() = gaugePrefs?.highRadioPower ?: false
 }

@@ -96,6 +96,7 @@ internal class SimulatedProbeBleDevice(
                 virtualSensors = ProbeVirtualSensors.DEFAULT,
                 overheatingSensors = OverheatingSensors.fromTemperatures(probeTemperatures),
                 hopCount = hopCount,
+                thermometerPreferences = ThermometerPreferences.DEFAULT,
             )
         }
     }

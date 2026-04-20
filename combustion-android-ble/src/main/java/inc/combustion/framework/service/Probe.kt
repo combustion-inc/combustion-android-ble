@@ -155,6 +155,8 @@ data class Probe(
 
     override val isOverheating: Boolean
         get() = overheatingSensors.isNotEmpty()
+    override val highRadioPower: Boolean
+        get() = thermometerPrefs?.highRadioPower ?: false
 
     val isPredicting: Boolean
         get() = (
