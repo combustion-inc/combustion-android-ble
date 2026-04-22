@@ -283,6 +283,10 @@ internal class LogManager {
         )
     }
 
+    fun manageEngine(scope: CoroutineScope, engineManager: EngineManager) {
+        TODO()
+    }
+
     fun finish(serialNumber: String) {
         probes.remove(serialNumber)
         gauges.remove(serialNumber)

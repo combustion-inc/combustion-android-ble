@@ -45,6 +45,7 @@ import inc.combustion.framework.ble.uart.meatnet.GenericNodeResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeUARTMessage
 import inc.combustion.framework.log.LogManager
 import inc.combustion.framework.service.*
+import inc.combustion.framework.service.CombustionProductType.ENGINE
 import inc.combustion.framework.service.CombustionProductType.GAUGE
 import inc.combustion.framework.service.CombustionProductType.NODE
 import inc.combustion.framework.service.CombustionProductType.PROBE
@@ -60,12 +61,13 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.random.Random
 import kotlin.random.nextUInt
 
-private val SPECIALIZED_DEVICES = setOf(PROBE, GAUGE)
+private val SPECIALIZED_DEVICES = setOf(PROBE, GAUGE, ENGINE)
 
 private val SUPPORTED_ADVERTISING_PRODUCTS = setOf(
     PROBE,
     NODE,
     GAUGE,
+    ENGINE,
 )
 
 internal class NetworkManager(
@@ -188,6 +190,7 @@ internal class NetworkManager(
     private val meatNetLinks = ConcurrentSnapshotMap<LinkID, LinkHolder>()
     private val probeManagers = ConcurrentSnapshotMap<String, ProbeManager>()
     private val gaugeManagers = ConcurrentSnapshotMap<String, GaugeManager>()
+    private val engineManagers = ConcurrentSnapshotMap<String, EngineManager>()
     private val deviceInformationDevices =
         ConcurrentSnapshotMap<DeviceID, DeviceInformationBleDevice>()
     private var proximityDevices = ConcurrentSnapshotMap<String, ProximityDevice>()
@@ -700,18 +703,27 @@ internal class NetworkManager(
         }
     }
 
-    private fun trackGaugeDeviceIfNew(
+    private fun trackNodeHybridDeviceIfNew(
         deviceId: String,
-        advertisement: GaugeAdvertisingData,
+        advertisement: DeviceAdvertisingData,
     ) {
         if (devices[deviceId].hybridDeviceChild == null) {
             val device = (devices[deviceId] as? DeviceHolder.RepeaterHolder)?.repeater
                 ?: createNodeBleDevice(advertisement)
             device.createAndAssignNodeHybridDevice { nodeParent ->
-                GaugeBleDevice(
-                    nodeParent = nodeParent,
-                    gaugeAdvertisingData = advertisement,
-                )
+                when (advertisement) {
+                    is GaugeAdvertisingData -> GaugeBleDevice(
+                        nodeParent = nodeParent,
+                        gaugeAdvertisingData = advertisement,
+                    )
+
+                    is EngineAdvertisingData -> EngineBleDevice(
+                        nodeParent = nodeParent,
+                        engineAdvertisingData = advertisement,
+                    )
+
+                    else -> throw RuntimeException("trackNodeHybridDeviceIfNew does not support $advertisement")
+                }
             }
             val deviceHolder = DeviceHolder.RepeaterHolder(device)
             devices[deviceId] = deviceHolder
@@ -792,6 +804,34 @@ internal class NetworkManager(
             LogManager.instance.manageGauge(scope, manager)
 
             wifiNodesManager.subscribeToNodeFlow(manager)
+            true
+        } else {
+            false
+        }
+
+    /**
+     * if we haven't seen [engineSerialNumber], then create a manager for it.
+     * @return true if new manager was created
+     */
+    private fun createEngineManagerIfNew(mac: String, engineSerialNumber: String): Boolean =
+        if (!engineManagers.containsKey(engineSerialNumber)) {
+            val manager = EngineManager(
+                mac = mac,
+                serialNumber = engineSerialNumber,
+                scope = scope,
+                settings = settings,
+                dfuDisconnectedNodeCallback = {
+                    firmwareStateOfNetwork.remove(it)
+
+                    // publish the list of firmware details for the network
+                    flowHolder.mutableFirmwareUpdateState.value = FirmwareState(
+                        nodes = firmwareStateOfNetwork.snapshotValues().toList()
+                    )
+                }
+            )
+
+            engineManagers[engineSerialNumber] = manager
+            LogManager.instance.manageEngine(scope, manager)
             true
         } else {
             false
@@ -917,7 +957,7 @@ internal class NetworkManager(
             }
         }
 
-        trackGaugeDeviceIfNew(deviceId, advertisement)
+        trackNodeHybridDeviceIfNew(deviceId, advertisement)
         val isNewlyDiscovered = createGaugeManagerIfNew(advertisement.mac, serialNumber)
 
         if (gaugeManagers[serialNumber]?.hasGauge() == false) {
@@ -944,7 +984,36 @@ internal class NetworkManager(
     private fun manageEngineDevice(
         advertisement: EngineAdvertisingData,
     ): Boolean {
-        TODO()
+        val serialNumber = advertisement.serialNumber
+        val deviceId = advertisement.id
+        deviceAllowlist?.let {
+            if (!it.contains(serialNumber)) {
+                return false
+            }
+        }
+
+        trackNodeHybridDeviceIfNew(deviceId, advertisement)
+        val isNewlyDiscovered = createEngineManagerIfNew(advertisement.mac, serialNumber)
+
+        if (engineManagers[serialNumber]?.hasEngine() == false) {
+            (devices[deviceId] as? DeviceHolder.RepeaterHolder)?.engine?.let { engineBleDevice ->
+                engineManagers[serialNumber]?.let { manager ->
+                    manager.addEngine(
+                        engine = engineBleDevice,
+                        baseDevice = engineBleDevice.baseDevice,
+                        advertisement = advertisement,
+                    )
+                    manager.addRepeaters {
+                        devices.getRepeaterNodes()
+                            .filter {
+                                it.engineHybridDevice?.serialNumber != engineBleDevice.serialNumber
+                            }
+                    }
+                }
+            }
+        }
+
+        return isNewlyDiscovered
     }
 
     private suspend fun collectAdvertisingData() {
@@ -1200,8 +1269,14 @@ internal class NetworkManager(
     private val NodeBleDevice.gaugeHybridDevice: GaugeBleDevice?
         get() = hybridDeviceChild as? GaugeBleDevice
 
+    private val NodeBleDevice.engineHybridDevice: EngineBleDevice?
+        get() = hybridDeviceChild as? EngineBleDevice
+
     private val DeviceHolder.RepeaterHolder.gauge: GaugeBleDevice?
         get() = repeater.gaugeHybridDevice
+
+    private val DeviceHolder.RepeaterHolder.engine: EngineBleDevice?
+        get() = repeater.engineHybridDevice
 
     private val DeviceHolder?.hybridDeviceChild: NodeHybridDevice?
         get() = (this as? DeviceHolder.RepeaterHolder)?.repeater?.hybridDeviceChild

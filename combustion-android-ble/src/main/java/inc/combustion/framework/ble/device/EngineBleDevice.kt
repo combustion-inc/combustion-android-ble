@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: GaugeBleDevice.kt
+ * File: EngineBleDevice.kt
  * Author:
  *
  * MIT License
  *
- * Copyright (c) 2025. Combustion Inc.
+ * Copyright (c) 2026. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -28,41 +28,9 @@
 
 package inc.combustion.framework.ble.device
 
-import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
-import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
-import inc.combustion.framework.service.HighLowAlarmStatus
+import inc.combustion.framework.ble.scanning.EngineAdvertisingData
 
-internal class GaugeBleDevice(
+internal class EngineBleDevice(
     nodeParent: NodeBleDevice,
-    gaugeAdvertisingData: GaugeAdvertisingData,
-) : NodeHybridBleDevice(nodeParent = nodeParent, advertisingData = gaugeAdvertisingData),
-    UartCapableGauge {
-
-    override fun sendSetHighLowAlarmStatus(
-        highLowAlarmStatus: HighLowAlarmStatus,
-        reqId: UInt?,
-        callback: ((Boolean, Any?) -> Unit)?,
-    ) {
-        nodeParent.sendSetGaugeHighLowAlarmStatus(
-            serialNumber,
-            highLowAlarmStatus,
-            reqId,
-            callback,
-        )
-    }
-
-    override fun sendGaugeLogRequest(
-        minSequence: UInt,
-        maxSequence: UInt,
-        reqId: UInt?,
-        callback: suspend (NodeReadGaugeLogsResponse) -> Unit,
-    ) {
-        nodeParent.sendGaugeLogRequest(
-            serialNumber,
-            minSequence,
-            maxSequence,
-            reqId,
-            callback,
-        )
-    }
-}
+    engineAdvertisingData: EngineAdvertisingData,
+) : NodeHybridBleDevice(nodeParent = nodeParent, advertisingData = engineAdvertisingData)

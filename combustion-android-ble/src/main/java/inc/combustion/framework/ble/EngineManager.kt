@@ -29,6 +29,10 @@
 package inc.combustion.framework.ble
 
 import inc.combustion.framework.ble.device.DeviceID
+import inc.combustion.framework.ble.device.DeviceInformationBleDevice
+import inc.combustion.framework.ble.device.EngineBleDevice
+import inc.combustion.framework.ble.device.NodeBleDevice
+import inc.combustion.framework.ble.scanning.EngineAdvertisingData
 import inc.combustion.framework.ble.uart.LogResponse
 import inc.combustion.framework.service.DeviceManager
 import inc.combustion.framework.service.Gauge
@@ -66,8 +70,10 @@ internal class EngineManager(
         get() = TODO("Not yet implemented")
     override val logResponseFlow: SharedFlow<LogResponse>
         get() = TODO("Not yet implemented")
-    override val arbitrator: DataLinkArbitrator<*, *>
-        get() = TODO("Not yet implemented")
+
+    // encapsulates logic for managing network data links
+    override val arbitrator = EngineDataLinkArbitrator()
+
     override var uploadState: ProbeUploadState
         get() = TODO("Not yet implemented")
         set(value) {}
@@ -80,5 +86,24 @@ internal class EngineManager(
 
     override fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt) {
         TODO("Not yet implemented")
+    }
+
+    fun hasEngine(): Boolean = arbitrator.bleDevice != null
+
+    fun addEngine(
+        engine: EngineBleDevice,
+        baseDevice: DeviceInformationBleDevice,
+        advertisement: EngineAdvertisingData
+    ) {
+        if (IGNORE_GAUGES) return
+
+        if (arbitrator.addDevice(engine, baseDevice)) {
+//            handleAdvertisingPackets(engine, advertisement)
+//            observe(engine)
+        }
+    }
+
+    fun addRepeaters(repeaters: () -> List<NodeBleDevice>) {
+        arbitrator.addRepeaterNodes(repeaters)
     }
 }

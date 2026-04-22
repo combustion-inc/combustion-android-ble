@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: DataLinkArbitrator.kt
+ * File: EngineDataLinkArbitrator.kt
  * Author:
  *
  * MIT License
  *
- * Copyright (c) 2025. Combustion Inc.
+ * Copyright (c) 2026. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -28,8 +28,8 @@
 
 package inc.combustion.framework.ble
 
-import inc.combustion.framework.ble.device.GaugeBleDevice
-import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
+import inc.combustion.framework.ble.device.EngineBleDevice
+import inc.combustion.framework.ble.scanning.EngineAdvertisingData
 
-internal class GaugeDataLinkArbitrator :
-    NodeHybridDataLinkArbitrator<GaugeBleDevice, GaugeAdvertisingData>()
+internal class EngineDataLinkArbitrator :
+    NodeHybridDataLinkArbitrator<EngineBleDevice, EngineAdvertisingData>()
