@@ -51,4 +51,15 @@ data class Engine(
         get() = TODO()
     override val isOverheating: Boolean
         get() = TODO("Not yet implemented")
+
+    companion object {
+        fun create(serialNumber: String = "", mac: String = ""): Engine {
+            return Engine(
+                baseDevice = Device(
+                    serialNumber = serialNumber,
+                    mac = mac,
+                )
+            )
+        }
+    }
 }

@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: SimulatedGaugeBleDevice.kt
+ * File: SimulatedEngineBleDevice.kt
  * Author:
  *
  * MIT License
  *
- * Copyright (c) 2025. Combustion Inc.
+ * Copyright (c) 2026. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -29,13 +29,12 @@
 package inc.combustion.framework.ble.device
 
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
-import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
-import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
+import inc.combustion.framework.ble.scanning.EngineAdvertisingData
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.CoroutineScope
 import kotlin.random.Random
 
-internal class SimulatedGaugeBleDevice(
+internal class SimulatedEngineBleDevice(
     scope: CoroutineScope,
     mac: String = randomMac(),
     serialNumber: String = "%08X".format(Random.nextInt()),
@@ -47,61 +46,27 @@ internal class SimulatedGaugeBleDevice(
     serialNumber = serialNumber,
     shouldConnect = shouldConnect,
     hopCount = hopCount,
-), UartCapableGauge {
+) {
 
     companion object {
         fun randomAdvertisement(
             mac: String,
             serialNumber: String,
-        ): GaugeAdvertisingData {
-            return GaugeAdvertisingData(
+        ): EngineAdvertisingData {
+            return EngineAdvertisingData(
                 mac = mac,
-                name = "Gauge",
+                name = "Engine",
                 rssi = randomRSSI(),
                 isConnectable = true,
                 serialNumber = serialNumber,
-                gaugeTemperature = SensorTemperature.withRandomData(),
-                gaugeStatusFlags = GaugeStatusFlags(
-                    sensorPresent = true,
-                    sensorOverheating = true,
-                    lowBattery = true,
-                ),
-                highLowAlarmStatus = HighLowAlarmStatus(
-                    HighLowAlarmStatus.AlarmStatus(
-                        set = false,
-                        tripped = false,
-                        alarming = false,
-                        temperature = SensorTemperature(100.0),
-                    ),
-                    HighLowAlarmStatus.AlarmStatus(
-                        set = false,
-                        tripped = false,
-                        alarming = false,
-                        temperature = SensorTemperature(100.0),
-                    ),
-                ),
+                engineTemperature = SensorTemperature.withRandomData(),
+                engineStatusFlags = EngineStatusFlags(),
+                enginePreferences = EnginePreferences(),
             )
         }
     }
 
-    override val productType: CombustionProductType = CombustionProductType.GAUGE
+    override val productType: CombustionProductType = CombustionProductType.ENGINE
 
     override fun generateAdvertisement(): DeviceAdvertisingData = randomAdvertisement(mac, serialNumber)
-
-    override fun sendSetHighLowAlarmStatus(
-        highLowAlarmStatus: HighLowAlarmStatus,
-        reqId: UInt?,
-        callback: ((Boolean, Any?) -> Unit)?,
-    ) {
-        callback?.let { it(true, null) }
-    }
-
-    override fun sendGaugeLogRequest(
-        minSequence: UInt,
-        maxSequence: UInt,
-        reqId: UInt?,
-        callback: suspend (NodeReadGaugeLogsResponse) -> Unit,
-    ) {
-        // do nothing
-    }
 }
