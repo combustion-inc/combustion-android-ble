@@ -35,15 +35,13 @@ import inc.combustion.framework.ble.device.SimulatedEngineBleDevice
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.EngineAdvertisingData
 import inc.combustion.framework.ble.uart.LogResponse
-import inc.combustion.framework.service.*
+import inc.combustion.framework.service.Device
+import inc.combustion.framework.service.DeviceManager
+import inc.combustion.framework.service.Engine
+import inc.combustion.framework.service.ProbeUploadState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.*
 
 internal class EngineManager(
     mac: String,
@@ -59,7 +57,8 @@ internal class EngineManager(
 
     override val arbitrator = EngineDataLinkArbitrator()
 
-    override val _deviceFlow = MutableStateFlow(Engine.create(serialNumber = serialNumber, mac = mac))
+    override val _deviceFlow =
+        MutableStateFlow(Engine.create(serialNumber = serialNumber, mac = mac))
 
     override val deviceFlow: StateFlow<Engine> = _deviceFlow.asStateFlow()
 
@@ -109,7 +108,10 @@ internal class EngineManager(
     override fun castToAdvertisementType(advertisement: DeviceAdvertisingData): EngineAdvertisingData? =
         advertisement as? EngineAdvertisingData
 
-    override fun handleAdvertisingPackets(device: EngineBleDevice, advertisement: EngineAdvertisingData) {
+    override fun handleAdvertisingPackets(
+        device: EngineBleDevice,
+        advertisement: EngineAdvertisingData
+    ) {
         // TODO: update engine state from advertisement
         checkAutoConnect(device)
     }
@@ -133,4 +135,15 @@ internal class EngineManager(
     ) = addDevice(engine, baseDevice, advertisement)
 
     fun addSimulatedEngine(simEngine: SimulatedEngineBleDevice) = addSimulatedDevice(simEngine)
+
+    suspend fun observedEngineStatus(engineStatus: EngineStatus) {
+        handleStatus(engineStatus, simulated = false)
+    }
+
+    private suspend fun handleStatus(
+        status: EngineStatus,
+        simulated: Boolean = simulatedDevice != null,
+    ) {
+        TODO()
+    }
 }

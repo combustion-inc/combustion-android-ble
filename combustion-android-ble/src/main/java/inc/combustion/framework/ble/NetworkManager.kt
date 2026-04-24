@@ -739,6 +739,10 @@ internal class NetworkManager(
             observeGaugeStatusCallback = { serialNumber, gaugeStatus ->
                 gaugeManagers[serialNumber]?.observedGaugeStatus(gaugeStatus)
             },
+
+            observeEngineStatusCallback = { serialNumber, engineStatus ->
+                engineManagers[serialNumber]?.observedEngineStatus(engineStatus)
+            },
             observeSilenceAlarmsCallback = { request ->
                 Log.v(LOG_TAG, "observeSilenceAlarms: $request")
                 _silenceAlarmsRequestFlow.tryEmit(request)

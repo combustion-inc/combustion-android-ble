@@ -3,6 +3,7 @@ package inc.combustion.framework.ble.device
 import android.bluetooth.BluetoothAdapter
 import android.util.Log
 import inc.combustion.framework.LOG_TAG
+import inc.combustion.framework.ble.EngineStatus
 import inc.combustion.framework.ble.GaugeStatus
 import inc.combustion.framework.ble.NetworkManager
 import inc.combustion.framework.ble.device.UartCapableProbe.Companion.MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS
@@ -23,6 +24,7 @@ internal class NodeBleDevice(
     adapter: BluetoothAdapter,
     private val uart: UartBleDevice = UartBleDevice(mac, nodeAdvertisingData, scope, adapter),
     private val observeGaugeStatusCallback: suspend (String, GaugeStatus) -> Unit,
+    private val observeEngineStatusCallback: suspend (String, EngineStatus) -> Unit,
     private val observeSilenceAlarmsCallback: suspend (SilenceAlarmsRequest) -> Unit,
 ) : UartCapableDevice {
 
@@ -278,6 +280,12 @@ internal class NodeBleDevice(
                     message is NodeGaugeStatusRequest -> {
                         message.serialNumber?.let { serialNumber ->
                             observeGaugeStatusCallback(serialNumber, message.gaugeStatus)
+                        }
+                    }
+
+                    message is NodeEngineStatusRequest -> {
+                        message.serialNumber?.let { serialNumber ->
+                            observeEngineStatusCallback(serialNumber, message.engineStatus)
                         }
                     }
 
