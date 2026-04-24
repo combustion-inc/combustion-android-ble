@@ -37,7 +37,7 @@ data class EngineStatus(
     override val minSequenceNumber: UInt,
     override val maxSequenceNumber: UInt,
     val engineBatteryStatus: EngineBatteryStatus,
-    val setPointTemperature: SensorTemperature,
+    val temperatureSetPoint: SensorTemperature,
     val controlTemperature: SensorTemperature,
     val controlDeviceType: CombustionProductType,
     val controlSerialNumber: String,
@@ -61,7 +61,7 @@ data class EngineStatus(
         private val MIN_SEQ_RANGE = 6..9 // 4
         private val MAX_SEQ_RANGE = 10..13 // 4
         private val BATTERY_STATUS_RANGE = 14..15 // 2
-        private val SET_POINT_TEMP_RANGE = 16..17 // 2
+        private val TEMP_SET_POINT_RANGE = 16..17 // 2
         private val CONTROL_TEMP_RANGE = 18..19 // 2
         private val CONTROL_DEVICE_TYPE_RANGE = 20..20 // 1
         private val PROBE_SERIAL_RANGE = 21..24 // 4
@@ -89,8 +89,8 @@ data class EngineStatus(
                 EngineBatteryStatus.fromRaw(data.sliceArray(BATTERY_STATUS_RANGE))
                     ?: return null
 
-            val setPointTemp =
-                SensorTemperature.fromRawDataStart(data.sliceArray(SET_POINT_TEMP_RANGE))
+            val tempSetPoint =
+                SensorTemperature.fromRawDataStart(data.sliceArray(TEMP_SET_POINT_RANGE))
 
             val controlTemp =
                 SensorTemperature.fromRawDataStart(data.sliceArray(CONTROL_TEMP_RANGE))
@@ -121,7 +121,7 @@ data class EngineStatus(
                 minSequenceNumber = minSequenceNumber,
                 maxSequenceNumber = maxSequenceNumber,
                 engineBatteryStatus = engineBatteryStatus,
-                setPointTemperature = setPointTemp,
+                temperatureSetPoint = tempSetPoint,
                 controlTemperature = controlTemp,
                 controlDeviceType = controlDeviceType,
                 controlSerialNumber = controlSerialNumber,

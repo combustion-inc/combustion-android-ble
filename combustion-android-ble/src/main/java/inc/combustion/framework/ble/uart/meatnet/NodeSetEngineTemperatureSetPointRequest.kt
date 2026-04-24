@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: EngineBleDevice.kt
+ * File: NodeSetEngineSetPointTemp.kt
  * Author:
  *
  * MIT License
@@ -26,28 +26,45 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble.device
+package inc.combustion.framework.ble.uart.meatnet
 
-import inc.combustion.framework.ble.UartCapableEngine
-import inc.combustion.framework.ble.scanning.EngineAdvertisingData
+import inc.combustion.framework.copyInUtf8SerialNumber
 import inc.combustion.framework.service.SensorTemperature
 
-internal class EngineBleDevice(
-    nodeParent: NodeBleDevice,
-    engineAdvertisingData: EngineAdvertisingData,
-) : NodeHybridBleDevice(nodeParent = nodeParent, advertisingData = engineAdvertisingData),
-    UartCapableEngine {
+internal class NodeSetEngineTemperatureSetPointRequest(
+    serialNumber: String,
+    private val temperature: SensorTemperature,
+    requestId: UInt? = null
+) : NodeRequest(
+    populatePayload(serialNumber, temperature),
+    NodeMessageType.SET_ENGINE_TEMPERATURE_SET_POINT,
+    requestId,
+    serialNumber,
+) {
 
-    override fun sendSetTemperatureSetPoint(
-        temperature: SensorTemperature,
-        reqId: UInt?,
-        callback: ((Boolean, Any?) -> Unit)?
-    ) {
-        nodeParent.sendSetEngineTemperatureSetPoint(
-            serialNumber,
-            temperature,
-            reqId,
-            callback,
-        )
+    override fun toString(): String {
+        return "${super.toString()} $serialNumber $temperature"
+    }
+
+    companion object {
+        private const val PAYLOAD_LENGTH: UByte = 12u
+
+        fun populatePayload(
+            serialNumber: String,
+            temperature: SensorTemperature,
+        ): UByteArray {
+            val payload = UByteArray(PAYLOAD_LENGTH.toInt())
+
+            // Add serial number to payload
+            payload.copyInUtf8SerialNumber(serialNumber, 0)
+
+            val tempBytes = temperature.toRawDataEnd()
+            tempBytes.copyInto(
+                destination = payload,
+                destinationOffset = payload.size - tempBytes.size
+            )
+
+            return payload
+        }
     }
 }

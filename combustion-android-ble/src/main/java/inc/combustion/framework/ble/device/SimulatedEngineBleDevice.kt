@@ -28,9 +28,13 @@
 
 package inc.combustion.framework.ble.device
 
+import inc.combustion.framework.ble.UartCapableEngine
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.EngineAdvertisingData
-import inc.combustion.framework.service.*
+import inc.combustion.framework.service.CombustionProductType
+import inc.combustion.framework.service.EnginePreferences
+import inc.combustion.framework.service.EngineStatusFlags
+import inc.combustion.framework.service.SensorTemperature
 import kotlinx.coroutines.CoroutineScope
 import kotlin.random.Random
 
@@ -46,7 +50,7 @@ internal class SimulatedEngineBleDevice(
     serialNumber = serialNumber,
     shouldConnect = shouldConnect,
     hopCount = hopCount,
-) {
+), UartCapableEngine {
 
     companion object {
         fun randomAdvertisement(
@@ -68,5 +72,14 @@ internal class SimulatedEngineBleDevice(
 
     override val productType: CombustionProductType = CombustionProductType.ENGINE
 
-    override fun generateAdvertisement(): DeviceAdvertisingData = randomAdvertisement(mac, serialNumber)
+    override fun generateAdvertisement(): DeviceAdvertisingData =
+        randomAdvertisement(mac, serialNumber)
+
+    override fun sendSetTemperatureSetPoint(
+        temperature: SensorTemperature,
+        reqId: UInt?,
+        callback: ((Boolean, Any?) -> Unit)?
+    ) {
+        callback?.let { it(true, null) }
+    }
 }

@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: EngineBleDevice.kt
+ * File: UartCapableEngine.kt
  * Author:
  *
  * MIT License
@@ -26,28 +26,14 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble.device
+package inc.combustion.framework.ble
 
-import inc.combustion.framework.ble.UartCapableEngine
-import inc.combustion.framework.ble.scanning.EngineAdvertisingData
 import inc.combustion.framework.service.SensorTemperature
 
-internal class EngineBleDevice(
-    nodeParent: NodeBleDevice,
-    engineAdvertisingData: EngineAdvertisingData,
-) : NodeHybridBleDevice(nodeParent = nodeParent, advertisingData = engineAdvertisingData),
-    UartCapableEngine {
-
-    override fun sendSetTemperatureSetPoint(
+interface UartCapableEngine {
+    fun sendSetTemperatureSetPoint(
         temperature: SensorTemperature,
         reqId: UInt?,
-        callback: ((Boolean, Any?) -> Unit)?
-    ) {
-        nodeParent.sendSetEngineTemperatureSetPoint(
-            serialNumber,
-            temperature,
-            reqId,
-            callback,
-        )
-    }
+        callback: ((Boolean, Any?) -> Unit)?,
+    )
 }

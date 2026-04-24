@@ -35,14 +35,14 @@ import inc.combustion.framework.ble.device.SimulatedEngineBleDevice
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.EngineAdvertisingData
 import inc.combustion.framework.ble.uart.LogResponse
-import inc.combustion.framework.service.Device
-import inc.combustion.framework.service.DeviceManager
-import inc.combustion.framework.service.Engine
-import inc.combustion.framework.service.ProbeUploadState
+import inc.combustion.framework.service.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
+import kotlin.concurrent.atomics.AtomicBoolean
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
+@OptIn(ExperimentalAtomicApi::class)
 internal class EngineManager(
     mac: String,
     serialNumber: String,
@@ -145,5 +145,49 @@ internal class EngineManager(
         simulated: Boolean = simulatedDevice != null,
     ) {
         TODO()
+    }
+
+    fun setTemperatureSetPoint(
+        temperature: SensorTemperature,
+        completionHandler: (Boolean) -> Unit,
+    ) {
+        val onCompletion: (Boolean) -> Unit = { success ->
+            if (success) {
+                _deviceFlow.update {
+                    _deviceFlow.value.copy(
+                        temperatureSetPointCelsius = temperature,
+                    )
+                }
+            }
+            completionHandler(success)
+        }
+
+        val requestId = makeRequestId()
+        simulatedDevice?.sendSetTemperatureSetPoint(temperature, requestId) { status, _ ->
+            onCompletion(status)
+        } ?: arbitrator.directLink?.sendSetTemperatureSetPoint(
+            temperature,
+            requestId,
+        ) { status, _ ->
+            onCompletion(status)
+        } ?: run {
+            val nodeLinks = arbitrator.connectedNodeLinks
+            if (nodeLinks.isNotEmpty()) {
+                val handled = AtomicBoolean(false)
+                nodeLinks.forEach { node ->
+                    node.sendSetEngineTemperatureSetPoint(
+                        serialNumber,
+                        temperature,
+                        requestId,
+                    ) { status, _ ->
+                        if (!handled.exchange(true)) {
+                            onCompletion(status)
+                        }
+                    }
+                }
+            } else {
+                onCompletion(false)
+            }
+        }
     }
 }

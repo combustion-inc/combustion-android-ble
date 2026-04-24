@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: EngineBleDevice.kt
+ * File: NodeSetEngineSetPointTempResponse.kt
  * Author:
  *
  * MIT License
@@ -26,28 +26,43 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble.device
+package inc.combustion.framework.ble.uart.meatnet
 
-import inc.combustion.framework.ble.UartCapableEngine
-import inc.combustion.framework.ble.scanning.EngineAdvertisingData
-import inc.combustion.framework.service.SensorTemperature
+internal class NodeSetEngineTemperatureSetPointResponse(
+    success: Boolean,
+    requestId: UInt,
+    responseId: UInt,
+    payloadLength: UByte,
+) : NodeResponse(
+    success,
+    requestId,
+    responseId,
+    payloadLength,
+    NodeMessageType.SET_ENGINE_TEMPERATURE_SET_POINT,
+) {
+    override fun toString(): String {
+        return "${super.toString()} $success"
+    }
 
-internal class EngineBleDevice(
-    nodeParent: NodeBleDevice,
-    engineAdvertisingData: EngineAdvertisingData,
-) : NodeHybridBleDevice(nodeParent = nodeParent, advertisingData = engineAdvertisingData),
-    UartCapableEngine {
+    companion object {
+        private const val PAYLOAD_LENGTH: UByte = 0u
 
-    override fun sendSetTemperatureSetPoint(
-        temperature: SensorTemperature,
-        reqId: UInt?,
-        callback: ((Boolean, Any?) -> Unit)?
-    ) {
-        nodeParent.sendSetEngineTemperatureSetPoint(
-            serialNumber,
-            temperature,
-            reqId,
-            callback,
-        )
+        fun fromData(
+            success: Boolean,
+            requestId: UInt,
+            responseId: UInt,
+            payloadLength: UByte,
+        ): NodeSetEngineTemperatureSetPointResponse? {
+            if (payloadLength < PAYLOAD_LENGTH) {
+                return null
+            }
+
+            return NodeSetEngineTemperatureSetPointResponse(
+                success,
+                requestId,
+                responseId,
+                payloadLength
+            )
+        }
     }
 }

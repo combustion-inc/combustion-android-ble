@@ -41,7 +41,7 @@ data class Engine(
     override val maxSequence: UInt? = null,
     val highLowAlarmStatus: HighLowAlarmStatus = HighLowAlarmStatus.DEFAULT,
     val engineStatusFlags: EngineStatusFlags = EngineStatusFlags(),
-    val temperatureCelsius: SensorTemperature? = null,
+    val temperatureSetPointCelsius: SensorTemperature = SensorTemperature.NO_DATA,
     val recordsDownloaded: Int = 0,
     val logUploadPercent: UInt = 0u,
     val newRecordFlag: Boolean = false,

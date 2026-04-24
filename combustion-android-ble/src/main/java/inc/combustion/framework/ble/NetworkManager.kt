@@ -631,6 +631,17 @@ internal class NetworkManager(
         }
     }
 
+    internal fun setEngineTemperatureSetPoint(
+        serialNumber: String,
+        temperature: SensorTemperature,
+        completionHandler: (Boolean) -> Unit,
+    ) {
+        engineManagers[serialNumber]?.setTemperatureSetPoint(temperature, completionHandler)
+            ?: run {
+                completionHandler(false)
+            }
+    }
+
     internal suspend fun sendNodeRequestRequiringWiFi(
         deviceId: String,
         request: GenericNodeRequest,

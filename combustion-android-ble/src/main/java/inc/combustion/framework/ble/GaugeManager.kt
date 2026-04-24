@@ -38,7 +38,8 @@ import inc.combustion.framework.service.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
-import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.concurrent.atomics.AtomicBoolean
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 /**
  * This class is responsible for managing and arbitrating the data links to a gauge.
@@ -54,6 +55,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * @param serialNumber The serial number of the gauge being managed.
  */
+@OptIn(ExperimentalAtomicApi::class)
 internal class GaugeManager(
     mac: String,
     serialNumber: String,
@@ -202,7 +204,7 @@ internal class GaugeManager(
                         highLowAlarmStatus,
                         requestId,
                     ) { status, _ ->
-                        if (!handled.getAndSet(true)) {
+                        if (!handled.exchange(true)) {
                             onCompletion(status)
                         }
                     }

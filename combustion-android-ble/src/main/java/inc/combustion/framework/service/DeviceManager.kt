@@ -1048,6 +1048,21 @@ class DeviceManager(
     }
 
     /**
+     * Set temperature set point on engine with the serial number [serialNumber] to
+     * [temperature], calling [completionHandler] with the success value on completion.
+     */
+    fun setEngineTemperatureSetPoint(
+        serialNumber: String,
+        temperature: SensorTemperature,
+        completionHandler: (Boolean) -> Unit
+    ) {
+        Log.i(LOG_TAG, "Setting engine $serialNumber's temperature set point to $temperature")
+        doWhenNetworkManagerInitialized {
+            it.setEngineTemperatureSetPoint(serialNumber, temperature, completionHandler)
+        }
+    }
+
+    /**
      * State flow containing the firmware details for all nodes on the network.
      */
     fun getNetworkFirmwareState(): StateFlow<FirmwareState> {
