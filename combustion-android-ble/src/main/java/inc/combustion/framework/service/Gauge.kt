@@ -42,8 +42,8 @@ data class Gauge(
     val highLowAlarmStatus: HighLowAlarmStatus = HighLowAlarmStatus.DEFAULT,
     val gaugeStatusFlags: GaugeStatusFlags = GaugeStatusFlags(),
     val temperatureCelsius: SensorTemperature? = null,
-    val recordsDownloaded: Int = 0,
-    val logUploadPercent: UInt = 0u,
+    override val recordsDownloaded: Int = 0,
+    override val logUploadPercent: UInt = 0u,
     val newRecordFlag: Boolean = false,
     override val hopCount: UInt? = null,
 ) : SpecializedDevice {

@@ -55,11 +55,39 @@ internal abstract class NodeHybridManager<
     // Abstract copy helpers for type-specific state updates
     protected abstract fun S.withBaseDevice(baseDevice: Device): S
     protected abstract fun S.withStatusNotificationsStale(stale: Boolean): S
+    protected abstract fun S.withUploadState(state: ProbeUploadState): S
+    protected abstract fun S.withRecordsDownloaded(count: Int): S
+    protected abstract fun S.withLogUploadPercent(percent: UInt): S
+    protected abstract fun S.withSessionInfo(info: SessionInformation, minSequenceNumber: UInt, maxSequenceNumber: UInt): S
 
     // Abstract advertisement handling
     protected abstract fun castToAdvertisementType(advertisement: DeviceAdvertisingData): D?
-    protected abstract fun handleAdvertisingPackets(device: T, advertisement: D)
-    protected abstract fun updateDataFromSimulatedAdvertisement(simDevice: SIM, advertisement: D, current: S): S
+    protected abstract fun updateDataFromAdvertisement(advertisement: D, current: S): S
+
+    protected open fun handleAdvertisingPackets(device: T, advertisement: D) {
+        val state = connectionState
+        val networkIsAdvertisingAndNotConnected =
+            (state == DeviceConnectionState.ADVERTISING_CONNECTABLE || state == DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE ||
+                    state == DeviceConnectionState.CONNECTING)
+
+        if (networkIsAdvertisingAndNotConnected) {
+            val updatedDevice =
+                if (arbitrator.shouldUpdateDataFromAdvertisingPacket(device, advertisement)) {
+                    updateDataFromAdvertisement(advertisement, _deviceFlow.value)
+                } else {
+                    _deviceFlow.value
+                }
+
+            _deviceFlow.update {
+                updatedDevice.withBaseDevice(_deviceFlow.value.baseDevice.copy(connectionState = state))
+            }
+        }
+
+        checkAutoConnect(device)
+    }
+
+    protected open fun updateDataFromSimulatedAdvertisement(simDevice: SIM, advertisement: D, current: S): S =
+        updateDataFromAdvertisement(advertisement, current)
 
     protected val statusNotificationsMonitor = IdleMonitor()
 
@@ -80,6 +108,30 @@ internal abstract class NodeHybridManager<
 
     override val maxSequenceNumber: UInt?
         get() = _deviceFlow.value.maxSequence
+
+    override var uploadState: ProbeUploadState
+        get() = _deviceFlow.value.uploadState
+        set(value) {
+            if (value != _deviceFlow.value.uploadState) {
+                _deviceFlow.update { it.withUploadState(value) }
+            }
+        }
+
+    override var recordsDownloaded: Int
+        get() = _deviceFlow.value.recordsDownloaded
+        set(value) {
+            if (value != _deviceFlow.value.recordsDownloaded) {
+                _deviceFlow.update { it.withRecordsDownloaded(value) }
+            }
+        }
+
+    override var logUploadPercent: UInt
+        get() = _deviceFlow.value.logUploadPercent
+        set(value) {
+            if (value != _deviceFlow.value.logUploadPercent) {
+                _deviceFlow.update { it.withLogUploadPercent(value) }
+            }
+        }
 
     val connectionState: DeviceConnectionState
         get() = arbitrator.bleDevice?.connectionState ?: DeviceConnectionState.NO_ROUTE
@@ -179,6 +231,22 @@ internal abstract class NodeHybridManager<
                 }
             }
         )
+    }
+
+    protected fun handleSessionInfo(
+        info: SessionInformation,
+        minSequenceNumber: UInt,
+        maxSequenceNumber: UInt,
+    ): S {
+        if (sessionInfo != info) {
+            logTransferCompleteCallback()
+            uploadState = ProbeUploadState.Unavailable
+            Log.i(LOG_TAG, "PM($serialNumber): finished log transfer.")
+        }
+        sessionInfo = info
+        val updated = _deviceFlow.value.withSessionInfo(info, minSequenceNumber, maxSequenceNumber)
+        _deviceFlow.update { updated }
+        return updated
     }
 
     protected fun updateConnectionState(current: S): S {

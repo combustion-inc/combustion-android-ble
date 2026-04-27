@@ -28,14 +28,15 @@
 
 package inc.combustion.framework.ble
 
-import android.util.Log
-import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.device.*
+import inc.combustion.framework.ble.device.DeviceID
+import inc.combustion.framework.ble.device.DeviceInformationBleDevice
+import inc.combustion.framework.ble.device.GaugeBleDevice
+import inc.combustion.framework.ble.device.SimulatedGaugeBleDevice
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
 import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
 import inc.combustion.framework.service.*
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import java.util.concurrent.atomic.AtomicBoolean
@@ -68,7 +69,8 @@ internal class GaugeManager(
 
     override val arbitrator = GaugeDataLinkArbitrator()
 
-    override val _deviceFlow = MutableStateFlow(Gauge.create(serialNumber = serialNumber, mac = mac))
+    override val _deviceFlow =
+        MutableStateFlow(Gauge.create(serialNumber = serialNumber, mac = mac))
 
     override val deviceFlow: StateFlow<Gauge> = _deviceFlow.asStateFlow()
 
@@ -88,31 +90,6 @@ internal class GaugeManager(
     override val normalModeStatusFlow: SharedFlow<SpecializedDeviceStatus> =
         _normalModeStatusFlow.asSharedFlow()
 
-    override var uploadState: ProbeUploadState
-        get() = _deviceFlow.value.uploadState
-        set(value) {
-            if (value != _deviceFlow.value.uploadState) {
-                _deviceFlow.update { it.copy(uploadState = value) }
-            }
-        }
-    override var recordsDownloaded: Int
-        get() = _deviceFlow.value.recordsDownloaded
-        set(value) {
-            if (value != _deviceFlow.value.recordsDownloaded) {
-                _deviceFlow.update { it.copy(recordsDownloaded = value) }
-            }
-        }
-    override var logUploadPercent: UInt
-        get() = _deviceFlow.value.logUploadPercent
-        set(value) {
-            if (value != _deviceFlow.value.logUploadPercent) {
-                _deviceFlow.update { it.copy(logUploadPercent = value) }
-            }
-        }
-
-    // tracks if we've run into a message timeout condition getting session info
-    private var sessionInfoTimeout: Boolean = false
-
     init {
         monitorStatusNotifications()
     }
@@ -120,42 +97,15 @@ internal class GaugeManager(
     // Abstract method implementations
 
     override fun Gauge.withBaseDevice(baseDevice: Device): Gauge = copy(baseDevice = baseDevice)
-
-    override fun Gauge.withStatusNotificationsStale(stale: Boolean): Gauge =
-        copy(statusNotificationsStale = stale)
+    override fun Gauge.withStatusNotificationsStale(stale: Boolean): Gauge = copy(statusNotificationsStale = stale)
+    override fun Gauge.withUploadState(state: ProbeUploadState): Gauge = copy(uploadState = state)
+    override fun Gauge.withRecordsDownloaded(count: Int): Gauge = copy(recordsDownloaded = count)
+    override fun Gauge.withLogUploadPercent(percent: UInt): Gauge = copy(logUploadPercent = percent)
+    override fun Gauge.withSessionInfo(info: SessionInformation, minSequenceNumber: UInt, maxSequenceNumber: UInt): Gauge =
+        copy(minSequence = minSequenceNumber, maxSequence = maxSequenceNumber, sessionInfo = info)
 
     override fun castToAdvertisementType(advertisement: DeviceAdvertisingData): GaugeAdvertisingData? =
         advertisement as? GaugeAdvertisingData
-
-    override fun handleAdvertisingPackets(device: GaugeBleDevice, advertisement: GaugeAdvertisingData) {
-        val state = connectionState
-        val networkIsAdvertisingAndNotConnected =
-            (state == DeviceConnectionState.ADVERTISING_CONNECTABLE || state == DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE ||
-                    state == DeviceConnectionState.CONNECTING)
-
-        if (networkIsAdvertisingAndNotConnected) {
-            val updatedDevice =
-                if (arbitrator.shouldUpdateDataFromAdvertisingPacket(device, advertisement)) {
-                    updateDataFromAdvertisement(advertisement, _deviceFlow.value)
-                } else {
-                    _deviceFlow.value
-                }
-
-            _deviceFlow.update {
-                updatedDevice.copy(
-                    baseDevice = _deviceFlow.value.baseDevice.copy(connectionState = state),
-                )
-            }
-        }
-
-        checkAutoConnect(device)
-    }
-
-    override fun updateDataFromSimulatedAdvertisement(
-        simDevice: SimulatedGaugeBleDevice,
-        advertisement: GaugeAdvertisingData,
-        current: Gauge,
-    ): Gauge = updateDataFromAdvertisement(advertisement, current)
 
     // Public API
 
@@ -291,35 +241,11 @@ internal class GaugeManager(
         }
     }
 
-    private fun handleSessionInfo(
-        info: SessionInformation,
-        minSequenceNumber: UInt,
-        maxSequenceNumber: UInt,
-    ): Gauge {
-        sessionInfoTimeout = false
-
-        if (sessionInfo != info) {
-            logTransferCompleteCallback()
-            uploadState = ProbeUploadState.Unavailable
-
-            Log.i(LOG_TAG, "PM($serialNumber): finished log transfer.")
-        }
-
-        sessionInfo = info
-        val updatedGauge = _deviceFlow.value.copy(
-            minSequence = minSequenceNumber,
-            maxSequence = maxSequenceNumber,
-            sessionInfo = info,
-        )
-        _deviceFlow.update { updatedGauge }
-        return updatedGauge
-    }
-
-    private fun updateDataFromAdvertisement(
+    override fun updateDataFromAdvertisement(
         advertisement: GaugeAdvertisingData,
-        currentGauge: Gauge,
+        current: Gauge,
     ): Gauge {
-        val updatedGauge = currentGauge.copy(
+        val updatedGauge = current.copy(
             baseDevice = _deviceFlow.value.baseDevice.copy(rssi = advertisement.rssi),
         )
 

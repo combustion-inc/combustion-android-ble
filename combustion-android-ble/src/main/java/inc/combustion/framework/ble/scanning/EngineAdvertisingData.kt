@@ -41,7 +41,7 @@ internal class EngineAdvertisingData(
     rssi: Int,
     isConnectable: Boolean,
     override val serialNumber: String,
-    val engineTemperature: SensorTemperature,
+    val engineTemperatureSetPoint: SensorTemperature,
     val engineStatusFlags: EngineStatusFlags,
     val enginePreferences: EnginePreferences,
 ) : BaseAdvertisingData(
@@ -54,7 +54,7 @@ internal class EngineAdvertisingData(
 
     companion object {
         private val SERIAL_RANGE = 1..10
-        private val TEMPERATURE_RANGE = 11..12
+        private val TEMPERATURE_SET_POINT_RANGE = 11..12
         private val STATUS_FLAGS_RANGE = 13..13
         private val PREFERENCES_RANGE = 14..14
 
@@ -67,8 +67,8 @@ internal class EngineAdvertisingData(
         ): EngineAdvertisingData {
             val serialNumber = manufacturerData.utf8StringFromRange(SERIAL_RANGE)
 
-            val temperature = SensorTemperature.fromRawDataStart(
-                manufacturerData.copyOf().sliceArray(TEMPERATURE_RANGE)
+            val temperatureSetPoint = SensorTemperature.fromRawDataStart(
+                manufacturerData.copyOf().sliceArray(TEMPERATURE_SET_POINT_RANGE)
             )
 
             val statusFlags: EngineStatusFlags = EngineStatusFlags.fromRawByte(
@@ -85,7 +85,7 @@ internal class EngineAdvertisingData(
                 rssi = rssi,
                 isConnectable = isConnectable,
                 serialNumber = serialNumber,
-                engineTemperature = temperature,
+                engineTemperatureSetPoint = temperatureSetPoint,
                 engineStatusFlags = statusFlags,
                 enginePreferences = preferences,
             )

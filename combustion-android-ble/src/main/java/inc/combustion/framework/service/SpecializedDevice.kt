@@ -38,6 +38,8 @@ interface SpecializedDevice {
     val statusNotificationsStale: Boolean
     val lowBattery: Boolean
     val uploadState: ProbeUploadState
+    val recordsDownloaded: Int
+    val logUploadPercent: UInt
     val minSequence: UInt?
     val maxSequence: UInt?
     val hopCount: UInt?

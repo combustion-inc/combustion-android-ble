@@ -63,7 +63,7 @@ internal class SimulatedEngineBleDevice(
                 rssi = randomRSSI(),
                 isConnectable = true,
                 serialNumber = serialNumber,
-                engineTemperature = SensorTemperature.withRandomData(),
+                engineTemperatureSetPoint = SensorTemperature.withRandomData(),
                 engineStatusFlags = EngineStatusFlags(),
                 enginePreferences = EnginePreferences(),
             )

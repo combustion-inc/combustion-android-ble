@@ -39,21 +39,31 @@ data class Engine(
     override val uploadState: ProbeUploadState = ProbeUploadState.Unavailable, // TODO : rename class?
     override val minSequence: UInt? = null,
     override val maxSequence: UInt? = null,
-    val highLowAlarmStatus: HighLowAlarmStatus = HighLowAlarmStatus.DEFAULT,
     val engineStatusFlags: EngineStatusFlags = EngineStatusFlags(),
+    val engineBatteryStatus: EngineBatteryStatus = EngineBatteryStatus(),
+    val engineFanStatus: EngineFanStatus? = null,
+    val enginePreferences: EnginePreferences = EnginePreferences(),
     val temperatureSetPointCelsius: SensorTemperature = SensorTemperature.NO_DATA,
     val controlDeviceType: CombustionProductType? = null,
     val controlSerialNumber: String? = null,
-    val recordsDownloaded: Int = 0,
-    val logUploadPercent: UInt = 0u,
-    val newRecordFlag: Boolean = false,
+    val controlTemperature: SensorTemperature? = null,
+    override val recordsDownloaded: Int = 0,
+    override val logUploadPercent: UInt = 0u,
     override val hopCount: UInt? = null,
+    /** Raw potentiometer voltage in millivolts (0–3300 mV). Voltage (V) = millivolts / 1000.0 */
+    val knobVoltageMillivolts: UInt? = null,
+    /** Knob position in tenths of degrees (0–3599), clockwise from Off (0°). Angle (°) = raw value / 10.0 */
+    val knobAngleTenthsDegrees: UInt? = null,
 ) : SpecializedDevice {
 
     override val lowBattery: Boolean
-        get() = TODO()
+        get() = engineBatteryStatus.batteryLevel != EngineBatteryLevel.OK
+
     override val isOverheating: Boolean
-        get() = TODO("Not yet implemented")
+        get() = false
+
+    val knobVoltageVolts: Float? get() = knobVoltageMillivolts?.let { it.toFloat() / 1000.0f }
+    val knobAngleDegrees: Float? get() = knobAngleTenthsDegrees?.let { it.toFloat() / 10.0f }
 
     companion object {
         fun create(serialNumber: String = "", mac: String = ""): Engine {

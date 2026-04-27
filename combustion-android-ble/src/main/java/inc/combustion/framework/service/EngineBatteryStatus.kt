@@ -29,8 +29,8 @@
 package inc.combustion.framework.service
 
 data class EngineBatteryStatus(
-    val batteryLevel: EngineBatteryLevel,
-    val batteryState: EngineBatteryState,
+    val batteryLevel: EngineBatteryLevel = EngineBatteryLevel.OK,
+    val batteryState: EngineBatteryState = EngineBatteryState.NOT_CHARGING,
 ) {
 
     companion object {

@@ -52,9 +52,6 @@ data class EngineStatus(
 
     override val mode: ProbeMode = ProbeMode.NORMAL
 
-    val knobVoltageVolts: Float get() = knobVoltageMillivolts.toFloat() / 1000.0f
-    val knobAngleDegrees: Float get() = knobAngleTenthsDegrees.toFloat() / 10.0f
-
     companion object {
         private val SESSION_ID_RANGE = 0..3 // 4
         private val SAMPLE_PERIOD_RANGE = 4..5 // 2

@@ -74,51 +74,28 @@ internal class EngineManager(
     override val normalModeStatusFlow: SharedFlow<SpecializedDeviceStatus> =
         _normalModeStatusFlow.asSharedFlow()
 
-    override var uploadState: ProbeUploadState
-        get() = _deviceFlow.value.uploadState
-        set(value) {
-            if (value != _deviceFlow.value.uploadState) {
-                _deviceFlow.value = _deviceFlow.value.copy(uploadState = value)
-            }
-        }
-    override var recordsDownloaded: Int
-        get() = _deviceFlow.value.recordsDownloaded
-        set(value) {
-            if (value != _deviceFlow.value.recordsDownloaded) {
-                _deviceFlow.value = _deviceFlow.value.copy(recordsDownloaded = value)
-            }
-        }
-    override var logUploadPercent: UInt
-        get() = _deviceFlow.value.logUploadPercent
-        set(value) {
-            if (value != _deviceFlow.value.logUploadPercent) {
-                _deviceFlow.value = _deviceFlow.value.copy(logUploadPercent = value)
-            }
-        }
-
     // Abstract method implementations
 
     override fun Engine.withBaseDevice(baseDevice: Device): Engine = copy(baseDevice = baseDevice)
-
-    override fun Engine.withStatusNotificationsStale(stale: Boolean): Engine =
-        copy(statusNotificationsStale = stale)
+    override fun Engine.withStatusNotificationsStale(stale: Boolean): Engine = copy(statusNotificationsStale = stale)
+    override fun Engine.withUploadState(state: ProbeUploadState): Engine = copy(uploadState = state)
+    override fun Engine.withRecordsDownloaded(count: Int): Engine = copy(recordsDownloaded = count)
+    override fun Engine.withLogUploadPercent(percent: UInt): Engine = copy(logUploadPercent = percent)
+    override fun Engine.withSessionInfo(info: SessionInformation, minSequenceNumber: UInt, maxSequenceNumber: UInt): Engine =
+        copy(minSequence = minSequenceNumber, maxSequence = maxSequenceNumber, sessionInfo = info)
 
     override fun castToAdvertisementType(advertisement: DeviceAdvertisingData): EngineAdvertisingData? =
         advertisement as? EngineAdvertisingData
 
-    override fun handleAdvertisingPackets(
-        device: EngineBleDevice,
-        advertisement: EngineAdvertisingData
-    ) {
-        // TODO: update engine state from advertisement
-        checkAutoConnect(device)
-    }
-
-    override fun updateDataFromSimulatedAdvertisement(
-        simDevice: SimulatedEngineBleDevice,
+    override fun updateDataFromAdvertisement(
         advertisement: EngineAdvertisingData,
         current: Engine,
-    ): Engine = current // TODO: update engine state from advertisement
+    ): Engine = current.copy(
+        baseDevice = _deviceFlow.value.baseDevice.copy(rssi = advertisement.rssi),
+        engineStatusFlags = advertisement.engineStatusFlags,
+        temperatureSetPointCelsius = advertisement.engineTemperatureSetPoint,
+        enginePreferences = advertisement.enginePreferences,
+    )
 
     override fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt) {
         TODO("Not yet implemented")
@@ -142,7 +119,38 @@ internal class EngineManager(
         status: EngineStatus,
         simulated: Boolean = simulatedDevice != null,
     ) {
-        TODO()
+        if (simulated || arbitrator.shouldUpdateDataFromStatusForNormalMode(
+                status,
+                sessionInfo,
+            )
+        ) {
+            handleSessionInfo(
+                status.sessionInformation,
+                minSequenceNumber = status.minSequenceNumber,
+                maxSequenceNumber = status.maxSequenceNumber,
+            )
+
+            _normalModeStatusFlow.emit(status)
+
+            if (!simulated) {
+                fetchDeviceInfo()
+            }
+
+            _deviceFlow.update {
+                _deviceFlow.value.copy(
+                    engineBatteryStatus = status.engineBatteryStatus,
+                    engineStatusFlags = status.engineStatusFlags,
+                    engineFanStatus = status.engineFanStatus,
+                    temperatureSetPointCelsius = status.temperatureSetPoint,
+                    controlDeviceType = status.controlDeviceType,
+                    controlSerialNumber = status.controlSerialNumber,
+                    controlTemperature = status.controlTemperature,
+                    knobVoltageMillivolts = status.knobVoltageMillivolts,
+                    knobAngleTenthsDegrees = status.knobAngleTenthsDegrees,
+                    hopCount = status.hopCount.hopCount,
+                )
+            }
+        }
     }
 
     fun setTemperatureSetPoint(
