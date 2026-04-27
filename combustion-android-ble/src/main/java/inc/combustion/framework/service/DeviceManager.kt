@@ -1054,11 +1054,35 @@ class DeviceManager(
     fun setEngineTemperatureSetPoint(
         serialNumber: String,
         temperature: SensorTemperature,
-        completionHandler: (Boolean) -> Unit
+        completionHandler: (Boolean) -> Unit,
     ) {
         Log.i(LOG_TAG, "Setting engine $serialNumber's temperature set point to $temperature")
         doWhenNetworkManagerInitialized {
             it.setEngineTemperatureSetPoint(serialNumber, temperature, completionHandler)
+        }
+    }
+
+    /**
+     * Set control device of type [controlDeviceType] with serial number [controlSerialNumber] on
+     * engine [serialNumber], calling [completionHandler] with the success value on completion.
+     */
+    fun setEngineControlDevice(
+        serialNumber: String,
+        controlDeviceType: CombustionProductType,
+        controlSerialNumber: String,
+        completionHandler: (Boolean) -> Unit,
+    ) {
+        Log.i(
+            LOG_TAG,
+            "Setting engine $serialNumber's control device to $controlDeviceType of type $controlDeviceType",
+        )
+        doWhenNetworkManagerInitialized {
+            it.setEngineControlDevice(
+                serialNumber,
+                controlDeviceType,
+                controlSerialNumber,
+                completionHandler,
+            )
         }
     }
 

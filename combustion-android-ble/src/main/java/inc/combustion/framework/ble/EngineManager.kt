@@ -39,10 +39,8 @@ import inc.combustion.framework.service.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
-import kotlin.concurrent.atomics.AtomicBoolean
-import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import java.util.concurrent.atomic.AtomicBoolean
 
-@OptIn(ExperimentalAtomicApi::class)
 internal class EngineManager(
     mac: String,
     serialNumber: String,
@@ -180,7 +178,59 @@ internal class EngineManager(
                         temperature,
                         requestId,
                     ) { status, _ ->
-                        if (!handled.exchange(true)) {
+                        if (!handled.getAndSet(true)) {
+                            onCompletion(status)
+                        }
+                    }
+                }
+            } else {
+                onCompletion(false)
+            }
+        }
+    }
+
+    fun setControlDevice(
+        controlDeviceType: CombustionProductType,
+        controlSerialNumber: String,
+        completionHandler: (Boolean) -> Unit,
+    ) {
+        val onCompletion: (Boolean) -> Unit = { success ->
+            if (success) {
+                _deviceFlow.update {
+                    _deviceFlow.value.copy(
+                        controlDeviceType = controlDeviceType,
+                        controlSerialNumber = controlSerialNumber,
+                    )
+                }
+            }
+            completionHandler(success)
+        }
+
+        val requestId = makeRequestId()
+        simulatedDevice?.sendSetControlDevice(
+            controlDeviceType,
+            controlSerialNumber,
+            requestId
+        ) { status, _ ->
+            onCompletion(status)
+        } ?: arbitrator.directLink?.sendSetControlDevice(
+            controlDeviceType,
+            controlSerialNumber,
+            requestId,
+        ) { status, _ ->
+            onCompletion(status)
+        } ?: run {
+            val nodeLinks = arbitrator.connectedNodeLinks
+            if (nodeLinks.isNotEmpty()) {
+                val handled = AtomicBoolean(false)
+                nodeLinks.forEach { node ->
+                    node.sendSetEngineControlDevice(
+                        serialNumber,
+                        controlDeviceType,
+                        controlSerialNumber,
+                        requestId,
+                    ) { status, _ ->
+                        if (!handled.getAndSet(true)) {
                             onCompletion(status)
                         }
                     }

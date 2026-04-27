@@ -642,6 +642,21 @@ internal class NetworkManager(
             }
     }
 
+    internal fun setEngineControlDevice(
+        serialNumber: String,
+        controlDeviceType: CombustionProductType,
+        controlSerialNumber: String,
+        completionHandler: (Boolean) -> Unit,
+    ) {
+        engineManagers[serialNumber]?.setControlDevice(
+            controlDeviceType,
+            controlSerialNumber,
+            completionHandler,
+        ) ?: run {
+            completionHandler(false)
+        }
+    }
+
     internal suspend fun sendNodeRequestRequiringWiFi(
         deviceId: String,
         request: GenericNodeRequest,

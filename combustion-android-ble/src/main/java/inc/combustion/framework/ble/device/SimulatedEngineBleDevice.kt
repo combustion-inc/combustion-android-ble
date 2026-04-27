@@ -78,7 +78,16 @@ internal class SimulatedEngineBleDevice(
     override fun sendSetTemperatureSetPoint(
         temperature: SensorTemperature,
         reqId: UInt?,
-        callback: ((Boolean, Any?) -> Unit)?
+        callback: ((Boolean, Any?) -> Unit)?,
+    ) {
+        callback?.let { it(true, null) }
+    }
+
+    override fun sendSetControlDevice(
+        controlDeviceType: CombustionProductType,
+        controlSerialNumber: String,
+        reqId: UInt?,
+        callback: ((Boolean, Any?) -> Unit)?,
     ) {
         callback?.let { it(true, null) }
     }

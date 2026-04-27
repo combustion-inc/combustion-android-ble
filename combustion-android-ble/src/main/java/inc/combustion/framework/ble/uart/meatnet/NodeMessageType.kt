@@ -70,6 +70,7 @@ internal enum class NodeMessageType(override val value: UByte) : NodeMessage {
     SILENCE_ALARMS(0x0Cu),
     ENGINE_STATUS(0x70u),
     SET_ENGINE_TEMPERATURE_SET_POINT(0x71u),
+    SET_ENGINE_CONTROL_DEVICE(0x72u),
     ;
 
     companion object {

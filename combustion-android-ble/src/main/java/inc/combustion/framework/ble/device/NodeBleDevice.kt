@@ -32,6 +32,7 @@ internal class NodeBleDevice(
     private val setGaugeHighLowAlarmStatusHandler = UartBleDevice.MessageCompletionHandler()
     private val silenceAlarmsHandler = UartBleDevice.MessageCompletionHandler()
     private val setEngineTemperatureSetPointHandler = UartBleDevice.MessageCompletionHandler()
+    private val setEngineControlDeviceHandler = UartBleDevice.MessageCompletionHandler()
 
     companion object {
         const val NODE_MESSAGE_RESPONSE_TIMEOUT_MS = 120000L
@@ -194,6 +195,29 @@ internal class NodeBleDevice(
         sendUartRequest(NodeSetEngineTemperatureSetPointRequest(serialNumber, temperature, reqId))
     }
 
+    fun sendSetEngineControlDevice(
+        serialNumber: String,
+        controlDeviceType: CombustionProductType,
+        controlSerialNumber: String,
+        reqId: UInt?,
+        callback: ((Boolean, Any?) -> Unit)?,
+    ) {
+        setEngineControlDeviceHandler.wait(
+            uart.scope,
+            MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS,
+            reqId,
+            callback,
+        )
+        sendUartRequest(
+            NodeSetEngineControlDeviceRequest(
+                serialNumber,
+                controlDeviceType,
+                controlSerialNumber,
+                reqId,
+            )
+        )
+    }
+
     override fun connect() {
         uart.connect()
     }
@@ -317,6 +341,14 @@ internal class NodeBleDevice(
 
                     message is NodeSetEngineTemperatureSetPointResponse -> {
                         setEngineTemperatureSetPointHandler.handled(
+                            message.success,
+                            null,
+                            message.requestId
+                        )
+                    }
+
+                    message is NodeSetEngineControlDeviceResponse -> {
+                        setEngineControlDeviceHandler.handled(
                             message.success,
                             null,
                             message.requestId

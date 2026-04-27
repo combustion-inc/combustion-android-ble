@@ -42,11 +42,14 @@ data class Engine(
     val highLowAlarmStatus: HighLowAlarmStatus = HighLowAlarmStatus.DEFAULT,
     val engineStatusFlags: EngineStatusFlags = EngineStatusFlags(),
     val temperatureSetPointCelsius: SensorTemperature = SensorTemperature.NO_DATA,
+    val controlDeviceType: CombustionProductType? = null,
+    val controlSerialNumber: String? = null,
     val recordsDownloaded: Int = 0,
     val logUploadPercent: UInt = 0u,
     val newRecordFlag: Boolean = false,
     override val hopCount: UInt? = null,
 ) : SpecializedDevice {
+
     override val lowBattery: Boolean
         get() = TODO()
     override val isOverheating: Boolean

@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: UartCapableEngine.kt
+ * File: NodeSetEngineControlDeviceResponse.kt
  * Author:
  *
  * MIT License
@@ -26,22 +26,43 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble
+package inc.combustion.framework.ble.uart.meatnet
 
-import inc.combustion.framework.service.CombustionProductType
-import inc.combustion.framework.service.SensorTemperature
+internal class NodeSetEngineControlDeviceResponse(
+    success: Boolean,
+    requestId: UInt,
+    responseId: UInt,
+    payloadLength: UByte,
+) : NodeResponse(
+    success,
+    requestId,
+    responseId,
+    payloadLength,
+    NodeMessageType.SET_ENGINE_CONTROL_DEVICE,
+) {
+    override fun toString(): String {
+        return "${super.toString()} $success"
+    }
 
-interface UartCapableEngine {
-    fun sendSetTemperatureSetPoint(
-        temperature: SensorTemperature,
-        reqId: UInt?,
-        callback: ((Boolean, Any?) -> Unit)?,
-    )
+    companion object {
+        private const val PAYLOAD_LENGTH: UByte = 0u
 
-    fun sendSetControlDevice(
-        controlDeviceType: CombustionProductType,
-        controlSerialNumber: String,
-        reqId: UInt?,
-        callback: ((Boolean, Any?) -> Unit)?,
-    )
+        fun fromData(
+            success: Boolean,
+            requestId: UInt,
+            responseId: UInt,
+            payloadLength: UByte,
+        ): NodeSetEngineControlDeviceResponse? {
+            if (payloadLength < PAYLOAD_LENGTH) {
+                return null
+            }
+
+            return NodeSetEngineControlDeviceResponse(
+                success,
+                requestId,
+                responseId,
+                payloadLength,
+            )
+        }
+    }
 }

@@ -30,6 +30,7 @@ package inc.combustion.framework.ble.device
 
 import inc.combustion.framework.ble.UartCapableEngine
 import inc.combustion.framework.ble.scanning.EngineAdvertisingData
+import inc.combustion.framework.service.CombustionProductType
 import inc.combustion.framework.service.SensorTemperature
 
 internal class EngineBleDevice(
@@ -46,6 +47,21 @@ internal class EngineBleDevice(
         nodeParent.sendSetEngineTemperatureSetPoint(
             serialNumber,
             temperature,
+            reqId,
+            callback,
+        )
+    }
+
+    override fun sendSetControlDevice(
+        controlDeviceType: CombustionProductType,
+        controlSerialNumber: String,
+        reqId: UInt?,
+        callback: ((Boolean, Any?) -> Unit)?
+    ) {
+        nodeParent.sendSetEngineControlDevice(
+            serialNumber,
+            controlDeviceType,
+            controlSerialNumber,
             reqId,
             callback,
         )
