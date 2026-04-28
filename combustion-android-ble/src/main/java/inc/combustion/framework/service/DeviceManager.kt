@@ -409,6 +409,15 @@ class DeviceManager(
         }
 
     /**
+     * Returns a list of device serial numbers, consisting of all engines that have been
+     * discovered.
+     */
+    val discoveredEngines: List<String>
+        get() {
+            return NetworkManager.instance.discoveredEngines
+        }
+
+    /**
      * Returns a list of node serial numbers, consisting of all nodes that have been discovered.
      * This will exclude any probe devices.
      */
@@ -416,7 +425,6 @@ class DeviceManager(
         get() {
             return NetworkManager.instance.discoveredWiFiNodes
         }
-
 
     @Deprecated(
         message = "discoveredNodesFlow is deprecated because the name does not specify it is only for Wi-Fi-capable nodes. " +
@@ -639,6 +647,31 @@ class DeviceManager(
      */
     fun gauge(serialNumber: String): Gauge? {
         return NetworkManager.instance.gaugeState(serialNumber)
+    }
+
+    /**
+     * Retrieves the Kotlin flow for collecting Engine state updates for the specified
+     * probe serial number.  Note, this is a hot flow.
+     *
+     * @param serialNumber the serial number of the engine.
+     * @return Kotlin flow for collecting Engine state updates.
+     *
+     * @see Engine
+     */
+    fun engineFlow(serialNumber: String): StateFlow<Engine>? {
+        return NetworkManager.instance.engineFlow(serialNumber)
+    }
+
+    /**
+     * Retrieves the current probe state for the specified probe serial number.
+     *
+     * @param serialNumber the serial number of the probe.
+     * @return current ProbeState of the probe.
+     *
+     * @see Engine
+     */
+    fun engine(serialNumber: String): Engine? {
+        return NetworkManager.instance.engineState(serialNumber)
     }
 
     /**
@@ -875,6 +908,21 @@ class DeviceManager(
     fun addSimulatedGauge() {
         doWhenNetworkManagerInitialized {
             it.addSimulatedGauge()
+        }
+    }
+
+    /**
+     * Creates a simulated engine. The simulated engine will generate events to the
+     * discoveredDevicesFlow.  The simulated engine has a state flow that can be collected
+     * use the engineFlow method.
+     *
+     * @see DeviceDiscoveryEvent
+     * @see discoveredDevicesFlow
+     * @see engineFlow
+     */
+    fun addSimulatedEngine() {
+        doWhenNetworkManagerInitialized {
+            it.addSimulatedEngine()
         }
     }
 

@@ -292,6 +292,11 @@ internal class NetworkManager(
             return gaugeManagers.snapshotKeys().toList()
         }
 
+    internal val discoveredEngines: List<String>
+        get() {
+            return engineManagers.snapshotKeys().toList()
+        }
+
     internal val discoveredSpecializedDevices: List<String>
         get() {
             return discoveredProbes + discoveredGauges
@@ -458,6 +463,28 @@ internal class NetworkManager(
         }
     }
 
+    fun addSimulatedEngine() {
+        val engine = SimulatedEngineBleDevice(scope)
+        val manager = EngineManager(
+            mac = engine.mac,
+            serialNumber = engine.serialNumber,
+            scope = scope,
+            settings = settings,
+            dfuDisconnectedNodeCallback = { },
+        )
+
+        engineManagers[manager.serialNumber] = manager
+        LogManager.instance.manageEngine(scope, manager)
+
+        manager.addSimulatedEngine(engine)
+
+        scope.launch {
+            flowHolder.mutableDiscoveredDevicesFlow.emit(
+                DeviceDiscoveryEvent.EngineDiscovered(engine.serialNumber)
+            )
+        }
+    }
+
     internal fun probeFlow(serialNumber: String): StateFlow<Probe>? {
         return probeManagers[serialNumber]?.deviceFlow
     }
@@ -472,6 +499,14 @@ internal class NetworkManager(
 
     internal fun gaugeState(serialNumber: String): Gauge? {
         return gaugeManagers[serialNumber]?.device
+    }
+
+    internal fun engineFlow(serialNumber: String): StateFlow<Engine>? {
+        return engineManagers[serialNumber]?.deviceFlow
+    }
+
+    internal fun engineState(serialNumber: String): Engine? {
+        return engineManagers[serialNumber]?.device
     }
 
     internal fun deviceSmoothedRssiFlow(serialNumber: String): StateFlow<Double?>? {
@@ -1264,8 +1299,7 @@ internal class NetworkManager(
 
         // Remove the MeatNet links supporting this probe
         meatNetLinks.removeIf { entry ->
-            val value = entry.value
-            when (value) {
+            when (val value = entry.value) {
                 is LinkHolder.ProbeHolder ->
                     value.probe.serialNumber == serialNumber
 
