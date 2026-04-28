@@ -50,7 +50,6 @@ import inc.combustion.framework.service.CombustionProductType.GAUGE
 import inc.combustion.framework.service.CombustionProductType.NODE
 import inc.combustion.framework.service.CombustionProductType.PROBE
 import inc.combustion.framework.service.utils.ConcurrentSnapshotMap
-import inc.combustion.framework.service.utils.plus
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -482,11 +481,13 @@ internal class NetworkManager(
     internal fun connect(serialNumber: String) {
         probeManagers[serialNumber]?.connect()
         gaugeManagers[serialNumber]?.connect()
+        engineManagers[serialNumber]?.connect()
     }
 
     internal fun disconnect(serialNumber: String, canDisconnectMeatNetDevices: Boolean = false) {
         probeManagers[serialNumber]?.disconnect(canDisconnectMeatNetDevices)
         gaugeManagers[serialNumber]?.disconnect()
+        engineManagers[serialNumber]?.disconnect()
     }
 
     internal fun setProbeColor(
@@ -667,12 +668,13 @@ internal class NetworkManager(
 
     @ExperimentalCoroutinesApi
     fun clearDevices() {
-        (probeManagers + gaugeManagers).forEach { (_, manager) -> manager.finish() }
+        (probeManagers.snapshot() + gaugeManagers.snapshot() + engineManagers.snapshot()).forEach { (_, manager) -> manager.finish() }
         probeIdManager.clear()
         deviceInformationDevices.snapshot().forEach { (_, device) -> device.finish() }
         deviceInformationDevices.clear()
         probeManagers.clear()
         gaugeManagers.clear()
+        engineManagers.clear()
         devices.clear()
         meatNetLinks.clear()
         proximityDevices.clear()
@@ -765,7 +767,6 @@ internal class NetworkManager(
             observeGaugeStatusCallback = { serialNumber, gaugeStatus ->
                 gaugeManagers[serialNumber]?.observedGaugeStatus(gaugeStatus)
             },
-
             observeEngineStatusCallback = { serialNumber, engineStatus ->
                 engineManagers[serialNumber]?.observedEngineStatus(engineStatus)
             },
@@ -1200,7 +1201,9 @@ internal class NetworkManager(
         Log.i(LOG_TAG, "Unlinking device: $serialNumber")
 
         // Remove the device from the discovered devices list
-        val deviceManager = probeManagers.remove(serialNumber) ?: gaugeManagers.remove(serialNumber)
+        val deviceManager = probeManagers.remove(serialNumber)
+            ?: gaugeManagers.remove(serialNumber)
+            ?: engineManagers.remove(serialNumber)
 
         // Remove from probeId logic
         if (deviceManager is ProbeManager) {
