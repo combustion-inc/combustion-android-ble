@@ -507,6 +507,10 @@ internal class NetworkManager(
         completionHandler: (Boolean) -> Unit,
     ) {
         scope.launch(Dispatchers.Main) {
+            // Serializes concurrent explicit setProbeID calls against each other's conflict check.
+            // Does NOT protect against the gap between dispatching the BLE write and the
+            // observation flow updating knownProbeIdAssignedToDevice; any collision that slips
+            // through that window is caught and resolved by ProbeIdManager.addDevice.
             setProbeIdLock.withLock {
                 Log.v(LOG_TAG, "setProbeID: assign $probeId to $serialNumber")
                 if (probeIdManager.hasProbeIdConflict(serialNumber, probeId)) {

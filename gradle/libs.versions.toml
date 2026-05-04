@@ -16,6 +16,7 @@ androidDesugarJdkLibs = "2.1.4"
 kotlinTestJunit = "2.1.0"
 mavenPublish = "0.25.3"
 mockk = "1.13.9"
+kotlinxCoroutines = "1.10.2"
 
 [libraries]
 android-desugarJdkLibs = { group = "com.android.tools", name = "desugar_jdk_libs", version.ref = "androidDesugarJdkLibs" }
@@ -33,6 +34,7 @@ kotlin-test-junit = { group = "org.jetbrains.kotlin", name = "kotlin-test-junit"
 nordicsemi-dfu = { group = "no.nordicsemi.android", name = "dfu", version.ref = "nordicsemiDfu" }
 junit-params = { group = "pl.pragmatists", name = "JUnitParams", version.ref = "junitParams" }
 mockk-android = { group = "io.mockk", name = "mockk-android", version.ref = "mockk" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
 
 [plugins]
 android-library = { id = "com.android.library", version.ref = "androidGradlePlugin" }

@@ -58,11 +58,7 @@ internal class ProbeIdManager(
     }
 
     private fun removeProbeIdAssignmentsToDevice(serialNumber: String, except: ProbeID?) {
-        return ProbeID.entries.forEach {
-            if ((it != except) && (knownProbeIdAssignedToDevice[it] == serialNumber)) {
-                knownProbeIdAssignedToDevice.remove(it)
-            }
-        }
+        knownProbeIdAssignedToDevice.removeIf { it.key != except && it.value == serialNumber }
     }
 
     private fun resolveProbeIdConflict(
@@ -133,6 +129,7 @@ internal class ProbeIdManager(
     }
 
     fun addDevice(probeSerialNumber: String, manager: ProbeManager) {
+        probeIdObservations.remove(probeSerialNumber)?.cancel()
         probeIdObservations[probeSerialNumber] = scope.launch {
             manager.deviceFlow
                 .filter {
