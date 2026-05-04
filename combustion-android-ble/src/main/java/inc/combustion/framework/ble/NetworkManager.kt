@@ -53,12 +53,11 @@ import inc.combustion.framework.service.CombustionProductType.NODE
 import inc.combustion.framework.service.CombustionProductType.PROBE
 import inc.combustion.framework.service.utils.ConcurrentSnapshotMap
 import inc.combustion.framework.service.utils.plus
-import kotlinx.coroutines.CoroutineName
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.random.Random
 import kotlin.random.nextUInt
@@ -203,6 +202,7 @@ internal class NetworkManager(
     }
 
     private val probeIdManager = ProbeIdManager(::setProbeID, scope)
+    private val setProbeIdLock = Mutex()
 
     var deviceAllowlist: Set<String>? = settings.probeAllowlist
         private set
@@ -314,6 +314,8 @@ internal class NetworkManager(
 
     val silenceAlarmsRequestFlow: SharedFlow<SilenceAlarmsRequest>
         get() = _silenceAlarmsRequestFlow.asSharedFlow()
+
+    val availableProbeIDs: Flow<List<ProbeID>> = probeIdManager.availableProbeIDs
 
     init {
         require(context.applicationContext === context) {
@@ -504,10 +506,24 @@ internal class NetworkManager(
         probeId: ProbeID,
         completionHandler: (Boolean) -> Unit,
     ) {
-        Log.v(LOG_TAG, "setProbeID: assign $probeId to $serialNumber")
-        probeIdManager.checkAndAvoidProbeIdConflictOnSetProbeId(serialNumber, probeId)
-        probeManagers[serialNumber]?.setProbeID(probeId, completionHandler) ?: run {
-            completionHandler(false)
+        scope.launch(Dispatchers.Main) {
+            // Serializes concurrent explicit setProbeID calls against each other's conflict check.
+            // Does NOT protect against the gap between dispatching the BLE write and the
+            // observation flow updating knownProbeIdAssignedToDevice; any collision that slips
+            // through that window is caught and resolved by ProbeIdManager.addDevice.
+            setProbeIdLock.withLock {
+                Log.v(LOG_TAG, "setProbeID: assign $probeId to $serialNumber")
+                if (probeIdManager.hasProbeIdConflict(serialNumber, probeId)) {
+                    Log.w(
+                        LOG_TAG,
+                        "setProbeID: unable to perform since there is an existing probe assigned to $probeId",
+                    )
+                    completionHandler(false)
+                } else {
+                    probeManagers[serialNumber]?.setProbeID(probeId, completionHandler)
+                        ?: completionHandler(false)
+                }
+            }
         }
     }
 
