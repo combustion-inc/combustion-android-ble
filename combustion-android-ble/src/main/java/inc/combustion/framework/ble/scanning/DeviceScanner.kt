@@ -25,18 +25,22 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+@file:OptIn(ExperimentalUuidApi::class, ExperimentalApi::class)
+
 package inc.combustion.framework.ble.scanning
 
 import android.bluetooth.le.ScanSettings
 import android.os.ParcelUuid
 import android.util.Log
-import com.juul.kable.Filter
+import com.juul.kable.ExperimentalApi
 import com.juul.kable.Scanner
 import inc.combustion.framework.LOG_TAG
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.toKotlinUuid
 
 internal class DeviceScanner private constructor() {
     companion object {
@@ -48,7 +52,11 @@ internal class DeviceScanner private constructor() {
         private var allMatchesScanJob: Job? = null
         private val atomicIsScanning = AtomicBoolean(false)
         private val allMatchesScanner = Scanner {
-            filters = listOf(Filter.Service(NORDIC_DFU_SERVICE_UUID.uuid))
+            filters {
+                match {
+                    services = listOf(NORDIC_DFU_SERVICE_UUID.uuid.toKotlinUuid())
+                }
+            }
             scanSettings = ScanSettings.Builder()
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
                 .setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
@@ -87,8 +95,7 @@ internal class DeviceScanner private constructor() {
                             stop()
                         }
                         .collect { advertisement ->
-                            val advertisingData = AdvertisingData.create(advertisement)
-                            when (advertisingData) {
+                            when (val advertisingData = AdvertisingData.create(advertisement)) {
                                 is DeviceAdvertisingData -> mutableAdvertisements.tryEmit(
                                     advertisingData
                                 )

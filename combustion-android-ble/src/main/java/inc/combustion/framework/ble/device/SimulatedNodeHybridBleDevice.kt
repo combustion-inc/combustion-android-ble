@@ -29,33 +29,22 @@
 package inc.combustion.framework.ble.device
 
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
-import inc.combustion.framework.service.*
+import inc.combustion.framework.service.CombustionProductType
+import inc.combustion.framework.service.DeviceConnectionState
+import inc.combustion.framework.service.FirmwareVersion
+import inc.combustion.framework.service.ModelInformation
 import inc.combustion.framework.service.dfu.DfuProductType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlin.concurrent.fixedRateTimer
-import kotlin.random.Random
 
 internal abstract class SimulatedNodeHybridBleDevice(
     private val scope: CoroutineScope,
-    override val mac: String = randomMac(),
-    override val serialNumber: String = "%08X".format(Random.nextInt()),
+    override val mac: String = SimulatedBleDeviceValues.randomMac(),
+    override val serialNumber: String = SimulatedBleDeviceValues.randomSerialNumber(),
     var shouldConnect: Boolean = false,
     override val hopCount: UInt = 0u,
 ) : UartCapableSpecializedDevice {
-
-    companion object {
-        fun randomRSSI(): Int = Random.nextInt(-80, -40)
-
-        fun randomMac(): String = "%02X:%02X:%02X:%02X:%02X:%02X".format(
-            Random.nextBytes(1).first(),
-            Random.nextBytes(1).first(),
-            Random.nextBytes(1).first(),
-            Random.nextBytes(1).first(),
-            Random.nextBytes(1).first(),
-            Random.nextBytes(1).first(),
-        )
-    }
 
     abstract override val productType: CombustionProductType
 
@@ -66,7 +55,7 @@ internal abstract class SimulatedNodeHybridBleDevice(
     override val isRepeater: Boolean = false
     override var shouldAutoReconnect: Boolean = false
 
-    override var rssi: Int = randomRSSI()
+    override var rssi: Int = SimulatedBleDeviceValues.randomRSSI()
         protected set
 
     override var connectionState: DeviceConnectionState =
@@ -109,6 +98,9 @@ internal abstract class SimulatedNodeHybridBleDevice(
                 if (!isConnected) {
                     observeAdvertisingCallback?.invoke(generateAdvertisement())
                 }
+                observeRemoteRssiCallback?.let {
+                    it(SimulatedBleDeviceValues.randomRSSI())
+                }
             }
         }
     }
@@ -140,13 +132,13 @@ internal abstract class SimulatedNodeHybridBleDevice(
         publishConnectionState()
     }
 
-    override suspend fun readSerialNumber() { }
-    override suspend fun readFirmwareVersion() { }
-    override suspend fun readHardwareRevision() { }
-    override suspend fun readModelInformation() { }
-    override fun readFirmwareVersionAsync(callback: (FirmwareVersion) -> Unit) { }
-    override fun readHardwareRevisionAsync(callback: (String) -> Unit) { }
-    override fun readModelInformationAsync(callback: (ModelInformation) -> Unit) { }
+    override suspend fun readSerialNumber() {}
+    override suspend fun readFirmwareVersion() {}
+    override suspend fun readHardwareRevision() {}
+    override suspend fun readModelInformation() {}
+    override fun readFirmwareVersionAsync(callback: (FirmwareVersion) -> Unit) {}
+    override fun readHardwareRevisionAsync(callback: (String) -> Unit) {}
+    override fun readModelInformationAsync(callback: (ModelInformation) -> Unit) {}
 
     override fun observeAdvertisingPackets(
         serialNumberFilter: String,

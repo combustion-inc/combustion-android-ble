@@ -688,7 +688,7 @@ class DeviceManager(
      * This flow is guaranteed to exist if a [DeviceInProximityEvent.ProbeDiscovered] event is flowed
      * from [deviceInProximityFlow] for [serialNumber].
      */
-    fun deviceSmoothedRssiFlow(serialNumber: String): StateFlow<Double?>? {
+    fun deviceSmoothedRssiFlow(serialNumber: String): StateFlow<Double?> {
         val initial = NetworkManager.instanceFlow.value?.deviceSmoothedRssiFlow(serialNumber)?.value
         return NetworkManager.instanceFlow
             .flatMapLatest { mgr ->
@@ -890,9 +890,9 @@ class DeviceManager(
      * @see discoveredDevicesFlow
      * @see probeFlow
      */
-    fun addSimulatedProbe() {
+    fun addSimulatedProbe(serialNumber: String? = null) {
         doWhenNetworkManagerInitialized {
-            it.addSimulatedProbe()
+            it.addSimulatedProbe(serialNumber = serialNumber)
         }
     }
 
@@ -905,9 +905,9 @@ class DeviceManager(
      * @see discoveredDevicesFlow
      * @see gaugeFlow
      */
-    fun addSimulatedGauge() {
+    fun addSimulatedGauge(serialNumber: String? = null) {
         doWhenNetworkManagerInitialized {
-            it.addSimulatedGauge()
+            it.addSimulatedGauge(serialNumber = serialNumber)
         }
     }
 
@@ -920,9 +920,9 @@ class DeviceManager(
      * @see discoveredDevicesFlow
      * @see engineFlow
      */
-    fun addSimulatedEngine() {
+    fun addSimulatedEngine(serialNumber: String? = null) {
         doWhenNetworkManagerInitialized {
-            it.addSimulatedEngine()
+            it.addSimulatedEngine(serialNumber = serialNumber)
         }
     }
 

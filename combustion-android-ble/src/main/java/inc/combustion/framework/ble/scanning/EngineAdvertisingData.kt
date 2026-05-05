@@ -93,6 +93,6 @@ internal class EngineAdvertisingData(
     }
 
     override fun toString(): String {
-        return "${EngineAdvertisingData::class.simpleName}: ${super.toString()} | $serialNumber"
+        return "${EngineAdvertisingData::class.simpleName}: ${super.toString()} | $serialNumber | $mac"
     }
 }

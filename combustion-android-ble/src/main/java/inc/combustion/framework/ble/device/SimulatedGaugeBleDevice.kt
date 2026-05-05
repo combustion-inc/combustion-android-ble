@@ -37,8 +37,8 @@ import kotlin.random.Random
 
 internal class SimulatedGaugeBleDevice(
     scope: CoroutineScope,
-    mac: String = randomMac(),
-    serialNumber: String = "%08X".format(Random.nextInt()),
+    mac: String = SimulatedBleDeviceValues.randomMac(),
+    serialNumber: String = SimulatedBleDeviceValues.randomMac(),
     shouldConnect: Boolean = false,
     hopCount: UInt = 0u,
 ) : SimulatedNodeHybridBleDevice(
@@ -57,7 +57,7 @@ internal class SimulatedGaugeBleDevice(
             return GaugeAdvertisingData(
                 mac = mac,
                 name = "Gauge",
-                rssi = randomRSSI(),
+                rssi = SimulatedBleDeviceValues.randomRSSI(),
                 isConnectable = true,
                 serialNumber = serialNumber,
                 gaugeTemperature = SensorTemperature.withRandomData(),

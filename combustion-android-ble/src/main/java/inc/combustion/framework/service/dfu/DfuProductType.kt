@@ -52,6 +52,7 @@ enum class DfuProductType {
                 "Charger" -> CHARGER
                 "" -> PROBE
                 "Gauge" -> GAUGE
+                "Engine" -> GAUGE // TODO : verify string
                 else -> UNKNOWN
             }
         }
@@ -64,8 +65,8 @@ enum class DfuProductType {
             when (productType) {
                 CombustionProductType.PROBE -> PROBE
                 CombustionProductType.GAUGE -> GAUGE
-                CombustionProductType.NODE -> UNKNOWN
                 CombustionProductType.ENGINE -> ENGINE
+                CombustionProductType.NODE -> UNKNOWN
                 else -> UNKNOWN
             }
     }

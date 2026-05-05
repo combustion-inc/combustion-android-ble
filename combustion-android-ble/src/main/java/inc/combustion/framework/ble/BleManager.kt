@@ -50,6 +50,7 @@ internal abstract class BleManager {
         const val IGNORE_PROBES = false
         const val IGNORE_REPEATERS = false
         const val IGNORE_GAUGES = false
+        const val IGNORE_ENGINES = false
 
         const val OUT_OF_RANGE_TIMEOUT = 15000L
 

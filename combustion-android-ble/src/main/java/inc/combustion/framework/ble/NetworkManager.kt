@@ -420,8 +420,11 @@ internal class NetworkManager(
         switchScanningPurpose(modeOnDfuCompletion)
     }
 
-    fun addSimulatedProbe() {
-        val probe = SimulatedProbeBleDevice(scope)
+    fun addSimulatedProbe(serialNumber: String? = null) {
+        val probe = SimulatedProbeBleDevice(
+            serialNumber = serialNumber ?: SimulatedBleDeviceValues.randomSerialNumber(),
+            scope = scope,
+        )
         val manager = ProbeManager(
             serialNumber = probe.serialNumber,
             scope = scope,
@@ -438,11 +441,19 @@ internal class NetworkManager(
             flowHolder.mutableDiscoveredDevicesFlow.emit(
                 DeviceDiscoveryEvent.ProbeDiscovered(probe.serialNumber)
             )
+            updateDeviceProximity(
+                serialNumber = probe.serialNumber,
+                productType = PROBE,
+                rssi = probe.rssi,
+            )
         }
     }
 
-    fun addSimulatedGauge() {
-        val gauge = SimulatedGaugeBleDevice(scope)
+    fun addSimulatedGauge(serialNumber: String? = null) {
+        val gauge = SimulatedGaugeBleDevice(
+            serialNumber = serialNumber ?: SimulatedBleDeviceValues.randomSerialNumber(),
+            scope = scope,
+        )
         val manager = GaugeManager(
             mac = gauge.mac,
             serialNumber = gauge.serialNumber,
@@ -460,11 +471,19 @@ internal class NetworkManager(
             flowHolder.mutableDiscoveredDevicesFlow.emit(
                 DeviceDiscoveryEvent.GaugeDiscovered(gauge.serialNumber)
             )
+            updateDeviceProximity(
+                serialNumber = gauge.serialNumber,
+                productType = ENGINE,
+                rssi = gauge.rssi,
+            )
         }
     }
 
-    fun addSimulatedEngine() {
-        val engine = SimulatedEngineBleDevice(scope)
+    fun addSimulatedEngine(serialNumber: String? = null) {
+        val engine = SimulatedEngineBleDevice(
+            serialNumber = serialNumber ?: SimulatedBleDeviceValues.randomSerialNumber(),
+            scope = scope,
+        )
         val manager = EngineManager(
             mac = engine.mac,
             serialNumber = engine.serialNumber,
@@ -481,6 +500,11 @@ internal class NetworkManager(
         scope.launch {
             flowHolder.mutableDiscoveredDevicesFlow.emit(
                 DeviceDiscoveryEvent.EngineDiscovered(engine.serialNumber)
+            )
+            updateDeviceProximity(
+                serialNumber = engine.serialNumber,
+                productType = ENGINE,
+                rssi = engine.rssi,
             )
         }
     }
@@ -1135,6 +1159,7 @@ internal class NetworkManager(
             when (productType) {
                 PROBE -> DeviceInProximityEvent.ProbeDiscovered(serialNumber)
                 GAUGE -> DeviceInProximityEvent.GaugeDiscovered(serialNumber)
+                ENGINE -> DeviceInProximityEvent.EngineDiscovered(serialNumber)
                 else -> null
             }?.let { inProximityEvent ->
                 flowHolder.mutableDeviceInProximityFlow.emit(inProximityEvent)

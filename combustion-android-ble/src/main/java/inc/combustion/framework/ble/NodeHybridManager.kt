@@ -39,11 +39,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 
 internal abstract class NodeHybridManager<
-    T : NodeHybridBleDevice,
-    D : DeviceAdvertisingData,
-    S : SpecializedDevice,
-    SIM : SimulatedNodeHybridBleDevice,
->(
+        T : NodeHybridBleDevice,
+        D : DeviceAdvertisingData,
+        S : SpecializedDevice,
+        SIM : SimulatedNodeHybridBleDevice,
+        >(
     val scope: CoroutineScope,
     protected val settings: DeviceManager.Settings,
     protected val dfuDisconnectedNodeCallback: (DeviceID) -> Unit,
@@ -58,7 +58,11 @@ internal abstract class NodeHybridManager<
     protected abstract fun S.withUploadState(state: ProbeUploadState): S
     protected abstract fun S.withRecordsDownloaded(count: Int): S
     protected abstract fun S.withLogUploadPercent(percent: UInt): S
-    protected abstract fun S.withSessionInfo(info: SessionInformation, minSequenceNumber: UInt, maxSequenceNumber: UInt): S
+    protected abstract fun S.withSessionInfo(
+        info: SessionInformation,
+        minSequenceNumber: UInt,
+        maxSequenceNumber: UInt
+    ): S
 
     // Abstract advertisement handling
     protected abstract fun castToAdvertisementType(advertisement: DeviceAdvertisingData): D?
@@ -86,7 +90,11 @@ internal abstract class NodeHybridManager<
         checkAutoConnect(device)
     }
 
-    protected open fun updateDataFromSimulatedAdvertisement(simDevice: SIM, advertisement: D, current: S): S =
+    protected open fun updateDataFromSimulatedAdvertisement(
+        simDevice: SIM,
+        advertisement: D,
+        current: S
+    ): S =
         updateDataFromAdvertisement(advertisement, current)
 
     protected val statusNotificationsMonitor = IdleMonitor()
@@ -223,7 +231,8 @@ internal abstract class NodeHybridManager<
                 delay(STATUS_NOTIFICATIONS_POLL_DELAY_MS)
                 while (isActive) {
                     delay(STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS)
-                    val stale = statusNotificationsMonitor.isIdle(STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS)
+                    val stale =
+                        statusNotificationsMonitor.isIdle(STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS)
                     val shouldUpdate = stale != _deviceFlow.value.statusNotificationsStale
                     if (shouldUpdate) {
                         _deviceFlow.update { it.withStatusNotificationsStale(stale) }
@@ -288,7 +297,10 @@ internal abstract class NodeHybridManager<
         var updated = current
 
         if (isDisconnected) {
-            Log.i(LOG_TAG, "PM($serialNumber): ${device.productType}[${device.id}] is disconnected.")
+            Log.i(
+                LOG_TAG,
+                "PM($serialNumber): ${device.productType}[${device.id}] is disconnected."
+            )
             device.disconnect()
             arbitrator.directLinkDiscoverTimestamp = null
             updated = updated.withBaseDevice(updated.baseDevice.copy(fwVersion = null))
@@ -308,7 +320,10 @@ internal abstract class NodeHybridManager<
 
     protected fun checkAutoConnect(device: T) {
         if (arbitrator.shouldConnect(device)) {
-            Log.i(LOG_TAG, "PM($serialNumber) automatically connecting to ${device.id} (${device.productType})")
+            Log.i(
+                LOG_TAG,
+                "PM($serialNumber) automatically connecting to ${device.id} (${device.productType})"
+            )
             device.connect()
         }
     }
@@ -345,7 +360,9 @@ internal abstract class NodeHybridManager<
         baseDevice: DeviceInformationBleDevice,
         advertisement: D,
     ) {
-        if (IGNORE_GAUGES) return
+        if (IGNORE_GAUGES && device is GaugeBleDevice) return
+        if (IGNORE_ENGINES && device is EngineBleDevice) return
+
         if (arbitrator.addDevice(device, baseDevice)) {
             handleAdvertisingPackets(device, advertisement)
             observe(device)

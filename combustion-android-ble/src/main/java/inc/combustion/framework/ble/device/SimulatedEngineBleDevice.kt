@@ -36,12 +36,11 @@ import inc.combustion.framework.service.EnginePreferences
 import inc.combustion.framework.service.EngineStatusFlags
 import inc.combustion.framework.service.SensorTemperature
 import kotlinx.coroutines.CoroutineScope
-import kotlin.random.Random
 
 internal class SimulatedEngineBleDevice(
     scope: CoroutineScope,
-    mac: String = randomMac(),
-    serialNumber: String = "%08X".format(Random.nextInt()),
+    mac: String = SimulatedBleDeviceValues.randomMac(),
+    serialNumber: String = SimulatedBleDeviceValues.randomMac(),
     shouldConnect: Boolean = false,
     hopCount: UInt = 0u,
 ) : SimulatedNodeHybridBleDevice(
@@ -60,7 +59,7 @@ internal class SimulatedEngineBleDevice(
             return EngineAdvertisingData(
                 mac = mac,
                 name = "Engine",
-                rssi = randomRSSI(),
+                rssi = SimulatedBleDeviceValues.randomRSSI(),
                 isConnectable = true,
                 serialNumber = serialNumber,
                 engineTemperatureSetPoint = SensorTemperature.withRandomData(),
