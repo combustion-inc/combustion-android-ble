@@ -32,8 +32,8 @@ import inc.combustion.framework.service.dfu.DfuProductType
 
 data class Engine(
     override val baseDevice: Device,
-    override val productType: CombustionProductType = CombustionProductType.GAUGE,
-    override val dfuProductType: DfuProductType = DfuProductType.GAUGE,
+    override val productType: CombustionProductType = CombustionProductType.ENGINE,
+    override val dfuProductType: DfuProductType = DfuProductType.ENGINE,
     override val sessionInfo: SessionInformation? = null,
     override val statusNotificationsStale: Boolean = false,
     override val uploadState: ProbeUploadState = ProbeUploadState.Unavailable, // TODO : rename class?
@@ -56,14 +56,14 @@ data class Engine(
     val knobAngleTenthsDegrees: UInt? = null,
 ) : SpecializedDevice {
 
-    override val lowBattery: Boolean
-        get() = engineBatteryStatus.batteryLevel != EngineBatteryLevel.OK
+    override val lowBattery: Boolean = engineBatteryStatus.batteryLevel != EngineBatteryLevel.OK
 
-    override val isOverheating: Boolean
-        get() = false
+    override val isOverheating: Boolean = false
 
-    val knobVoltageVolts: Float? get() = knobVoltageMillivolts?.let { it.toFloat() / 1000.0f }
-    val knobAngleDegrees: Float? get() = knobAngleTenthsDegrees?.let { it.toFloat() / 10.0f }
+    val isControlled: Boolean = (controlSerialNumber != null) && (controlDeviceType != null)
+
+    val knobVoltageVolts: Float? = knobVoltageMillivolts?.let { it.toFloat() / 1000.0f }
+    val knobAngleDegrees: Float? = knobAngleTenthsDegrees?.let { it.toFloat() / 10.0f }
 
     companion object {
         fun create(serialNumber: String = "", mac: String = ""): Engine {

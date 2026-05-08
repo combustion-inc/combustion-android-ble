@@ -41,7 +41,7 @@ import inc.combustion.framework.ble.getLittleEndianUInt32At
  * Bits 65–96 : Fan on time in each time window (milliseconds)
  */
 data class EngineFanStatus(
-    val fanState: FanState,
+    val fanState: EngineFanState,
     val dutyCycle: UByte,
     val commandedSpeed: UByte,
     val measuredSpeed: UByte,
@@ -61,7 +61,7 @@ data class EngineFanStatus(
         fun fromRawData(data: UByteArray): EngineFanStatus? {
             if (data.size < RAW_SIZE) return null
 
-            val fanState = FanState.fromUByte(data[IDX_FAN_STATE])
+            val engineFanState = EngineFanState.fromUByte(data[IDX_FAN_STATE])
             val dutyCycle = data[IDX_DUTY_CYCLE]
             val commandedSpeed = data[IDX_COMMANDED_SPEED]
             val measuredSpeed = data[IDX_MEASURED_SPEED]
@@ -69,7 +69,7 @@ data class EngineFanStatus(
             val fanOnTimeMs = data.getLittleEndianUInt32At(IDX_FAN_ON_TIME_MS)
 
             return EngineFanStatus(
-                fanState = fanState,
+                fanState = engineFanState,
                 dutyCycle = dutyCycle,
                 commandedSpeed = commandedSpeed,
                 measuredSpeed = measuredSpeed,

@@ -28,7 +28,7 @@
 
 package inc.combustion.framework.service
 
-enum class FanState(val type: UByte) {
+enum class EngineFanState(val type: UByte) {
     POWER_DOWN(0x00u),
     PAUSED(0x01u),
     LID_OPEN(0x02u),
@@ -36,7 +36,7 @@ enum class FanState(val type: UByte) {
     FAN_ON(0x04u);
 
     companion object {
-        fun fromUByte(byte: UByte): FanState {
+        fun fromUByte(byte: UByte): EngineFanState {
             return entries.firstOrNull { it.type == byte } ?: POWER_DOWN
         }
     }
