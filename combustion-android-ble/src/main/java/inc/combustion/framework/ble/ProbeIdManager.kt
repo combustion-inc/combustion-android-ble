@@ -30,11 +30,10 @@ package inc.combustion.framework.ble
 
 import android.util.Log
 import inc.combustion.framework.service.ProbeID
+import inc.combustion.framework.service.utils.StateFlowMutableMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 
@@ -43,9 +42,14 @@ private const val LOG_TAG = "ProbeIdManager"
 internal class ProbeIdManager(
     private val setProbeID: (serialNumber: String, probeId: ProbeID, completionHandler: (Boolean) -> Unit) -> Unit,
     private val scope: CoroutineScope,
-    private val knownProbeIdAssignedToDevice: ConcurrentHashMap<ProbeID, String> = ConcurrentHashMap<ProbeID, String>(),
+    private val knownProbeIdAssignedToDevice: StateFlowMutableMap<ProbeID, String> = StateFlowMutableMap(),
 ) {
     private val probeIdObservations = ConcurrentHashMap<String, Job>()
+
+    val availableProbeIDs: Flow<List<ProbeID>> =
+        knownProbeIdAssignedToDevice.stateFlow.map { map ->
+            ProbeID.entries.filterNot { it in map }
+        }
 
     private fun findLowestAvailableProbeId(exceptConflictId: ProbeID): ProbeID? {
         return ProbeID.entries.firstOrNull {
@@ -54,11 +58,7 @@ internal class ProbeIdManager(
     }
 
     private fun removeProbeIdAssignmentsToDevice(serialNumber: String, except: ProbeID?) {
-        return ProbeID.entries.forEach {
-            if ((it != except) && (knownProbeIdAssignedToDevice[it] == serialNumber)) {
-                knownProbeIdAssignedToDevice.remove(it)
-            }
-        }
+        knownProbeIdAssignedToDevice.removeIf { it.key != except && it.value == serialNumber }
     }
 
     private fun resolveProbeIdConflict(
@@ -123,49 +123,13 @@ internal class ProbeIdManager(
         }
     }
 
-    private fun avoidProbeIdConflict(futureConflictDeviceSerial: String, conflictId: ProbeID) {
-        val lowestAvailableProbeId = findLowestAvailableProbeId(conflictId)
-        // assign to lowest available probeId
-        if ((lowestAvailableProbeId != null) && (lowestAvailableProbeId != conflictId)) {
-            Log.v(
-                LOG_TAG,
-                "avoidProbeIdConflict: assign $lowestAvailableProbeId to $futureConflictDeviceSerial"
-            )
-            knownProbeIdAssignedToDevice[lowestAvailableProbeId] = futureConflictDeviceSerial
-            setProbeID(futureConflictDeviceSerial, lowestAvailableProbeId) { success ->
-                if (!success) {
-                    // revert change
-                    if (knownProbeIdAssignedToDevice[lowestAvailableProbeId] == futureConflictDeviceSerial) {
-                        knownProbeIdAssignedToDevice.remove(lowestAvailableProbeId)
-                    }
-                    Log.v(
-                        LOG_TAG,
-                        "avoidProbeIdConflict: assign $lowestAvailableProbeId to $futureConflictDeviceSerial failed"
-                    )
-                }
-            }
-        } else {
-            Log.v(
-                LOG_TAG,
-                "avoidProbeIdConflict: No available ProbeId found to avoid future probeId conflict on $conflictId"
-            )
-        }
-    }
-
-    fun checkAndAvoidProbeIdConflictOnSetProbeId(serialNumber: String, probeId: ProbeID) {
-        removeProbeIdAssignmentsToDevice(serialNumber, except = probeId)
-        val currentDeviceAssigned = knownProbeIdAssignedToDevice[probeId]
-        knownProbeIdAssignedToDevice[probeId] = serialNumber
-        if ((currentDeviceAssigned != null) && (currentDeviceAssigned != serialNumber)) {
-            Log.v(
-                LOG_TAG,
-                "setProbeID: assign $probeId to $serialNumber but currently assigned to $currentDeviceAssigned -- resolving"
-            )
-            avoidProbeIdConflict(currentDeviceAssigned, probeId)
-        }
+    fun hasProbeIdConflict(probeSerialNumber: String, probeId: ProbeID): Boolean {
+        val currentDeviceForProbeId = knownProbeIdAssignedToDevice[probeId]
+        return (currentDeviceForProbeId != null) && (currentDeviceForProbeId != probeSerialNumber)
     }
 
     fun addDevice(probeSerialNumber: String, manager: ProbeManager) {
+        probeIdObservations.remove(probeSerialNumber)?.cancel()
         probeIdObservations[probeSerialNumber] = scope.launch {
             manager.deviceFlow
                 .filter {

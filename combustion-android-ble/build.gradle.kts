@@ -49,6 +49,11 @@ android {
             useSupportLibrary = true
         }
     }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -113,6 +118,7 @@ dependencies {
     testImplementation(frameworkLibs.kotlin.test.junit)
     testImplementation(frameworkLibs.junit.params)
     testImplementation(frameworkLibs.mockk.android)
+    testImplementation(frameworkLibs.kotlinx.coroutines.test)
 }
 
 afterEvaluate {
