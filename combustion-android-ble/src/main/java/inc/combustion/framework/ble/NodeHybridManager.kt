@@ -82,8 +82,8 @@ internal abstract class NodeHybridManager<
                     _deviceFlow.value
                 }
 
-            _deviceFlow.update {
-                updatedDevice.withBaseDevice(_deviceFlow.value.baseDevice.copy(connectionState = state))
+            _deviceFlow.update { device ->
+                updatedDevice.withBaseDevice(device.baseDevice.copy(connectionState = state))
             }
         }
 
@@ -371,21 +371,26 @@ internal abstract class NodeHybridManager<
 
     fun addSimulatedDevice(simDevice: SIM) {
         if (simulatedDevice != null) return
-        var updated = _deviceFlow.value
 
         simDevice.observeConnectionState { state ->
-            updated = handleConnectionState(simDevice, state, updated)
+            _deviceFlow.update {
+                handleConnectionState(simDevice, state, it)
+            }
         }
 
         simDevice.observeOutOfRange(OUT_OF_RANGE_TIMEOUT) {
-            updated = handleOutOfRange(updated)
+            _deviceFlow.update {
+                handleOutOfRange(it)
+            }
         }
 
         simDevice.observeAdvertisingPackets(serialNumber, simDevice.mac) { advertisement ->
             castToAdvertisementType(advertisement)?.let { typedAdv ->
-                updated = updateDataFromSimulatedAdvertisement(simDevice, typedAdv, updated)
                 if (settings.autoReconnect && simDevice.shouldConnect) {
                     simDevice.connect()
+                }
+                _deviceFlow.update {
+                    updateDataFromSimulatedAdvertisement(simDevice, typedAdv, it)
                 }
             }
         }

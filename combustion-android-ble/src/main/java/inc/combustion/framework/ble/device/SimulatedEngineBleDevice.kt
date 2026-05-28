@@ -35,7 +35,7 @@ import inc.combustion.framework.service.CombustionProductType
 import inc.combustion.framework.service.EnginePreferences
 import inc.combustion.framework.service.EngineStatusFlags
 import inc.combustion.framework.service.SensorTemperature
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.*
 
 internal class SimulatedEngineBleDevice(
     scope: CoroutineScope,
@@ -88,6 +88,11 @@ internal class SimulatedEngineBleDevice(
         reqId: UInt?,
         callback: ((Boolean, Any?) -> Unit)?,
     ) {
-        callback?.let { it(true, null) }
+        GlobalScope.launch {
+            delay(100)
+            withContext(Dispatchers.Main) {
+                callback?.let { it(true, null) }
+            }
+        }
     }
 }
