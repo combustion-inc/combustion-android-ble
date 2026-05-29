@@ -28,13 +28,12 @@
 
 package inc.combustion.framework.ble.device
 
+import inc.combustion.framework.ble.EngineStatus
+import inc.combustion.framework.ble.SpecializedDeviceStatus
 import inc.combustion.framework.ble.UartCapableEngine
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.EngineAdvertisingData
-import inc.combustion.framework.service.CombustionProductType
-import inc.combustion.framework.service.EnginePreferences
-import inc.combustion.framework.service.EngineStatusFlags
-import inc.combustion.framework.service.SensorTemperature
+import inc.combustion.framework.service.*
 import kotlinx.coroutines.*
 
 internal class SimulatedEngineBleDevice(
@@ -51,35 +50,68 @@ internal class SimulatedEngineBleDevice(
     hopCount = hopCount,
 ), UartCapableEngine {
 
-    companion object {
-        fun randomAdvertisement(
-            mac: String,
-            serialNumber: String,
-        ): EngineAdvertisingData {
-            return EngineAdvertisingData(
-                mac = mac,
-                name = "Engine",
-                rssi = SimulatedBleDeviceValues.randomRSSI(),
-                isConnectable = true,
-                serialNumber = serialNumber,
-                engineTemperatureSetPoint = SensorTemperature.withRandomData(),
-                engineStatusFlags = EngineStatusFlags(),
-                enginePreferences = EnginePreferences(),
-            )
-        }
-    }
-
     override val productType: CombustionProductType = CombustionProductType.ENGINE
+
+    private var sequenceNumber = 0u
+    private var controlSerialNumber: String? = null
+    private var controlDeviceType: CombustionProductType? = null
+    private var temperatureSetPoint: SensorTemperature? = null
 
     override fun generateAdvertisement(): DeviceAdvertisingData =
         randomAdvertisement(mac, serialNumber)
+
+    private fun randomAdvertisement(
+        mac: String,
+        serialNumber: String,
+    ): EngineAdvertisingData {
+        return EngineAdvertisingData(
+            mac = mac,
+            name = "Engine",
+            rssi = SimulatedBleDeviceValues.randomRSSI(),
+            isConnectable = true,
+            serialNumber = serialNumber,
+            engineTemperatureSetPoint = temperatureSetPoint ?: SensorTemperature.withRandomData(),
+            engineStatusFlags = EngineStatusFlags(controlDeviceConnected = controlDeviceType != null),
+            enginePreferences = EnginePreferences(),
+        )
+    }
+
+    override fun generateStatus(): SpecializedDeviceStatus = EngineStatus(
+        sessionInformation = SessionInformation(sessionID = 1u, samplePeriod = 1u),
+        samplePeriod = 5000u,
+        minSequenceNumber = 0u,
+        maxSequenceNumber = sequenceNumber++,
+        engineBatteryStatus = EngineBatteryStatus(),
+        temperatureSetPoint = temperatureSetPoint ?: SensorTemperature.withRandomData(),
+        controlTemperature = SensorTemperature.NO_DATA,
+        controlDeviceType = controlDeviceType,
+        controlSerialNumber = controlSerialNumber,
+        engineStatusFlags = EngineStatusFlags(controlDeviceConnected = !controlSerialNumber.isNullOrEmpty()),
+        engineFanStatus = EngineFanStatus(
+            fanState = EngineFanState.FAN_ON,
+            dutyCycle = 0u,
+            commandedSpeed = randomPercent(),
+            measuredSpeed = randomPercent(),
+            fanOffTimeMs = 0u,
+            fanOnTimeMs = 0u,
+        ),
+        hopCount = HopCount.HOP1,
+        knobVoltageMillivolts = 0u,
+        knobAngleTenthsDegrees = 0u,
+    )
 
     override fun sendSetTemperatureSetPoint(
         temperature: SensorTemperature,
         reqId: UInt?,
         callback: ((Boolean, Any?) -> Unit)?,
     ) {
-        callback?.let { it(true, null) }
+        GlobalScope.launch {
+            delay(100)
+            this@SimulatedEngineBleDevice.temperatureSetPoint = temperature
+            withContext(Dispatchers.Main) {
+                callback?.let { it(true, null) }
+            }
+        }
     }
 
     override fun sendSetControlDevice(
@@ -90,9 +122,13 @@ internal class SimulatedEngineBleDevice(
     ) {
         GlobalScope.launch {
             delay(100)
+            this@SimulatedEngineBleDevice.controlSerialNumber = controlSerialNumber
+            this@SimulatedEngineBleDevice.controlDeviceType = controlDeviceType
             withContext(Dispatchers.Main) {
                 callback?.let { it(true, null) }
             }
         }
     }
+
+    private fun randomPercent(): UByte = (0..100).random().toUByte()
 }

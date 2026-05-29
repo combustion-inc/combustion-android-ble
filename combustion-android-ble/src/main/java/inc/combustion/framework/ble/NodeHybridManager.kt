@@ -97,6 +97,8 @@ internal abstract class NodeHybridManager<
     ): S =
         updateDataFromAdvertisement(advertisement, current)
 
+    protected abstract suspend fun updateDataFromSimulatedStatus(status: SpecializedDeviceStatus)
+
     protected val statusNotificationsMonitor = IdleMonitor()
 
     protected var simulatedDevice: SIM? = null
@@ -393,6 +395,10 @@ internal abstract class NodeHybridManager<
                     updateDataFromSimulatedAdvertisement(simDevice, typedAdv, it)
                 }
             }
+        }
+
+        simDevice.observeStatus { status ->
+            updateDataFromSimulatedStatus(status)
         }
 
         simulatedDevice = simDevice

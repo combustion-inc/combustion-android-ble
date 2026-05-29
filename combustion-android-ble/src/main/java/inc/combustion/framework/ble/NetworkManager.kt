@@ -422,7 +422,7 @@ internal class NetworkManager(
         switchScanningPurpose(modeOnDfuCompletion)
     }
 
-    fun addSimulatedProbe(serialNumber: String? = null) {
+    fun addSimulatedProbe(serialNumber: String? = null, completionHandler: (String) -> Unit = {}) {
         val probe = SimulatedProbeBleDevice(
             serialNumber = serialNumber ?: SimulatedBleDeviceValues.randomSerialNumber(),
             scope = scope,
@@ -448,10 +448,11 @@ internal class NetworkManager(
                 productType = PROBE,
                 rssi = probe.rssi,
             )
+            withContext(Dispatchers.Main) { completionHandler(probe.serialNumber) }
         }
     }
 
-    fun addSimulatedGauge(serialNumber: String? = null) {
+    fun addSimulatedGauge(serialNumber: String? = null, completionHandler: (String) -> Unit = {}) {
         val gauge = SimulatedGaugeBleDevice(
             serialNumber = serialNumber ?: SimulatedBleDeviceValues.randomSerialNumber(),
             scope = scope,
@@ -478,10 +479,11 @@ internal class NetworkManager(
                 productType = ENGINE,
                 rssi = gauge.rssi,
             )
+            withContext(Dispatchers.Main) { completionHandler(gauge.serialNumber) }
         }
     }
 
-    fun addSimulatedEngine(serialNumber: String? = null) {
+    fun addSimulatedEngine(serialNumber: String? = null, completionHandler: (String) -> Unit = {}) {
         val engine = SimulatedEngineBleDevice(
             serialNumber = serialNumber ?: SimulatedBleDeviceValues.randomSerialNumber(),
             scope = scope,
@@ -508,6 +510,7 @@ internal class NetworkManager(
                 productType = ENGINE,
                 rssi = engine.rssi,
             )
+            withContext(Dispatchers.Main) { completionHandler(engine.serialNumber) }
         }
     }
 

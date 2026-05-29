@@ -111,6 +111,10 @@ internal class EngineManager(
 
     fun addSimulatedEngine(simEngine: SimulatedEngineBleDevice) = addSimulatedDevice(simEngine)
 
+    override suspend fun updateDataFromSimulatedStatus(status: SpecializedDeviceStatus) {
+        handleStatus(status as EngineStatus, simulated = true)
+    }
+
     suspend fun observedEngineStatus(engineStatus: EngineStatus) {
         handleStatus(engineStatus, simulated = false)
     }

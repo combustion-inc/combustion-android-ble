@@ -38,9 +38,9 @@ data class EngineStatus(
     override val maxSequenceNumber: UInt,
     val engineBatteryStatus: EngineBatteryStatus,
     val temperatureSetPoint: SensorTemperature,
-    val controlTemperature: SensorTemperature,
-    val controlDeviceType: CombustionProductType,
-    val controlSerialNumber: String,
+    val controlTemperature: SensorTemperature?,
+    val controlDeviceType: CombustionProductType?,
+    val controlSerialNumber: String?,
     val engineStatusFlags: EngineStatusFlags,
     val engineFanStatus: EngineFanStatus,
     val hopCount: HopCount,
@@ -71,6 +71,9 @@ data class EngineStatus(
 
         val RAW_SIZE = KNOB_ANGLE_RANGE.last + 1
 
+        private fun <T> UByteArray.takeIfIsSet(block: (UByteArray) -> T): T? =
+            if (any { it != 0u.toUByte() }) block(this) else null
+
         fun fromRawData(data: UByteArray): EngineStatus? {
             if (data.size < RAW_SIZE) return null
 
@@ -89,18 +92,23 @@ data class EngineStatus(
             val tempSetPoint =
                 SensorTemperature.fromRawDataStart(data.sliceArray(TEMP_SET_POINT_RANGE))
 
-            val controlTemp =
+            val controlDeviceType = data.sliceArray(CONTROL_DEVICE_TYPE_RANGE)
+                .takeIfIsSet { CombustionProductType.fromUByte(it[0]) }
+
+            val controlTemp = if (controlDeviceType != null) {
                 SensorTemperature.fromRawDataStart(data.sliceArray(CONTROL_TEMP_RANGE))
-            val controlDeviceType =
-                CombustionProductType.fromUByte(data.sliceArray(CONTROL_DEVICE_TYPE_RANGE)[0])
+            } else {
+                null
+            }
+
             val controlSerialNumber = when (controlDeviceType) {
-                CombustionProductType.PROBE -> {
-                    val serialUInt =
-                        data.getLittleEndianUInt32At(PROBE_SERIAL_RANGE.first)
-                    Integer.toHexString(serialUInt.toInt()).uppercase()
+                null -> null
+                CombustionProductType.PROBE -> data.sliceArray(PROBE_SERIAL_RANGE).takeIfIsSet {
+                    Integer.toHexString(it.getLittleEndianUInt32At(0).toInt()).uppercase()
                 }
 
-                else -> data.utf8StringFromRange(NODE_SERIAL_RANGE)
+                else -> data.sliceArray(NODE_SERIAL_RANGE)
+                    .takeIfIsSet { data.utf8StringFromRange(NODE_SERIAL_RANGE) }
             }
 
             val engineStatusFlags =

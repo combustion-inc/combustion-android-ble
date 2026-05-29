@@ -903,9 +903,9 @@ class DeviceManager(
      * @see discoveredDevicesFlow
      * @see probeFlow
      */
-    fun addSimulatedProbe(serialNumber: String? = null) {
+    fun addSimulatedProbe(serialNumber: String? = null, completionHandler: (String) -> Unit = {}) {
         doWhenNetworkManagerInitialized {
-            it.addSimulatedProbe(serialNumber = serialNumber)
+            it.addSimulatedProbe(serialNumber = serialNumber, completionHandler = completionHandler)
         }
     }
 
@@ -918,9 +918,9 @@ class DeviceManager(
      * @see discoveredDevicesFlow
      * @see gaugeFlow
      */
-    fun addSimulatedGauge(serialNumber: String? = null) {
+    fun addSimulatedGauge(serialNumber: String? = null, completionHandler: (String) -> Unit = {}) {
         doWhenNetworkManagerInitialized {
-            it.addSimulatedGauge(serialNumber = serialNumber)
+            it.addSimulatedGauge(serialNumber = serialNumber, completionHandler = completionHandler)
         }
     }
 
@@ -933,9 +933,9 @@ class DeviceManager(
      * @see discoveredDevicesFlow
      * @see engineFlow
      */
-    fun addSimulatedEngine(serialNumber: String? = null) {
+    fun addSimulatedEngine(serialNumber: String? = null, completionHandler: (String) -> Unit = {}) {
         doWhenNetworkManagerInitialized {
-            it.addSimulatedEngine(serialNumber = serialNumber)
+            it.addSimulatedEngine(serialNumber = serialNumber, completionHandler = completionHandler)
         }
     }
 

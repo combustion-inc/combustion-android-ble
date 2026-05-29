@@ -28,6 +28,7 @@
 
 package inc.combustion.framework.ble.device
 
+import inc.combustion.framework.ble.SpecializedDeviceStatus
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.service.CombustionProductType
 import inc.combustion.framework.service.DeviceConnectionState
@@ -49,6 +50,7 @@ internal abstract class SimulatedNodeHybridBleDevice(
     abstract override val productType: CombustionProductType
 
     protected abstract fun generateAdvertisement(): DeviceAdvertisingData
+    protected abstract fun generateStatus(): SpecializedDeviceStatus
 
     override val id: DeviceID = mac
     override val isSimulated: Boolean = true
@@ -87,6 +89,8 @@ internal abstract class SimulatedNodeHybridBleDevice(
     private var observeAdvertisingCallback: (suspend (advertisement: DeviceAdvertisingData) -> Unit)? =
         null
 
+    private var observeStatusCallback: (suspend (status: SpecializedDeviceStatus) -> Unit)? = null
+
     private var observeRemoteRssiCallback: (suspend (rssi: Int) -> Unit)? = null
 
     private var observeConnectionStateCallback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)? =
@@ -100,6 +104,14 @@ internal abstract class SimulatedNodeHybridBleDevice(
                 }
                 observeRemoteRssiCallback?.let {
                     it(SimulatedBleDeviceValues.randomRSSI())
+                }
+            }
+        }
+
+        fixedRateTimer(name = "SimStatus", initialDelay = 5000, period = 5000) {
+            scope.launch {
+                if (isConnected) {
+                    observeStatusCallback?.invoke(generateStatus())
                 }
             }
         }
@@ -146,6 +158,10 @@ internal abstract class SimulatedNodeHybridBleDevice(
         callback: (suspend (advertisement: DeviceAdvertisingData) -> Unit)?,
     ) {
         observeAdvertisingCallback = callback
+    }
+
+    fun observeStatus(callback: (suspend (status: SpecializedDeviceStatus) -> Unit)?) {
+        observeStatusCallback = callback
     }
 
     override fun observeRemoteRssi(callback: (suspend (rssi: Int) -> Unit)?) {

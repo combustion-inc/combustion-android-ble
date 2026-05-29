@@ -199,6 +199,10 @@ internal class GaugeManager(
         }
     }
 
+    override suspend fun updateDataFromSimulatedStatus(status: SpecializedDeviceStatus) {
+        handleStatus(status as GaugeStatus, simulated = true)
+    }
+
     suspend fun observedGaugeStatus(gaugeStatus: GaugeStatus) {
         handleStatus(gaugeStatus, simulated = false)
     }

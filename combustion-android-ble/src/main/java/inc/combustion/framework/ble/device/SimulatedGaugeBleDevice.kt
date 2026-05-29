@@ -28,6 +28,8 @@
 
 package inc.combustion.framework.ble.device
 
+import inc.combustion.framework.ble.GaugeStatus
+import inc.combustion.framework.ble.SpecializedDeviceStatus
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
 import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
@@ -87,6 +89,35 @@ internal class SimulatedGaugeBleDevice(
     override val productType: CombustionProductType = CombustionProductType.GAUGE
 
     override fun generateAdvertisement(): DeviceAdvertisingData = randomAdvertisement(mac, serialNumber)
+
+    override fun generateStatus(): SpecializedDeviceStatus = GaugeStatus(
+        sessionInformation = SessionInformation(sessionID = 1u, samplePeriod = 1u),
+        samplePeriod = 1u,
+        temperature = SensorTemperature.withRandomData(),
+        gaugeStatusFlags = GaugeStatusFlags(
+            sensorPresent = true,
+            sensorOverheating = false,
+            lowBattery = false,
+        ),
+        minSequenceNumber = 0u,
+        maxSequenceNumber = 0u,
+        highLowAlarmStatus = HighLowAlarmStatus(
+            HighLowAlarmStatus.AlarmStatus(
+                set = false,
+                tripped = false,
+                alarming = false,
+                temperature = SensorTemperature(100.0),
+            ),
+            HighLowAlarmStatus.AlarmStatus(
+                set = false,
+                tripped = false,
+                alarming = false,
+                temperature = SensorTemperature(100.0),
+            ),
+        ),
+        isNewRecord = true,
+        hopCount = HopCount.HOP1,
+    )
 
     override fun sendSetHighLowAlarmStatus(
         highLowAlarmStatus: HighLowAlarmStatus,
