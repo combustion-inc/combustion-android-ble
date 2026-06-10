@@ -82,7 +82,7 @@ internal class NodeSetEngineControlDeviceRequest(
             when (controlDeviceType) {
                 CombustionProductType.PROBE -> payload.putLittleEndianUInt32At(
                     IDX_PROBE_SERIAL,
-                    controlSerialNumber.toLong(radix = 16).toUInt(),
+                    controlSerialNumber.toLongOrNull(radix = 16)?.toUInt() ?: 0u,
                 )
                 else -> payload.copyInUtf8SerialNumber(controlSerialNumber, IDX_NODE_SERIAL)
             }

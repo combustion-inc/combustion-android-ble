@@ -935,7 +935,10 @@ class DeviceManager(
      */
     fun addSimulatedEngine(serialNumber: String? = null, completionHandler: (String) -> Unit = {}) {
         doWhenNetworkManagerInitialized {
-            it.addSimulatedEngine(serialNumber = serialNumber, completionHandler = completionHandler)
+            it.addSimulatedEngine(
+                serialNumber = serialNumber,
+                completionHandler = completionHandler
+            )
         }
     }
 
@@ -1145,6 +1148,19 @@ class DeviceManager(
                 completionHandler,
             )
         }
+    }
+
+    /**
+     * Clear control device set on engine [serialNumber],
+     * calling [completionHandler] with the success value on completion.
+     */
+    fun clearEngineControlDevice(serialNumber: String, completionHandler: (Boolean) -> Unit) {
+        setEngineControlDevice(
+            serialNumber = serialNumber,
+            controlDeviceType = CombustionProductType.PROBE, // can be Gauge too, as long as empty controlSerialNumber
+            controlSerialNumber = "",
+            completionHandler,
+        )
     }
 
     /**

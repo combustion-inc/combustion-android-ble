@@ -122,7 +122,7 @@ internal class SimulatedEngineBleDevice(
     ) {
         GlobalScope.launch {
             delay(100)
-            this@SimulatedEngineBleDevice.controlSerialNumber = controlSerialNumber
+            this@SimulatedEngineBleDevice.controlSerialNumber = controlSerialNumber.takeIf { it.isNotEmpty() }
             this@SimulatedEngineBleDevice.controlDeviceType = controlDeviceType
             withContext(Dispatchers.Main) {
                 callback?.let { it(true, null) }
