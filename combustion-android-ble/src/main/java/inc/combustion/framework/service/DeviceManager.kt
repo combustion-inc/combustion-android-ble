@@ -933,11 +933,16 @@ class DeviceManager(
      * @see discoveredDevicesFlow
      * @see engineFlow
      */
-    fun addSimulatedEngine(serialNumber: String? = null, completionHandler: (String) -> Unit = {}) {
+    fun addSimulatedEngine(
+        serialNumber: String? = null,
+        appMode: Boolean = true,
+        completionHandler: (String) -> Unit = {},
+    ) {
         doWhenNetworkManagerInitialized {
             it.addSimulatedEngine(
                 serialNumber = serialNumber,
-                completionHandler = completionHandler
+                appMode = appMode,
+                completionHandler = completionHandler,
             )
         }
     }

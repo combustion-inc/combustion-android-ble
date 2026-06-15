@@ -42,6 +42,7 @@ internal class SimulatedEngineBleDevice(
     serialNumber: String = SimulatedBleDeviceValues.randomMac(),
     shouldConnect: Boolean = false,
     hopCount: UInt = 0u,
+    private val appMode: Boolean = true,
 ) : SimulatedNodeHybridBleDevice(
     scope = scope,
     mac = mac,
@@ -71,7 +72,10 @@ internal class SimulatedEngineBleDevice(
             isConnectable = true,
             serialNumber = serialNumber,
             engineTemperatureSetPoint = temperatureSetPoint ?: SensorTemperature.withRandomData(),
-            engineStatusFlags = EngineStatusFlags(controlDeviceConnected = controlDeviceType != null),
+            engineStatusFlags = EngineStatusFlags(
+                appMode = appMode,
+                controlDeviceConnected = controlDeviceType != null,
+            ),
             enginePreferences = EnginePreferences(),
         )
     }
@@ -82,11 +86,14 @@ internal class SimulatedEngineBleDevice(
         minSequenceNumber = 0u,
         maxSequenceNumber = sequenceNumber++,
         engineBatteryStatus = EngineBatteryStatus(),
-        temperatureSetPoint = temperatureSetPoint ?: SensorTemperature.withRandomData(),
+        temperatureSetPoint = temperatureSetPoint ?: SensorTemperature.withRandomData(60.0, 300.0),
         controlTemperature = SensorTemperature.NO_DATA,
         controlDeviceType = controlDeviceType,
         controlSerialNumber = controlSerialNumber,
-        engineStatusFlags = EngineStatusFlags(controlDeviceConnected = !controlSerialNumber.isNullOrEmpty()),
+        engineStatusFlags = EngineStatusFlags(
+            appMode = appMode,
+            controlDeviceConnected = !controlSerialNumber.isNullOrEmpty(),
+        ),
         engineFanStatus = EngineFanStatus(
             fanState = EngineFanState.FAN_ON,
             dutyCycle = 0u,
@@ -122,7 +129,8 @@ internal class SimulatedEngineBleDevice(
     ) {
         GlobalScope.launch {
             delay(100)
-            this@SimulatedEngineBleDevice.controlSerialNumber = controlSerialNumber.takeIf { it.isNotEmpty() }
+            this@SimulatedEngineBleDevice.controlSerialNumber =
+                controlSerialNumber.takeIf { it.isNotEmpty() }
             this@SimulatedEngineBleDevice.controlDeviceType = controlDeviceType
             withContext(Dispatchers.Main) {
                 callback?.let { it(true, null) }

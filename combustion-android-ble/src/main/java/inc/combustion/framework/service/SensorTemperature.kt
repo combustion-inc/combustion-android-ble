@@ -75,8 +75,8 @@ value class SensorTemperature(
             return SensorTemperature(raw13.temperatureFromRaw())
         }
 
-        internal fun withRandomData(): SensorTemperature {
-            return SensorTemperature(Random.nextDouble(45.0, 60.0))
+        internal fun withRandomData(min: Double = 45.0, max: Double = 60.0): SensorTemperature {
+            return SensorTemperature(Random.nextDouble(min, max))
         }
     }
 }

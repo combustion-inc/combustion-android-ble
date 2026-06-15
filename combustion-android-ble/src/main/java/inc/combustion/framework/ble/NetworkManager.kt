@@ -483,9 +483,14 @@ internal class NetworkManager(
         }
     }
 
-    fun addSimulatedEngine(serialNumber: String? = null, completionHandler: (String) -> Unit = {}) {
+    fun addSimulatedEngine(
+        serialNumber: String? = null,
+        appMode: Boolean = true,
+        completionHandler: (String) -> Unit = {},
+    ) {
         val engine = SimulatedEngineBleDevice(
             serialNumber = serialNumber ?: SimulatedBleDeviceValues.randomSerialNumber(),
+            appMode = appMode,
             scope = scope,
         )
         val manager = EngineManager(
