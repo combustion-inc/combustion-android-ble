@@ -102,9 +102,19 @@ internal class SimulatedEngineBleDevice(
             fanOffTimeMs = 0u,
             fanOnTimeMs = 0u,
         ),
+        engineControllerStatus = EngineControllerStatus(
+            state = EngineControllerState.OBSERVE,
+            responseCoefficient = 0.0f,
+            cyclesCompleted = 0u,
+            flags = EngineControllerFlags(),
+            smoothedTemperatureCelsius = 0.0f,
+            timeToPeakSeconds = 0u,
+            driftRateCelsiusPerSecond = 0.0f,
+        ),
         hopCount = HopCount.HOP1,
         knobVoltageMillivolts = 0u,
         knobAngleTenthsDegrees = 0u,
+        chargingFault = EngineChargingFault.NONE,
     )
 
     override fun sendSetTemperatureSetPoint(

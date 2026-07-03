@@ -43,11 +43,13 @@ data class EngineStatus(
     val controlSerialNumber: String?,
     val engineStatusFlags: EngineStatusFlags,
     val engineFanStatus: EngineFanStatus,
+    val engineControllerStatus: EngineControllerStatus,
     val hopCount: HopCount,
     /** Raw potentiometer voltage in millivolts (0–3300 mV). Voltage (V) = millivolts / 1000.0 */
     val knobVoltageMillivolts: UInt,
     /** Knob position in tenths of degrees (0–3599), clockwise from Off (0°). Angle (°) = raw value / 10.0 */
     val knobAngleTenthsDegrees: UInt,
+    val chargingFault: EngineChargingFault,
 ) : SpecializedDeviceStatus {
 
     override val mode: ProbeMode = ProbeMode.NORMAL
@@ -57,19 +59,28 @@ data class EngineStatus(
         private val SAMPLE_PERIOD_RANGE = 4..5 // 2
         private val MIN_SEQ_RANGE = 6..9 // 4
         private val MAX_SEQ_RANGE = 10..13 // 4
-        private val BATTERY_STATUS_RANGE = 14..15 // 2
-        private val TEMP_SET_POINT_RANGE = 16..17 // 2
-        private val CONTROL_TEMP_RANGE = 18..19 // 2
-        private val CONTROL_DEVICE_TYPE_RANGE = 20..20 // 1
-        private val PROBE_SERIAL_RANGE = 21..24 // 4
-        private val NODE_SERIAL_RANGE = 25..34 // 10
-        private val ENGINE_STATUS_FLAGS_RANGE = 35..35 // 1
-        private val FAN_STATUS_RANGE = 36..47 // 12
-        private val HOP_COUNT_RANGE = 48..48 // 1
-        private val KNOB_VOLT_RANGE = 49..50 // 2
-        private val KNOB_ANGLE_RANGE = 51..52 // 2
+        private val BATTERY_STATUS_RANGE = 14..16 // 3
+        private val TEMP_SET_POINT_RANGE = 17..18 // 2
+        private val CONTROL_TEMP_RANGE = 19..20 // 2
+        private val CONTROL_DEVICE_TYPE_RANGE = 21..21 // 1
+        // Control device serial number is a 12-byte union: probe serial occupies the first
+        // 4 bytes, node serial occupies the first 10 bytes; the trailing 2 bytes are reserved.
+        private val CONTROL_SERIAL_RANGE = 22..33 // 12
+        private val PROBE_SERIAL_RANGE = 22..25 // 4
+        private val NODE_SERIAL_RANGE = 22..31 // 10
+        private val ENGINE_STATUS_FLAGS_RANGE =
+            (CONTROL_SERIAL_RANGE.last + 1)..(CONTROL_SERIAL_RANGE.last + 1) // 1
+        private val FAN_STATUS_RANGE = 35..46 // 12
+        private val CONTROLLER_STATUS_RANGE =
+            (FAN_STATUS_RANGE.last + 1)..(FAN_STATUS_RANGE.last + EngineControllerStatus.RAW_SIZE) // 8
+        private val HOP_COUNT_RANGE =
+            (CONTROLLER_STATUS_RANGE.last + 1)..(CONTROLLER_STATUS_RANGE.last + 1) // 1
+        private val KNOB_VOLT_RANGE = (HOP_COUNT_RANGE.last + 1)..(HOP_COUNT_RANGE.last + 2) // 2
+        private val KNOB_ANGLE_RANGE = (KNOB_VOLT_RANGE.last + 1)..(KNOB_VOLT_RANGE.last + 2) // 2
+        private val CHARGING_FAULT_RANGE =
+            (KNOB_ANGLE_RANGE.last + 1)..(KNOB_ANGLE_RANGE.last + 1) // 1
 
-        val RAW_SIZE = KNOB_ANGLE_RANGE.last + 1
+        val RAW_SIZE = CHARGING_FAULT_RANGE.last + 1
 
         private fun <T> UByteArray.takeIfIsSet(block: (UByteArray) -> T): T? =
             if (any { it != 0u.toUByte() }) block(this) else null
@@ -115,10 +126,15 @@ data class EngineStatus(
                 EngineStatusFlags.fromRawByte(data.sliceArray(ENGINE_STATUS_FLAGS_RANGE)[0])
             val engineFanStatus =
                 EngineFanStatus.fromRawData(data.sliceArray(FAN_STATUS_RANGE)) ?: return null
+            val engineControllerStatus =
+                EngineControllerStatus.fromRawData(data.sliceArray(CONTROLLER_STATUS_RANGE))
+                    ?: return null
 
             val hopCount: HopCount = HopCount.fromUByte(data.sliceArray(HOP_COUNT_RANGE)[0])
             val knobVoltageMillivolts: UInt = data.getLittleEndianUInt16At(KNOB_VOLT_RANGE.first)
             val knobAngleTenthsDegrees: UInt = data.getLittleEndianUInt16At(KNOB_ANGLE_RANGE.first)
+            val chargingFault =
+                EngineChargingFault.fromUByte(data.sliceArray(CHARGING_FAULT_RANGE)[0])
 
             return EngineStatus(
                 sessionInformation = sessionInformation,
@@ -132,9 +148,11 @@ data class EngineStatus(
                 controlSerialNumber = controlSerialNumber,
                 engineStatusFlags = engineStatusFlags,
                 engineFanStatus = engineFanStatus,
+                engineControllerStatus = engineControllerStatus,
                 hopCount = hopCount,
                 knobVoltageMillivolts = knobVoltageMillivolts,
                 knobAngleTenthsDegrees = knobAngleTenthsDegrees,
+                chargingFault = chargingFault,
             )
         }
     }

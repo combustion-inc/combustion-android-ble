@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: EngineBatteryStatus.kt
+ * File: EngineControllerState.kt
  * Author:
  *
  * MIT License
@@ -28,31 +28,16 @@
 
 package inc.combustion.framework.service
 
-data class EngineBatteryStatus(
-    val batteryLevel: EngineBatteryLevel = EngineBatteryLevel.OK,
-    val batteryState: EngineBatteryState = EngineBatteryState.NOT_CHARGING,
-    /** Raw battery voltage in tenths of a volt (0–255, i.e. 0–25.5 V). Voltage (V) = raw value / 10.0 */
-    val batteryVoltageTenthsVolts: UByte = 0u,
-) {
-
-    val batteryVoltageVolts: Float
-        get() = batteryVoltageTenthsVolts.toFloat() / 10.0f
+enum class EngineControllerState(val type: UByte) {
+    IDLE(0x00u),
+    STARTUP(0x01u),
+    PROBE(0x02u),
+    OBSERVE(0x03u),
+    REST(0x04u);
 
     companion object {
-        const val RAW_SIZE = 3
-
-        private const val IDX_LEVEL = 0
-        private const val IDX_STATUS = 1
-        private const val IDX_VOLTAGE = 2
-
-        fun fromRaw(data: UByteArray): EngineBatteryStatus? {
-            if (data.size < RAW_SIZE) return null
-
-            return EngineBatteryStatus(
-                batteryLevel = EngineBatteryLevel.fromUByte(data[IDX_LEVEL]),
-                batteryState = EngineBatteryState.fromUByte(data[IDX_STATUS]),
-                batteryVoltageTenthsVolts = data[IDX_VOLTAGE],
-            )
+        fun fromUByte(byte: UByte): EngineControllerState {
+            return entries.firstOrNull { it.type == byte } ?: IDLE
         }
     }
 }

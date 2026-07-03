@@ -42,6 +42,7 @@ data class Engine(
     val engineStatusFlags: EngineStatusFlags = EngineStatusFlags(),
     val engineBatteryStatus: EngineBatteryStatus = EngineBatteryStatus(),
     val engineFanStatus: EngineFanStatus? = null,
+    val engineControllerStatus: EngineControllerStatus? = null,
     val enginePreferences: EnginePreferences = EnginePreferences(),
     val temperatureSetPointCelsius: SensorTemperature = SensorTemperature.NO_DATA,
     val controlDeviceType: CombustionProductType? = null,
@@ -54,6 +55,7 @@ data class Engine(
     val knobVoltageMillivolts: UInt? = null,
     /** Knob position in tenths of degrees (0–3599), clockwise from Off (0°). Angle (°) = raw value / 10.0 */
     val knobAngleTenthsDegrees: UInt? = null,
+    val chargingFault: EngineChargingFault = EngineChargingFault.NONE,
 ) : SpecializedDevice {
 
     override val lowBattery: Boolean = engineBatteryStatus.batteryLevel != EngineBatteryLevel.OK

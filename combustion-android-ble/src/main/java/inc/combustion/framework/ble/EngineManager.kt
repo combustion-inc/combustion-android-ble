@@ -77,11 +77,19 @@ internal class EngineManager(
     // Abstract method implementations
 
     override fun Engine.withBaseDevice(baseDevice: Device): Engine = copy(baseDevice = baseDevice)
-    override fun Engine.withStatusNotificationsStale(stale: Boolean): Engine = copy(statusNotificationsStale = stale)
+    override fun Engine.withStatusNotificationsStale(stale: Boolean): Engine =
+        copy(statusNotificationsStale = stale)
+
     override fun Engine.withUploadState(state: ProbeUploadState): Engine = copy(uploadState = state)
     override fun Engine.withRecordsDownloaded(count: Int): Engine = copy(recordsDownloaded = count)
-    override fun Engine.withLogUploadPercent(percent: UInt): Engine = copy(logUploadPercent = percent)
-    override fun Engine.withSessionInfo(info: SessionInformation, minSequenceNumber: UInt, maxSequenceNumber: UInt): Engine =
+    override fun Engine.withLogUploadPercent(percent: UInt): Engine =
+        copy(logUploadPercent = percent)
+
+    override fun Engine.withSessionInfo(
+        info: SessionInformation,
+        minSequenceNumber: UInt,
+        maxSequenceNumber: UInt
+    ): Engine =
         copy(minSequence = minSequenceNumber, maxSequence = maxSequenceNumber, sessionInfo = info)
 
     override fun castToAdvertisementType(advertisement: DeviceAdvertisingData): EngineAdvertisingData? =
@@ -145,6 +153,7 @@ internal class EngineManager(
                     engineBatteryStatus = status.engineBatteryStatus,
                     engineStatusFlags = status.engineStatusFlags,
                     engineFanStatus = status.engineFanStatus,
+                    engineControllerStatus = status.engineControllerStatus,
                     temperatureSetPointCelsius = status.temperatureSetPoint,
                     controlDeviceType = status.controlDeviceType,
                     controlSerialNumber = status.controlSerialNumber,
@@ -152,6 +161,7 @@ internal class EngineManager(
                     knobVoltageMillivolts = status.knobVoltageMillivolts,
                     knobAngleTenthsDegrees = status.knobAngleTenthsDegrees,
                     hopCount = status.hopCount.hopCount,
+                    chargingFault = status.chargingFault,
                 )
             }
         }

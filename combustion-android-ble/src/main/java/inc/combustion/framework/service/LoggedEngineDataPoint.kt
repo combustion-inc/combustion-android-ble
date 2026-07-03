@@ -43,6 +43,7 @@ data class LoggedEngineDataPoint(
     // EngineBatteryStatus fields
     val batteryLevel: EngineBatteryLevel,
     val batteryState: EngineBatteryState,
+    val batteryVoltageTenthsVolts: UByte,
     // EngineStatusFlags fields
     val appMode: Boolean,
     val controlDeviceConnected: Boolean,
@@ -55,9 +56,19 @@ data class LoggedEngineDataPoint(
     val measuredSpeed: UByte,
     val fanOffTimeMs: UInt,
     val fanOnTimeMs: UInt,
+    // EngineControllerStatus fields
+    val controllerState: EngineControllerState,
+    val responseCoefficient: Float,
+    val cyclesCompleted: UByte,
+    val reachedSetpoint: Boolean,
+    val maintenanceMode: Boolean,
+    val smoothedTemperatureCelsius: Float,
+    val timeToPeakSeconds: UByte,
+    val driftRateCelsiusPerSecond: Float,
     // Knob fields
     val knobVoltageMillivolts: UInt,
     val knobAngleTenthsDegrees: UInt,
+    val chargingFault: EngineChargingFault,
 ) : LoggedDataPoint {
 
     override fun copyWith(
@@ -87,6 +98,7 @@ data class LoggedEngineDataPoint(
                 controlSerialNumber = status.controlSerialNumber,
                 batteryLevel = status.engineBatteryStatus.batteryLevel,
                 batteryState = status.engineBatteryStatus.batteryState,
+                batteryVoltageTenthsVolts = status.engineBatteryStatus.batteryVoltageTenthsVolts,
                 appMode = status.engineStatusFlags.appMode,
                 controlDeviceConnected = status.engineStatusFlags.controlDeviceConnected,
                 lidOpen = status.engineStatusFlags.lidOpen,
@@ -97,8 +109,17 @@ data class LoggedEngineDataPoint(
                 measuredSpeed = status.engineFanStatus.measuredSpeed,
                 fanOffTimeMs = status.engineFanStatus.fanOffTimeMs,
                 fanOnTimeMs = status.engineFanStatus.fanOnTimeMs,
+                controllerState = status.engineControllerStatus.state,
+                responseCoefficient = status.engineControllerStatus.responseCoefficient,
+                cyclesCompleted = status.engineControllerStatus.cyclesCompleted,
+                reachedSetpoint = status.engineControllerStatus.flags.reachedSetpoint,
+                maintenanceMode = status.engineControllerStatus.flags.maintenanceMode,
+                smoothedTemperatureCelsius = status.engineControllerStatus.smoothedTemperatureCelsius,
+                timeToPeakSeconds = status.engineControllerStatus.timeToPeakSeconds,
+                driftRateCelsiusPerSecond = status.engineControllerStatus.driftRateCelsiusPerSecond,
                 knobVoltageMillivolts = status.knobVoltageMillivolts,
                 knobAngleTenthsDegrees = status.knobAngleTenthsDegrees,
+                chargingFault = status.chargingFault,
             )
         }
     }
