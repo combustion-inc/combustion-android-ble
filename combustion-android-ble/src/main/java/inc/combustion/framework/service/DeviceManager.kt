@@ -1167,83 +1167,44 @@ class DeviceManager(
         probeData: List<LoggedProbeDataPoint>?,
         appNameAndVersion: String,
         sessionNotes: Map<UInt, String> = emptyMap(),
-    ): Pair<String, String> {
-        val csvVersion = CSV_VERSION
-        val sb = StringBuilder()
-        val serialNumber = probe?.serialNumber ?: "UNKNOWN"
-        val firmwareVersion = probe?.fwVersion ?: "UNKNOWN"
-        val hardwareVersion = probe?.hwRevision ?: "UNKNOWN"
-        val samplePeriod = probe?.sessionInfo?.samplePeriod ?: DEFAULT_SAMPLE_PERIOD
-        val frameworkVersion =
-            "Android ${Combustion.FRAMEWORK_VERSION_NAME} ${Combustion.FRAMEWORK_BUILD_TYPE}"
-
-        val now = LocalDateTime.now()
-        val headerDateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-        val createdDateTime = now.format(headerDateTimeFormatter)
-
-        val startTime = (probeData?.firstOrNull()?.timestamp ?: Date()).time
-        val formattedStartTime =
-            LocalDateTime.ofInstant(Instant.ofEpochMilli(startTime), ZoneId.systemDefault())
-                .format(headerDateTimeFormatter)
-
-        // header
-        sb.appendLine("Combustion Inc. Probe Data")
-        sb.appendLine("App: $appNameAndVersion")
-        sb.appendLine("CSV version: $csvVersion")
-        sb.appendLine("Probe S/N: $serialNumber")
-        sb.appendLine("Probe FW version: $firmwareVersion")
-        sb.appendLine("Probe HW revision: $hardwareVersion")
-        sb.appendLine("Framework: $frameworkVersion")
-        sb.appendLine("Sample Period: $samplePeriod")
-        sb.appendLine("CSV Creation Date: $createdDateTime")
-        sb.appendLine("Session Start Date: $formattedStartTime")
-        sb.appendLine()
-
-        // column headers
-        sb.appendLine("Timestamp,SessionID,SequenceNumber,T1,T2,T3,T4,T5,T6,T7,T8,VirtualCoreTemperature,VirtualSurfaceTemperature,VirtualAmbientTemperature,EstimatedCoreTemperature,PredictionSetPoint,VirtualCoreSensor,VirtualSurfaceSensor,VirtualAmbientSensor,PredictionState,PredictionMode,PredictionType,PredictionValueSeconds,Notes")
-
-        // the data
-        probeData?.forEach { dataPoint ->
-            val timestamp = dataPoint.timestamp.time
-            val elapsed = (timestamp - startTime) / 1000.0f
-            sb.appendLine(
-                String.format(
-                    locale = Locale.US,
-                    "%.3f,%s,%s,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%s,%s,%s,%s,%s,%s,%d,%s",
-                    elapsed,
-                    dataPoint.sessionId.toString(),
-                    dataPoint.sequenceNumber.toString(),
-                    dataPoint.temperatures.values[0],
-                    dataPoint.temperatures.values[1],
-                    dataPoint.temperatures.values[2],
-                    dataPoint.temperatures.values[3],
-                    dataPoint.temperatures.values[4],
-                    dataPoint.temperatures.values[5],
-                    dataPoint.temperatures.values[6],
-                    dataPoint.temperatures.values[7],
-                    dataPoint.virtualCoreTemperature,
-                    dataPoint.virtualSurfaceTemperature,
-                    dataPoint.virtualAmbientTemperature,
-                    dataPoint.estimatedCoreTemperature,
-                    dataPoint.predictionSetPointTemperature,
-                    dataPoint.virtualCoreSensor.toString(),
-                    dataPoint.virtualSurfaceSensor.toString(),
-                    dataPoint.virtualAmbientSensor.toString(),
-                    dataPoint.predictionState.toString(),
-                    dataPoint.predictionMode.toString(),
-                    dataPoint.predictionType.toString(),
-                    dataPoint.predictionValueSeconds.toInt(),
-                    sessionNotes.get(dataPoint.sequenceNumber) ?: "",
-                )
-            )
-        }
-
-        // recommended file name
-        val fileDateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
-        val recommendedFileName =
-            "ProbeData_${serialNumber}_${now.format(fileDateTimeFormatter)}.csv"
-
-        return recommendedFileName to sb.toString()
+    ): Pair<String, String> = deviceDataToCsv(
+        deviceLabel = "Probe",
+        serialNumber = probe?.serialNumber ?: "UNKNOWN",
+        firmwareVersion = probe?.fwVersion?.toString() ?: "UNKNOWN",
+        hardwareVersion = probe?.hwRevision ?: "UNKNOWN",
+        samplePeriod = probe?.sessionInfo?.samplePeriod ?: DEFAULT_SAMPLE_PERIOD,
+        appNameAndVersion = appNameAndVersion,
+        data = probeData,
+        columnHeaderLine = "Timestamp,SessionID,SequenceNumber,T1,T2,T3,T4,T5,T6,T7,T8,VirtualCoreTemperature,VirtualSurfaceTemperature,VirtualAmbientTemperature,EstimatedCoreTemperature,PredictionSetPoint,VirtualCoreSensor,VirtualSurfaceSensor,VirtualAmbientSensor,PredictionState,PredictionMode,PredictionType,PredictionValueSeconds,Notes",
+    ) { dataPoint, elapsed ->
+        String.format(
+            locale = Locale.US,
+            "%.3f,%s,%s,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%s,%s,%s,%s,%s,%s,%d,%s",
+            elapsed,
+            dataPoint.sessionId.toString(),
+            dataPoint.sequenceNumber.toString(),
+            dataPoint.temperatures.values[0],
+            dataPoint.temperatures.values[1],
+            dataPoint.temperatures.values[2],
+            dataPoint.temperatures.values[3],
+            dataPoint.temperatures.values[4],
+            dataPoint.temperatures.values[5],
+            dataPoint.temperatures.values[6],
+            dataPoint.temperatures.values[7],
+            dataPoint.virtualCoreTemperature,
+            dataPoint.virtualSurfaceTemperature,
+            dataPoint.virtualAmbientTemperature,
+            dataPoint.estimatedCoreTemperature,
+            dataPoint.predictionSetPointTemperature,
+            dataPoint.virtualCoreSensor.toString(),
+            dataPoint.virtualSurfaceSensor.toString(),
+            dataPoint.virtualAmbientSensor.toString(),
+            dataPoint.predictionState.toString(),
+            dataPoint.predictionMode.toString(),
+            dataPoint.predictionType.toString(),
+            dataPoint.predictionValueSeconds.toInt(),
+            sessionNotes[dataPoint.sequenceNumber] ?: "",
+        )
     }
 
     /**
@@ -1255,13 +1216,44 @@ class DeviceManager(
         gaugeData: List<LoggedGaugeDataPoint>?,
         appNameAndVersion: String,
         sessionNotes: Map<UInt, String> = emptyMap(),
+    ): Pair<String, String> = deviceDataToCsv(
+        deviceLabel = "Gauge",
+        serialNumber = gauge?.serialNumber ?: "UNKNOWN",
+        firmwareVersion = gauge?.fwVersion?.toString() ?: "UNKNOWN",
+        hardwareVersion = gauge?.hwRevision ?: "UNKNOWN",
+        samplePeriod = gauge?.sessionInfo?.samplePeriod ?: DEFAULT_SAMPLE_PERIOD,
+        appNameAndVersion = appNameAndVersion,
+        data = gaugeData,
+        columnHeaderLine = "Timestamp,SessionID,SequenceNumber,Temperature,Notes",
+    ) { dataPoint, elapsed ->
+        String.format(
+            locale = Locale.US,
+            "%.3f,%s,%s,%.2f,%s",
+            elapsed,
+            dataPoint.sessionId.toString(),
+            dataPoint.sequenceNumber.toString(),
+            dataPoint.temperature.value,
+            sessionNotes[dataPoint.sequenceNumber] ?: "",
+        )
+    }
+
+    /**
+     * Shared CSV-building logic for [probeDataToCsv] and [gaugeDataToCsv]: writes the common
+     * header block, then the column header and one formatted row per data point produced by
+     * [formatRow].
+     */
+    private fun <T : LoggedDataPoint> deviceDataToCsv(
+        deviceLabel: String,
+        serialNumber: String,
+        firmwareVersion: String,
+        hardwareVersion: String,
+        samplePeriod: UInt,
+        appNameAndVersion: String,
+        data: List<T>?,
+        columnHeaderLine: String,
+        formatRow: (dataPoint: T, elapsedSeconds: Float) -> String,
     ): Pair<String, String> {
-        val csvVersion = CSV_VERSION
         val sb = StringBuilder()
-        val serialNumber = gauge?.serialNumber ?: "UNKNOWN"
-        val firmwareVersion = gauge?.fwVersion ?: "UNKNOWN"
-        val hardwareVersion = gauge?.hwRevision ?: "UNKNOWN"
-        val samplePeriod = gauge?.sessionInfo?.samplePeriod ?: DEFAULT_SAMPLE_PERIOD
         val frameworkVersion =
             "Android ${Combustion.FRAMEWORK_VERSION_NAME} ${Combustion.FRAMEWORK_BUILD_TYPE}"
 
@@ -1269,18 +1261,18 @@ class DeviceManager(
         val headerDateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
         val createdDateTime = now.format(headerDateTimeFormatter)
 
-        val startTime = (gaugeData?.firstOrNull()?.timestamp ?: Date()).time
+        val startTime = (data?.firstOrNull()?.timestamp ?: Date()).time
         val formattedStartTime =
             LocalDateTime.ofInstant(Instant.ofEpochMilli(startTime), ZoneId.systemDefault())
                 .format(headerDateTimeFormatter)
 
         // header
-        sb.appendLine("Combustion Inc. Gauge Data")
+        sb.appendLine("Combustion Inc. $deviceLabel Data")
         sb.appendLine("App: $appNameAndVersion")
-        sb.appendLine("CSV version: $csvVersion")
-        sb.appendLine("Gauge S/N: $serialNumber")
-        sb.appendLine("Gauge FW version: $firmwareVersion")
-        sb.appendLine("Gauge HW revision: $hardwareVersion")
+        sb.appendLine("CSV version: $CSV_VERSION")
+        sb.appendLine("$deviceLabel S/N: $serialNumber")
+        sb.appendLine("$deviceLabel FW version: $firmwareVersion")
+        sb.appendLine("$deviceLabel HW revision: $hardwareVersion")
         sb.appendLine("Framework: $frameworkVersion")
         sb.appendLine("Sample Period: $samplePeriod")
         sb.appendLine("CSV Creation Date: $createdDateTime")
@@ -1288,29 +1280,18 @@ class DeviceManager(
         sb.appendLine()
 
         // column headers
-        sb.appendLine("Timestamp,SessionID,SequenceNumber,Temperature,Notes")
+        sb.appendLine(columnHeaderLine)
 
         // the data
-        gaugeData?.forEach { dataPoint ->
-            val timestamp = dataPoint.timestamp.time
-            val elapsed = (timestamp - startTime) / 1000.0f
-            sb.appendLine(
-                String.format(
-                    locale = Locale.US,
-                    "%.3f,%s,%s,%.2f,%s",
-                    elapsed,
-                    dataPoint.sessionId.toString(),
-                    dataPoint.sequenceNumber.toString(),
-                    dataPoint.temperature.value,
-                    sessionNotes.get(dataPoint.sequenceNumber) ?: "",
-                )
-            )
+        data?.forEach { dataPoint ->
+            val elapsed = (dataPoint.timestamp.time - startTime) / 1000.0f
+            sb.appendLine(formatRow(dataPoint, elapsed))
         }
 
         // recommended file name
         val fileDateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
         val recommendedFileName =
-            "GaugeData_${serialNumber}_${now.format(fileDateTimeFormatter)}.csv"
+            "${deviceLabel}Data_${serialNumber}_${now.format(fileDateTimeFormatter)}.csv"
 
         return recommendedFileName to sb.toString()
     }
