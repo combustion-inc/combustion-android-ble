@@ -60,6 +60,7 @@ enum class CombustionProductType(val type: UByte) {
                 "Charger" -> NODE
                 "" -> PROBE
                 "Gauge" -> GAUGE
+                "Engine" -> ENGINE
                 else -> UNKNOWN
             }
         }

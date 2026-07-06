@@ -52,7 +52,7 @@ enum class DfuProductType {
                 "Charger" -> CHARGER
                 "" -> PROBE
                 "Gauge" -> GAUGE
-                "Engine" -> GAUGE // TODO : verify string
+                "Engine" -> ENGINE
                 else -> UNKNOWN
             }
         }
