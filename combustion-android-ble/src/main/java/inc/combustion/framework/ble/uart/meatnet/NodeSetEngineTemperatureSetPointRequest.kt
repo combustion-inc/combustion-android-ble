@@ -58,7 +58,7 @@ internal class NodeSetEngineTemperatureSetPointRequest(
             // Add serial number to payload
             payload.copyInUtf8SerialNumber(serialNumber, 0)
 
-            val tempBytes = temperature.toRawDataEnd()
+            val tempBytes = temperature.toRawDataStart()
             tempBytes.copyInto(
                 destination = payload,
                 destinationOffset = payload.size - tempBytes.size
