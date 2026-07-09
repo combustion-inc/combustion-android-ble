@@ -49,8 +49,12 @@ fun UByte.setBit(bit: Int): UByte {
 
 fun UByte.toPercentage(): Int = this.toInt()
 
-fun UByteArray.utf8StringFromRange(indices: IntRange): String =
-    String(this.copyOf().sliceArray(indices).toByteArray(), Charsets.UTF_8).uppercase()
+// These are fixed-width fields; firmware pads them with trailing NUL bytes when the actual
+// string is shorter than the field width, so we trim those before returning.
+fun UByteArray.utf8StringFromRange(indices: IntRange, uppercase: Boolean = true): String =
+    String(this.copyOf().sliceArray(indices).toByteArray(), Charsets.UTF_8)
+        .trim('\u0000')
+        .let { if (uppercase) it.uppercase() else it }
 
 fun UByteArray.getUtf8SerialNumber(startIdx: Int): String =
     this.utf8StringFromRange(startIdx until (startIdx + UTF8_SERIAL_NUMBER_LENGTH))
