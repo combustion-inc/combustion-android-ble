@@ -156,6 +156,13 @@ data class Probe(
     override val isOverheating: Boolean
         get() = overheatingSensors.isNotEmpty()
 
+    /**
+     * [thermometerPrefs] is only ever populated by a status message (never by advertising data
+     * alone), so this is true once one has been received.
+     */
+    override val hasReceivedStatus: Boolean
+        get() = thermometerPrefs != null
+
     val isPredicting: Boolean
         get() = (
                 predictionMode?.let {

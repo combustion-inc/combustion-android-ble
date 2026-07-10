@@ -63,4 +63,11 @@ data class Gauge(
 
     override val isOverheating: Boolean
         get() = gaugeStatusFlags.sensorOverheating
+
+    /**
+     * [hopCount] is only ever populated by a status message (never by advertising data alone),
+     * so this is true once one has been received.
+     */
+    override val hasReceivedStatus: Boolean
+        get() = hopCount != null
 }
