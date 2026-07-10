@@ -75,6 +75,8 @@ enum class CombustionProductType(val type: UByte) {
             }
     }
 
+    val typeInt: Int get() = type.toInt()
+
     val isRepeater: Boolean get() = (this != PROBE) && (this != UNKNOWN)
 
     fun isType(type: CombustionProductType) = this == type
