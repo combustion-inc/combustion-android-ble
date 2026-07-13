@@ -221,10 +221,14 @@ internal class EngineManager(
     ) {
         val onCompletion: (Boolean) -> Unit = { success ->
             if (success) {
-                _deviceFlow.update {
-                    _deviceFlow.value.copy(
-                        controlDeviceType = controlDeviceType,
-                        controlSerialNumber = controlSerialNumber,
+                val newControlSerialNumber = controlSerialNumber.takeIf(String::isNotEmpty)
+                _deviceFlow.update { engine ->
+                    engine.copy(
+                        controlDeviceType = newControlSerialNumber?.let { controlDeviceType },
+                        controlSerialNumber = newControlSerialNumber,
+                        engineStatusFlags = engine.engineStatusFlags.copy(
+                            controlDeviceConnected = newControlSerialNumber != null,
+                        ),
                     )
                 }
             }
