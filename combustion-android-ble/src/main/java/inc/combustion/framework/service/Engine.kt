@@ -62,14 +62,18 @@ data class Engine(
 
     override val isOverheating: Boolean = false
 
-    val isControlled: Boolean = (controlSerialNumber != null) && (controlDeviceType != null)
+    val hasController: Boolean = engineStatusFlags.controlDeviceConnected
 
     /**
-     * Fields like [isControlled], [controlSerialNumber], and [controlTemperature] are only ever
+     * Fields like [hasConfirmedController], [controlSerialNumber], and [controlTemperature] are only ever
      * populated by a status message (never by advertising data alone), so until
      * [hasReceivedStatus] is true they can't be trusted to reflect the engine's actual state.
      */
     override val hasReceivedStatus: Boolean = (engineFanStatus != null)
+
+    val hasConfirmedController: Boolean = hasController &&
+            // Can only confirm control details after status was received since not part of advertisement
+            hasReceivedStatus && (controlSerialNumber != null) && (controlDeviceType != null)
 
     val knobVoltageVolts: Float? = knobVoltageMillivolts?.let { it.toFloat() / 1000.0f }
     val knobAngleDegrees: Float? = knobAngleTenthsDegrees?.let { it.toFloat() / 10.0f }
