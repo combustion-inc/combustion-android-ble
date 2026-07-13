@@ -498,6 +498,7 @@ internal class NetworkManager(
             serialNumber = engine.serialNumber,
             scope = scope,
             settings = settings,
+            initialEngineAdvertisingData = null,
             dfuDisconnectedNodeCallback = { },
         )
 
@@ -927,29 +928,32 @@ internal class NetworkManager(
      * if we haven't seen [engineSerialNumber], then create a manager for it.
      * @return true if new manager was created
      */
-    private fun createEngineManagerIfNew(mac: String, engineSerialNumber: String): Boolean =
-        if (!engineManagers.containsKey(engineSerialNumber)) {
-            val manager = EngineManager(
-                mac = mac,
-                serialNumber = engineSerialNumber,
-                scope = scope,
-                settings = settings,
-                dfuDisconnectedNodeCallback = {
-                    firmwareStateOfNetwork.remove(it)
+    private fun createEngineManagerIfNew(
+        advertisement: EngineAdvertisingData,
+        engineSerialNumber: String
+    ): Boolean = if (!engineManagers.containsKey(engineSerialNumber)) {
+        val manager = EngineManager(
+            mac = advertisement.mac,
+            serialNumber = engineSerialNumber,
+            initialEngineAdvertisingData = advertisement,
+            scope = scope,
+            settings = settings,
+            dfuDisconnectedNodeCallback = {
+                firmwareStateOfNetwork.remove(it)
 
-                    // publish the list of firmware details for the network
-                    flowHolder.mutableFirmwareUpdateState.value = FirmwareState(
-                        nodes = firmwareStateOfNetwork.snapshotValues().toList()
-                    )
-                }
-            )
+                // publish the list of firmware details for the network
+                flowHolder.mutableFirmwareUpdateState.value = FirmwareState(
+                    nodes = firmwareStateOfNetwork.snapshotValues().toList()
+                )
+            },
+        )
 
-            engineManagers[engineSerialNumber] = manager
-            LogManager.instance.manageEngine(scope, manager)
-            true
-        } else {
-            false
-        }
+        engineManagers[engineSerialNumber] = manager
+        LogManager.instance.manageEngine(scope, manager)
+        true
+    } else {
+        false
+    }
 
     private fun createManagerForDevicesWithoutProbeIfItDoesNotExist() {
         createProbeManagerIfNew(REPEATER_NO_PROBES_SERIAL_NUMBER)
@@ -1107,7 +1111,7 @@ internal class NetworkManager(
         }
 
         trackNodeHybridDeviceIfNew(deviceId, advertisement)
-        val isNewlyDiscovered = createEngineManagerIfNew(advertisement.mac, serialNumber)
+        val isNewlyDiscovered = createEngineManagerIfNew(advertisement, serialNumber)
 
         if (engineManagers[serialNumber]?.hasEngine() == false) {
             (devices[deviceId] as? DeviceHolder.RepeaterHolder)?.engine?.let { engineBleDevice ->

@@ -44,6 +44,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal class EngineManager(
     mac: String,
     serialNumber: String,
+    initialEngineAdvertisingData: EngineAdvertisingData?,
     scope: CoroutineScope,
     settings: DeviceManager.Settings,
     dfuDisconnectedNodeCallback: (DeviceID) -> Unit,
@@ -55,8 +56,10 @@ internal class EngineManager(
 
     override val arbitrator = EngineDataLinkArbitrator()
 
-    override val _deviceFlow =
-        MutableStateFlow(Engine.create(serialNumber = serialNumber, mac = mac))
+    override val _deviceFlow = Engine.create(serialNumber = serialNumber, mac = mac).let { base ->
+        MutableStateFlow(initialEngineAdvertisingData?.let { updateDataFromAdvertisement(it, base) }
+            ?: base)
+    }
 
     override val deviceFlow: StateFlow<Engine> = _deviceFlow.asStateFlow()
 
@@ -99,7 +102,7 @@ internal class EngineManager(
         advertisement: EngineAdvertisingData,
         current: Engine,
     ): Engine = current.copy(
-        baseDevice = _deviceFlow.value.baseDevice.copy(rssi = advertisement.rssi),
+        baseDevice = current.baseDevice.copy(rssi = advertisement.rssi),
         engineStatusFlags = advertisement.engineStatusFlags,
         temperatureSetPointCelsius = advertisement.engineTemperatureSetPoint,
         enginePreferences = advertisement.enginePreferences,
