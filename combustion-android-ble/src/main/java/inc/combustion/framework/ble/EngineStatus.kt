@@ -103,11 +103,17 @@ data class EngineStatus(
             val tempSetPoint =
                 SensorTemperature.fromRawDataStart(data.sliceArray(TEMP_SET_POINT_RANGE))
 
-            val controlDeviceType = data.sliceArray(CONTROL_DEVICE_TYPE_RANGE)
-                .takeIfIsSet { CombustionProductType.fromUByte(it[0]) }
+            val engineStatusFlags =
+                EngineStatusFlags.fromRawByte(data.sliceArray(ENGINE_STATUS_FLAGS_RANGE)[0])
 
-            val controlTemp = if (controlDeviceType != null) {
-                SensorTemperature.fromRawDataStart(data.sliceArray(CONTROL_TEMP_RANGE))
+            // controlDeviceType/controlSerialNumber/controlTemp are only meaningful once a
+            // controller is actually connected -- firmware can leave stale/sentinel bytes (e.g.
+            // controlDeviceType = PROBE with a zeroed-out serial) in these ranges after a
+            // controller is cleared, so gate all three on the flag rather than inferring
+            // "connected" from the byte contents.
+            val controlDeviceType = if (engineStatusFlags.controlDeviceConnected) {
+                data.sliceArray(CONTROL_DEVICE_TYPE_RANGE)
+                    .takeIfIsSet { CombustionProductType.fromUByte(it[0]) }
             } else {
                 null
             }
@@ -122,8 +128,12 @@ data class EngineStatus(
                     .takeIfIsSet { data.utf8StringFromRange(NODE_SERIAL_RANGE) }
             }
 
-            val engineStatusFlags =
-                EngineStatusFlags.fromRawByte(data.sliceArray(ENGINE_STATUS_FLAGS_RANGE)[0])
+            val controlTemp = if (controlDeviceType != null) {
+                SensorTemperature.fromRawDataStart(data.sliceArray(CONTROL_TEMP_RANGE))
+            } else {
+                null
+            }
+
             val engineFanStatus =
                 EngineFanStatus.fromRawData(data.sliceArray(FAN_STATUS_RANGE)) ?: return null
             val engineControllerStatus =
