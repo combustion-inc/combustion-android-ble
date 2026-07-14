@@ -101,6 +101,9 @@ class DeviceManager(
         const val MINIMUM_PREDICTION_SETPOINT_CELSIUS = 0.0
         const val MAXIMUM_PREDICTION_SETPOINT_CELSIUS = 100.0
 
+        const val MINIMUM_ENGINE_SETPOINT_CELSIUS = 65.0
+        const val MAXIMUM_ENGINE_SETPOINT_CELSIUS = 302.0
+
         private lateinit var INSTANCE: DeviceManager
 
         private lateinit var appContext: Context
