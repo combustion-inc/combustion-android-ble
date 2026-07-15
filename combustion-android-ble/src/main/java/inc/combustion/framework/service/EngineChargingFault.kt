@@ -28,6 +28,13 @@
 
 package inc.combustion.framework.service
 
+/**
+ * Charging fault expressed in a packed 1-byte field.
+ *
+ * Bit  1    : Fault present (0: no fault, 1: fault active) -- a convenience flag equal to
+ *             fault code != 0, not part of the fault code itself.
+ * Bits 2-8  : Fault code (this enum's [type]).
+ */
 enum class EngineChargingFault(val type: UByte) {
     NONE(0x00u),
     OVER_TEMP(0x01u),
@@ -40,7 +47,8 @@ enum class EngineChargingFault(val type: UByte) {
 
     companion object {
         fun fromUByte(byte: UByte): EngineChargingFault {
-            return values().firstOrNull { it.type == byte } ?: NONE
+            val faultCode = (byte.toUInt() shr 1).toUByte()
+            return values().firstOrNull { it.type == faultCode } ?: NONE
         }
     }
 }
