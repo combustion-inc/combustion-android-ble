@@ -28,6 +28,8 @@
 
 package inc.combustion.framework.ble
 
+import android.util.Log
+import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.service.*
 import inc.combustion.framework.utf8StringFromRange
 
@@ -63,6 +65,7 @@ data class EngineStatus(
         private val TEMP_SET_POINT_RANGE = 17..18 // 2
         private val CONTROL_TEMP_RANGE = 19..20 // 2
         private val CONTROL_DEVICE_TYPE_RANGE = 21..21 // 1
+
         // Control device serial number is a 12-byte union: probe serial occupies the first
         // 4 bytes, node serial occupies the first 10 bytes; the trailing 2 bytes are reserved.
         private val CONTROL_SERIAL_RANGE = 22..33 // 12
@@ -86,7 +89,13 @@ data class EngineStatus(
             if (any { it != 0u.toUByte() }) block(this) else null
 
         fun fromRawData(data: UByteArray): EngineStatus? {
-            if (data.size < RAW_SIZE) return null
+            if (data.size < RAW_SIZE) {
+                Log.w(
+                    LOG_TAG,
+                    "EngineStatus.fromRawData: data too short, size = ${data.size}, expected >= $RAW_SIZE",
+                )
+                return null
+            }
 
             val sessionID: UInt = data.getLittleEndianUInt32At(SESSION_ID_RANGE.first)
             val samplePeriod: UInt = data.getLittleEndianUInt16At(SAMPLE_PERIOD_RANGE.first)
@@ -97,8 +106,14 @@ data class EngineStatus(
             val maxSequenceNumber = data.getLittleEndianUInt32At(MAX_SEQ_RANGE.first)
 
             val engineBatteryStatus =
-                EngineBatteryStatus.fromRaw(data.sliceArray(BATTERY_STATUS_RANGE))
-                    ?: return null
+                EngineBatteryStatus.fromRaw(data.sliceArray(BATTERY_STATUS_RANGE)) ?: run {
+                    Log.w(
+                        LOG_TAG,
+                        "EngineStatus.fromRawData: failed to parse EngineBatteryStatus from " +
+                                data.sliceArray(BATTERY_STATUS_RANGE).joinToString(),
+                    )
+                    return null
+                }
 
             val tempSetPoint =
                 SensorTemperature.fromRawDataStart(data.sliceArray(TEMP_SET_POINT_RANGE))
@@ -135,10 +150,25 @@ data class EngineStatus(
             }
 
             val engineFanStatus =
-                EngineFanStatus.fromRawData(data.sliceArray(FAN_STATUS_RANGE)) ?: return null
+                EngineFanStatus.fromRawData(data.sliceArray(FAN_STATUS_RANGE)) ?: run {
+                    Log.w(
+                        LOG_TAG,
+                        "EngineStatus.fromRawData: failed to parse EngineFanStatus from " +
+                                data.sliceArray(FAN_STATUS_RANGE).joinToString(),
+                    )
+                    return null
+                }
             val engineControllerStatus =
                 EngineControllerStatus.fromRawData(data.sliceArray(CONTROLLER_STATUS_RANGE))
-                    ?: return null
+                    ?: run {
+                        Log.w(
+                            LOG_TAG,
+                            "EngineStatus.fromRawData: failed to parse EngineControllerStatus " +
+                                    "from " + data.sliceArray(CONTROLLER_STATUS_RANGE)
+                                .joinToString(),
+                        )
+                        return null
+                    }
 
             val hopCount: HopCount = HopCount.fromUByte(data.sliceArray(HOP_COUNT_RANGE)[0])
             val knobVoltageMillivolts: UInt = data.getLittleEndianUInt16At(KNOB_VOLT_RANGE.first)
