@@ -28,6 +28,8 @@
 
 package inc.combustion.framework.ble
 
+import android.util.Log
+import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.device.DeviceID
 import inc.combustion.framework.ble.device.DeviceInformationBleDevice
 import inc.combustion.framework.ble.device.GaugeBleDevice
@@ -211,6 +213,8 @@ internal class GaugeManager(
         status: GaugeStatus,
         simulated: Boolean = simulatedDevice != null,
     ) {
+        Log.v(LOG_TAG, "GaugeManager.handleStatus: $serialNumber $status")
+
         // since status from gauge with no sensor currently does not trigger a status update, we need to
         // update statusNotificationsMonitor before check
         // TODO : do update after check if logic is changed

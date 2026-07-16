@@ -28,6 +28,8 @@
 
 package inc.combustion.framework.ble
 
+import android.util.Log
+import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.device.DeviceID
 import inc.combustion.framework.ble.device.DeviceInformationBleDevice
 import inc.combustion.framework.ble.device.EngineBleDevice
@@ -134,6 +136,8 @@ internal class EngineManager(
         status: EngineStatus,
         simulated: Boolean = simulatedDevice != null,
     ) {
+        Log.v(LOG_TAG, "EngineManager.handleStatus: $serialNumber $status")
+
         if (simulated || arbitrator.shouldUpdateDataFromStatusForNormalMode(
                 status,
                 sessionInfo,
