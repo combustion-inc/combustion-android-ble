@@ -1161,7 +1161,7 @@ class DeviceManager(
     ) {
         Log.i(
             LOG_TAG,
-            "Setting engine $serialNumber's control device to $controlDeviceType of type $controlDeviceType",
+            "Setting engine $serialNumber's control device to $controlSerialNumber of type $controlDeviceType",
         )
         doWhenNetworkManagerInitialized {
             it.setEngineControlDevice(

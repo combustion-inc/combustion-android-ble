@@ -79,6 +79,10 @@ internal class EngineManager(
     override val normalModeStatusFlow: SharedFlow<SpecializedDeviceStatus> =
         _normalModeStatusFlow.asSharedFlow()
 
+    init {
+        monitorStatusNotifications()
+    }
+
     // Abstract method implementations
 
     override fun Engine.withBaseDevice(baseDevice: Device): Engine = copy(baseDevice = baseDevice)
@@ -137,6 +141,8 @@ internal class EngineManager(
         simulated: Boolean = simulatedDevice != null,
     ) {
         Log.v(LOG_TAG, "EngineManager.handleStatus: $serialNumber $status")
+
+        statusNotificationsMonitor.activity()
 
         if (simulated || arbitrator.shouldUpdateDataFromStatusForNormalMode(
                 status,

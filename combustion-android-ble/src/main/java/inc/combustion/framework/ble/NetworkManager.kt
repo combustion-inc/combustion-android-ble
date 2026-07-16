@@ -476,7 +476,7 @@ internal class NetworkManager(
             )
             updateDeviceProximity(
                 serialNumber = gauge.serialNumber,
-                productType = ENGINE,
+                productType = GAUGE,
                 rssi = gauge.rssi,
             )
             withContext(Dispatchers.Main) { completionHandler(gauge.serialNumber) }

@@ -40,7 +40,7 @@ import kotlin.random.Random
 internal class SimulatedGaugeBleDevice(
     scope: CoroutineScope,
     mac: String = SimulatedBleDeviceValues.randomMac(),
-    serialNumber: String = SimulatedBleDeviceValues.randomMac(),
+    serialNumber: String = SimulatedBleDeviceValues.randomSerialNumber(),
     shouldConnect: Boolean = false,
     hopCount: UInt = 0u,
 ) : SimulatedNodeHybridBleDevice(

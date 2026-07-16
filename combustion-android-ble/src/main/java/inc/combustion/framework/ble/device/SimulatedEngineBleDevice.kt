@@ -39,7 +39,7 @@ import kotlinx.coroutines.*
 internal class SimulatedEngineBleDevice(
     scope: CoroutineScope,
     mac: String = SimulatedBleDeviceValues.randomMac(),
-    serialNumber: String = SimulatedBleDeviceValues.randomMac(),
+    serialNumber: String = SimulatedBleDeviceValues.randomSerialNumber(),
     shouldConnect: Boolean = false,
     hopCount: UInt = 0u,
     private val appMode: Boolean = true,

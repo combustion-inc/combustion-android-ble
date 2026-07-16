@@ -29,7 +29,6 @@
 package inc.combustion.framework.ble.device
 
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
-import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
 import inc.combustion.framework.ble.uart.meatnet.NodeRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeResponse
 import inc.combustion.framework.service.CombustionProductType
@@ -46,7 +45,7 @@ internal open class NodeHybridBleDevice(
 
     override val id: DeviceID = advertisingData.mac
     override val serialNumber: String = advertisingData.serialNumber
-    override val productType: CombustionProductType = CombustionProductType.GAUGE
+    override val productType: CombustionProductType = advertisingData.productType
 
     // instance used for connection/disconnection
     val baseDevice: DeviceInformationBleDevice
@@ -172,7 +171,7 @@ internal open class NodeHybridBleDevice(
                 macFilter == advertisement.mac && advertisement.serialNumber == serialNumberFilter
             },
         ) { advertisement ->
-            if (advertisement is GaugeAdvertisingData) {
+            if (advertisement.productType == productType) {
                 callback?.let {
                     advertisingData = advertisement
                     it(advertisement)
