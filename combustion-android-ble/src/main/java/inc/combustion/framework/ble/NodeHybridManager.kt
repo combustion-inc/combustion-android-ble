@@ -37,6 +37,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 
 internal abstract class NodeHybridManager<
         T : NodeHybridBleDevice,
@@ -75,15 +76,16 @@ internal abstract class NodeHybridManager<
                     state == DeviceConnectionState.CONNECTING)
 
         if (networkIsAdvertisingAndNotConnected) {
-            val updatedDevice =
-                if (arbitrator.shouldUpdateDataFromAdvertisingPacket(device, advertisement)) {
-                    updateDataFromAdvertisement(advertisement, _deviceFlow.value)
-                } else {
-                    _deviceFlow.value
-                }
+            val shouldUpdateData =
+                arbitrator.shouldUpdateDataFromAdvertisingPacket(device, advertisement)
 
-            _deviceFlow.update { device ->
-                updatedDevice.withBaseDevice(device.baseDevice.copy(connectionState = state))
+            _deviceFlow.update { current ->
+                val updatedDevice = if (shouldUpdateData) {
+                    updateDataFromAdvertisement(advertisement, current)
+                } else {
+                    current
+                }
+                updatedDevice.withBaseDevice(current.baseDevice.copy(connectionState = state))
             }
         }
 
@@ -198,7 +200,7 @@ internal abstract class NodeHybridManager<
         if (!_deviceFlow.value.fwVersion.isValid()) {
             arbitrator.directLink?.readFirmwareVersionAsync { fwVersion ->
                 _deviceFlow.update {
-                    it.withBaseDevice(_deviceFlow.value.baseDevice.copy(fwVersion = fwVersion))
+                    it.withBaseDevice(it.baseDevice.copy(fwVersion = fwVersion))
                 }
             }
         }
@@ -255,14 +257,14 @@ internal abstract class NodeHybridManager<
             Log.i(LOG_TAG, "PM($serialNumber): finished log transfer.")
         }
         sessionInfo = info
-        val updated = _deviceFlow.value.withSessionInfo(info, minSequenceNumber, maxSequenceNumber)
-        _deviceFlow.update { updated }
-        return updated
+        return _deviceFlow.updateAndGet {
+            it.withSessionInfo(info, minSequenceNumber, maxSequenceNumber)
+        }
     }
 
     protected fun updateConnectionState(current: S): S {
         return current.withBaseDevice(
-            _deviceFlow.value.baseDevice.copy(
+            current.baseDevice.copy(
                 connectionState = connectionState,
                 fwVersion = fwVersion,
                 hwRevision = hwRevision,
@@ -274,7 +276,7 @@ internal abstract class NodeHybridManager<
     protected fun handleOutOfRange(current: S): S {
         return if (connectionState == DeviceConnectionState.OUT_OF_RANGE) {
             current.withBaseDevice(
-                _deviceFlow.value.baseDevice.copy(
+                current.baseDevice.copy(
                     connectionState = DeviceConnectionState.OUT_OF_RANGE
                 )
             )

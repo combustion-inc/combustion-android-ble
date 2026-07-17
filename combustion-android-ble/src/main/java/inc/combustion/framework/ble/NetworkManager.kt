@@ -1381,6 +1381,7 @@ internal class NetworkManager(
         flowHolder.mutableDiscoveredDevicesFlow.tryEmit(
             when (deviceManager) {
                 is GaugeManager -> DeviceDiscoveryEvent.GaugeRemoved(serialNumber)
+                is EngineManager -> DeviceDiscoveryEvent.EngineRemoved(serialNumber)
                 else -> DeviceDiscoveryEvent.ProbeRemoved(serialNumber)
             }
         )

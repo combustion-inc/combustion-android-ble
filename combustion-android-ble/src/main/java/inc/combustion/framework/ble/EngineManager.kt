@@ -115,7 +115,13 @@ internal class EngineManager(
     )
 
     override fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt) {
-        TODO("Not yet implemented")
+        // Engine firmware doesn't yet support log transfer (see LogManager.manageEngine, which
+        // is why this is never actually called today). Degrade gracefully rather than throw, so
+        // wiring up manageEngine in the future can't turn this into a crash.
+        Log.w(
+            LOG_TAG,
+            "EngineManager.sendLogRequest: log transfer isn't supported by engine firmware yet, ignoring request for $serialNumber",
+        )
     }
 
     fun hasEngine(): Boolean = hasDevice()
@@ -162,7 +168,7 @@ internal class EngineManager(
             }
 
             _deviceFlow.update {
-                _deviceFlow.value.copy(
+                it.copy(
                     engineBatteryStatus = status.engineBatteryStatus,
                     engineStatusFlags = status.engineStatusFlags,
                     engineFanStatus = status.engineFanStatus,
@@ -187,7 +193,7 @@ internal class EngineManager(
         val onCompletion: (Boolean) -> Unit = { success ->
             if (success) {
                 _deviceFlow.update {
-                    _deviceFlow.value.copy(
+                    it.copy(
                         temperatureSetPointCelsius = temperature,
                     )
                 }

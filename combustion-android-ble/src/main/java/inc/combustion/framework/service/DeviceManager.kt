@@ -1143,6 +1143,17 @@ class DeviceManager(
         temperature: SensorTemperature,
         completionHandler: (Boolean) -> Unit,
     ) {
+        if (temperature.value > MAXIMUM_ENGINE_SETPOINT_CELSIUS ||
+            temperature.value < MINIMUM_ENGINE_SETPOINT_CELSIUS
+        ) {
+            Log.w(
+                LOG_TAG,
+                "Engine $serialNumber's requested temperature set point $temperature is out of " +
+                        "range [$MINIMUM_ENGINE_SETPOINT_CELSIUS, $MAXIMUM_ENGINE_SETPOINT_CELSIUS]C",
+            )
+            completionHandler(false)
+            return
+        }
         Log.i(LOG_TAG, "Setting engine $serialNumber's temperature set point to $temperature")
         doWhenNetworkManagerInitialized {
             it.setEngineTemperatureSetPoint(serialNumber, temperature, completionHandler)
