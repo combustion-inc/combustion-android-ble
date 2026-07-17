@@ -190,6 +190,11 @@ internal abstract class NodeHybridManager<
         simulatedDevice?.disconnect()
     }
 
+    override fun finish(deviceIdsToDisconnect: Set<DeviceID>?) {
+        super.finish(deviceIdsToDisconnect)
+        simulatedDevice?.finish()
+    }
+
     protected fun fetchDeviceInfo() {
         fetchFirmwareVersion()
         fetchHardwareRevision()

@@ -111,7 +111,7 @@ internal abstract class BleManager {
 
     abstract fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt)
 
-    fun finish(deviceIdsToDisconnect: Set<DeviceID>? = null) {
+    open fun finish(deviceIdsToDisconnect: Set<DeviceID>? = null) {
         Log.d(LOG_TAG, "BleManager.finish($deviceIdsToDisconnect) for ($serialNumber)")
 
         arbitrator.finish(

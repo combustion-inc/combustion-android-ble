@@ -40,7 +40,7 @@ import kotlinx.coroutines.launch
 import kotlin.concurrent.fixedRateTimer
 
 internal abstract class SimulatedNodeHybridBleDevice(
-    private val scope: CoroutineScope,
+    protected val scope: CoroutineScope,
     override val mac: String = SimulatedBleDeviceValues.randomMac(),
     override val serialNumber: String = SimulatedBleDeviceValues.randomSerialNumber(),
     var shouldConnect: Boolean = false,
@@ -96,7 +96,7 @@ internal abstract class SimulatedNodeHybridBleDevice(
     private var observeConnectionStateCallback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)? =
         null
 
-    init {
+    private val simAdvertisingTimer =
         fixedRateTimer(name = "SimAdvertising", initialDelay = 1000, period = 1000) {
             scope.launch {
                 if (!isConnected) {
@@ -108,6 +108,7 @@ internal abstract class SimulatedNodeHybridBleDevice(
             }
         }
 
+    private val simStatusTimer =
         fixedRateTimer(name = "SimStatus", initialDelay = 5000, period = 5000) {
             scope.launch {
                 if (isConnected) {
@@ -115,6 +116,11 @@ internal abstract class SimulatedNodeHybridBleDevice(
                 }
             }
         }
+
+    /** Stops this simulated device's timers. Call once the device is removed for good. */
+    fun finish() {
+        simAdvertisingTimer.cancel()
+        simStatusTimer.cancel()
     }
 
     override fun connect() {

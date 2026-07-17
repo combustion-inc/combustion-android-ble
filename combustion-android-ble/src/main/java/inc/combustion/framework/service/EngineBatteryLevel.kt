@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: EngineBatteryStatus.kt
+ * File: EngineBatteryLevel.kt
  * Author:
  *
  * MIT License

@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: FanStatus.kt
+ * File: EngineFanStatus.kt
  * Author:
  *
  * MIT License

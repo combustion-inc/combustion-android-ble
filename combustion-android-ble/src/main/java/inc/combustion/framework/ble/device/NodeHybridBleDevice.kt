@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: HybridBleDevice.kt
+ * File: NodeHybridBleDevice.kt
  * Author:
  *
  * MIT License

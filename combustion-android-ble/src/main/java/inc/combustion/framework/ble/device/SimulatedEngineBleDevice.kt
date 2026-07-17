@@ -122,7 +122,7 @@ internal class SimulatedEngineBleDevice(
         reqId: UInt?,
         callback: ((Boolean, Any?) -> Unit)?,
     ) {
-        GlobalScope.launch {
+        scope.launch {
             delay(100)
             this@SimulatedEngineBleDevice.temperatureSetPoint = temperature
             withContext(Dispatchers.Main) {
@@ -137,7 +137,7 @@ internal class SimulatedEngineBleDevice(
         reqId: UInt?,
         callback: ((Boolean, Any?) -> Unit)?,
     ) {
-        GlobalScope.launch {
+        scope.launch {
             delay(100)
             this@SimulatedEngineBleDevice.controlSerialNumber =
                 controlSerialNumber.takeIf { it.isNotEmpty() }

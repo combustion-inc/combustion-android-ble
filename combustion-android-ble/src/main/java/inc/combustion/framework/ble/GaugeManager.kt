@@ -238,7 +238,7 @@ internal class GaugeManager(
             }
 
             _deviceFlow.update {
-                _deviceFlow.value.copy(
+                it.copy(
                     highLowAlarmStatus = status.highLowAlarmStatus,
                     gaugeStatusFlags = status.gaugeStatusFlags,
                     temperatureCelsius = if (status.gaugeStatusFlags.sensorPresent) status.temperature else null,
@@ -254,7 +254,7 @@ internal class GaugeManager(
         current: Gauge,
     ): Gauge {
         val updatedGauge = current.copy(
-            baseDevice = _deviceFlow.value.baseDevice.copy(rssi = advertisement.rssi),
+            baseDevice = current.baseDevice.copy(rssi = advertisement.rssi),
         )
 
         return updatedGauge.copy(
