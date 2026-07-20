@@ -36,6 +36,8 @@ data class EnginePreferences(
 
     companion object {
         fun fromRawByte(byte: UByte): EnginePreferences {
+            // Bit 0: unlike ThermometerPreferences, the engine preferences byte has no power mode
+            // field occupying bits 0-1, so highRadioPower can use bit 0 directly.
             return EnginePreferences(highRadioPower = byte.isBitSet(0))
         }
     }
