@@ -32,6 +32,11 @@ import inc.combustion.framework.isBitSet
 
 data class ThermometerPreferences(
     val powerMode: ProbePowerMode,
+    /**
+     * Probe V1 devices transmit at normal power (+0 dBm); Probe V2 and later transmit at high
+     * power (+8 dBm) for improved range and connection reliability. See
+     * [SpecializedDevice.highRadioPower] for how this affects RSSI-based proximity detection.
+     */
     val highRadioPower: Boolean = false,
 ) {
 
