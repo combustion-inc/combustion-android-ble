@@ -58,6 +58,7 @@ internal class ProbeAdvertisingData(
         private val MODE_COLOR_ID_RANGE = 18..18
         private val STATUS_RANGE = 19..19
         private val NETWORK_INFO_RANGE = 20..20
+        private val OVERHEAT_RANGE = 21..21
         private val PREFERENCES_RANGE = 22..22
 
         fun create(
@@ -109,14 +110,6 @@ internal class ProbeAdvertisingData(
             else
                 0u
 
-            val preferences = if (manufacturerData.size > PREFERENCES_RANGE.last) {
-                ThermometerPreferences.fromRawByte(
-                    manufacturerData.copyOf().sliceArray(PREFERENCES_RANGE)[0]
-                )
-            } else {
-                null
-            }
-
             val probeColor =
                 modeColorId?.let { ProbeColor.fromUByte(it) } ?: run { ProbeColor.COLOR1 }
             val probeID = modeColorId?.let { ProbeID.fromUByte(it) } ?: run { ProbeID.ID1 }
@@ -125,7 +118,30 @@ internal class ProbeAdvertisingData(
                 ?: run { ProbeBatteryStatus.OK }
             val virtualSensors = deviceStatus?.let { ProbeVirtualSensors.fromDeviceStatus(it) }
                 ?: run { ProbeVirtualSensors.DEFAULT }
-            val overheatingSensors = OverheatingSensors.fromTemperatures(probeTemperatures)
+
+            // Decode overheating flags. Sanity check against the temperature-derived flags--if
+            // none of the temperatures are above the thresholds, ignore the raw flag values, as
+            // there is a bug in repeater firmware versions <= 2.2.0 that can cause these flags to
+            // be incorrectly set.
+            val temperatureOverheatingSensors =
+                OverheatingSensors.fromTemperatures(probeTemperatures)
+            val overheatingSensors = if (manufacturerData.size > OVERHEAT_RANGE.last &&
+                temperatureOverheatingSensors.isAnySensorOverheating()
+            ) {
+                OverheatingSensors.fromRawByte(
+                    manufacturerData.copyOf().sliceArray(OVERHEAT_RANGE)[0]
+                )
+            } else {
+                temperatureOverheatingSensors
+            }
+
+            val preferences = if (manufacturerData.size > PREFERENCES_RANGE.last) {
+                ThermometerPreferences.fromRawByte(
+                    manufacturerData.copyOf().sliceArray(PREFERENCES_RANGE)[0]
+                )
+            } else {
+                null
+            }
 
             return ProbeAdvertisingData(
                 mac = address,

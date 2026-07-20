@@ -87,7 +87,7 @@ internal class GaugeAdvertisingData(
                     manufacturerData.copyOf().sliceArray(PREFERENCES_RANGE)[0]
                 )
             } else {
-                GaugePreferences.DEFAULT
+                null
             }
 
             return GaugeAdvertisingData(
