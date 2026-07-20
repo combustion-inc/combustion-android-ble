@@ -61,6 +61,8 @@ data class Engine(
     override val lowBattery: Boolean = engineBatteryStatus.batteryLevel != EngineBatteryLevel.OK
 
     override val isOverheating: Boolean = false
+    override val highRadioPower: Boolean
+        get() = enginePreferences.highRadioPower
 
     /**
      * Fields like [hasConfirmedController], [controlSerialNumber], and [controlTemperature] are only ever

@@ -99,11 +99,17 @@ internal class GaugeManager(
     // Abstract method implementations
 
     override fun Gauge.withBaseDevice(baseDevice: Device): Gauge = copy(baseDevice = baseDevice)
-    override fun Gauge.withStatusNotificationsStale(stale: Boolean): Gauge = copy(statusNotificationsStale = stale)
+    override fun Gauge.withStatusNotificationsStale(stale: Boolean): Gauge =
+        copy(statusNotificationsStale = stale)
+
     override fun Gauge.withUploadState(state: ProbeUploadState): Gauge = copy(uploadState = state)
     override fun Gauge.withRecordsDownloaded(count: Int): Gauge = copy(recordsDownloaded = count)
     override fun Gauge.withLogUploadPercent(percent: UInt): Gauge = copy(logUploadPercent = percent)
-    override fun Gauge.withSessionInfo(info: SessionInformation, minSequenceNumber: UInt, maxSequenceNumber: UInt): Gauge =
+    override fun Gauge.withSessionInfo(
+        info: SessionInformation,
+        minSequenceNumber: UInt,
+        maxSequenceNumber: UInt
+    ): Gauge =
         copy(minSequence = minSequenceNumber, maxSequence = maxSequenceNumber, sessionInfo = info)
 
     override fun castToAdvertisementType(advertisement: DeviceAdvertisingData): GaugeAdvertisingData? =
@@ -261,6 +267,7 @@ internal class GaugeManager(
             gaugeStatusFlags = advertisement.gaugeStatusFlags,
             temperatureCelsius = if (advertisement.gaugeStatusFlags.sensorPresent) advertisement.gaugeTemperature else null,
             highLowAlarmStatus = advertisement.highLowAlarmStatus,
+            gaugePrefs = advertisement.gaugePreferences ?: updatedGauge.gaugePrefs,
         )
     }
 }

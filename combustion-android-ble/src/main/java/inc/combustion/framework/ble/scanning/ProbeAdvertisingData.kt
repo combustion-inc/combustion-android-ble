@@ -110,7 +110,7 @@ internal class ProbeAdvertisingData(
                 0u
 
             val preferences = if (manufacturerData.size > PREFERENCES_RANGE.last) {
-                ThermometerPreferences.fromUByte(
+                ThermometerPreferences.fromRawByte(
                     manufacturerData.copyOf().sliceArray(PREFERENCES_RANGE)[0]
                 )
             } else {

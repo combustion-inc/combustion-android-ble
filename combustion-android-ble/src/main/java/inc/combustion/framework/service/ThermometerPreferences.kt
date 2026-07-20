@@ -28,6 +28,8 @@
 
 package inc.combustion.framework.service
 
+import inc.combustion.framework.isBitSet
+
 data class ThermometerPreferences(
     val powerMode: ProbePowerMode,
     val highRadioPower: Boolean = false,
@@ -36,10 +38,11 @@ data class ThermometerPreferences(
     companion object {
         const val PROBE_PREFS_SIZE_BYTES = 1
 
-        val DEFAULT = ThermometerPreferences(powerMode = ProbePowerMode.NORMAL, highRadioPower = false)
+        val DEFAULT =
+            ThermometerPreferences(powerMode = ProbePowerMode.NORMAL, highRadioPower = false)
 
-        fun fromUByte(byte: UByte): ThermometerPreferences {
-            val highRadioPower = (byte.toInt() shr 2) and 0x1 != 0
+        fun fromRawByte(byte: UByte): ThermometerPreferences {
+            val highRadioPower = byte.isBitSet(2)
             return ThermometerPreferences(
                 powerMode = ProbePowerMode.fromUByte(byte),
                 highRadioPower = highRadioPower,
