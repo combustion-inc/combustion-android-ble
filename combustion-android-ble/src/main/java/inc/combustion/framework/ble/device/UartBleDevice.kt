@@ -25,10 +25,13 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+@file:OptIn(ExperimentalUuidApi::class, ExperimentalApi::class)
+
 package inc.combustion.framework.ble.device
 
 import android.bluetooth.BluetoothAdapter
 import android.util.Log
+import com.juul.kable.ExperimentalApi
 import com.juul.kable.WriteType
 import com.juul.kable.characteristicOf
 import inc.combustion.framework.LOG_TAG
@@ -38,6 +41,8 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.onCompletion
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 internal open class UartBleDevice(
     mac: String,
@@ -146,12 +151,12 @@ internal open class UartBleDevice(
 
     companion object {
         val UART_TX_CHARACTERISTIC = characteristicOf(
-            service = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E",
-            characteristic = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
+            service = Uuid.parse("6E400001-B5A3-F393-E0A9-E50E24DCCA9E"),
+            characteristic = Uuid.parse("6E400003-B5A3-F393-E0A9-E50E24DCCA9E"),
         )
         val UART_RX_CHARACTERISTIC = characteristicOf(
-            service = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E",
-            characteristic = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
+            service = Uuid.parse("6E400001-B5A3-F393-E0A9-E50E24DCCA9E"),
+            characteristic = Uuid.parse("6E400002-B5A3-F393-E0A9-E50E24DCCA9E"),
         )
     }
 

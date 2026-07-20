@@ -51,6 +51,14 @@ sealed class DeviceDiscoveryEvent {
     ) : DeviceDiscoveryEvent()
 
     /**
+     * Combustion engine discovered
+     * @property serialNumber serial number of the discovered device
+     */
+    data class EngineDiscovered(
+        val serialNumber: String
+    ) : DeviceDiscoveryEvent()
+
+    /**
      * Combustion probe with serial number [serialNumber] was removed.
      */
     data class ProbeRemoved(
@@ -61,6 +69,13 @@ sealed class DeviceDiscoveryEvent {
      * Combustion gauge with serial number [serialNumber] was removed.
      */
     data class GaugeRemoved(
+        val serialNumber: String
+    ) : DeviceDiscoveryEvent()
+
+    /**
+     * Combustion engine with serial number [serialNumber] was removed.
+     */
+    data class EngineRemoved(
         val serialNumber: String
     ) : DeviceDiscoveryEvent()
 

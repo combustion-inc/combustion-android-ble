@@ -3,17 +3,14 @@ package inc.combustion.framework.ble.device
 import android.bluetooth.BluetoothAdapter
 import android.util.Log
 import inc.combustion.framework.LOG_TAG
+import inc.combustion.framework.ble.EngineStatus
 import inc.combustion.framework.ble.GaugeStatus
 import inc.combustion.framework.ble.NetworkManager
 import inc.combustion.framework.ble.device.UartCapableProbe.Companion.MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.uart.meatnet.*
 import inc.combustion.framework.service.*
-import kotlinx.coroutines.CoroutineName
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import java.util.UUID
 
 internal class NodeBleDevice(
@@ -23,6 +20,7 @@ internal class NodeBleDevice(
     adapter: BluetoothAdapter,
     private val uart: UartBleDevice = UartBleDevice(mac, nodeAdvertisingData, scope, adapter),
     private val observeGaugeStatusCallback: suspend (String, GaugeStatus) -> Unit,
+    private val observeEngineStatusCallback: suspend (String, EngineStatus) -> Unit,
     private val observeSilenceAlarmsCallback: suspend (SilenceAlarmsRequest) -> Unit,
 ) : UartCapableDevice {
 
@@ -33,6 +31,8 @@ internal class NodeBleDevice(
     private val readFeatureFlagsRequest = UartBleDevice.MessageCompletionHandler()
     private val setGaugeHighLowAlarmStatusHandler = UartBleDevice.MessageCompletionHandler()
     private val silenceAlarmsHandler = UartBleDevice.MessageCompletionHandler()
+    private val setEngineTemperatureSetPointHandler = UartBleDevice.MessageCompletionHandler()
+    private val setEngineControlDeviceHandler = UartBleDevice.MessageCompletionHandler()
 
     companion object {
         const val NODE_MESSAGE_RESPONSE_TIMEOUT_MS = 120000L
@@ -180,6 +180,44 @@ internal class NodeBleDevice(
         )
     }
 
+    fun sendSetEngineTemperatureSetPoint(
+        serialNumber: String,
+        temperature: SensorTemperature,
+        reqId: UInt?,
+        callback: ((Boolean, Any?) -> Unit)?,
+    ) {
+        setEngineTemperatureSetPointHandler.wait(
+            uart.scope,
+            MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS,
+            reqId,
+            callback,
+        )
+        sendUartRequest(NodeSetEngineTemperatureSetPointRequest(serialNumber, temperature, reqId))
+    }
+
+    fun sendSetEngineControlDevice(
+        serialNumber: String,
+        controlDeviceType: CombustionProductType,
+        controlSerialNumber: String,
+        reqId: UInt?,
+        callback: ((Boolean, Any?) -> Unit)?,
+    ) {
+        setEngineControlDeviceHandler.wait(
+            uart.scope,
+            MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS,
+            reqId,
+            callback,
+        )
+        sendUartRequest(
+            NodeSetEngineControlDeviceRequest(
+                serialNumber,
+                controlDeviceType,
+                controlSerialNumber,
+                reqId,
+            )
+        )
+    }
+
     override fun connect() {
         uart.connect()
     }
@@ -281,6 +319,12 @@ internal class NodeBleDevice(
                         }
                     }
 
+                    message is NodeEngineStatusRequest -> {
+                        message.serialNumber?.let { serialNumber ->
+                            observeEngineStatusCallback(serialNumber, message.engineStatus)
+                        }
+                    }
+
                     message is NodeSilenceAlarmsRequest -> {
                         when (message.global) {
                             true -> SilenceAlarmsRequest.All(message.requestId)
@@ -293,6 +337,22 @@ internal class NodeBleDevice(
                         }?.let {
                             observeSilenceAlarmsCallback(it)
                         }
+                    }
+
+                    message is NodeSetEngineTemperatureSetPointResponse -> {
+                        setEngineTemperatureSetPointHandler.handled(
+                            message.success,
+                            null,
+                            message.requestId
+                        )
+                    }
+
+                    message is NodeSetEngineControlDeviceResponse -> {
+                        setEngineControlDeviceHandler.handled(
+                            message.success,
+                            null,
+                            message.requestId
+                        )
                     }
 
                     (message is NodeRequest) && (message.serialNumber == hybridDeviceChild?.serialNumber) -> {

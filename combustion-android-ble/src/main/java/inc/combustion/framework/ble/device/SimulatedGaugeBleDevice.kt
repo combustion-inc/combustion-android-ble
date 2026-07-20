@@ -28,36 +28,30 @@
 
 package inc.combustion.framework.ble.device
 
+import inc.combustion.framework.ble.GaugeStatus
+import inc.combustion.framework.ble.SpecializedDeviceStatus
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
 import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
 import inc.combustion.framework.service.*
-import inc.combustion.framework.service.dfu.DfuProductType
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
-import kotlin.concurrent.fixedRateTimer
 import kotlin.random.Random
 
 internal class SimulatedGaugeBleDevice(
-    private val scope: CoroutineScope,
-    override val mac: String = "%02X:%02X:%02X:%02X:%02X:%02X".format(
-        Random.nextBytes(1).first(),
-        Random.nextBytes(1).first(),
-        Random.nextBytes(1).first(),
-        Random.nextBytes(1).first(),
-        Random.nextBytes(1).first(),
-        Random.nextBytes(1).first(),
-    ),
-    override val serialNumber: String = "%08X".format(Random.nextInt()),
-    var shouldConnect: Boolean = false,
-    override val hopCount: UInt = 0u,
-) : UartCapableGauge {
+    scope: CoroutineScope,
+    mac: String = SimulatedBleDeviceValues.randomMac(),
+    serialNumber: String = SimulatedBleDeviceValues.randomSerialNumber(),
+    shouldConnect: Boolean = false,
+    hopCount: UInt = 0u,
+) : SimulatedNodeHybridBleDevice(
+    scope = scope,
+    mac = mac,
+    serialNumber = serialNumber,
+    shouldConnect = shouldConnect,
+    hopCount = hopCount,
+), UartCapableGauge {
 
     companion object {
-        fun randomRSSI(): Int {
-            return Random.nextInt(-80, -40)
-        }
-
         fun randomAdvertisement(
             mac: String,
             serialNumber: String,
@@ -65,14 +59,14 @@ internal class SimulatedGaugeBleDevice(
             return GaugeAdvertisingData(
                 mac = mac,
                 name = "Gauge",
-                rssi = randomRSSI(),
+                rssi = SimulatedBleDeviceValues.randomRSSI(),
                 isConnectable = true,
                 serialNumber = serialNumber,
                 gaugeTemperature = SensorTemperature.withRandomData(),
                 gaugeStatusFlags = GaugeStatusFlags(
                     sensorPresent = true,
                     sensorOverheating = true,
-                    lowBattery = true
+                    lowBattery = true,
                 ),
                 highLowAlarmStatus = HighLowAlarmStatus(
                     HighLowAlarmStatus.AlarmStatus(
@@ -86,171 +80,49 @@ internal class SimulatedGaugeBleDevice(
                         tripped = false,
                         alarming = false,
                         temperature = SensorTemperature(100.0),
-                    )
+                    ),
                 ),
             )
         }
     }
 
-    override val id: DeviceID = mac
-
-    override val isSimulated: Boolean = true
-
     override val productType: CombustionProductType = CombustionProductType.GAUGE
 
-    override val isRepeater: Boolean = false
+    override fun generateAdvertisement(): DeviceAdvertisingData = randomAdvertisement(mac, serialNumber)
 
-    override var shouldAutoReconnect: Boolean = false
-
-    override var rssi: Int = randomRSSI()
-        private set
-
-    override var connectionState: DeviceConnectionState =
-        DeviceConnectionState.ADVERTISING_CONNECTABLE
-        private set
-
-    override var isConnected: Boolean = false
-        private set
-
-    override var isDisconnected: Boolean = true
-        private set
-
-    override val isInRange: Boolean = true
-
-    override val isConnectable: Boolean = true
-
-    override var isInDfuMode: Boolean = false
-
-    override var deviceInfoSerialNumber: String? = null
-        private set
-
-    override var deviceInfoFirmwareVersion: FirmwareVersion? = null
-        private set
-
-    override var deviceInfoHardwareRevision: String? = null
-        private set
-
-    override var deviceInfoModelInformation: ModelInformation? = null
-        private set
-
-    private var observeAdvertisingCallback: (suspend (advertisement: GaugeAdvertisingData) -> Unit)? =
-        null
-
-    private var observeRemoteRssiCallback: (suspend (rssi: Int) -> Unit)? = null
-
-    private var observeConnectionStateCallback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)? =
-        null
-
-    init {
-        fixedRateTimer(name = "SimAdvertising", initialDelay = 1000, period = 1000) {
-            scope.launch {
-                observeAdvertisingCallback?.let {
-                    if (!isConnected) {
-                        it(
-                            randomAdvertisement(
-                                mac = mac,
-                                serialNumber = serialNumber,
-                            )
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    override fun connect() {
-        isDisconnected = false
-        isConnected = true
-        connectionState = DeviceConnectionState.CONNECTED
-        deviceInfoSerialNumber = serialNumber
-        deviceInfoFirmwareVersion = FirmwareVersion(1, 2, 3, null, null)
-        deviceInfoHardwareRevision = "v2.3.4"
-        deviceInfoModelInformation = ModelInformation(
-            productType = CombustionProductType.GAUGE,
-            dfuProductType = DfuProductType.GAUGE,
-            sku = "ABCDEF",
-            manufacturingLot = "98765"
-        )
-        observeConnectionStateCallback?.let {
-            scope.launch {
-                it(connectionState)
-            }
-        }
-        publishConnectionState()
-    }
-
-    override fun disconnect() {
-        isDisconnected = true
-        isConnected = false
-        deviceInfoSerialNumber = null
-        deviceInfoFirmwareVersion = null
-        deviceInfoHardwareRevision = null
-        deviceInfoModelInformation = null
-        connectionState = DeviceConnectionState.ADVERTISING_CONNECTABLE
-        publishConnectionState()
-    }
-
-    override suspend fun readSerialNumber() {
-        // nothing to do -- handled on connect
-    }
-
-    override suspend fun readFirmwareVersion() {
-        // nothing to do -- handled on connect
-    }
-
-    override suspend fun readHardwareRevision() {
-        // nothing to do -- handled on connect
-    }
-
-    override suspend fun readModelInformation() {
-        // nothing to do -- handled on connect
-    }
-
-    override fun readFirmwareVersionAsync(callback: (FirmwareVersion) -> Unit) {
-        // nothing to do -- handled on connect
-    }
-
-    override fun readHardwareRevisionAsync(callback: (String) -> Unit) {
-        // nothing to do -- handled on connect
-    }
-
-    override fun readModelInformationAsync(callback: (ModelInformation) -> Unit) {
-        // nothing to do -- handled on connect
-    }
-
-    override fun observeAdvertisingPackets(
-        serialNumberFilter: String,
-        macFilter: String,
-        callback: (suspend (advertisement: DeviceAdvertisingData) -> Unit)?
-    ) {
-        observeAdvertisingCallback = callback
-    }
-
-    override fun observeRemoteRssi(callback: (suspend (rssi: Int) -> Unit)?) {
-        observeRemoteRssiCallback = callback
-    }
-
-    override fun observeOutOfRange(timeout: Long, callback: (suspend () -> Unit)?) {
-        // simulated probe does not go out of range
-    }
-
-    override fun observeConnectionState(callback: (suspend (newConnectionState: DeviceConnectionState) -> Unit)?) {
-        observeConnectionStateCallback = callback
-        publishConnectionState()
-    }
-
-    private fun publishConnectionState() {
-        observeConnectionStateCallback?.let {
-            scope.launch {
-                it(connectionState)
-            }
-        }
-    }
+    override fun generateStatus(): SpecializedDeviceStatus = GaugeStatus(
+        sessionInformation = SessionInformation(sessionID = 1u, samplePeriod = 1u),
+        samplePeriod = 1u,
+        temperature = SensorTemperature.withRandomData(),
+        gaugeStatusFlags = GaugeStatusFlags(
+            sensorPresent = true,
+            sensorOverheating = false,
+            lowBattery = false,
+        ),
+        minSequenceNumber = 0u,
+        maxSequenceNumber = 0u,
+        highLowAlarmStatus = HighLowAlarmStatus(
+            HighLowAlarmStatus.AlarmStatus(
+                set = false,
+                tripped = false,
+                alarming = false,
+                temperature = SensorTemperature(100.0),
+            ),
+            HighLowAlarmStatus.AlarmStatus(
+                set = false,
+                tripped = false,
+                alarming = false,
+                temperature = SensorTemperature(100.0),
+            ),
+        ),
+        isNewRecord = true,
+        hopCount = HopCount.HOP1,
+    )
 
     override fun sendSetHighLowAlarmStatus(
         highLowAlarmStatus: HighLowAlarmStatus,
         reqId: UInt?,
-        callback: ((Boolean, Any?) -> Unit)?
+        callback: ((Boolean, Any?) -> Unit)?,
     ) {
         callback?.let { it(true, null) }
     }

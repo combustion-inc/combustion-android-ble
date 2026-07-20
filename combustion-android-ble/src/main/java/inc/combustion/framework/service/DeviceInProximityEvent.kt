@@ -44,6 +44,13 @@ sealed class DeviceInProximityEvent {
     ) : DeviceInProximityEvent()
 
     /**
+     * Combustion engine discovered with serial number [serialNumber].
+     */
+    data class EngineDiscovered(
+        val serialNumber: String
+    ) : DeviceInProximityEvent()
+
+    /**
      * Combustion node discovered with serial number [serialNumber].
      */
     data class NodeDiscovered(

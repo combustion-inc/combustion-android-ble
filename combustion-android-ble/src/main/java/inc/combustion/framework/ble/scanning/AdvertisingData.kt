@@ -106,6 +106,16 @@ interface AdvertisingData {
                     isConnectable = isConnectable,
                     manufacturerData = manufacturerData,
                 )
+
+                CombustionProductType.ENGINE -> EngineAdvertisingData.create(
+                    address = address,
+                    name = name,
+                    rssi = rssi,
+                    isConnectable = isConnectable,
+                    manufacturerData = manufacturerData,
+                )
+
+                else -> base
             }
         }
     }
