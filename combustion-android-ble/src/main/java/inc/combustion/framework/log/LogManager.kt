@@ -283,6 +283,10 @@ internal class LogManager {
         )
     }
 
+    fun manageEngine(scope: CoroutineScope, engineManager: EngineManager) {
+        //TODO: implement -- Engine firmware doesn't yet support logs; add this once it does.
+    }
+
     fun finish(serialNumber: String) {
         probes.remove(serialNumber)
         gauges.remove(serialNumber)

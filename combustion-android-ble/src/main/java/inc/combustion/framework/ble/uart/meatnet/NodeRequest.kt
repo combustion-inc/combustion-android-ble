@@ -132,6 +132,14 @@ internal open class NodeRequest(
                     )
                 }
 
+                NodeMessageType.ENGINE_STATUS -> {
+                    NodeEngineStatusRequest.fromRaw(
+                        requestData,
+                        requestId,
+                        payloadLength,
+                    )
+                }
+
                 NodeMessageType.SILENCE_ALARMS -> {
                     NodeSilenceAlarmsRequest.fromRaw(
                         requestData,

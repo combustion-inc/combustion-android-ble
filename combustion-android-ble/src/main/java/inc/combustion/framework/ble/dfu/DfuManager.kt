@@ -88,7 +88,7 @@ internal class DfuManager(
         get() = ((activeRetryDfuContext?.standardId?.let { setOf(it) }
             ?: emptySet()) + devices.snapshotKeys())
 
-    fun dfuFlowForDevice(id: DeviceID): StateFlow<DfuState>? = getDeviceStateFlow(id)
+    fun dfuFlowForDevice(id: DeviceID): StateFlow<DfuState> = getDeviceStateFlow(id)
 
     private fun getDeviceStateFlow(deviceID: DeviceID): MutableStateFlow<DfuState> {
         return deviceStateFlows[deviceID] ?: (MutableStateFlow(
@@ -207,7 +207,7 @@ internal class DfuManager(
         currentDevice: DfuCapableDevice,
         file: Uri,
         successCallback: (Boolean) -> Unit = {},
-    ): StateFlow<DfuState>? {
+    ): StateFlow<DfuState> {
         // set dfu in progress to true
         dfuInProgress.set(true)
 

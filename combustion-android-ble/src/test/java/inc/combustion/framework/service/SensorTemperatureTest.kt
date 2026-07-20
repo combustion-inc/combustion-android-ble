@@ -44,10 +44,32 @@ class SensorTemperatureTest {
         assertEquals(SensorTemperature.fromRawDataEnd(givenTemp.toRawDataEnd()), givenTemp)
     }
 
+    @Test
+    @Parameters(method = "tempRawDataParams")
+    fun `raw start value is same as conversion from raw and then back to raw`(givenTempValue: Double) {
+        val givenTemp = SensorTemperature(givenTempValue)
+        assertEquals(SensorTemperature.fromRawDataStart(givenTemp.toRawDataStart()), givenTemp)
+    }
+
     fun tempRawDataParams() = arrayOf(
         arrayOf(-20.0),
         arrayOf(100.0)
     )
+
+    // toRawDataStart()/fromRawDataStart() (13-bit value in bits 0-12) and toRawDataEnd()/
+    // fromRawDataEnd() (13-bit value shifted into bits 3-15) are two different wire formats and
+    // are not interchangeable. The engine temperature set point request/status use the "start"
+    // format (matching iOS's EngineStatus.encodeTemperature/decodeTemperature, which doesn't
+    // shift). Mixing the two -- e.g. encoding with toRawDataEnd() but decoding with
+    // fromRawDataStart() -- silently produces a wildly wrong value. This locks in that they
+    // differ, to guard against that mismatch being reintroduced.
+    @Test
+    fun `toRawDataStart and toRawDataEnd are not interchangeable`() {
+        val temp = SensorTemperature(80.0)
+
+        assertEquals(temp, SensorTemperature.fromRawDataStart(temp.toRawDataStart()))
+        assertEquals(780.0, SensorTemperature.fromRawDataStart(temp.toRawDataEnd()).value)
+    }
 
     @Test
     fun `verify no data bytes parses to no data value`() {

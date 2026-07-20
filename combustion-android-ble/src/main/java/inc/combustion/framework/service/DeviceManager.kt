@@ -101,6 +101,9 @@ class DeviceManager(
         const val MINIMUM_PREDICTION_SETPOINT_CELSIUS = 0.0
         const val MAXIMUM_PREDICTION_SETPOINT_CELSIUS = 100.0
 
+        const val MINIMUM_ENGINE_SETPOINT_CELSIUS = 65.0
+        const val MAXIMUM_ENGINE_SETPOINT_CELSIUS = 302.0
+
         private lateinit var INSTANCE: DeviceManager
 
         private lateinit var appContext: Context
@@ -414,6 +417,15 @@ class DeviceManager(
         }
 
     /**
+     * Returns a list of device serial numbers, consisting of all engines that have been
+     * discovered.
+     */
+    val discoveredEngines: List<String>
+        get() {
+            return NetworkManager.instance.discoveredEngines
+        }
+
+    /**
      * Returns a list of node serial numbers, consisting of all nodes that have been discovered.
      * This will exclude any probe devices.
      */
@@ -421,7 +433,6 @@ class DeviceManager(
         get() {
             return NetworkManager.instance.discoveredWiFiNodes
         }
-
 
     @Deprecated(
         message = "discoveredNodesFlow is deprecated because the name does not specify it is only for Wi-Fi-capable nodes. " +
@@ -660,6 +671,31 @@ class DeviceManager(
     }
 
     /**
+     * Retrieves the Kotlin flow for collecting Engine state updates for the specified
+     * probe serial number.  Note, this is a hot flow.
+     *
+     * @param serialNumber the serial number of the engine.
+     * @return Kotlin flow for collecting Engine state updates.
+     *
+     * @see Engine
+     */
+    fun engineFlow(serialNumber: String): StateFlow<Engine>? {
+        return NetworkManager.instance.engineFlow(serialNumber)
+    }
+
+    /**
+     * Retrieves the current probe state for the specified probe serial number.
+     *
+     * @param serialNumber the serial number of the probe.
+     * @return current ProbeState of the probe.
+     *
+     * @see Engine
+     */
+    fun engine(serialNumber: String): Engine? {
+        return NetworkManager.instance.engineState(serialNumber)
+    }
+
+    /**
      * Retrieves the Kotlin flow for collecting current smoothed RSSI value updates for the device
      * with serial number [serialNumber]. Note that the value retrieved from this flow disregards
      * MeatNet connections--you may have a MeatNet connection to this device, but if the device
@@ -673,7 +709,7 @@ class DeviceManager(
      * This flow is guaranteed to exist if a [DeviceInProximityEvent.ProbeDiscovered] event is flowed
      * from [deviceInProximityFlow] for [serialNumber].
      */
-    fun deviceSmoothedRssiFlow(serialNumber: String): StateFlow<Double?>? {
+    fun deviceSmoothedRssiFlow(serialNumber: String): StateFlow<Double?> {
         val initial = NetworkManager.instanceFlow.value?.deviceSmoothedRssiFlow(serialNumber)?.value
         return NetworkManager.instanceFlow
             .flatMapLatest { mgr ->
@@ -885,9 +921,9 @@ class DeviceManager(
      * @see discoveredDevicesFlow
      * @see probeFlow
      */
-    fun addSimulatedProbe() {
+    fun addSimulatedProbe(serialNumber: String? = null, completionHandler: (String) -> Unit = {}) {
         doWhenNetworkManagerInitialized {
-            it.addSimulatedProbe()
+            it.addSimulatedProbe(serialNumber = serialNumber, completionHandler = completionHandler)
         }
     }
 
@@ -900,9 +936,32 @@ class DeviceManager(
      * @see discoveredDevicesFlow
      * @see gaugeFlow
      */
-    fun addSimulatedGauge() {
+    fun addSimulatedGauge(serialNumber: String? = null, completionHandler: (String) -> Unit = {}) {
         doWhenNetworkManagerInitialized {
-            it.addSimulatedGauge()
+            it.addSimulatedGauge(serialNumber = serialNumber, completionHandler = completionHandler)
+        }
+    }
+
+    /**
+     * Creates a simulated engine. The simulated engine will generate events to the
+     * discoveredDevicesFlow.  The simulated engine has a state flow that can be collected
+     * use the engineFlow method.
+     *
+     * @see DeviceDiscoveryEvent
+     * @see discoveredDevicesFlow
+     * @see engineFlow
+     */
+    fun addSimulatedEngine(
+        serialNumber: String? = null,
+        appMode: Boolean = true,
+        completionHandler: (String) -> Unit = {},
+    ) {
+        doWhenNetworkManagerInitialized {
+            it.addSimulatedEngine(
+                serialNumber = serialNumber,
+                appMode = appMode,
+                completionHandler = completionHandler,
+            )
         }
     }
 
@@ -1073,6 +1132,69 @@ class DeviceManager(
         doWhenNetworkManagerInitialized {
             it.silenceAllAlarms(completionHandler)
         }
+    }
+
+    /**
+     * Set temperature set point on engine with the serial number [serialNumber] to
+     * [temperature], calling [completionHandler] with the success value on completion.
+     */
+    fun setEngineTemperatureSetPoint(
+        serialNumber: String,
+        temperature: SensorTemperature,
+        completionHandler: (Boolean) -> Unit,
+    ) {
+        if (temperature.value > MAXIMUM_ENGINE_SETPOINT_CELSIUS ||
+            temperature.value < MINIMUM_ENGINE_SETPOINT_CELSIUS
+        ) {
+            Log.w(
+                LOG_TAG,
+                "Engine $serialNumber's requested temperature set point $temperature is out of " +
+                        "range [$MINIMUM_ENGINE_SETPOINT_CELSIUS, $MAXIMUM_ENGINE_SETPOINT_CELSIUS]C",
+            )
+            completionHandler(false)
+            return
+        }
+        Log.i(LOG_TAG, "Setting engine $serialNumber's temperature set point to $temperature")
+        doWhenNetworkManagerInitialized {
+            it.setEngineTemperatureSetPoint(serialNumber, temperature, completionHandler)
+        }
+    }
+
+    /**
+     * Set control device of type [controlDeviceType] with serial number [controlSerialNumber] on
+     * engine [serialNumber], calling [completionHandler] with the success value on completion.
+     */
+    fun setEngineControlDevice(
+        serialNumber: String,
+        controlDeviceType: CombustionProductType,
+        controlSerialNumber: String,
+        completionHandler: (Boolean) -> Unit,
+    ) {
+        Log.i(
+            LOG_TAG,
+            "Setting engine $serialNumber's control device to $controlSerialNumber of type $controlDeviceType",
+        )
+        doWhenNetworkManagerInitialized {
+            it.setEngineControlDevice(
+                serialNumber,
+                controlDeviceType,
+                controlSerialNumber,
+                completionHandler,
+            )
+        }
+    }
+
+    /**
+     * Clear control device set on engine [serialNumber],
+     * calling [completionHandler] with the success value on completion.
+     */
+    fun clearEngineControlDevice(serialNumber: String, completionHandler: (Boolean) -> Unit) {
+        setEngineControlDevice(
+            serialNumber = serialNumber,
+            controlDeviceType = CombustionProductType.PROBE, // can be Gauge too, as long as empty controlSerialNumber
+            controlSerialNumber = "",
+            completionHandler,
+        )
     }
 
     /**

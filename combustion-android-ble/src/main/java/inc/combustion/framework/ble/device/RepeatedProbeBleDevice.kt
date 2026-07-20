@@ -655,7 +655,7 @@ internal class RepeatedProbeBleDevice(
                         // Heartbeat message not processed
                     }
 
-                    is NodeGaugeStatusRequest, is NodeSilenceAlarmsRequest -> {
+                    is NodeGaugeStatusRequest, is NodeEngineStatusRequest, is NodeSilenceAlarmsRequest -> {
                         // Processed in NodeBleDevice
                     }
                 }

@@ -30,11 +30,15 @@ package inc.combustion.framework.ble
 
 import android.util.Log
 import inc.combustion.framework.LOG_TAG
-import inc.combustion.framework.ble.device.*
+import inc.combustion.framework.ble.device.DeviceID
+import inc.combustion.framework.ble.device.DeviceInformationBleDevice
+import inc.combustion.framework.ble.device.GaugeBleDevice
+import inc.combustion.framework.ble.device.SimulatedGaugeBleDevice
+import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
 import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
 import inc.combustion.framework.service.*
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import java.util.concurrent.atomic.AtomicBoolean
@@ -56,507 +60,66 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal class GaugeManager(
     mac: String,
     serialNumber: String,
-    val scope: CoroutineScope,
-    private val settings: DeviceManager.Settings,
-    private val dfuDisconnectedNodeCallback: (DeviceID) -> Unit,
-) : BleManager() {
+    scope: CoroutineScope,
+    settings: DeviceManager.Settings,
+    dfuDisconnectedNodeCallback: (DeviceID) -> Unit,
+) : NodeHybridManager<GaugeBleDevice, GaugeAdvertisingData, Gauge, SimulatedGaugeBleDevice>(
+    scope = scope,
+    settings = settings,
+    dfuDisconnectedNodeCallback = dfuDisconnectedNodeCallback,
+) {
 
-    // encapsulates logic for managing network data links
     override val arbitrator = GaugeDataLinkArbitrator()
 
-    // idle monitors
-    private val statusNotificationsMonitor = IdleMonitor()
+    override val _deviceFlow =
+        MutableStateFlow(Gauge.create(serialNumber = serialNumber, mac = mac))
 
-    // holds the current state and data for this gauge
-    private val _deviceFlow = MutableStateFlow(Gauge.create(serialNumber = serialNumber, mac = mac))
-
-    // the flow that is consumed to get state and date updates
     override val deviceFlow: StateFlow<Gauge> = _deviceFlow.asStateFlow()
 
     override val device: Gauge
-        get() {
-            return _deviceFlow.value
-        }
+        get() = _deviceFlow.value
 
     // the flow that produces LogResponses from MeatNet
     private val _logResponseFlow = MutableSharedFlow<NodeReadGaugeLogsResponse>(
         replay = 0, extraBufferCapacity = 50, BufferOverflow.SUSPEND
     )
-
-    // the flow that is consumed to get LogResponses from MeatNet
     override val logResponseFlow = _logResponseFlow.asSharedFlow()
-
-
-    // current upload state for this gauge, determined by LogManager
-    override var uploadState: ProbeUploadState
-        get() {
-            return _deviceFlow.value.uploadState
-        }
-        set(value) {
-            if (value != _deviceFlow.value.uploadState) {
-                _deviceFlow.update { it.copy(uploadState = value) }
-            }
-        }
-    override var recordsDownloaded: Int
-        get() {
-            return _deviceFlow.value.recordsDownloaded
-        }
-        set(value) {
-            if (value != _deviceFlow.value.recordsDownloaded) {
-                _deviceFlow.update { it.copy(recordsDownloaded = value) }
-            }
-        }
-
-    override var logUploadPercent: UInt
-        get() {
-            return _deviceFlow.value.logUploadPercent
-        }
-        set(value) {
-            if (value != _deviceFlow.value.logUploadPercent) {
-                _deviceFlow.update { it.copy(logUploadPercent = value) }
-            }
-        }
-
-    val connectionState: DeviceConnectionState
-        get() {
-            return arbitrator.bleDevice?.connectionState ?: DeviceConnectionState.NO_ROUTE
-        }
-
-    private val fwVersion: FirmwareVersion?
-        get() {
-            simulatedGauge?.let { return it.deviceInfoFirmwareVersion }
-            return arbitrator.bleDevice?.deviceInfoFirmwareVersion
-        }
-
-    private val hwRevision: String?
-        get() {
-            simulatedGauge?.let { return it.deviceInfoHardwareRevision }
-            return arbitrator.bleDevice?.deviceInfoHardwareRevision
-        }
-
-    private val modelInformation: ModelInformation?
-        get() {
-            simulatedGauge?.let { return it.deviceInfoModelInformation }
-            return arbitrator.bleDevice?.deviceInfoModelInformation
-        }
-
-    // serial number of the gauge that is being managed by this manager
-    override val serialNumber: String
-        get() {
-            return _deviceFlow.value.serialNumber
-        }
 
     // the flow that produces GaugeStatus updates from MeatNet
     private val _normalModeStatusFlow = MutableSharedFlow<GaugeStatus>(
         replay = 0, extraBufferCapacity = 10, BufferOverflow.DROP_OLDEST
     )
-
     override val normalModeStatusFlow: SharedFlow<SpecializedDeviceStatus> =
         _normalModeStatusFlow.asSharedFlow()
-
-    override val minSequenceNumber: UInt?
-        get() {
-            return _deviceFlow.value.minSequence
-        }
-
-    override val maxSequenceNumber: UInt?
-        get() {
-            return _deviceFlow.value.maxSequence
-        }
-
-    // tracks if we've run into a message timeout condition getting
-    // session info
-    private var sessionInfoTimeout: Boolean = false
-
-    private var simulatedGauge: SimulatedGaugeBleDevice? = null
 
     init {
         monitorStatusNotifications()
     }
 
-    private fun monitorStatusNotifications() {
-        addJob(
-            serialNumber,
-            scope.launch(
-                CoroutineName("${serialNumber}.monitorStatusNotifications") + Dispatchers.IO
-            ) {
-                // Wait before starting to monitor prediction status, this allows for initial
-                // connection time
-                delay(STATUS_NOTIFICATIONS_POLL_DELAY_MS)
+    // Abstract method implementations
 
-                while (isActive) {
-                    delay(STATUS_NOTIFICATIONS_IDLE_POLL_RATE_MS)
+    override fun Gauge.withBaseDevice(baseDevice: Device): Gauge = copy(baseDevice = baseDevice)
+    override fun Gauge.withStatusNotificationsStale(stale: Boolean): Gauge = copy(statusNotificationsStale = stale)
+    override fun Gauge.withUploadState(state: ProbeUploadState): Gauge = copy(uploadState = state)
+    override fun Gauge.withRecordsDownloaded(count: Int): Gauge = copy(recordsDownloaded = count)
+    override fun Gauge.withLogUploadPercent(percent: UInt): Gauge = copy(logUploadPercent = percent)
+    override fun Gauge.withSessionInfo(info: SessionInformation, minSequenceNumber: UInt, maxSequenceNumber: UInt): Gauge =
+        copy(minSequence = minSequenceNumber, maxSequence = maxSequenceNumber, sessionInfo = info)
 
-                    val statusNotificationsStale =
-                        statusNotificationsMonitor.isIdle(STATUS_NOTIFICATIONS_IDLE_TIMEOUT_MS)
-                    val shouldUpdate =
-                        statusNotificationsStale != _deviceFlow.value.statusNotificationsStale
+    override fun castToAdvertisementType(advertisement: DeviceAdvertisingData): GaugeAdvertisingData? =
+        advertisement as? GaugeAdvertisingData
 
-                    if (shouldUpdate) {
-                        _deviceFlow.update {
-                            it.copy(
-                                statusNotificationsStale = statusNotificationsStale,
-                            )
-                        }
-                    }
-                }
-            }
-        )
-    }
+    // Public API
 
-    fun connect() {
-        arbitrator.getNodesNeedingConnection(true).forEach { node ->
-            node.connect()
-        }
-        simulatedGauge?.shouldConnect = true
-        simulatedGauge?.connect()
-    }
-
-    fun disconnect(canDisconnectFromMeatNetDevices: Boolean = false) {
-        arbitrator.getNodesNeedingDisconnect(
-            canDisconnectFromMeatNetDevices = canDisconnectFromMeatNetDevices
-        ).forEach { node ->
-            // Since this is an explicit disconnect, we want to also disable the auto-reconnect flag
-            arbitrator.setShouldAutoReconnect(false)
-            node.disconnect()
-        }
-
-        arbitrator.directLinkDiscoverTimestamp = null
-
-        simulatedGauge?.shouldConnect = false
-        simulatedGauge?.disconnect()
-    }
-
-    private fun updateDataFromAdvertisement(
-        advertisement: GaugeAdvertisingData,
-        currentGauge: Gauge,
-    ): Gauge {
-        val updatedGauge = currentGauge.copy(
-            baseDevice = _deviceFlow.value.baseDevice.copy(rssi = advertisement.rssi),
-        )
-
-        return updatedGauge.copy(
-            gaugeStatusFlags = advertisement.gaugeStatusFlags,
-            temperatureCelsius = if (advertisement.gaugeStatusFlags.sensorPresent) advertisement.gaugeTemperature else null,
-            highLowAlarmStatus = advertisement.highLowAlarmStatus,
-        )
-    }
-
-    fun hasGauge(): Boolean = arbitrator.bleDevice != null
+    fun hasGauge(): Boolean = hasDevice()
 
     fun addGauge(
         gauge: GaugeBleDevice,
         baseDevice: DeviceInformationBleDevice,
-        advertisement: GaugeAdvertisingData
-    ) {
-        if (IGNORE_GAUGES) return
-
-        if (arbitrator.addDevice(gauge, baseDevice)) {
-            handleAdvertisingPackets(gauge, advertisement)
-            observe(gauge)
-        }
-    }
-
-    fun addRepeaters(repeaters: () -> List<NodeBleDevice>) {
-        arbitrator.addRepeaterNodes(repeaters)
-    }
-
-    fun addSimulatedGauge(simGauge: SimulatedGaugeBleDevice) {
-        if (simulatedGauge != null) return
-        var updatedGauge = _deviceFlow.value
-
-        // process simulated connection state changes
-        simGauge.observeConnectionState { state ->
-            updatedGauge = handleConnectionState(simGauge, state, updatedGauge)
-        }
-
-        // process simulated out of range
-        simGauge.observeOutOfRange(OUT_OF_RANGE_TIMEOUT) {
-            updatedGauge = handleOutOfRange(updatedGauge)
-        }
-
-        // process simulated advertising packets
-        simGauge.observeAdvertisingPackets(serialNumber, simGauge.mac) { advertisement ->
-            if (advertisement is GaugeAdvertisingData) {
-                updatedGauge = updateDataFromAdvertisement(advertisement, updatedGauge)
-                if (settings.autoReconnect && simGauge.shouldConnect) {
-                    simGauge.connect()
-                }
-            }
-        }
-
-        simulatedGauge = simGauge
-
-        _deviceFlow.update {
-            updatedGauge.copy(baseDevice = it.baseDevice.copy(mac = simGauge.mac))
-        }
-    }
-
-    private fun handleAdvertisingPackets(
-        device: GaugeBleDevice,
         advertisement: GaugeAdvertisingData,
-    ) {
-        val state = connectionState
-        val networkIsAdvertisingAndNotConnected =
-            (state == DeviceConnectionState.ADVERTISING_CONNECTABLE || state == DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE ||
-                    state == DeviceConnectionState.CONNECTING)
+    ) = addDevice(gauge, baseDevice, advertisement)
 
-        if (networkIsAdvertisingAndNotConnected) {
-            val updatedDevice =
-                if (arbitrator.shouldUpdateDataFromAdvertisingPacket(device, advertisement)) {
-                    updateDataFromAdvertisement(advertisement, _deviceFlow.value)
-                } else {
-                    _deviceFlow.value
-                }
-
-            _deviceFlow.update {
-                updatedDevice.copy(
-                    baseDevice = _deviceFlow.value.baseDevice.copy(connectionState = state),
-                )
-            }
-        }
-
-        if (arbitrator.shouldConnect(device)) {
-            Log.i(
-                LOG_TAG,
-                "PM($serialNumber) automatically connecting to ${device.id} (${device.productType})", // on link ${device.linkId}"
-            )
-            device.connect()
-        }
-    }
-
-    private fun handleConnectionState(
-        device: UartCapableGauge,
-        state: DeviceConnectionState,
-        currentGauge: Gauge,
-    ): Gauge {
-        val isConnected = state == DeviceConnectionState.CONNECTED
-        val isDisconnected = state == DeviceConnectionState.DISCONNECTED
-
-        if (isConnected) {
-            Log.i(LOG_TAG, "PM($serialNumber): ${device.productType}[${device.id}] is connected.")
-            fetchDeviceInfo()
-        }
-
-        var updatedGauge = currentGauge
-
-        if (isDisconnected) {
-            Log.i(
-                LOG_TAG,
-                "PM($serialNumber): ${device.productType}[${device.id}] is disconnected."
-            )
-
-            // perform any cleanup
-            device.disconnect()
-
-            // reset the discover timestamp upon disconnection
-            arbitrator.directLinkDiscoverTimestamp = null
-
-            // Invalidate FW version so it's re-read on connection after DFU
-            updatedGauge = updatedGauge.copy(
-                baseDevice = updatedGauge.baseDevice.copy(
-                    fwVersion = null
-                )
-            )
-
-            // remove this item from the list of firmware details for the network
-            dfuDisconnectedNodeCallback(device.id)
-        }
-
-        // use the arbitrated connection state, fw version, hw revision, model information
-        return updateConnectionState(updatedGauge)
-    }
-
-    private fun fetchDeviceInfo() {
-        fetchFirmwareVersion()
-        fetchHardwareRevision()
-        fetchModelInformation()
-    }
-
-    private fun fetchFirmwareVersion() {
-        // if we don't know the gauge's firmware version
-        if (!_deviceFlow.value.fwVersion.isValid()) {
-
-            // if direct link, then get the gauge version over that link
-            arbitrator.directLink?.readFirmwareVersionAsync { fwVersion ->
-                // update firmware version on completion of read
-                _deviceFlow.update {
-                    it.copy(baseDevice = _deviceFlow.value.baseDevice.copy(fwVersion = fwVersion))
-                }
-            }
-        }
-    }
-
-    private fun fetchHardwareRevision() {
-        // if we don't know the gauge's hardware revision
-        if (_deviceFlow.value.hwRevision == null) {
-
-            // if direct link, then get the gauge revision over that link
-            arbitrator.directLink?.readHardwareRevisionAsync { hwRevision ->
-
-                // update firmware version on completion of read
-                _deviceFlow.update {
-                    it.copy(baseDevice = it.baseDevice.copy(hwRevision = hwRevision))
-                }
-            }
-        }
-    }
-
-    private fun fetchModelInformation() {
-        // if we don't know the gauge's model information
-        if (_deviceFlow.value.modelInformation == null) {
-
-            // if direct link, then get the gauge model info over that link
-            arbitrator.directLink?.readModelInformationAsync { info ->
-
-                // update firmware version on completion of read
-                _deviceFlow.update {
-                    it.copy(
-                        baseDevice = it.baseDevice.copy(modelInformation = info)
-                    )
-                }
-            }
-        }
-    }
-
-    private fun updateConnectionState(currentGauge: Gauge): Gauge {
-        return currentGauge.copy(
-            baseDevice = _deviceFlow.value.baseDevice.copy(
-                connectionState = connectionState,
-                fwVersion = fwVersion,
-                hwRevision = hwRevision,
-                modelInformation = modelInformation
-            )
-        )
-    }
-
-    private fun handleOutOfRange(currentGauge: Gauge): Gauge {
-        // if the arbitrated connection state is out of range, then update.
-        return if (connectionState == DeviceConnectionState.OUT_OF_RANGE) {
-            currentGauge.copy(
-                baseDevice = _deviceFlow.value.baseDevice.copy(
-                    connectionState = DeviceConnectionState.OUT_OF_RANGE
-                )
-            )
-        } else {
-            currentGauge
-        }
-    }
-
-    private fun handleRemoteRssi(
-        device: GaugeBleDevice,
-        rssi: Int,
-        currentGauge: Gauge
-    ): Gauge {
-        return if (arbitrator.shouldUpdateOnRemoteRssi(device)) {
-            currentGauge.copy(baseDevice = currentGauge.baseDevice.copy(rssi = rssi))
-        } else {
-            currentGauge
-        }
-    }
-
-    private fun handleSessionInfo(
-        info: SessionInformation,
-        minSequenceNumber: UInt,
-        maxSequenceNumber: UInt,
-    ): Gauge {
-        sessionInfoTimeout = false
-
-        // if the session information has changed, then we need to finish the previous log session.
-        if (sessionInfo != info) {
-            logTransferCompleteCallback()
-            uploadState = ProbeUploadState.Unavailable
-
-            Log.i(LOG_TAG, "PM($serialNumber): finished log transfer.")
-        }
-
-        sessionInfo = info
-        val updatedGauge = _deviceFlow.value.copy(
-            minSequence = minSequenceNumber,
-            maxSequence = maxSequenceNumber,
-            sessionInfo = info,
-        )
-        _deviceFlow.update { updatedGauge }
-        return updatedGauge
-    }
-
-    suspend fun observedGaugeStatus(gaugeStatus: GaugeStatus) {
-        handleStatus(gaugeStatus, simulated = false)
-    }
-
-    private suspend fun handleStatus(
-        status: GaugeStatus,
-        simulated: Boolean = simulatedGauge != null,
-    ) {
-        // since status from gauge with no sensor currently does not trigger a status update, we need to
-        // update statusNotificationsMonitor before check
-        // TODO : do update after check if logic is changed
-        statusNotificationsMonitor.activity()
-
-        if (simulated || arbitrator.shouldUpdateDataFromStatusForNormalMode(
-                status,
-                sessionInfo,
-            )
-        ) {
-
-            handleSessionInfo(
-                status.sessionInformation,
-                minSequenceNumber = status.minSequenceNumber,
-                maxSequenceNumber = status.maxSequenceNumber,
-            )
-
-            _normalModeStatusFlow.emit(status)
-
-            // redundantly check for device information
-            if (!simulated) {
-                fetchDeviceInfo()
-            }
-
-            // These log-related items can be updated outside of this function--specifically, these
-            // are updated by the LogManager when we emit a new status to the
-            // normalModeProbeStatusFlow.
-            _deviceFlow.update {
-                _deviceFlow.value.copy(
-                    highLowAlarmStatus = status.highLowAlarmStatus,
-                    gaugeStatusFlags = status.gaugeStatusFlags,
-                    temperatureCelsius = if (status.gaugeStatusFlags.sensorPresent) status.temperature else null,
-                    newRecordFlag = status.isNewRecord,
-                    hopCount = status.hopCount.hopCount,
-                )
-            }
-        }
-    }
-
-    private fun observe(guage: GaugeBleDevice) {
-        _deviceFlow.update {
-            it.copy(
-                baseDevice = it.baseDevice.copy(
-                    mac = guage.mac,
-                )
-            )
-        }
-
-        guage.observeAdvertisingPackets(serialNumber, guage.mac) { advertisement ->
-            if (advertisement is GaugeAdvertisingData) {
-                handleAdvertisingPackets(guage, advertisement)
-            }
-        }
-
-        guage.observeConnectionState { state ->
-            _deviceFlow.update { handleConnectionState(guage, state, it) }
-            if (state == DeviceConnectionState.CONNECTED) {
-                _nodeConnectionFlow.emit(setOf(guage.nodeParent.id))
-            }
-        }
-
-        guage.observeOutOfRange(OUT_OF_RANGE_TIMEOUT) {
-            _deviceFlow.update { handleOutOfRange(it) }
-        }
-
-        guage.observeRemoteRssi { rssi ->
-            _deviceFlow.update { handleRemoteRssi(guage, rssi, it) }
-        }
-    }
+    fun addSimulatedGauge(simGauge: SimulatedGaugeBleDevice) = addSimulatedDevice(simGauge)
 
     fun setHighLowAlarmStatus(
         highLowAlarmStatus: HighLowAlarmStatus,
@@ -574,7 +137,7 @@ internal class GaugeManager(
         }
 
         val requestId = makeRequestId()
-        simulatedGauge?.sendSetHighLowAlarmStatus(highLowAlarmStatus, requestId) { status, _ ->
+        simulatedDevice?.sendSetHighLowAlarmStatus(highLowAlarmStatus, requestId) { status, _ ->
             onCompletion(status)
         } ?: arbitrator.directLink?.sendSetHighLowAlarmStatus(
             highLowAlarmStatus,
@@ -596,7 +159,6 @@ internal class GaugeManager(
                         }
                     }
                 }
-
             } else {
                 onCompletion(false)
             }
@@ -608,7 +170,7 @@ internal class GaugeManager(
         val callback: suspend (NodeReadGaugeLogsResponse) -> Unit = {
             _logResponseFlow.emit(it)
         }
-        simulatedGauge?.sendGaugeLogRequest(
+        simulatedDevice?.sendGaugeLogRequest(
             startSequenceNumber,
             endSequenceNumber,
             requestId,
@@ -637,5 +199,68 @@ internal class GaugeManager(
                 }
             }
         }
+    }
+
+    override suspend fun updateDataFromSimulatedStatus(status: SpecializedDeviceStatus) {
+        handleStatus(status as GaugeStatus, simulated = true)
+    }
+
+    suspend fun observedGaugeStatus(gaugeStatus: GaugeStatus) {
+        handleStatus(gaugeStatus, simulated = false)
+    }
+
+    private suspend fun handleStatus(
+        status: GaugeStatus,
+        simulated: Boolean = simulatedDevice != null,
+    ) {
+        Log.v(LOG_TAG, "GaugeManager.handleStatus: $serialNumber $status")
+
+        // since status from gauge with no sensor currently does not trigger a status update, we need to
+        // update statusNotificationsMonitor before check
+        // TODO : do update after check if logic is changed
+        statusNotificationsMonitor.activity()
+
+        if (simulated || arbitrator.shouldUpdateDataFromStatusForNormalMode(
+                status,
+                sessionInfo,
+            )
+        ) {
+            handleSessionInfo(
+                status.sessionInformation,
+                minSequenceNumber = status.minSequenceNumber,
+                maxSequenceNumber = status.maxSequenceNumber,
+            )
+
+            _normalModeStatusFlow.emit(status)
+
+            if (!simulated) {
+                fetchDeviceInfo()
+            }
+
+            _deviceFlow.update {
+                it.copy(
+                    highLowAlarmStatus = status.highLowAlarmStatus,
+                    gaugeStatusFlags = status.gaugeStatusFlags,
+                    temperatureCelsius = if (status.gaugeStatusFlags.sensorPresent) status.temperature else null,
+                    newRecordFlag = status.isNewRecord,
+                    hopCount = status.hopCount.hopCount,
+                )
+            }
+        }
+    }
+
+    override fun updateDataFromAdvertisement(
+        advertisement: GaugeAdvertisingData,
+        current: Gauge,
+    ): Gauge {
+        val updatedGauge = current.copy(
+            baseDevice = current.baseDevice.copy(rssi = advertisement.rssi),
+        )
+
+        return updatedGauge.copy(
+            gaugeStatusFlags = advertisement.gaugeStatusFlags,
+            temperatureCelsius = if (advertisement.gaugeStatusFlags.sensorPresent) advertisement.gaugeTemperature else null,
+            highLowAlarmStatus = advertisement.highLowAlarmStatus,
+        )
     }
 }

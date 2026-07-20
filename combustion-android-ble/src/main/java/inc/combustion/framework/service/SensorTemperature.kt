@@ -51,6 +51,19 @@ value class SensorTemperature(
         return ubyteArrayOf(lowByte, highByte)
     }
 
+    /**
+     * Encodes this temperature as a 13-bit raw value in bits 0–12 (bits 13–15 unused), the
+     * counterpart to [fromRawDataStart].
+     */
+    fun toRawDataStart(): UByteArray {
+        val raw13 = ((this.value + 20.0) / 0.1).roundToInt().coerceIn(0, 0x1FFF).toUShort()
+
+        val lowByte = (raw13.toUInt() and 0xFFu).toUByte()
+        val highByte = ((raw13.toUInt() shr 8) and 0xFFu).toUByte()
+
+        return ubyteArrayOf(lowByte, highByte)
+    }
+
     companion object {
         val NO_DATA = SensorTemperature(-20.0)
 
@@ -75,8 +88,8 @@ value class SensorTemperature(
             return SensorTemperature(raw13.temperatureFromRaw())
         }
 
-        internal fun withRandomData(): SensorTemperature {
-            return SensorTemperature(Random.nextDouble(45.0, 60.0))
+        internal fun withRandomData(min: Double = 45.0, max: Double = 60.0): SensorTemperature {
+            return SensorTemperature(Random.nextDouble(min, max))
         }
     }
 }
