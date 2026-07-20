@@ -25,18 +25,29 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+@file:OptIn(ExperimentalUuidApi::class)
+
 package inc.combustion.framework.service
 
 import android.bluetooth.le.ScanSettings
 import android.os.ParcelUuid
 import android.util.Log
-import androidx.lifecycle.*
-import com.juul.kable.Filter
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.juul.kable.Scanner
 import inc.combustion.framework.LOG_TAG
-import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.toKotlinUuid
 
 /**
  * Scans for Combustion Probes outside of the Combustion Service.  Caller is responsible for
@@ -58,7 +69,11 @@ class ProbeScanner private constructor() {
         val scanResults = _results.asSharedFlow()
 
         private val probeAllMatchesScanner = Scanner {
-            filters = listOf(Filter.Service(NEEDLE_SERVICE_UUID.uuid))
+            filters {
+                match {
+                    services = listOf(NEEDLE_SERVICE_UUID.uuid.toKotlinUuid())
+                }
+            }
             scanSettings = ScanSettings.Builder()
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
                 .setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
@@ -78,7 +93,7 @@ class ProbeScanner private constructor() {
          * The scan is stopped by cancelling the associated coroutine, managed by the caller.
          */
         suspend fun scan() {
-            if(!scanning.getAndSet(true)) {
+            if (!scanning.getAndSet(true)) {
                 probeAllMatchesScanner
                     .advertisements
                     .catch { cause ->

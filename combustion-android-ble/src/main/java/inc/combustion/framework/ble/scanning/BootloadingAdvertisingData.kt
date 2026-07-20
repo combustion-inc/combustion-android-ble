@@ -39,11 +39,18 @@ private const val PROBE_NAME_PREFIX = "Thermom_DFU_"
 private const val DISPLAY_NAME_PREFIX = "Display_DFU_"
 private const val CHARGER_NAME_PREFIX = "Charger_DFU_"
 private const val GAUGE_NAME_PREFIX = "Gauge_DFU_"
+private const val ENGINE_NAME_PREFIX = "Engine_DFU_"
 
 private val legacyBootLoadingDeviceNames =
     setOf(LEGACY_PROBE_NAME, LEGACY_DISPLAY_AND_CHARGER_NAME, LEGACY_GAUGE_NAME)
 private val bootLoadingDevicePrefixes =
-    setOf(PROBE_NAME_PREFIX, DISPLAY_NAME_PREFIX, CHARGER_NAME_PREFIX, GAUGE_NAME_PREFIX)
+    setOf(
+        PROBE_NAME_PREFIX,
+        DISPLAY_NAME_PREFIX,
+        CHARGER_NAME_PREFIX,
+        GAUGE_NAME_PREFIX,
+        ENGINE_NAME_PREFIX,
+    )
 
 private val String.isLegacyBootLoading
     get() = legacyBootLoadingDeviceNames.contains(this)
@@ -72,6 +79,7 @@ internal class BootloadingAdvertisingData(
                 name.startsWith(DISPLAY_NAME_PREFIX) -> DfuProductType.DISPLAY
                 name.startsWith(CHARGER_NAME_PREFIX) -> DfuProductType.CHARGER
                 name.startsWith(GAUGE_NAME_PREFIX) -> DfuProductType.GAUGE
+                name.startsWith(ENGINE_NAME_PREFIX) -> DfuProductType.ENGINE
                 else -> DfuProductType.PROBE
             }
         } else {
@@ -120,6 +128,7 @@ internal class BootloadingAdvertisingData(
                     ) -> CombustionProductType.NODE
 
                     name.startsWith(GAUGE_NAME_PREFIX) -> CombustionProductType.GAUGE
+                    name.startsWith(ENGINE_NAME_PREFIX) -> CombustionProductType.ENGINE
                     name.startsWith(PROBE_NAME_PREFIX) -> CombustionProductType.PROBE
                     else -> CombustionProductType.UNKNOWN
                 }

@@ -25,6 +25,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+@file:OptIn(ExperimentalUuidApi::class, ExperimentalApi::class)
+
 package inc.combustion.framework.ble.device
 
 import android.bluetooth.BluetoothAdapter
@@ -45,6 +47,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 /**
  * Base class for Combustion Devices.
@@ -68,20 +72,20 @@ internal open class BleDevice(
 
         private const val DEV_INFO_SERVICE_UUID_STRING = "0000180A-0000-1000-8000-00805F9B34FB"
         private val SERIAL_NUMBER_CHARACTERISTIC = characteristicOf(
-            service = DEV_INFO_SERVICE_UUID_STRING,
-            characteristic = "00002A25-0000-1000-8000-00805F9B34FB"
+            service = Uuid.parse(DEV_INFO_SERVICE_UUID_STRING),
+            characteristic = Uuid.parse("00002A25-0000-1000-8000-00805F9B34FB"),
         )
         private val FW_VERSION_CHARACTERISTIC = characteristicOf(
-            service = DEV_INFO_SERVICE_UUID_STRING,
-            characteristic = "00002A26-0000-1000-8000-00805F9B34FB"
+            service = Uuid.parse(DEV_INFO_SERVICE_UUID_STRING),
+            characteristic = Uuid.parse("00002A26-0000-1000-8000-00805F9B34FB"),
         )
         private val HW_REVISION_CHARACTERISTIC = characteristicOf(
-            service = DEV_INFO_SERVICE_UUID_STRING,
-            characteristic = "00002A27-0000-1000-8000-00805F9B34FB"
+            service = Uuid.parse(DEV_INFO_SERVICE_UUID_STRING),
+            characteristic = Uuid.parse("00002A27-0000-1000-8000-00805F9B34FB"),
         )
         private val MODEL_INFO_CHARACTERISTIC = characteristicOf(
-            service = DEV_INFO_SERVICE_UUID_STRING,
-            characteristic = "00002A24-0000-1000-8000-00805F9B34FB"
+            service = Uuid.parse(DEV_INFO_SERVICE_UUID_STRING),
+            characteristic = Uuid.parse("00002A24-0000-1000-8000-00805F9B34FB"),
         )
     }
 
@@ -95,7 +99,7 @@ internal open class BleDevice(
 
     val jobManager = JobManager()
     private val rssiCallbacks = mutableListOf<(suspend (rssi: Int) -> Unit)>()
-    var peripheral: Peripheral = scope.peripheral(adapter.getRemoteDevice(mac)) {
+    var peripheral: Peripheral = Peripheral(adapter.getRemoteDevice(mac)) {
         logging {
             /* The following enables logging in Kable
             // engine = SystemLogEngine
@@ -193,7 +197,7 @@ internal open class BleDevice(
 
                     connectionState = when (state) {
                         is State.Connecting -> DeviceConnectionState.CONNECTING
-                        State.Connected -> DeviceConnectionState.CONNECTED
+                        is State.Connected -> DeviceConnectionState.CONNECTED
                         State.Disconnecting -> DeviceConnectionState.DISCONNECTING
                         is State.Disconnected -> DeviceConnectionState.DISCONNECTED
                     }

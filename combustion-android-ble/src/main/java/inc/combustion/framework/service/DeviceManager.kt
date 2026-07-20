@@ -57,11 +57,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.time.Instant
 import java.time.LocalDateTime
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
+
+private const val CSV_VERSION = 6
+private const val DEFAULT_SAMPLE_PERIOD: UInt = 5000u
 
 /**
  * Singleton instance for managing communications with Combustion Inc. devices.
@@ -95,6 +100,9 @@ class DeviceManager(
     companion object {
         const val MINIMUM_PREDICTION_SETPOINT_CELSIUS = 0.0
         const val MAXIMUM_PREDICTION_SETPOINT_CELSIUS = 100.0
+
+        const val MINIMUM_ENGINE_SETPOINT_CELSIUS = 65.0
+        const val MAXIMUM_ENGINE_SETPOINT_CELSIUS = 302.0
 
         private lateinit var INSTANCE: DeviceManager
 
@@ -409,6 +417,15 @@ class DeviceManager(
         }
 
     /**
+     * Returns a list of device serial numbers, consisting of all engines that have been
+     * discovered.
+     */
+    val discoveredEngines: List<String>
+        get() {
+            return NetworkManager.instance.discoveredEngines
+        }
+
+    /**
      * Returns a list of node serial numbers, consisting of all nodes that have been discovered.
      * This will exclude any probe devices.
      */
@@ -416,7 +433,6 @@ class DeviceManager(
         get() {
             return NetworkManager.instance.discoveredWiFiNodes
         }
-
 
     @Deprecated(
         message = "discoveredNodesFlow is deprecated because the name does not specify it is only for Wi-Fi-capable nodes. " +
@@ -474,6 +490,19 @@ class DeviceManager(
                 scope = appApiScope,
                 started = SharingStarted.Lazily,
             )
+
+    /**
+     * Observe ProbeIDs that are not currently assigned to an active device.
+     */
+    val availableProbeIDs: StateFlow<List<ProbeID>> = NetworkManager.instanceFlow
+        .flatMapLatest { mgr ->
+            mgr?.availableProbeIDs ?: flowOf(ProbeID.entries)
+        }
+        .stateIn(
+            scope = appApiScope,
+            started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
+            initialValue = ProbeID.entries,
+        )
 
     private fun doWhenNetworkManagerInitialized(onInitialized: suspend (NetworkManager) -> Unit) {
         appApiScope.launch {
@@ -642,6 +671,31 @@ class DeviceManager(
     }
 
     /**
+     * Retrieves the Kotlin flow for collecting Engine state updates for the specified
+     * probe serial number.  Note, this is a hot flow.
+     *
+     * @param serialNumber the serial number of the engine.
+     * @return Kotlin flow for collecting Engine state updates.
+     *
+     * @see Engine
+     */
+    fun engineFlow(serialNumber: String): StateFlow<Engine>? {
+        return NetworkManager.instance.engineFlow(serialNumber)
+    }
+
+    /**
+     * Retrieves the current probe state for the specified probe serial number.
+     *
+     * @param serialNumber the serial number of the probe.
+     * @return current ProbeState of the probe.
+     *
+     * @see Engine
+     */
+    fun engine(serialNumber: String): Engine? {
+        return NetworkManager.instance.engineState(serialNumber)
+    }
+
+    /**
      * Retrieves the Kotlin flow for collecting current smoothed RSSI value updates for the device
      * with serial number [serialNumber]. Note that the value retrieved from this flow disregards
      * MeatNet connections--you may have a MeatNet connection to this device, but if the device
@@ -655,7 +709,7 @@ class DeviceManager(
      * This flow is guaranteed to exist if a [DeviceInProximityEvent.ProbeDiscovered] event is flowed
      * from [deviceInProximityFlow] for [serialNumber].
      */
-    fun deviceSmoothedRssiFlow(serialNumber: String): StateFlow<Double?>? {
+    fun deviceSmoothedRssiFlow(serialNumber: String): StateFlow<Double?> {
         val initial = NetworkManager.instanceFlow.value?.deviceSmoothedRssiFlow(serialNumber)?.value
         return NetworkManager.instanceFlow
             .flatMapLatest { mgr ->
@@ -784,16 +838,26 @@ class DeviceManager(
      *
      * @param serialNumber Serial number to export
      * @param appNameAndVersion Name and version to include in the CSV header
+     * @param sessionNotes Notes to include in the CSV, keyed by [LoggedDataPoint.sequenceNumber].
+     * The caller is responsible for matching notes to sequence numbers (e.g. by timestamp) and
+     * for ensuring each value is already CSV-safe: this function does not escape commas, quotes,
+     * or newlines, so values must not contain them unless already escaped per RFC 4180.
      * @return Pair: first is suggested name for the exported file, second is the CSV data.
      */
     fun exportLogsForDeviceAsCsv(
         serialNumber: String,
-        appNameAndVersion: String
+        appNameAndVersion: String,
+        sessionNotes: Map<UInt, String> = emptyMap(),
     ): Pair<String, String> {
-        val logs = exportLogsForProbe(serialNumber)
-        val probe = probe(serialNumber)
-
-        return probeDataToCsv(probe, logs, appNameAndVersion)
+        val gauge = gauge(serialNumber)
+        return if (gauge != null) {
+            val logs = exportLogsForGauge(serialNumber)
+            gaugeDataToCsv(gauge, logs, appNameAndVersion, sessionNotes)
+        } else {
+            val probe = probe(serialNumber)
+            val logs = exportLogsForProbe(serialNumber)
+            probeDataToCsv(probe, logs, appNameAndVersion, sessionNotes)
+        }
     }
 
     /**
@@ -857,9 +921,9 @@ class DeviceManager(
      * @see discoveredDevicesFlow
      * @see probeFlow
      */
-    fun addSimulatedProbe() {
+    fun addSimulatedProbe(serialNumber: String? = null, completionHandler: (String) -> Unit = {}) {
         doWhenNetworkManagerInitialized {
-            it.addSimulatedProbe()
+            it.addSimulatedProbe(serialNumber = serialNumber, completionHandler = completionHandler)
         }
     }
 
@@ -872,9 +936,32 @@ class DeviceManager(
      * @see discoveredDevicesFlow
      * @see gaugeFlow
      */
-    fun addSimulatedGauge() {
+    fun addSimulatedGauge(serialNumber: String? = null, completionHandler: (String) -> Unit = {}) {
         doWhenNetworkManagerInitialized {
-            it.addSimulatedGauge()
+            it.addSimulatedGauge(serialNumber = serialNumber, completionHandler = completionHandler)
+        }
+    }
+
+    /**
+     * Creates a simulated engine. The simulated engine will generate events to the
+     * discoveredDevicesFlow.  The simulated engine has a state flow that can be collected
+     * use the engineFlow method.
+     *
+     * @see DeviceDiscoveryEvent
+     * @see discoveredDevicesFlow
+     * @see engineFlow
+     */
+    fun addSimulatedEngine(
+        serialNumber: String? = null,
+        appMode: Boolean = true,
+        completionHandler: (String) -> Unit = {},
+    ) {
+        doWhenNetworkManagerInitialized {
+            it.addSimulatedEngine(
+                serialNumber = serialNumber,
+                appMode = appMode,
+                completionHandler = completionHandler,
+            )
         }
     }
 
@@ -1048,6 +1135,69 @@ class DeviceManager(
     }
 
     /**
+     * Set temperature set point on engine with the serial number [serialNumber] to
+     * [temperature], calling [completionHandler] with the success value on completion.
+     */
+    fun setEngineTemperatureSetPoint(
+        serialNumber: String,
+        temperature: SensorTemperature,
+        completionHandler: (Boolean) -> Unit,
+    ) {
+        if (temperature.value > MAXIMUM_ENGINE_SETPOINT_CELSIUS ||
+            temperature.value < MINIMUM_ENGINE_SETPOINT_CELSIUS
+        ) {
+            Log.w(
+                LOG_TAG,
+                "Engine $serialNumber's requested temperature set point $temperature is out of " +
+                        "range [$MINIMUM_ENGINE_SETPOINT_CELSIUS, $MAXIMUM_ENGINE_SETPOINT_CELSIUS]C",
+            )
+            completionHandler(false)
+            return
+        }
+        Log.i(LOG_TAG, "Setting engine $serialNumber's temperature set point to $temperature")
+        doWhenNetworkManagerInitialized {
+            it.setEngineTemperatureSetPoint(serialNumber, temperature, completionHandler)
+        }
+    }
+
+    /**
+     * Set control device of type [controlDeviceType] with serial number [controlSerialNumber] on
+     * engine [serialNumber], calling [completionHandler] with the success value on completion.
+     */
+    fun setEngineControlDevice(
+        serialNumber: String,
+        controlDeviceType: CombustionProductType,
+        controlSerialNumber: String,
+        completionHandler: (Boolean) -> Unit,
+    ) {
+        Log.i(
+            LOG_TAG,
+            "Setting engine $serialNumber's control device to $controlSerialNumber of type $controlDeviceType",
+        )
+        doWhenNetworkManagerInitialized {
+            it.setEngineControlDevice(
+                serialNumber,
+                controlDeviceType,
+                controlSerialNumber,
+                completionHandler,
+            )
+        }
+    }
+
+    /**
+     * Clear control device set on engine [serialNumber],
+     * calling [completionHandler] with the success value on completion.
+     */
+    fun clearEngineControlDevice(serialNumber: String, completionHandler: (Boolean) -> Unit) {
+        setEngineControlDevice(
+            serialNumber = serialNumber,
+            controlDeviceType = CombustionProductType.PROBE, // can be Gauge too, as long as empty controlSerialNumber
+            controlSerialNumber = "",
+            completionHandler,
+        )
+    }
+
+    /**
      * State flow containing the firmware details for all nodes on the network.
      */
     fun getNetworkFirmwareState(): StateFlow<FirmwareState> {
@@ -1130,17 +1280,102 @@ class DeviceManager(
         }
     }
 
+    /**
+     * @param sessionNotes notes keyed by sequence number; values must already be CSV-safe (see
+     * [exportLogsForDeviceAsCsv]).
+     */
     private fun probeDataToCsv(
         probe: Probe?,
         probeData: List<LoggedProbeDataPoint>?,
         appNameAndVersion: String,
+        sessionNotes: Map<UInt, String> = emptyMap(),
+    ): Pair<String, String> = deviceDataToCsv(
+        deviceLabel = "Probe",
+        serialNumber = probe?.serialNumber ?: "UNKNOWN",
+        firmwareVersion = probe?.fwVersion?.toString() ?: "UNKNOWN",
+        hardwareVersion = probe?.hwRevision ?: "UNKNOWN",
+        samplePeriod = probe?.sessionInfo?.samplePeriod ?: DEFAULT_SAMPLE_PERIOD,
+        appNameAndVersion = appNameAndVersion,
+        data = probeData,
+        columnHeaderLine = "Timestamp,SessionID,SequenceNumber,T1,T2,T3,T4,T5,T6,T7,T8,VirtualCoreTemperature,VirtualSurfaceTemperature,VirtualAmbientTemperature,EstimatedCoreTemperature,PredictionSetPoint,VirtualCoreSensor,VirtualSurfaceSensor,VirtualAmbientSensor,PredictionState,PredictionMode,PredictionType,PredictionValueSeconds,Notes",
+    ) { dataPoint, elapsed ->
+        String.format(
+            locale = Locale.US,
+            "%.3f,%s,%s,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%s,%s,%s,%s,%s,%s,%d,%s",
+            elapsed,
+            dataPoint.sessionId.toString(),
+            dataPoint.sequenceNumber.toString(),
+            dataPoint.temperatures.values[0],
+            dataPoint.temperatures.values[1],
+            dataPoint.temperatures.values[2],
+            dataPoint.temperatures.values[3],
+            dataPoint.temperatures.values[4],
+            dataPoint.temperatures.values[5],
+            dataPoint.temperatures.values[6],
+            dataPoint.temperatures.values[7],
+            dataPoint.virtualCoreTemperature,
+            dataPoint.virtualSurfaceTemperature,
+            dataPoint.virtualAmbientTemperature,
+            dataPoint.estimatedCoreTemperature,
+            dataPoint.predictionSetPointTemperature,
+            dataPoint.virtualCoreSensor.toString(),
+            dataPoint.virtualSurfaceSensor.toString(),
+            dataPoint.virtualAmbientSensor.toString(),
+            dataPoint.predictionState.toString(),
+            dataPoint.predictionMode.toString(),
+            dataPoint.predictionType.toString(),
+            dataPoint.predictionValueSeconds.toInt(),
+            sessionNotes[dataPoint.sequenceNumber] ?: "",
+        )
+    }
+
+    /**
+     * @param sessionNotes notes keyed by sequence number; values must already be CSV-safe (see
+     * [exportLogsForDeviceAsCsv]).
+     */
+    private fun gaugeDataToCsv(
+        gauge: Gauge?,
+        gaugeData: List<LoggedGaugeDataPoint>?,
+        appNameAndVersion: String,
+        sessionNotes: Map<UInt, String> = emptyMap(),
+    ): Pair<String, String> = deviceDataToCsv(
+        deviceLabel = "Gauge",
+        serialNumber = gauge?.serialNumber ?: "UNKNOWN",
+        firmwareVersion = gauge?.fwVersion?.toString() ?: "UNKNOWN",
+        hardwareVersion = gauge?.hwRevision ?: "UNKNOWN",
+        samplePeriod = gauge?.sessionInfo?.samplePeriod ?: DEFAULT_SAMPLE_PERIOD,
+        appNameAndVersion = appNameAndVersion,
+        data = gaugeData,
+        columnHeaderLine = "Timestamp,SessionID,SequenceNumber,Temperature,Notes",
+    ) { dataPoint, elapsed ->
+        String.format(
+            locale = Locale.US,
+            "%.3f,%s,%s,%.2f,%s",
+            elapsed,
+            dataPoint.sessionId.toString(),
+            dataPoint.sequenceNumber.toString(),
+            dataPoint.temperature.value,
+            sessionNotes[dataPoint.sequenceNumber] ?: "",
+        )
+    }
+
+    /**
+     * Shared CSV-building logic for [probeDataToCsv] and [gaugeDataToCsv]: writes the common
+     * header block, then the column header and one formatted row per data point produced by
+     * [formatRow].
+     */
+    private fun <T : LoggedDataPoint> deviceDataToCsv(
+        deviceLabel: String,
+        serialNumber: String,
+        firmwareVersion: String,
+        hardwareVersion: String,
+        samplePeriod: UInt,
+        appNameAndVersion: String,
+        data: List<T>?,
+        columnHeaderLine: String,
+        formatRow: (dataPoint: T, elapsedSeconds: Float) -> String,
     ): Pair<String, String> {
-        val csvVersion = 4
         val sb = StringBuilder()
-        val serialNumber = probe?.serialNumber ?: "UNKNOWN"
-        val firmwareVersion = probe?.fwVersion ?: "UNKNOWN"
-        val hardwareVersion = probe?.hwRevision ?: "UNKNOWN"
-        val samplePeriod = probe?.sessionInfo?.samplePeriod ?: 0
         val frameworkVersion =
             "Android ${Combustion.FRAMEWORK_VERSION_NAME} ${Combustion.FRAMEWORK_BUILD_TYPE}"
 
@@ -1148,61 +1383,37 @@ class DeviceManager(
         val headerDateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
         val createdDateTime = now.format(headerDateTimeFormatter)
 
+        val startTime = (data?.firstOrNull()?.timestamp ?: Date()).time
+        val formattedStartTime =
+            LocalDateTime.ofInstant(Instant.ofEpochMilli(startTime), ZoneId.systemDefault())
+                .format(headerDateTimeFormatter)
+
         // header
-        sb.appendLine("Combustion Inc. Probe Data")
+        sb.appendLine("Combustion Inc. $deviceLabel Data")
         sb.appendLine("App: $appNameAndVersion")
-        sb.appendLine("CSV version: $csvVersion")
-        sb.appendLine("Probe S/N: $serialNumber")
-        sb.appendLine("Probe FW version: $firmwareVersion")
-        sb.appendLine("Probe HW revision: $hardwareVersion")
+        sb.appendLine("CSV version: $CSV_VERSION")
+        sb.appendLine("$deviceLabel S/N: $serialNumber")
+        sb.appendLine("$deviceLabel FW version: $firmwareVersion")
+        sb.appendLine("$deviceLabel HW revision: $hardwareVersion")
         sb.appendLine("Framework: $frameworkVersion")
         sb.appendLine("Sample Period: $samplePeriod")
-        sb.appendLine("Created: $createdDateTime")
+        sb.appendLine("CSV Creation Date: $createdDateTime")
+        sb.appendLine("Session Start Date: $formattedStartTime")
         sb.appendLine()
 
         // column headers
-        sb.appendLine("Timestamp,SessionID,SequenceNumber,T1,T2,T3,T4,T5,T6,T7,T8,VirtualCoreTemperature,VirtualSurfaceTemperature,VirtualAmbientTemperature,EstimatedCoreTemperature,PredictionSetPoint,VirtualCoreSensor,VirtualSurfaceSensor,VirtualAmbientSensor,PredictionState,PredictionMode,PredictionType,PredictionValueSeconds")
+        sb.appendLine(columnHeaderLine)
 
         // the data
-        val startTime = probeData?.first()?.timestamp?.time ?: 0
-        probeData?.forEach { dataPoint ->
-            val timestamp = dataPoint.timestamp.time
-            val elapsed = (timestamp - startTime) / 1000.0f
-            sb.appendLine(
-                String.format(
-                    locale = Locale.US,
-                    "%.3f,%s,%s,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%s,%s,%s,%s,%s,%s,%d",
-                    elapsed,
-                    dataPoint.sessionId.toString(),
-                    dataPoint.sequenceNumber.toString(),
-                    dataPoint.temperatures.values[0],
-                    dataPoint.temperatures.values[1],
-                    dataPoint.temperatures.values[2],
-                    dataPoint.temperatures.values[3],
-                    dataPoint.temperatures.values[4],
-                    dataPoint.temperatures.values[5],
-                    dataPoint.temperatures.values[6],
-                    dataPoint.temperatures.values[7],
-                    dataPoint.virtualCoreTemperature,
-                    dataPoint.virtualSurfaceTemperature,
-                    dataPoint.virtualAmbientTemperature,
-                    dataPoint.estimatedCoreTemperature,
-                    dataPoint.predictionSetPointTemperature,
-                    dataPoint.virtualCoreSensor.toString(),
-                    dataPoint.virtualSurfaceSensor.toString(),
-                    dataPoint.virtualAmbientSensor.toString(),
-                    dataPoint.predictionState.toString(),
-                    dataPoint.predictionMode.toString(),
-                    dataPoint.predictionType.toString(),
-                    dataPoint.predictionValueSeconds.toInt()
-                )
-            )
+        data?.forEach { dataPoint ->
+            val elapsed = (dataPoint.timestamp.time - startTime) / 1000.0f
+            sb.appendLine(formatRow(dataPoint, elapsed))
         }
 
         // recommended file name
         val fileDateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
         val recommendedFileName =
-            "ProbeData_${serialNumber}_${now.format(fileDateTimeFormatter)}.csv"
+            "${deviceLabel}Data_${serialNumber}_${now.format(fileDateTimeFormatter)}.csv"
 
         return recommendedFileName to sb.toString()
     }

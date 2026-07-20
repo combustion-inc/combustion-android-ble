@@ -37,20 +37,12 @@ import inc.combustion.framework.service.dfu.DfuProductType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlin.concurrent.fixedRateTimer
-import kotlin.random.Random
 
 internal class SimulatedProbeBleDevice(
     private val scope: CoroutineScope,
-    override val mac: String = "%02X:%02X:%02X:%02X:%02X:%02X".format(
-        Random.nextBytes(1).first(),
-        Random.nextBytes(1).first(),
-        Random.nextBytes(1).first(),
-        Random.nextBytes(1).first(),
-        Random.nextBytes(1).first(),
-        Random.nextBytes(1).first()
-    ),
+    override val mac: String = SimulatedBleDeviceValues.randomMac(),
     override val id: DeviceID = mac,
-    override val serialNumber: String = "%08X".format(Random.nextInt()),
+    override val serialNumber: String = SimulatedBleDeviceValues.randomSerialNumber(),
     override val linkId: LinkID = serialNumber + "_" + mac,
     override val hopCount: UInt = 0u,
     override val isInRange: Boolean = true,
@@ -68,9 +60,6 @@ internal class SimulatedProbeBleDevice(
     var shouldConnect: Boolean = false
 ) : ProbeBleDeviceBase() {
     companion object {
-        fun randomRSSI(): Int {
-            return Random.nextInt(-80, -40)
-        }
 
         fun randomAdvertisement(
             mac: String,
@@ -84,7 +73,7 @@ internal class SimulatedProbeBleDevice(
             return ProbeAdvertisingData(
                 mac = mac,
                 name = "CP",
-                rssi = randomRSSI(),
+                rssi = SimulatedBleDeviceValues.randomRSSI(),
                 productType = productType,
                 isConnectable = true,
                 serialNumber = probeSerialNumber,
@@ -111,7 +100,7 @@ internal class SimulatedProbeBleDevice(
     private var observeStatusUpdatesCallback: (suspend (status: ProbeStatus, hopCount: UInt?) -> Unit)? =
         null
 
-    override var rssi: Int = randomRSSI()
+    override var rssi: Int = SimulatedBleDeviceValues.randomRSSI()
         private set
 
     override var connectionState: DeviceConnectionState =
@@ -157,7 +146,7 @@ internal class SimulatedProbeBleDevice(
                     }
                 }
                 observeRemoteRssiCallback?.let {
-                    it(randomRSSI())
+                    it(SimulatedBleDeviceValues.randomRSSI())
                 }
             }
         }
@@ -293,7 +282,11 @@ internal class SimulatedProbeBleDevice(
         callback?.let { it(true, null) }
     }
 
-    override fun sendSetProbeID(probeId: ProbeID, reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
+    override fun sendSetProbeID(
+        probeId: ProbeID,
+        reqId: UInt?,
+        callback: ((Boolean, Any?) -> Unit)?
+    ) {
         probeID = probeId
         callback?.let { it(true, null) }
     }

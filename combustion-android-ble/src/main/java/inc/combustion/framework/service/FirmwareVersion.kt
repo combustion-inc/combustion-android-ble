@@ -123,3 +123,24 @@ data class FirmwareVersion(
 fun FirmwareVersion?.isValid(): Boolean {
     return (this != null) && (this != FirmwareVersion.INVALID)
 }
+
+/**
+ * Returns whether this version is at least [minimum]. If [inclusive] is false, [minimum] itself
+ * is not considered sufficient and this version must be strictly greater. Returns null if this
+ * version is unknown (null), since support can't be determined; returns true if [minimum] is
+ * null, since there's nothing to require.
+ */
+fun FirmwareVersion?.isAtLeast(minimum: FirmwareVersion?, inclusive: Boolean = true): Boolean? {
+    if (this == null) return null
+    if (minimum == null) return true
+    return if (inclusive) this >= minimum else this > minimum
+}
+
+/**
+ * Returns whether this version is older than [threshold]. Returns false (i.e. not older) if
+ * either this version or [threshold] is unknown (null), since there's nothing to compare against.
+ */
+fun FirmwareVersion?.isOlderThan(threshold: FirmwareVersion?): Boolean {
+    if (this == null || threshold == null) return false
+    return this < threshold
+}

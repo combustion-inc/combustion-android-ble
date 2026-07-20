@@ -26,10 +26,13 @@
  * SOFTWARE.
  */
 
+@file:OptIn(ExperimentalUuidApi::class, ExperimentalApi::class)
+
 package inc.combustion.framework.ble.device
 
 import android.bluetooth.BluetoothAdapter
 import android.util.Log
+import com.juul.kable.ExperimentalApi
 import com.juul.kable.characteristicOf
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.ProbeStatus
@@ -42,6 +45,8 @@ import inc.combustion.framework.service.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.onCompletion
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 /**
  * Class representing a directly-connected probe.
@@ -60,8 +65,8 @@ internal class ProbeBleDevice(
 
     companion object {
         val DEVICE_STATUS_CHARACTERISTIC = characteristicOf(
-            service = "00000100-CAAB-3792-3D44-97AE51C1407A",
-            characteristic = "00000101-CAAB-3792-3D44-97AE51C1407A"
+            service = Uuid.parse("00000100-CAAB-3792-3D44-97AE51C1407A"),
+            characteristic = Uuid.parse("00000101-CAAB-3792-3D44-97AE51C1407A"),
         )
     }
 
@@ -170,7 +175,11 @@ internal class ProbeBleDevice(
         sendUartRequest(SetColorRequest(color))
     }
 
-    override fun sendSetProbeID(probeId: ProbeID, reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
+    override fun sendSetProbeID(
+        probeId: ProbeID,
+        reqId: UInt?,
+        callback: ((Boolean, Any?) -> Unit)?,
+    ) {
         setIdHandler.wait(uart.scope, PROBE_MESSAGE_RESPONSE_TIMEOUT_MS, null, callback)
         sendUartRequest(SetProbeIDRequest(probeId))
     }

@@ -42,8 +42,8 @@ data class Gauge(
     val highLowAlarmStatus: HighLowAlarmStatus = HighLowAlarmStatus.DEFAULT,
     val gaugeStatusFlags: GaugeStatusFlags = GaugeStatusFlags(),
     val temperatureCelsius: SensorTemperature? = null,
-    val recordsDownloaded: Int = 0,
-    val logUploadPercent: UInt = 0u,
+    override val recordsDownloaded: Int = 0,
+    override val logUploadPercent: UInt = 0u,
     val newRecordFlag: Boolean = false,
     override val hopCount: UInt? = null,
     val gaugePrefs: GaugePreferences? = null,
@@ -64,6 +64,14 @@ data class Gauge(
 
     override val isOverheating: Boolean
         get() = gaugeStatusFlags.sensorOverheating
+
+    /**
+     * [hopCount] is only ever populated by a status message (never by advertising data alone),
+     * so this is true once one has been received.
+     */
+    override val hasReceivedStatus: Boolean
+        get() = hopCount != null
+
     override val highRadioPower: Boolean
         get() = gaugePrefs?.highRadioPower ?: false
 }

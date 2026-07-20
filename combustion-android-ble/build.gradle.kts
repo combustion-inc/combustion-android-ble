@@ -32,7 +32,7 @@ kotlin {
 
 android {
     namespace = "inc.combustion.framework"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 24
@@ -49,6 +49,11 @@ android {
             useSupportLibrary = true
         }
     }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -102,6 +107,7 @@ dependencies {
     implementation(frameworkLibs.appcompat)
     implementation(frameworkLibs.lifecycle.runtime)
     implementation(frameworkLibs.kotlinx.serialization.json)
+    implementation(frameworkLibs.kotlinx.collections.immutables)
     implementation(frameworkLibs.kable.core)
     implementation(frameworkLibs.lifecycle.service)
     implementation(frameworkLibs.nordicsemi.dfu)
@@ -112,6 +118,7 @@ dependencies {
     testImplementation(frameworkLibs.kotlin.test.junit)
     testImplementation(frameworkLibs.junit.params)
     testImplementation(frameworkLibs.mockk.android)
+    testImplementation(frameworkLibs.kotlinx.coroutines.test)
 }
 
 afterEvaluate {

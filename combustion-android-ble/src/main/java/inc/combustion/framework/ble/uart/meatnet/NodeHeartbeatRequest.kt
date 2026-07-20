@@ -84,7 +84,9 @@ internal class NodeHeartbeatRequest(
                             data.getLittleEndianUInt32At(SERIAL_NUMBER_INDEX).toInt()
                         ).uppercase()
 
-                    CombustionProductType.NODE, CombustionProductType.GAUGE ->
+                    CombustionProductType.NODE,
+                    CombustionProductType.GAUGE,
+                    CombustionProductType.ENGINE ->
                         data.trimmedStringFromRange(SERIAL_NUMBER_INDEX until SERIAL_NUMBER_INDEX + NODE_SERIAL_NUMBER_SIZE)
 
                     CombustionProductType.UNKNOWN -> {

@@ -38,9 +38,18 @@ interface SpecializedDevice {
     val statusNotificationsStale: Boolean
     val lowBattery: Boolean
     val uploadState: ProbeUploadState
+    val recordsDownloaded: Int
+    val logUploadPercent: UInt
     val minSequence: UInt?
     val maxSequence: UInt?
     val hopCount: UInt?
+
+    /**
+     * Whether a status message has been received from this device yet. Fields that are only
+     * ever populated by a status message (never by advertising data alone) can't be trusted to
+     * reflect the device's actual state until this is true.
+     */
+    val hasReceivedStatus: Boolean
 
     val isOverheating: Boolean
 

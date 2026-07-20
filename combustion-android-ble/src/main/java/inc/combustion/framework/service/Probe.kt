@@ -100,8 +100,8 @@ data class Probe(
     )
     val maxSequenceNumber: UInt = maxSequence ?: 0u,
     override val uploadState: ProbeUploadState = ProbeUploadState.Unavailable,
-    val id: ProbeID = ProbeID.ID1,
-    val color: ProbeColor = ProbeColor.COLOR1,
+    val id: ProbeID? = null,
+    val color: ProbeColor? = null,
     val batteryStatus: ProbeBatteryStatus = ProbeBatteryStatus.OK,
     val virtualSensors: ProbeVirtualSensors = ProbeVirtualSensors(),
     val predictionState: ProbePredictionState? = null,
@@ -116,9 +116,9 @@ data class Probe(
     override val statusNotificationsStale: Boolean = false,
     val predictionStale: Boolean = false,
     val overheatingSensors: List<Int> = listOf(),
-    val recordsDownloaded: Int = 0,
+    override val recordsDownloaded: Int = 0,
     val preferredLink: String = "",
-    val logUploadPercent: UInt = 0u,
+    override val logUploadPercent: UInt = 0u,
     val foodSafeData: FoodSafeData? = null,
     val foodSafeStatus: FoodSafeStatus? = null,
     val thermometerPrefs: ThermometerPreferences? = null,
@@ -157,6 +157,13 @@ data class Probe(
         get() = overheatingSensors.isNotEmpty()
     override val highRadioPower: Boolean
         get() = thermometerPrefs?.highRadioPower ?: false
+
+    /**
+     * [thermometerPrefs] is only ever populated by a status message (never by advertising data
+     * alone), so this is true once one has been received.
+     */
+    override val hasReceivedStatus: Boolean
+        get() = thermometerPrefs != null
 
     val isPredicting: Boolean
         get() = (

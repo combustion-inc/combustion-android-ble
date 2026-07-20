@@ -64,6 +64,16 @@ internal class ModelInformationTest {
     }
 
     @Test
+    fun `Check Engine Model Information String`() {
+        val mi = ModelInformation.fromString("Engine 123-ABC")
+
+        assertEquals(CombustionProductType.ENGINE, mi.productType)
+        assertEquals(DfuProductType.ENGINE, mi.dfuProductType)
+        assertEquals("123", mi.sku)
+        assertEquals("ABC", mi.manufacturingLot)
+    }
+
+    @Test
     fun `Check Malformed Strings Fail`() {
         assertEquals(
             CombustionProductType.UNKNOWN,
