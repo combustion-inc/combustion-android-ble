@@ -719,7 +719,7 @@ internal class ProbeManager(
         if (arbitrator.shouldUpdateDataFromStatus(status, sessionInfo, hopCount)) {
             Log.v(LOG_TAG, "ProbeManager.handleProbeStatus: $serialNumber $status")
 
-            var updatedProbe = _deviceFlow.value
+            var updatedProbe = _deviceFlow.value.copy(hasReceivedStatus = true)
 
             updatedProbe = updateLink(updatedProbe)
             updatedProbe =

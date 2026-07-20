@@ -123,6 +123,14 @@ data class Probe(
     val foodSafeStatus: FoodSafeStatus? = null,
     val thermometerPrefs: ThermometerPreferences? = null,
     val highLowAlarmStatus: ProbeHighLowAlarmStatus? = null,
+    /**
+     * Whether a status message has been received from this device yet. Fields that are only ever
+     * populated by a status message (never by advertising data alone) can't be trusted to reflect
+     * the device's actual state until this is true. Unlike [thermometerPrefs], which can now also
+     * be populated from advertising data alone, this flag is only ever set from a connected
+     * status message.
+     */
+    override val hasReceivedStatus: Boolean = false,
 ) : SpecializedDevice {
     override val lowBattery: Boolean
         get() = batteryStatus.isLowBattery
@@ -157,13 +165,6 @@ data class Probe(
         get() = overheatingSensors.isNotEmpty()
     override val highRadioPower: Boolean
         get() = thermometerPrefs?.highRadioPower ?: false
-
-    /**
-     * [thermometerPrefs] is only ever populated by a status message (never by advertising data
-     * alone), so this is true once one has been received.
-     */
-    override val hasReceivedStatus: Boolean
-        get() = thermometerPrefs != null
 
     val isPredicting: Boolean
         get() = (

@@ -48,8 +48,8 @@ internal class ProbeAdvertisingData(
     val batteryStatus: ProbeBatteryStatus,
     val virtualSensors: ProbeVirtualSensors,
     val overheatingSensors: OverheatingSensors,
-    val hopCount: UInt = 0u,
     val thermometerPreferences: ThermometerPreferences?,
+    val hopCount: UInt = 0u,
 ) : BaseAdvertisingData(mac, name, rssi, productType, isConnectable), DeviceAdvertisingData {
 
     companion object {
@@ -72,7 +72,7 @@ internal class ProbeAdvertisingData(
             var serial: UInt = 0u
             // Reverse the byte order (this is a little-endian packed bitfield)
             val rawSerialNumber =
-                manufacturerData.copyOf().sliceArray(SERIAL_RANGE)
+                manufacturerData.sliceArray(SERIAL_RANGE)
             for (byte in rawSerialNumber.reversed()) {
                 serial = serial shl 8
                 serial = serial or byte.toUInt()
@@ -87,25 +87,25 @@ internal class ProbeAdvertisingData(
             }
 
             val probeTemperatures = ProbeTemperatures.fromRawData(
-                manufacturerData.copyOf().sliceArray(TEMPERATURE_RANGE)
+                manufacturerData.sliceArray(TEMPERATURE_RANGE)
             )
 
             // use mode and color ID if available
             val modeColorId = if (manufacturerData.size > 18)
-                manufacturerData.copyOf().sliceArray(MODE_COLOR_ID_RANGE)[0]
+                manufacturerData.sliceArray(MODE_COLOR_ID_RANGE)[0]
             else
                 null
 
             // use device status if available
             val deviceStatus = if (manufacturerData.size > 19)
-                manufacturerData.copyOf().sliceArray(STATUS_RANGE)[0]
+                manufacturerData.sliceArray(STATUS_RANGE)[0]
             else
                 null
 
             // use hopCount if available (and turn it into an unsigned integer)
             val hopCount = if (type.isRepeater && manufacturerData.size > 20)
                 HopCount.fromUByte(
-                    manufacturerData.copyOf().sliceArray(NETWORK_INFO_RANGE)[0]
+                    manufacturerData.sliceArray(NETWORK_INFO_RANGE)[0]
                 ).hopCount
             else
                 0u
@@ -129,7 +129,7 @@ internal class ProbeAdvertisingData(
                 temperatureOverheatingSensors.isAnySensorOverheating()
             ) {
                 OverheatingSensors.fromRawByte(
-                    manufacturerData.copyOf().sliceArray(OVERHEAT_RANGE)[0]
+                    manufacturerData.sliceArray(OVERHEAT_RANGE)[0]
                 )
             } else {
                 temperatureOverheatingSensors
@@ -137,7 +137,7 @@ internal class ProbeAdvertisingData(
 
             val preferences = if (manufacturerData.size > PREFERENCES_RANGE.last) {
                 ThermometerPreferences.fromRawByte(
-                    manufacturerData.copyOf().sliceArray(PREFERENCES_RANGE)[0]
+                    manufacturerData.sliceArray(PREFERENCES_RANGE)[0]
                 )
             } else {
                 null

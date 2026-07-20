@@ -71,20 +71,20 @@ internal class GaugeAdvertisingData(
             val serialNumber = manufacturerData.utf8StringFromRange(SERIAL_RANGE)
 
             val gaugeTemperature = SensorTemperature.fromRawDataStart(
-                manufacturerData.copyOf().sliceArray(TEMPERATURE_RANGE)
+                manufacturerData.sliceArray(TEMPERATURE_RANGE)
             )
 
             val gaugeStatusFlags: GaugeStatusFlags = GaugeStatusFlags.fromRawByte(
-                manufacturerData.copyOf().sliceArray(STATUS_FLAGS_RANGE)[0]
+                manufacturerData.sliceArray(STATUS_FLAGS_RANGE)[0]
             )
 
             val highLowAlarmStatus: HighLowAlarmStatus = HighLowAlarmStatus.fromRawData(
-                manufacturerData.copyOf().sliceArray(HIGH_LOW_ALARM_RANGE)
+                manufacturerData.sliceArray(HIGH_LOW_ALARM_RANGE)
             )
 
             val preferences = if (manufacturerData.size > PREFERENCES_RANGE.last) {
                 GaugePreferences.fromRawByte(
-                    manufacturerData.copyOf().sliceArray(PREFERENCES_RANGE)[0]
+                    manufacturerData.sliceArray(PREFERENCES_RANGE)[0]
                 )
             } else {
                 null
