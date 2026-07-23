@@ -169,7 +169,7 @@ internal class EngineManager(
         handleStatusMutex.withLock {
             if (simulated || arbitrator.shouldUpdateDataFromStatusForNormalMode(
                     status,
-                    sessionInfo,
+                    status.sessionInformation,
                 )
             ) {
                 // Snapshot before handleSessionInfo() overwrites `sessionInfo` in place, so we can

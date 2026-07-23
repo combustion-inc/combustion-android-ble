@@ -228,7 +228,7 @@ internal class GaugeManager(
 
         if (simulated || arbitrator.shouldUpdateDataFromStatusForNormalMode(
                 status,
-                sessionInfo,
+                status.sessionInformation,
             )
         ) {
             handleSessionInfo(

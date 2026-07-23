@@ -379,27 +379,20 @@ internal class ProbeDataLinkArbitrator(
         status: SpecializedDeviceStatus,
         sessionInfo: SessionInformation?,
     ): Boolean {
-        currentSessionInfo?.let {
-            if (it != sessionInfo) {
-                currentSessionInfo = sessionInfo
-                currentStatus = status
-                return true
-            }
+        // if status.max > current.max, then we want to update
+        val shouldUpdate = currentSessionInfo == null ||
+            currentSessionInfo != sessionInfo ||
+            status.maxSequenceNumber > (currentStatus?.maxSequenceNumber ?: UInt.MAX_VALUE)
 
-            // if status.max > current.max, then we want to update
-            val shouldUpdate =
-                status.maxSequenceNumber > (currentStatus?.maxSequenceNumber ?: UInt.MAX_VALUE)
-
-            currentStatus = status
-
-            return shouldUpdate
-        } ?: run {
-            currentSessionInfo = sessionInfo
+        currentSessionInfo = sessionInfo
+        // Only advance the bookkeeping on acceptance -- otherwise a stale/out-of-order status
+        // (e.g. a slower mesh relay hop) would lower the bar for what counts as "newer", letting a
+        // later, still-stale status get accepted as if it were an advance.
+        if (shouldUpdate) {
             currentStatus = status
         }
 
-        // don't yet have a session info, so want to update data
-        return true
+        return shouldUpdate
     }
 
     private fun shouldUpdateDataFromProbeStatusForInstantReadMode(hopCount: UInt?): Boolean {
