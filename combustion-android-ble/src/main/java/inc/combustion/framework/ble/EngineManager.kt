@@ -41,7 +41,13 @@ import inc.combustion.framework.service.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.atomic.AtomicBoolean
+
+// How long a control device must be continuously reported as disconnected before the engine is
+// treated as uncontrolled, so a brief radio drop doesn't flash the UI to "unattended."
+private const val CONTROL_DEVICE_DISCONNECT_CONFIRMATION_DELAY_MS = 30_000L
 
 internal class EngineManager(
     mac: String,
@@ -57,6 +63,16 @@ internal class EngineManager(
 ) {
 
     override val arbitrator = EngineDataLinkArbitrator()
+
+    private val controlDeviceDisconnectMonitor = IdleMonitor()
+    private var controlDeviceDisconnectPending = false
+
+    // Engine status can arrive concurrently from more than one source (a direct BLE link and/or
+    // multiple mesh-relay nodes), all invoking handleStatus() for the same engine. This mutex
+    // serializes the read-decide-write sequence below so two overlapping status updates can't
+    // race on controlDeviceDisconnectPending/controlDeviceDisconnectMonitor or clobber each
+    // other's _deviceFlow update with a stale `previous` snapshot.
+    private val handleStatusMutex = Mutex()
 
     override val _deviceFlow = Engine.create(serialNumber = serialNumber, mac = mac).let { base ->
         MutableStateFlow(initialEngineAdvertisingData?.let { updateDataFromAdvertisement(it, base) }
@@ -150,38 +166,94 @@ internal class EngineManager(
 
         statusNotificationsMonitor.activity()
 
-        if (simulated || arbitrator.shouldUpdateDataFromStatusForNormalMode(
-                status,
-                sessionInfo,
-            )
-        ) {
-            handleSessionInfo(
-                status.sessionInformation,
-                minSequenceNumber = status.minSequenceNumber,
-                maxSequenceNumber = status.maxSequenceNumber,
-            )
-
-            _normalModeStatusFlow.emit(status)
-
-            if (!simulated) {
-                fetchDeviceInfo()
-            }
-
-            _deviceFlow.update {
-                it.copy(
-                    engineBatteryStatus = status.engineBatteryStatus,
-                    engineStatusFlags = status.engineStatusFlags,
-                    engineFanStatus = status.engineFanStatus,
-                    engineControllerStatus = status.engineControllerStatus,
-                    temperatureSetPointCelsius = status.temperatureSetPoint,
-                    controlDeviceType = status.controlDeviceType,
-                    controlSerialNumber = status.controlSerialNumber,
-                    controlTemperature = status.controlTemperature,
-                    knobVoltageMillivolts = status.knobVoltageMillivolts,
-                    knobAngleTenthsDegrees = status.knobAngleTenthsDegrees,
-                    hopCount = status.hopCount.hopCount,
-                    chargingFault = status.chargingFault,
+        handleStatusMutex.withLock {
+            if (simulated || arbitrator.shouldUpdateDataFromStatusForNormalMode(
+                    status,
+                    sessionInfo,
                 )
+            ) {
+                // Snapshot before handleSessionInfo() overwrites `sessionInfo` in place, so we can
+                // still tell whether the cooking session changed.
+                val previousSessionInfo = sessionInfo
+                val previous = _deviceFlow.value
+
+                handleSessionInfo(
+                    status.sessionInformation,
+                    minSequenceNumber = status.minSequenceNumber,
+                    maxSequenceNumber = status.maxSequenceNumber,
+                )
+
+                _normalModeStatusFlow.emit(status)
+
+                if (!simulated) {
+                    fetchDeviceInfo()
+                }
+
+                val sessionChanged =
+                    previousSessionInfo != null && previousSessionInfo != status.sessionInformation
+
+                val controlDeviceConnected: Boolean
+                val controlDeviceType: CombustionProductType?
+                val controlSerialNumber: String?
+                val controlTemperature: SensorTemperature?
+                when {
+                    status.engineStatusFlags.controlDeviceConnected -> {
+                        // Reconnected, or a different controller took over -- adopt immediately
+                        // and clear any pending disconnect confirmation.
+                        controlDeviceDisconnectPending = false
+                        controlDeviceConnected = true
+                        controlDeviceType = status.controlDeviceType
+                        controlSerialNumber = status.controlSerialNumber
+                        controlTemperature = status.controlTemperature
+                    }
+
+                    sessionChanged || previous.controlSerialNumber == null -> {
+                        // Nothing controlled before, or the cooking session moved on -- nothing
+                        // to debounce.
+                        controlDeviceDisconnectPending = false
+                        controlDeviceConnected = false
+                        controlDeviceType = null
+                        controlSerialNumber = null
+                        controlTemperature = null
+                    }
+
+                    else -> {
+                        // Was controlled and firmware now reports disconnected -- hold the last
+                        // known control device info until the drop has persisted continuously for
+                        // the confirmation delay, so a brief radio hiccup doesn't flash the UI to
+                        // "unattended."
+                        if (!controlDeviceDisconnectPending) {
+                            controlDeviceDisconnectPending = true
+                            controlDeviceDisconnectMonitor.activity()
+                        }
+                        val confirmed = controlDeviceDisconnectMonitor.isIdle(
+                            CONTROL_DEVICE_DISCONNECT_CONFIRMATION_DELAY_MS,
+                        )
+                        controlDeviceConnected = !confirmed
+                        controlDeviceType = if (confirmed) null else previous.controlDeviceType
+                        controlSerialNumber = if (confirmed) null else previous.controlSerialNumber
+                        controlTemperature = if (confirmed) null else previous.controlTemperature
+                    }
+                }
+
+                _deviceFlow.update {
+                    it.copy(
+                        engineBatteryStatus = status.engineBatteryStatus,
+                        engineStatusFlags = status.engineStatusFlags.copy(
+                            controlDeviceConnected = controlDeviceConnected,
+                        ),
+                        engineFanStatus = status.engineFanStatus,
+                        engineControllerStatus = status.engineControllerStatus,
+                        temperatureSetPointCelsius = status.temperatureSetPoint,
+                        controlDeviceType = controlDeviceType,
+                        controlSerialNumber = controlSerialNumber,
+                        controlTemperature = controlTemperature,
+                        knobVoltageMillivolts = status.knobVoltageMillivolts,
+                        knobAngleTenthsDegrees = status.knobAngleTenthsDegrees,
+                        hopCount = status.hopCount.hopCount,
+                        chargingFault = status.chargingFault,
+                    )
+                }
             }
         }
     }
@@ -238,6 +310,7 @@ internal class EngineManager(
         val onCompletion: (Boolean) -> Unit = { success ->
             if (success) {
                 val newControlSerialNumber = controlSerialNumber.takeIf(String::isNotEmpty)
+                controlDeviceDisconnectPending = false
                 _deviceFlow.update { engine ->
                     engine.copy(
                         controlDeviceType = newControlSerialNumber?.let { controlDeviceType },
