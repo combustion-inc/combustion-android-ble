@@ -83,15 +83,22 @@ class EngineStatusTest {
         if (controlDeviceConnected) flags = flags or 0b0000_0010 // controlDeviceConnected (bit1)
         raw[34] = flags.toUByte()
 
-        // Control device type (21) + control serial number (22..33)
-        raw[21] = controlDeviceType.type
-        when (controlDeviceType) {
-            CombustionProductType.PROBE ->
-                raw.putLittleEndianUInt32At(22, controlSerialNumber.toLong(radix = 16).toUInt())
+        // Control device type (21) + control serial number (22..33) -- parsing no longer gates
+        // on controlDeviceConnected, so mimic real firmware and only populate these ranges when
+        // a controller is actually connected; otherwise leave them all-zero (i.e. "not set").
+        if (controlDeviceConnected) {
+            raw[21] = controlDeviceType.type
+            when (controlDeviceType) {
+                CombustionProductType.PROBE ->
+                    raw.putLittleEndianUInt32At(
+                        22,
+                        controlSerialNumber.toLong(radix = 16).toUInt(),
+                    )
 
-            else -> {
-                val serialBytes = controlSerialNumber.encodeToByteArray().toUByteArray()
-                serialBytes.copyInto(raw, destinationOffset = 22)
+                else -> {
+                    val serialBytes = controlSerialNumber.encodeToByteArray().toUByteArray()
+                    serialBytes.copyInto(raw, destinationOffset = 22)
+                }
             }
         }
 

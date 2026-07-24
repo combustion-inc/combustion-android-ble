@@ -108,9 +108,12 @@ class EngineManagerTest {
         maxSequenceNumber = maxSequenceNumber,
         engineBatteryStatus = EngineBatteryStatus(),
         temperatureSetPoint = SensorTemperature.NO_DATA,
-        controlTemperature = if (controlDeviceConnected) SensorTemperature.NO_DATA else null,
-        controlDeviceType = controlDeviceType.takeIf { controlDeviceConnected },
-        controlSerialNumber = controlSerialNumber.takeIf { controlDeviceConnected },
+        // Parsing no longer gates these on controlDeviceConnected -- firmware reports them
+        // independently of the connected flag (see EngineStatus.fromRawData), so the fixture
+        // shouldn't null them out here either.
+        controlTemperature = if (controlDeviceType != null) SensorTemperature.NO_DATA else null,
+        controlDeviceType = controlDeviceType,
+        controlSerialNumber = controlSerialNumber,
         engineStatusFlags = EngineStatusFlags(controlDeviceConnected = controlDeviceConnected),
         engineFanStatus = EngineFanStatus(
             fanState = EngineFanState.FAN_ON,
@@ -149,36 +152,66 @@ class EngineManagerTest {
         )
         assertEquals("1111", manager.device.controlSerialNumber)
 
-        // Firmware reports disconnected, but not for long enough yet to confirm.
-        manager.observedEngineStatus(engineStatus(maxSequenceNumber = 2u))
+        // Firmware reports disconnected, but not for long enough yet to confirm -- identity
+        // keeps being reported independently of the connected flag, matching real firmware.
+        manager.observedEngineStatus(
+            engineStatus(
+                maxSequenceNumber = 2u,
+                controlDeviceType = CombustionProductType.PROBE,
+                controlSerialNumber = "1111",
+            ),
+        )
         advanceTimeBy(29_999L)
-        manager.observedEngineStatus(engineStatus(maxSequenceNumber = 3u))
+        manager.observedEngineStatus(
+            engineStatus(
+                maxSequenceNumber = 3u,
+                controlDeviceType = CombustionProductType.PROBE,
+                controlSerialNumber = "1111",
+            ),
+        )
 
         assertEquals("1111", manager.device.controlSerialNumber)
         assertTrue(manager.device.engineStatusFlags.controlDeviceConnected)
     }
 
     @Test
-    fun `control device disconnect is confirmed once the delay elapses`() = runTest {
-        val manager = manager(backgroundScope)
+    fun `control device disconnect confirmation clears controlDeviceConnected but keeps the last known controller identity`() =
+        runTest {
+            // The engine stays attributed to its last confirmed controller (so it keeps showing
+            // under that device's card, with a disconnected indicator) rather than the
+            // relationship being forgotten -- matches iOS, which keeps controlDeviceSerialNumber
+            // populated independently of controlDeviceDisconnected.
+            val manager = manager(backgroundScope)
 
-        manager.observedEngineStatus(
-            engineStatus(
-                maxSequenceNumber = 1u,
-                controlDeviceConnected = true,
-                controlDeviceType = CombustionProductType.PROBE,
-                controlSerialNumber = "1111",
-            ),
-        )
-        manager.observedEngineStatus(engineStatus(maxSequenceNumber = 2u))
+            manager.observedEngineStatus(
+                engineStatus(
+                    maxSequenceNumber = 1u,
+                    controlDeviceConnected = true,
+                    controlDeviceType = CombustionProductType.PROBE,
+                    controlSerialNumber = "1111",
+                ),
+            )
+            manager.observedEngineStatus(
+                engineStatus(
+                    maxSequenceNumber = 2u,
+                    controlDeviceType = CombustionProductType.PROBE,
+                    controlSerialNumber = "1111",
+                ),
+            )
 
-        advanceTimeBy(30_000L)
-        manager.observedEngineStatus(engineStatus(maxSequenceNumber = 3u))
+            advanceTimeBy(30_000L)
+            manager.observedEngineStatus(
+                engineStatus(
+                    maxSequenceNumber = 3u,
+                    controlDeviceType = CombustionProductType.PROBE,
+                    controlSerialNumber = "1111",
+                ),
+            )
 
-        assertNull(manager.device.controlSerialNumber)
-        assertNull(manager.device.controlDeviceType)
-        assertFalse(manager.device.engineStatusFlags.controlDeviceConnected)
-    }
+            assertEquals("1111", manager.device.controlSerialNumber)
+            assertEquals(CombustionProductType.PROBE, manager.device.controlDeviceType)
+            assertFalse(manager.device.engineStatusFlags.controlDeviceConnected)
+        }
 
     @Test
     fun `reconnecting cancels the pending disconnect and starts a fresh window`() = runTest {
@@ -192,7 +225,13 @@ class EngineManagerTest {
                 controlSerialNumber = "1111",
             ),
         )
-        manager.observedEngineStatus(engineStatus(maxSequenceNumber = 2u))
+        manager.observedEngineStatus(
+            engineStatus(
+                maxSequenceNumber = 2u,
+                controlDeviceType = CombustionProductType.PROBE,
+                controlSerialNumber = "1111",
+            ),
+        )
         advanceTimeBy(10_000L)
 
         // A different control device takes over mid-window -- adopted immediately.
@@ -207,16 +246,37 @@ class EngineManagerTest {
         assertEquals("2222", manager.device.controlSerialNumber)
 
         // It disconnects again -- the old timer must not still be running underneath.
-        manager.observedEngineStatus(engineStatus(maxSequenceNumber = 4u))
+        manager.observedEngineStatus(
+            engineStatus(
+                maxSequenceNumber = 4u,
+                controlDeviceType = CombustionProductType.PROBE,
+                controlSerialNumber = "2222",
+            ),
+        )
         advanceTimeBy(10_000L)
-        manager.observedEngineStatus(engineStatus(maxSequenceNumber = 5u))
+        manager.observedEngineStatus(
+            engineStatus(
+                maxSequenceNumber = 5u,
+                controlDeviceType = CombustionProductType.PROBE,
+                controlSerialNumber = "2222",
+            ),
+        )
 
         assertEquals("2222", manager.device.controlSerialNumber)
 
         advanceTimeBy(20_000L)
-        manager.observedEngineStatus(engineStatus(maxSequenceNumber = 6u))
+        manager.observedEngineStatus(
+            engineStatus(
+                maxSequenceNumber = 6u,
+                controlDeviceType = CombustionProductType.PROBE,
+                controlSerialNumber = "2222",
+            ),
+        )
 
-        assertNull(manager.device.controlSerialNumber)
+        // Confirmed disconnected -- controlDeviceConnected flips, but the identity (of the
+        // second, most-recent controller) is retained rather than cleared.
+        assertEquals("2222", manager.device.controlSerialNumber)
+        assertFalse(manager.device.engineStatusFlags.controlDeviceConnected)
     }
 
     @Test

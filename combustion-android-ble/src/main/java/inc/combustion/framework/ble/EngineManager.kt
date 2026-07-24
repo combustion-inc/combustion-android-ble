@@ -192,19 +192,17 @@ internal class EngineManager(
                 val sessionChanged =
                     previousSessionInfo != null && previousSessionInfo != status.sessionInformation
 
+                val controlDeviceType = status.controlDeviceType
+                val controlSerialNumber = status.controlSerialNumber
+                val controlTemperature = status.controlTemperature
+
                 val controlDeviceConnected: Boolean
-                val controlDeviceType: CombustionProductType?
-                val controlSerialNumber: String?
-                val controlTemperature: SensorTemperature?
                 when {
                     status.engineStatusFlags.controlDeviceConnected -> {
                         // Reconnected, or a different controller took over -- adopt immediately
                         // and clear any pending disconnect confirmation.
                         controlDeviceDisconnectPending = false
                         controlDeviceConnected = true
-                        controlDeviceType = status.controlDeviceType
-                        controlSerialNumber = status.controlSerialNumber
-                        controlTemperature = status.controlTemperature
                     }
 
                     sessionChanged || previous.controlSerialNumber == null -> {
@@ -212,16 +210,12 @@ internal class EngineManager(
                         // to debounce.
                         controlDeviceDisconnectPending = false
                         controlDeviceConnected = false
-                        controlDeviceType = null
-                        controlSerialNumber = null
-                        controlTemperature = null
                     }
 
                     else -> {
-                        // Was controlled and firmware now reports disconnected -- hold the last
-                        // known control device info until the drop has persisted continuously for
-                        // the confirmation delay, so a brief radio hiccup doesn't flash the UI to
-                        // "unattended."
+                        // Was controlled and firmware now reports disconnected -- debounce
+                        // controlDeviceConnected alone so a momentary status miss doesn't flap
+                        // the UI/notification to disconnected before firmware confirms it.
                         if (!controlDeviceDisconnectPending) {
                             controlDeviceDisconnectPending = true
                             controlDeviceDisconnectMonitor.activity()
@@ -230,9 +224,13 @@ internal class EngineManager(
                             CONTROL_DEVICE_DISCONNECT_CONFIRMATION_DELAY_MS,
                         )
                         controlDeviceConnected = !confirmed
-                        controlDeviceType = if (confirmed) null else previous.controlDeviceType
-                        controlSerialNumber = if (confirmed) null else previous.controlSerialNumber
-                        controlTemperature = if (confirmed) null else previous.controlTemperature
+                        Log.d(
+                            LOG_TAG,
+                            "EngineManager.handleStatus: $serialNumber debouncing " +
+                                    "controlDeviceConnected (was controlled, firmware now reports " +
+                                    "disconnected) to avoid flapping on a momentary status miss -- " +
+                                    "confirmed=$confirmed controlDeviceConnected=$controlDeviceConnected",
+                        )
                     }
                 }
 
