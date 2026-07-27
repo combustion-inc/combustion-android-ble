@@ -36,11 +36,13 @@ data class GaugePreferences(
     companion object {
         val DEFAULT = GaugePreferences(highRadioPower = false)
 
+        // Unlike ThermometerPreferences, the gauge preferences byte has no power mode field
+        // occupying bits 0-1, so highRadioPower can use bit 0 directly.
+        private const val HIGH_RADIO_POWER_BIT = 0
+
         fun fromRawByte(byte: UByte): GaugePreferences {
-            // Bit 0: unlike ThermometerPreferences, the gauge preferences byte has no power mode
-            // field occupying bits 0-1, so highRadioPower can use bit 0 directly.
             return GaugePreferences(
-                highRadioPower = byte.isBitSet(0),
+                highRadioPower = byte.isBitSet(HIGH_RADIO_POWER_BIT),
             )
         }
     }

@@ -48,12 +48,18 @@ class EngineStatusTest {
      * every field, so individual tests can assert against known expectations without needing to
      * hand-roll the whole packet each time.
      *
-     * @param controlDeviceConnected when true, populates the control-device type/serial/temperature
-     * ranges per [controlDeviceType]; when false, those ranges are left non-zero (to prove they're
-     * correctly ignored rather than happening to already be zero).
+     * @param controlDeviceConnected sets bit1 of the engine status flags byte.
+     * @param populateControlDeviceBytes when true, populates the control-device type/serial
+     * ranges per [controlDeviceType]/[controlSerialNumber]; when false, those ranges are left
+     * zero. Defaults to [controlDeviceConnected] to model ordinary firmware behavior, but can be
+     * set independently to model the case parsing must also support: firmware continuing to
+     * report the last-known controller identity while [controlDeviceConnected] is transiently
+     * false (see EngineStatus.fromRawData's control-device-type comment, and
+     * EngineManager's disconnect-confirmation debounce, which depends on this).
      */
     private fun buildRawStatus(
         controlDeviceConnected: Boolean = true,
+        populateControlDeviceBytes: Boolean = controlDeviceConnected,
         controlDeviceType: CombustionProductType = CombustionProductType.PROBE,
         controlSerialNumber: String = "1000DA4C",
     ): UByteArray {
@@ -83,10 +89,10 @@ class EngineStatusTest {
         if (controlDeviceConnected) flags = flags or 0b0000_0010 // controlDeviceConnected (bit1)
         raw[34] = flags.toUByte()
 
-        // Control device type (21) + control serial number (22..33) -- parsing no longer gates
-        // on controlDeviceConnected, so mimic real firmware and only populate these ranges when
-        // a controller is actually connected; otherwise leave them all-zero (i.e. "not set").
-        if (controlDeviceConnected) {
+        // Control device type (21) + control serial number (22..33) -- populated independently of
+        // controlDeviceConnected per populateControlDeviceBytes (see its KDoc above); left
+        // all-zero (i.e. "not set") otherwise.
+        if (populateControlDeviceBytes) {
             raw[21] = controlDeviceType.type
             when (controlDeviceType) {
                 CombustionProductType.PROBE ->
@@ -193,6 +199,31 @@ class EngineStatusTest {
         assertNull(status?.controlDeviceType)
         assertNull(status?.controlSerialNumber)
         assertNull(status?.controlTemperature)
+    }
+
+    @Test
+    fun `fromRawData retains control device identity while disconnected, so a transient drop can be debounced`() {
+        // Regression test: parsing must not gate controlDeviceType/controlSerialNumber on
+        // controlDeviceConnected. EngineManager's disconnect-confirmation debounce relies on
+        // these surviving a momentary controlDeviceConnected=false so it can keep attributing the
+        // engine to its last controller until the disconnect is confirmed -- see
+        // EngineManager.CONTROL_DEVICE_DISCONNECT_CONFIRMATION_DELAY_MS and
+        // EngineManagerTest's debounce tests. Re-gating this on the flag (as a well-intentioned
+        // "ignore stale bytes" fix might do) would silently break that feature without failing
+        // any EngineManager-level test, since those construct EngineStatus directly rather than
+        // through fromRawData.
+        val status = EngineStatus.fromRawData(
+            buildRawStatus(
+                controlDeviceConnected = false,
+                populateControlDeviceBytes = true,
+                controlDeviceType = CombustionProductType.PROBE,
+                controlSerialNumber = "1000DA4C",
+            )
+        )
+
+        assertEquals(false, status?.engineStatusFlags?.controlDeviceConnected)
+        assertEquals(CombustionProductType.PROBE, status?.controlDeviceType)
+        assertEquals("1000DA4C", status?.controlSerialNumber)
     }
 
     @Test

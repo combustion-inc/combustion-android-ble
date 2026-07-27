@@ -384,11 +384,14 @@ internal class ProbeDataLinkArbitrator(
             currentSessionInfo != sessionInfo ||
             status.maxSequenceNumber > (currentStatus?.maxSequenceNumber ?: UInt.MAX_VALUE)
 
-        currentSessionInfo = sessionInfo
         // Only advance the bookkeeping on acceptance -- otherwise a stale/out-of-order status
         // (e.g. a slower mesh relay hop) would lower the bar for what counts as "newer", letting a
-        // later, still-stale status get accepted as if it were an advance.
+        // later, still-stale status get accepted as if it were an advance. (currentSessionInfo can
+        // only actually change when shouldUpdate is already true, via the OR clause above, so
+        // this is behavior-preserving -- it just keeps both fields' bookkeeping visibly
+        // symmetric.)
         if (shouldUpdate) {
+            currentSessionInfo = sessionInfo
             currentStatus = status
         }
 

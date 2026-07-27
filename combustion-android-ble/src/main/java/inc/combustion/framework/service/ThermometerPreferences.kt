@@ -43,18 +43,18 @@ data class ThermometerPreferences(
     companion object {
         const val PROBE_PREFS_SIZE_BYTES = 1
 
+        // Bit 2, not bit 0: bits 0-1 are reserved for ProbePowerMode (see
+        // ProbePowerMode.PROBE_POWER_MODE_MASK). This differs from GaugePreferences and
+        // EnginePreferences, which have no power mode field and so use bit 0 for highRadioPower.
+        private const val HIGH_RADIO_POWER_BIT = 2
+
         val DEFAULT =
             ThermometerPreferences(powerMode = ProbePowerMode.NORMAL, highRadioPower = false)
 
         fun fromRawByte(byte: UByte): ThermometerPreferences {
-            // Bit 2, not bit 0: bits 0-1 are reserved for ProbePowerMode (see
-            // ProbePowerMode.PROBE_POWER_MODE_MASK). This differs from GaugePreferences and
-            // EnginePreferences, which have no power mode field and so use bit 0 for
-            // highRadioPower.
-            val highRadioPower = byte.isBitSet(2)
             return ThermometerPreferences(
                 powerMode = ProbePowerMode.fromUByte(byte),
-                highRadioPower = highRadioPower,
+                highRadioPower = byte.isBitSet(HIGH_RADIO_POWER_BIT),
             )
         }
     }

@@ -39,10 +39,13 @@ import inc.combustion.framework.ble.scanning.EngineAdvertisingData
 import inc.combustion.framework.ble.uart.LogResponse
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
 
 // How long a control device must be continuously reported as disconnected before the engine is
@@ -216,7 +219,8 @@ internal class EngineManager(
                         // Was controlled and firmware now reports disconnected -- debounce
                         // controlDeviceConnected alone so a momentary status miss doesn't flap
                         // the UI/notification to disconnected before firmware confirms it.
-                        if (!controlDeviceDisconnectPending) {
+                        val enteringPending = !controlDeviceDisconnectPending
+                        if (enteringPending) {
                             controlDeviceDisconnectPending = true
                             controlDeviceDisconnectMonitor.activity()
                         }
@@ -224,13 +228,20 @@ internal class EngineManager(
                             CONTROL_DEVICE_DISCONNECT_CONFIRMATION_DELAY_MS,
                         )
                         controlDeviceConnected = !confirmed
-                        Log.d(
-                            LOG_TAG,
-                            "EngineManager.handleStatus: $serialNumber debouncing " +
-                                    "controlDeviceConnected (was controlled, firmware now reports " +
-                                    "disconnected) to avoid flapping on a momentary status miss -- " +
-                                    "confirmed=$confirmed controlDeviceConnected=$controlDeviceConnected",
-                        )
+                        // Log only on the pending-entry and pending->confirmed transitions, not on
+                        // every status in between -- while disconnected, every subsequent status
+                        // falls into this branch, and logging each one would spam the log for as
+                        // long as the engine stays disconnected.
+                        val justConfirmed = confirmed && previous.engineStatusFlags.controlDeviceConnected
+                        if (enteringPending || justConfirmed) {
+                            Log.d(
+                                LOG_TAG,
+                                "EngineManager.handleStatus: $serialNumber debouncing " +
+                                        "controlDeviceConnected (was controlled, firmware now reports " +
+                                        "disconnected) to avoid flapping on a momentary status miss -- " +
+                                        "confirmed=$confirmed controlDeviceConnected=$controlDeviceConnected",
+                            )
+                        }
                     }
                 }
 
@@ -260,6 +271,12 @@ internal class EngineManager(
         temperature: SensorTemperature,
         completionHandler: (Boolean) -> Unit,
     ) {
+        // No lock needed here, unlike setControlDevice: this only writes _deviceFlow, via a
+        // self-contained transform (it.copy(temperatureSetPointCelsius = temperature)) with no
+        // dependency on any other shared mutable state. MutableStateFlow.update{} already
+        // guarantees that write is atomic and never lost against a concurrent handleStatus()
+        // update -- a lock here wouldn't change which write "wins" when both land close together,
+        // only how they interleave, so it would add complexity without fixing anything.
         val onCompletion: (Boolean) -> Unit = { success ->
             if (success) {
                 _deviceFlow.update {
@@ -305,21 +322,38 @@ internal class EngineManager(
         controlSerialNumber: String,
         completionHandler: (Boolean) -> Unit,
     ) {
+        // Dispatched onto scope and taken under handleStatusMutex -- this callback fires from a
+        // UART completion handler that can run concurrently with handleStatus(), and both paths
+        // read/write controlDeviceDisconnectPending and the same control-device _deviceFlow
+        // fields. Without the lock, this could race with a concurrent handleStatus() call and
+        // either clobber its decision or be clobbered by it. The lock/update itself has no
+        // thread-affinity requirement and runs on scope's default dispatcher; only
+        // completionHandler is explicitly switched to Dispatchers.Main.immediate below, since it's
+        // public API and the UART completion path it previously ran on synchronously
+        // (UartBleDevice.MessageCompletionHandler.handled(), invoked from NodeBleDevice's UART
+        // message loop) always delivers on Dispatchers.Main -- callers may reasonably do UI work
+        // in completionHandler, same as before this lock was added.
         val onCompletion: (Boolean) -> Unit = { success ->
-            if (success) {
-                val newControlSerialNumber = controlSerialNumber.takeIf(String::isNotEmpty)
-                controlDeviceDisconnectPending = false
-                _deviceFlow.update { engine ->
-                    engine.copy(
-                        controlDeviceType = newControlSerialNumber?.let { controlDeviceType },
-                        controlSerialNumber = newControlSerialNumber,
-                        engineStatusFlags = engine.engineStatusFlags.copy(
-                            controlDeviceConnected = newControlSerialNumber != null,
-                        ),
-                    )
+            scope.launch {
+                if (success) {
+                    val newControlSerialNumber = controlSerialNumber.takeIf(String::isNotEmpty)
+                    handleStatusMutex.withLock {
+                        controlDeviceDisconnectPending = false
+                        _deviceFlow.update { engine ->
+                            engine.copy(
+                                controlDeviceType = newControlSerialNumber?.let { controlDeviceType },
+                                controlSerialNumber = newControlSerialNumber,
+                                engineStatusFlags = engine.engineStatusFlags.copy(
+                                    controlDeviceConnected = newControlSerialNumber != null,
+                                ),
+                            )
+                        }
+                    }
+                }
+                withContext(Dispatchers.Main.immediate) {
+                    completionHandler(success)
                 }
             }
-            completionHandler(success)
         }
 
         val requestId = makeRequestId()

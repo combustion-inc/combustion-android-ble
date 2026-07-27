@@ -128,8 +128,16 @@ internal class ProbeAdvertisingData(
             val overheatingSensors = if (manufacturerData.size > OVERHEAT_RANGE.last &&
                 temperatureOverheatingSensors.isAnySensorOverheating()
             ) {
-                OverheatingSensors.fromRawByte(
+                val rawOverheatingSensors = OverheatingSensors.fromRawByte(
                     manufacturerData.sliceArray(OVERHEAT_RANGE)[0]
+                )
+                // Corroborate per-channel, not just "is anything overheating": the raw byte can
+                // have individual bits incorrectly set by the same firmware bug, so only report a
+                // channel as overheating here if the independent temperature-derived calculation
+                // also flags that specific channel. Otherwise a spurious bit on one channel could
+                // masquerade as the real overheating channel while the true one goes unreported.
+                OverheatingSensors(
+                    temperatureOverheatingSensors.values.filter { it in rawOverheatingSensors.values }
                 )
             } else {
                 temperatureOverheatingSensors
