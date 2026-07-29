@@ -280,6 +280,58 @@ class EngineManagerTest {
     }
 
     @Test
+    fun `controlSerialNumber changing to a different controller while still disconnected reports the actual value, not the debounced one`() =
+        runTest {
+            val manager = manager(backgroundScope)
+
+            manager.observedEngineStatus(
+                engineStatus(
+                    maxSequenceNumber = 1u,
+                    controlDeviceConnected = true,
+                    controlDeviceType = CombustionProductType.PROBE,
+                    controlSerialNumber = "1111",
+                ),
+            )
+            manager.observedEngineStatus(
+                engineStatus(
+                    maxSequenceNumber = 2u,
+                    controlDeviceType = CombustionProductType.PROBE,
+                    controlSerialNumber = "1111",
+                ),
+            )
+            advanceTimeBy(10_000L)
+
+            // Firmware reports a *different* controller's identity, but still disconnected --
+            // unlike a takeover (which reports controlDeviceConnected = true), this must not
+            // continue debouncing the old controller's pending window. The serial change alone
+            // is enough to report the actual (disconnected) value immediately.
+            manager.observedEngineStatus(
+                engineStatus(
+                    maxSequenceNumber = 3u,
+                    controlDeviceType = CombustionProductType.PROBE,
+                    controlSerialNumber = "2222",
+                ),
+            )
+            assertEquals("2222", manager.device.controlSerialNumber)
+            assertFalse(manager.device.engineStatusFlags.controlDeviceConnected)
+
+            // And the reset must be genuine, not just a coincidental false: a further still-false
+            // status for the new controller, well within what would have been the old 30s window,
+            // must not suddenly start debouncing either -- there was never a confirmed connection
+            // to "2222" to debounce from.
+            advanceTimeBy(15_000L)
+            manager.observedEngineStatus(
+                engineStatus(
+                    maxSequenceNumber = 4u,
+                    controlDeviceType = CombustionProductType.PROBE,
+                    controlSerialNumber = "2222",
+                ),
+            )
+            assertEquals("2222", manager.device.controlSerialNumber)
+            assertFalse(manager.device.engineStatusFlags.controlDeviceConnected)
+        }
+
+    @Test
     fun `cooking session change clears the control device immediately`() = runTest {
         val manager = manager(backgroundScope)
 
@@ -314,6 +366,85 @@ class EngineManagerTest {
             manager.observedEngineStatus(engineStatus(maxSequenceNumber = 1u))
 
             assertNull(manager.device.controlSerialNumber)
+            assertFalse(manager.device.engineStatusFlags.controlDeviceConnected)
+        }
+
+    @Test
+    fun `status arriving every 5s holds controlDeviceConnected true for 6 updates then folds on the 7th`() =
+        runTest {
+            val manager = manager(backgroundScope)
+
+            manager.observedEngineStatus(
+                engineStatus(
+                    maxSequenceNumber = 1u,
+                    controlDeviceConnected = true,
+                    controlDeviceType = CombustionProductType.PROBE,
+                    controlSerialNumber = "1111",
+                ),
+            )
+            assertTrue(manager.device.engineStatusFlags.controlDeviceConnected)
+
+            var seq = 2u
+            // 6 consecutive false updates, 5s apart -- t=5,10,15,20,25,30 -- all should stay true
+            repeat(6) { i ->
+                advanceTimeBy(5_000L)
+                manager.observedEngineStatus(
+                    engineStatus(
+                        maxSequenceNumber = seq++,
+                        controlDeviceType = CombustionProductType.PROBE,
+                        controlSerialNumber = "1111",
+                    ),
+                )
+                assertTrue(
+                    "expected still true at update #${i + 1} (t=${(i + 1) * 5}s)",
+                    manager.device.engineStatusFlags.controlDeviceConnected,
+                )
+            }
+
+            // 7th update, t=35s -- 30s elapsed since the first false at t=5 -- should fold to false
+            advanceTimeBy(5_000L)
+            manager.observedEngineStatus(
+                engineStatus(
+                    maxSequenceNumber = seq++,
+                    controlDeviceType = CombustionProductType.PROBE,
+                    controlSerialNumber = "1111",
+                ),
+            )
+            assertFalse(manager.device.engineStatusFlags.controlDeviceConnected)
+        }
+
+    @Test
+    fun `a firmware-remembered controlSerialNumber at power-on does not start a pending window`() =
+        runTest {
+            // Regression test for a real-device bug: right after power-on, firmware can report a
+            // remembered controlSerialNumber (from a previous pairing) on the very first status,
+            // with controlDeviceConnected already false -- it has never actually connected this
+            // session. controlSerialNumber isn't gated on controlDeviceConnected (see
+            // EngineStatus.fromRawData), so this looks superficially like "was controlled, now
+            // disconnected" if the debounce only checks whether a controlSerialNumber is present.
+            // It must not debounce here, since controlDeviceConnected was never confirmed true.
+            val manager = manager(backgroundScope)
+
+            manager.observedEngineStatus(
+                engineStatus(
+                    maxSequenceNumber = 1u,
+                    controlDeviceType = CombustionProductType.PROBE,
+                    controlSerialNumber = "1000D564",
+                ),
+            )
+            assertEquals("1000D564", manager.device.controlSerialNumber)
+            assertFalse(manager.device.engineStatusFlags.controlDeviceConnected)
+
+            advanceTimeBy(4_864L)
+            manager.observedEngineStatus(
+                engineStatus(
+                    maxSequenceNumber = 2u,
+                    controlDeviceType = CombustionProductType.PROBE,
+                    controlSerialNumber = "1000D564",
+                ),
+            )
+
+            assertEquals("1000D564", manager.device.controlSerialNumber)
             assertFalse(manager.device.engineStatusFlags.controlDeviceConnected)
         }
 }

@@ -178,7 +178,11 @@ internal class EngineManager(
                 // Snapshot before handleSessionInfo() overwrites `sessionInfo` in place, so we can
                 // still tell whether the cooking session changed.
                 val previousSessionInfo = sessionInfo
-                val previous = _deviceFlow.value
+                // The Engine state this manager last exposed via _deviceFlow -- i.e. our own
+                // prior debounced decision -- NOT a copy of the previous raw EngineStatus received
+                // from the device. See resolveControlDeviceConnected's KDoc for why that
+                // distinction is what makes debouncing hold across many consecutive statuses.
+                val previousExposedEngine = _deviceFlow.value
 
                 handleSessionInfo(
                     status.sessionInformation,
@@ -199,51 +203,23 @@ internal class EngineManager(
                 val controlSerialNumber = status.controlSerialNumber
                 val controlTemperature = status.controlTemperature
 
-                val controlDeviceConnected: Boolean
-                when {
-                    status.engineStatusFlags.controlDeviceConnected -> {
-                        // Reconnected, or a different controller took over -- adopt immediately
-                        // and clear any pending disconnect confirmation.
-                        controlDeviceDisconnectPending = false
-                        controlDeviceConnected = true
-                    }
+                Log.v(
+                    "D3V",
+                    "handleStatus: actual controlDeviceConnected = ${status.engineStatusFlags.controlDeviceConnected}, " +
+                            "sessionChanged = $sessionChanged, " +
+                            "controlSerialNumber = $controlSerialNumber, " +
+                            "previousExposedEngine.controlSerialNumber = ${previousExposedEngine.controlSerialNumber}"
+                )
 
-                    sessionChanged || previous.controlSerialNumber == null -> {
-                        // Nothing controlled before, or the cooking session moved on -- nothing
-                        // to debounce.
-                        controlDeviceDisconnectPending = false
-                        controlDeviceConnected = false
-                    }
-
-                    else -> {
-                        // Was controlled and firmware now reports disconnected -- debounce
-                        // controlDeviceConnected alone so a momentary status miss doesn't flap
-                        // the UI/notification to disconnected before firmware confirms it.
-                        val enteringPending = !controlDeviceDisconnectPending
-                        if (enteringPending) {
-                            controlDeviceDisconnectPending = true
-                            controlDeviceDisconnectMonitor.activity()
-                        }
-                        val confirmed = controlDeviceDisconnectMonitor.isIdle(
-                            CONTROL_DEVICE_DISCONNECT_CONFIRMATION_DELAY_MS,
-                        )
-                        controlDeviceConnected = !confirmed
-                        // Log only on the pending-entry and pending->confirmed transitions, not on
-                        // every status in between -- while disconnected, every subsequent status
-                        // falls into this branch, and logging each one would spam the log for as
-                        // long as the engine stays disconnected.
-                        val justConfirmed = confirmed && previous.engineStatusFlags.controlDeviceConnected
-                        if (enteringPending || justConfirmed) {
-                            Log.d(
-                                LOG_TAG,
-                                "EngineManager.handleStatus: $serialNumber debouncing " +
-                                        "controlDeviceConnected (was controlled, firmware now reports " +
-                                        "disconnected) to avoid flapping on a momentary status miss -- " +
-                                        "confirmed=$confirmed controlDeviceConnected=$controlDeviceConnected",
-                            )
-                        }
-                    }
-                }
+                val controlDeviceConnected = resolveControlDeviceConnected(
+                    status = status,
+                    previousExposedEngine = previousExposedEngine,
+                    sessionChanged = sessionChanged,
+                )
+                Log.v(
+                    "D3V",
+                    "handleStatus: controlDeviceConnected = $controlDeviceConnected, controlDeviceDisconnectPending = $controlDeviceDisconnectPending"
+                )
 
                 _deviceFlow.update {
                     it.copy(
@@ -264,6 +240,91 @@ internal class EngineManager(
                     )
                 }
             }
+        }
+    }
+
+    /**
+     * Resolves the effective, debounced value of `controlDeviceConnected` for [status].
+     *
+     * [previousExposedEngine] is the [Engine] state this manager last exposed via [_deviceFlow] --
+     * its own prior debounced decision -- NOT a copy of the previous raw [EngineStatus] received
+     * from the device. Comparing against it (rather than a raw "last received status") is what
+     * lets debouncing hold across many consecutive still-disconnected statuses: while a
+     * disconnect is pending confirmation, this manager keeps writing
+     * `controlDeviceConnected = true` into `_deviceFlow`, so the next call keeps seeing
+     * "previously connected" until the confirmation delay genuinely elapses.
+     *
+     * Debouncing (holding `controlDeviceConnected = true` for up to
+     * [CONTROL_DEVICE_DISCONNECT_CONFIRMATION_DELAY_MS] despite firmware reporting false) only
+     * applies across a genuine true -> false transition of a *confirmed* connection: the
+     * controller identity must be unchanged, the cooking session must be unchanged, and
+     * [previousExposedEngine] must have had `controlDeviceConnected = true`. Any other case (a
+     * new/changed controller, a session change, or a controller that was never confirmed
+     * connected in the first place) reports the actual value from [status] directly.
+     */
+    private fun resolveControlDeviceConnected(
+        status: EngineStatus,
+        previousExposedEngine: Engine,
+        sessionChanged: Boolean,
+    ): Boolean = when {
+        status.engineStatusFlags.controlDeviceConnected -> {
+            // Reconnected, or a different controller took over -- adopt immediately and clear
+            // any pending disconnect confirmation.
+            controlDeviceDisconnectPending = false
+            true
+        }
+
+        sessionChanged || status.controlSerialNumber != previousExposedEngine.controlSerialNumber -> {
+            // Cooking session moved on, or the controller identity itself changed -- including a
+            // controlSerialNumber that's new/never-seen (e.g. firmware reporting a remembered
+            // controller right after power-on, before ever actually connecting this session --
+            // controlSerialNumber isn't gated on controlDeviceConnected, so this can be non-null
+            // on the very first status). Nothing to debounce either way -- report the actual
+            // value directly, not the debounced one.
+            controlDeviceDisconnectPending = false
+            status.engineStatusFlags.controlDeviceConnected
+        }
+
+        !previousExposedEngine.engineStatusFlags.controlDeviceConnected -> {
+            // Same controller as last time, and it was already reporting disconnected then too --
+            // controlDeviceConnected hasn't changed, so there's nothing to debounce. This is what
+            // prevents debouncing a controller that was never actually confirmed connected in the
+            // first place: without this check, a freshly-powered-on engine reporting the same
+            // remembered controlSerialNumber across its first two statuses (both disconnected)
+            // would incorrectly start a debounce window and report connected = true.
+            controlDeviceDisconnectPending = false
+            status.engineStatusFlags.controlDeviceConnected
+        }
+
+        else -> {
+            // Same controller, and it WAS confirmed connected last time (guaranteed by the
+            // branch above having excluded !previousExposedEngine...controlDeviceConnected) --
+            // firmware now reports disconnected for the first time since that confirmed
+            // connection. Debounce controlDeviceConnected alone so a momentary status miss
+            // doesn't flap the UI/notification to disconnected before firmware confirms it.
+            val enteringPending = !controlDeviceDisconnectPending
+            if (enteringPending) {
+                controlDeviceDisconnectPending = true
+                controlDeviceDisconnectMonitor.activity()
+            }
+            val confirmed = controlDeviceDisconnectMonitor.isIdle(
+                CONTROL_DEVICE_DISCONNECT_CONFIRMATION_DELAY_MS,
+            )
+            val connected = !confirmed
+            // Log only on the pending-entry and pending->confirmed transitions, not on every
+            // status in between -- while disconnected, every subsequent status falls into this
+            // branch, and logging each one would spam the log for as long as the engine stays
+            // disconnected.
+            if (enteringPending || confirmed) {
+                Log.d(
+                    LOG_TAG,
+                    "EngineManager.handleStatus: $serialNumber debouncing " +
+                            "controlDeviceConnected (was controlled, firmware now reports " +
+                            "disconnected) to avoid flapping on a momentary status miss -- " +
+                            "confirmed=$confirmed controlDeviceConnected=$connected",
+                )
+            }
+            connected
         }
     }
 
