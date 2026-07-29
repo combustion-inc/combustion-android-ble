@@ -223,7 +223,7 @@ class ProbeAdvertisingDataTest {
     }
 
     @Test
-    fun `create drops raw overheating bits the temperature-derived calculation doesn't corroborate`() {
+    fun `create ignores the raw overheating byte, even when it disagrees with hot temperatures`() {
         val advertisingData = ProbeAdvertisingData.create(
             address = "AA:BB:CC:DD:EE:FF",
             name = "Probe",
@@ -231,17 +231,12 @@ class ProbeAdvertisingDataTest {
             isConnectable = true,
             manufacturerData = buildManufacturerData(
                 rawTemperatures = HOT_RAW_TEMPERATURES, // T3 (index 2) and T4 (index 3) exceed thresholds
-                overheatByte = 0b0000_0101u, // firmware reports T1 (index 0) and T3 (index 2)
+                overheatByte = 0b0000_0101u, // raw byte disagrees (reports T1 and T3) -- ignored
             ),
             type = CombustionProductType.PROBE,
         )
 
-        // T1 is dropped: the temperature-derived calculation doesn't independently confirm it, so
-        // it's treated as one of the individually-incorrect bits the known repeater firmware bug
-        // can set. T3 is kept since both sources agree. T4 -- which the raw byte fails to report
-        // -- is not added back in either; corroboration is required in both directions, so the
-        // result can never exceed what the temperature-derived calculation alone would report.
-        assertEquals(listOf(2), advertisingData.overheatingSensors.values)
+        assertEquals(listOf(2, 3), advertisingData.overheatingSensors.values)
     }
 
     @Test

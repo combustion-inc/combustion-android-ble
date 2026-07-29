@@ -58,7 +58,14 @@ internal class ProbeAdvertisingData(
         private val MODE_COLOR_ID_RANGE = 18..18
         private val STATUS_RANGE = 19..19
         private val NETWORK_INFO_RANGE = 20..20
-        private val OVERHEAT_RANGE = 21..21
+
+        // Byte 21 carries firmware's own overheat-flag byte. It's deliberately not parsed --
+        // overheatingSensors below is computed purely from temperature thresholds instead, since
+        // there's no field evidence every probe/repeater build populates this byte correctly (or
+        // at all) when present, and repeater firmware <= 2.2.0 has a known bug that can cause it
+        // to be incorrectly set. Left commented out (rather than removed) to document the offset,
+        // so the gap between NETWORK_INFO_RANGE and PREFERENCES_RANGE isn't a mystery.
+        // private val OVERHEAT_RANGE = 21..21
         private val PREFERENCES_RANGE = 22..22
 
         fun create(
@@ -119,29 +126,7 @@ internal class ProbeAdvertisingData(
             val virtualSensors = deviceStatus?.let { ProbeVirtualSensors.fromDeviceStatus(it) }
                 ?: run { ProbeVirtualSensors.DEFAULT }
 
-            // Decode overheating flags. Sanity check against the temperature-derived flags--if
-            // none of the temperatures are above the thresholds, ignore the raw flag values, as
-            // there is a bug in repeater firmware versions <= 2.2.0 that can cause these flags to
-            // be incorrectly set.
-            val temperatureOverheatingSensors =
-                OverheatingSensors.fromTemperatures(probeTemperatures)
-            val overheatingSensors = if (manufacturerData.size > OVERHEAT_RANGE.last &&
-                temperatureOverheatingSensors.isAnySensorOverheating()
-            ) {
-                val rawOverheatingSensors = OverheatingSensors.fromRawByte(
-                    manufacturerData.sliceArray(OVERHEAT_RANGE)[0]
-                )
-                // Corroborate per-channel, not just "is anything overheating": the raw byte can
-                // have individual bits incorrectly set by the same firmware bug, so only report a
-                // channel as overheating here if the independent temperature-derived calculation
-                // also flags that specific channel. Otherwise a spurious bit on one channel could
-                // masquerade as the real overheating channel while the true one goes unreported.
-                OverheatingSensors(
-                    temperatureOverheatingSensors.values.filter { it in rawOverheatingSensors.values }
-                )
-            } else {
-                temperatureOverheatingSensors
-            }
+            val overheatingSensors = OverheatingSensors.fromTemperatures(probeTemperatures)
 
             val preferences = if (manufacturerData.size > PREFERENCES_RANGE.last) {
                 ThermometerPreferences.fromRawByte(
