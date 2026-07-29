@@ -48,10 +48,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
 
-// How long a control device must be continuously reported as disconnected before the engine is
-// treated as uncontrolled, so a brief radio drop doesn't flash the UI to "unattended."
-private const val CONTROL_DEVICE_DISCONNECT_CONFIRMATION_DELAY_MS = 30_000L
-
 internal class EngineManager(
     mac: String,
     serialNumber: String,
@@ -67,14 +63,10 @@ internal class EngineManager(
 
     override val arbitrator = EngineDataLinkArbitrator()
 
-    private val controlDeviceDisconnectMonitor = IdleMonitor()
-    private var controlDeviceDisconnectPending = false
-
     // Engine status can arrive concurrently from more than one source (a direct BLE link and/or
     // multiple mesh-relay nodes), all invoking handleStatus() for the same engine. This mutex
     // serializes the read-decide-write sequence below so two overlapping status updates can't
-    // race on controlDeviceDisconnectPending/controlDeviceDisconnectMonitor or clobber each
-    // other's _deviceFlow update with a stale `previous` snapshot.
+    // clobber each other's _deviceFlow update with a stale `previous` snapshot.
     private val handleStatusMutex = Mutex()
 
     override val _deviceFlow = Engine.create(serialNumber = serialNumber, mac = mac).let { base ->
@@ -175,15 +167,6 @@ internal class EngineManager(
                     status.sessionInformation,
                 )
             ) {
-                // Snapshot before handleSessionInfo() overwrites `sessionInfo` in place, so we can
-                // still tell whether the cooking session changed.
-                val previousSessionInfo = sessionInfo
-                // The Engine state this manager last exposed via _deviceFlow -- i.e. our own
-                // prior debounced decision -- NOT a copy of the previous raw EngineStatus received
-                // from the device. See resolveControlDeviceConnected's KDoc for why that
-                // distinction is what makes debouncing hold across many consecutive statuses.
-                val previousExposedEngine = _deviceFlow.value
-
                 handleSessionInfo(
                     status.sessionInformation,
                     minSequenceNumber = status.minSequenceNumber,
@@ -196,43 +179,22 @@ internal class EngineManager(
                     fetchDeviceInfo()
                 }
 
-                val sessionChanged =
-                    previousSessionInfo != null && previousSessionInfo != status.sessionInformation
-
-                val controlDeviceType = status.controlDeviceType
-                val controlSerialNumber = status.controlSerialNumber
-                val controlTemperature = status.controlTemperature
-
-                Log.v(
-                    "D3V",
-                    "handleStatus: actual controlDeviceConnected = ${status.engineStatusFlags.controlDeviceConnected}, " +
-                            "sessionChanged = $sessionChanged, " +
-                            "controlSerialNumber = $controlSerialNumber, " +
-                            "previousExposedEngine.controlSerialNumber = ${previousExposedEngine.controlSerialNumber}"
-                )
-
-                val controlDeviceConnected = resolveControlDeviceConnected(
-                    status = status,
-                    previousExposedEngine = previousExposedEngine,
-                    sessionChanged = sessionChanged,
-                )
-                Log.v(
-                    "D3V",
-                    "handleStatus: controlDeviceConnected = $controlDeviceConnected, controlDeviceDisconnectPending = $controlDeviceDisconnectPending"
-                )
-
+                // engineStatusFlags.controlDeviceConnected is reported here exactly as firmware
+                // sent it -- no debounce. A consuming application is recommended to apply its own
+                // momentary radio-drop confirmation delay before displaying this flag, since this
+                // framework is BLE-only and has no visibility into cloud-relayed engine status
+                // (e.g. from other users' phones or node devices) -- a debounce implemented here
+                // could only ever protect a viewer with their own direct BLE link to the engine.
                 _deviceFlow.update {
                     it.copy(
                         engineBatteryStatus = status.engineBatteryStatus,
-                        engineStatusFlags = status.engineStatusFlags.copy(
-                            controlDeviceConnected = controlDeviceConnected,
-                        ),
+                        engineStatusFlags = status.engineStatusFlags,
                         engineFanStatus = status.engineFanStatus,
                         engineControllerStatus = status.engineControllerStatus,
                         temperatureSetPointCelsius = status.temperatureSetPoint,
-                        controlDeviceType = controlDeviceType,
-                        controlSerialNumber = controlSerialNumber,
-                        controlTemperature = controlTemperature,
+                        controlDeviceType = status.controlDeviceType,
+                        controlSerialNumber = status.controlSerialNumber,
+                        controlTemperature = status.controlTemperature,
                         knobVoltageMillivolts = status.knobVoltageMillivolts,
                         knobAngleTenthsDegrees = status.knobAngleTenthsDegrees,
                         hopCount = status.hopCount.hopCount,
@@ -240,91 +202,6 @@ internal class EngineManager(
                     )
                 }
             }
-        }
-    }
-
-    /**
-     * Resolves the effective, debounced value of `controlDeviceConnected` for [status].
-     *
-     * [previousExposedEngine] is the [Engine] state this manager last exposed via [_deviceFlow] --
-     * its own prior debounced decision -- NOT a copy of the previous raw [EngineStatus] received
-     * from the device. Comparing against it (rather than a raw "last received status") is what
-     * lets debouncing hold across many consecutive still-disconnected statuses: while a
-     * disconnect is pending confirmation, this manager keeps writing
-     * `controlDeviceConnected = true` into `_deviceFlow`, so the next call keeps seeing
-     * "previously connected" until the confirmation delay genuinely elapses.
-     *
-     * Debouncing (holding `controlDeviceConnected = true` for up to
-     * [CONTROL_DEVICE_DISCONNECT_CONFIRMATION_DELAY_MS] despite firmware reporting false) only
-     * applies across a genuine true -> false transition of a *confirmed* connection: the
-     * controller identity must be unchanged, the cooking session must be unchanged, and
-     * [previousExposedEngine] must have had `controlDeviceConnected = true`. Any other case (a
-     * new/changed controller, a session change, or a controller that was never confirmed
-     * connected in the first place) reports the actual value from [status] directly.
-     */
-    private fun resolveControlDeviceConnected(
-        status: EngineStatus,
-        previousExposedEngine: Engine,
-        sessionChanged: Boolean,
-    ): Boolean = when {
-        status.engineStatusFlags.controlDeviceConnected -> {
-            // Reconnected, or a different controller took over -- adopt immediately and clear
-            // any pending disconnect confirmation.
-            controlDeviceDisconnectPending = false
-            true
-        }
-
-        sessionChanged || status.controlSerialNumber != previousExposedEngine.controlSerialNumber -> {
-            // Cooking session moved on, or the controller identity itself changed -- including a
-            // controlSerialNumber that's new/never-seen (e.g. firmware reporting a remembered
-            // controller right after power-on, before ever actually connecting this session --
-            // controlSerialNumber isn't gated on controlDeviceConnected, so this can be non-null
-            // on the very first status). Nothing to debounce either way -- report the actual
-            // value directly, not the debounced one.
-            controlDeviceDisconnectPending = false
-            status.engineStatusFlags.controlDeviceConnected
-        }
-
-        !previousExposedEngine.engineStatusFlags.controlDeviceConnected -> {
-            // Same controller as last time, and it was already reporting disconnected then too --
-            // controlDeviceConnected hasn't changed, so there's nothing to debounce. This is what
-            // prevents debouncing a controller that was never actually confirmed connected in the
-            // first place: without this check, a freshly-powered-on engine reporting the same
-            // remembered controlSerialNumber across its first two statuses (both disconnected)
-            // would incorrectly start a debounce window and report connected = true.
-            controlDeviceDisconnectPending = false
-            status.engineStatusFlags.controlDeviceConnected
-        }
-
-        else -> {
-            // Same controller, and it WAS confirmed connected last time (guaranteed by the
-            // branch above having excluded !previousExposedEngine...controlDeviceConnected) --
-            // firmware now reports disconnected for the first time since that confirmed
-            // connection. Debounce controlDeviceConnected alone so a momentary status miss
-            // doesn't flap the UI/notification to disconnected before firmware confirms it.
-            val enteringPending = !controlDeviceDisconnectPending
-            if (enteringPending) {
-                controlDeviceDisconnectPending = true
-                controlDeviceDisconnectMonitor.activity()
-            }
-            val confirmed = controlDeviceDisconnectMonitor.isIdle(
-                CONTROL_DEVICE_DISCONNECT_CONFIRMATION_DELAY_MS,
-            )
-            val connected = !confirmed
-            // Log only on the pending-entry and pending->confirmed transitions, not on every
-            // status in between -- while disconnected, every subsequent status falls into this
-            // branch, and logging each one would spam the log for as long as the engine stays
-            // disconnected.
-            if (enteringPending || confirmed) {
-                Log.d(
-                    LOG_TAG,
-                    "EngineManager.handleStatus: $serialNumber debouncing " +
-                            "controlDeviceConnected (was controlled, firmware now reports " +
-                            "disconnected) to avoid flapping on a momentary status miss -- " +
-                            "confirmed=$confirmed controlDeviceConnected=$connected",
-                )
-            }
-            connected
         }
     }
 
@@ -385,21 +262,20 @@ internal class EngineManager(
     ) {
         // Dispatched onto scope and taken under handleStatusMutex -- this callback fires from a
         // UART completion handler that can run concurrently with handleStatus(), and both paths
-        // read/write controlDeviceDisconnectPending and the same control-device _deviceFlow
-        // fields. Without the lock, this could race with a concurrent handleStatus() call and
-        // either clobber its decision or be clobbered by it. The lock/update itself has no
-        // thread-affinity requirement and runs on scope's default dispatcher; only
-        // completionHandler is explicitly switched to Dispatchers.Main.immediate below, since it's
-        // public API and the UART completion path it previously ran on synchronously
-        // (UartBleDevice.MessageCompletionHandler.handled(), invoked from NodeBleDevice's UART
-        // message loop) always delivers on Dispatchers.Main -- callers may reasonably do UI work
-        // in completionHandler, same as before this lock was added.
+        // read/write the same control-device _deviceFlow fields. Without the lock, this could
+        // race with a concurrent handleStatus() call and either clobber its decision or be
+        // clobbered by it. The lock/update itself has no thread-affinity requirement and runs on
+        // scope's default dispatcher; only completionHandler is explicitly switched to
+        // Dispatchers.Main.immediate below, since it's public API and the UART completion path it
+        // previously ran on synchronously (UartBleDevice.MessageCompletionHandler.handled(),
+        // invoked from NodeBleDevice's UART message loop) always delivers on Dispatchers.Main --
+        // callers may reasonably do UI work in completionHandler, same as before this lock was
+        // added.
         val onCompletion: (Boolean) -> Unit = { success ->
             scope.launch {
                 if (success) {
                     val newControlSerialNumber = controlSerialNumber.takeIf(String::isNotEmpty)
                     handleStatusMutex.withLock {
-                        controlDeviceDisconnectPending = false
                         _deviceFlow.update { engine ->
                             engine.copy(
                                 controlDeviceType = newControlSerialNumber?.let { controlDeviceType },

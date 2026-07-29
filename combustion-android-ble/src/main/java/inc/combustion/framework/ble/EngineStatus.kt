@@ -122,18 +122,19 @@ data class EngineStatus(
                 EngineStatusFlags.fromRawByte(data.sliceArray(ENGINE_STATUS_FLAGS_RANGE)[0])
 
             // Deliberately parsed unconditionally rather than gated on
-            // engineStatusFlags.controlDeviceConnected: EngineManager's disconnect-confirmation
-            // debounce (see CONTROL_DEVICE_DISCONNECT_CONFIRMATION_DELAY_MS in EngineManager)
-            // depends on controlDeviceType/controlSerialNumber continuing to reflect the last
-            // known controller while controlDeviceConnected is transiently false, so it can keep
-            // attributing the engine to that controller until the disconnect is confirmed --
-            // gating this on the flag would null the identity out immediately and make the
-            // debounce a no-op. takeIfIsSet treats an all-zero range as "not set" (null), which is
-            // what determines validity here; it does not protect against a stale-but-nonzero byte
-            // left behind after a controller is explicitly cleared (as opposed to a transient
-            // disconnect) -- if firmware is later found to do that, prefer fixing it at the
-            // explicit-clear call site (see EngineManager.setControlDevice) rather than
-            // re-introducing a blanket gate here, which would break the debounce again.
+            // engineStatusFlags.controlDeviceConnected: a consuming application is recommended to
+            // implement its own disconnect-confirmation debounce (see the note in
+            // EngineManager.handleStatus for why that belongs above this framework rather than in
+            // it), and such a debounce depends on controlDeviceType/controlSerialNumber
+            // continuing to reflect the last known controller while controlDeviceConnected is
+            // transiently false, so it can keep attributing the engine to that controller until
+            // the disconnect is confirmed -- gating this on the flag would null the identity out
+            // immediately and make a debounce built on top of this data a no-op. takeIfIsSet
+            // treats an all-zero range as "not set" (null), which is what determines validity
+            // here; it does not protect against a stale-but-nonzero byte left behind after a
+            // controller is explicitly cleared (as opposed to a transient disconnect) -- if
+            // firmware is later found to do that, prefer fixing it at the explicit-clear call site
+            // (see EngineManager.setControlDevice) rather than re-introducing a blanket gate here.
             val controlDeviceType = data.sliceArray(CONTROL_DEVICE_TYPE_RANGE)
                 .takeIfIsSet { CombustionProductType.fromUByte(it[0]) }
 

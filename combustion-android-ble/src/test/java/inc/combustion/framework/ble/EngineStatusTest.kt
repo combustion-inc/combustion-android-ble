@@ -204,14 +204,12 @@ class EngineStatusTest {
     @Test
     fun `fromRawData retains control device identity while disconnected, so a transient drop can be debounced`() {
         // Regression test: parsing must not gate controlDeviceType/controlSerialNumber on
-        // controlDeviceConnected. EngineManager's disconnect-confirmation debounce relies on
-        // these surviving a momentary controlDeviceConnected=false so it can keep attributing the
-        // engine to its last controller until the disconnect is confirmed -- see
-        // EngineManager.CONTROL_DEVICE_DISCONNECT_CONFIRMATION_DELAY_MS and
-        // EngineManagerTest's debounce tests. Re-gating this on the flag (as a well-intentioned
-        // "ignore stale bytes" fix might do) would silently break that feature without failing
-        // any EngineManager-level test, since those construct EngineStatus directly rather than
-        // through fromRawData.
+        // controlDeviceConnected. A disconnect-confirmation debounce implemented by a consuming
+        // application relies on these surviving a momentary controlDeviceConnected=false so it
+        // can keep attributing the engine to its last controller until the disconnect is
+        // confirmed. Re-gating this on the flag (as a well-intentioned "ignore stale bytes" fix
+        // might do) would silently break that without failing any EngineManager-level test, since
+        // those construct EngineStatus directly rather than through fromRawData.
         val status = EngineStatus.fromRawData(
             buildRawStatus(
                 controlDeviceConnected = false,
