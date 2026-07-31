@@ -68,9 +68,10 @@ internal class WiFiNodesManager(
     }
 
     private fun getNodeMutex(deviceId: String): Semaphore =
-        nodeToMutexMap[deviceId] ?: (Semaphore(1).also {
-            nodeToMutexMap[deviceId] = it
-        })
+        // computeIfAbsent, not a plain get-then-put: the latter isn't atomic, so two callers
+        // racing to create the very first Semaphore for a given deviceId could each end up
+        // holding a different instance and never actually serialize against each other.
+        nodeToMutexMap.computeIfAbsent(deviceId) { Semaphore(1) }
 
     /**
      * Sends via [commandCoordinator]. Unlike Engine/Gauge/Probe's `set*` functions, [request] is

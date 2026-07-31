@@ -109,7 +109,11 @@ internal class ProbeManager(
     private val commandMutexes: MutableMap<MessageType, Mutex> = ConcurrentHashMap()
 
     private fun getCommandMutex(messageType: MessageType): Mutex =
-        commandMutexes[messageType] ?: Mutex().also { commandMutexes[messageType] = it }
+        // computeIfAbsent, not a plain get-then-put: the latter isn't atomic, so two callers
+        // racing to create the very first Mutex for a given MessageType could each end up
+        // holding a different instance and never actually serialize against each other --
+        // silently defeating the one thing this map exists for.
+        commandMutexes.computeIfAbsent(messageType) { Mutex() }
 
     // idle monitors
     private val instantReadMonitor = IdleMonitor()

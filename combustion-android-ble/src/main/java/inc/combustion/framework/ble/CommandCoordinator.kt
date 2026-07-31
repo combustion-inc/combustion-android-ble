@@ -47,7 +47,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 internal enum class CommandResult {
     SUCCESS,
     FAILURE,
-    CANCELLED,
 }
 
 /**
@@ -216,6 +215,11 @@ internal class CommandCoordinator(
             Log.v("D3V", "sendRoutedCommand to $targetSerialNumber")
             withTimeout(requestTimeoutMs) {
                 registerAttempt(pendingCommand, sendAttempt())
+                if (!retriesEnabled) {
+                    // Nothing left to retry -- a single wait for the remainder of the outer
+                    // timeout, rather than polling in retryIntervalMs slices for no reason.
+                    return@withTimeout pendingCommand.deferred.await()
+                }
                 while (true) {
                     val result =
                         withTimeoutOrNull(retryIntervalMs) { pendingCommand.deferred.await() }
@@ -223,9 +227,7 @@ internal class CommandCoordinator(
                     if (result != null) {
                         return@withTimeout result
                     }
-                    if (retriesEnabled) {
-                        registerAttempt(pendingCommand, sendAttempt())
-                    }
+                    registerAttempt(pendingCommand, sendAttempt())
                 }
                 @Suppress("UNREACHABLE_CODE")
                 CommandResult.FAILURE
