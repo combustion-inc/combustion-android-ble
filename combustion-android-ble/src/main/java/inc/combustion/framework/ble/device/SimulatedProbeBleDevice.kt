@@ -279,7 +279,9 @@ internal class SimulatedProbeBleDevice(
 
     override fun sendSetProbeColor(color: ProbeColor, callback: ((Boolean, Any?) -> Unit)?) {
         probeColor = color
-        callback?.let { it(true, null) }
+        // See sendSetPowerMode for why this is dispatched via scope.launch rather than invoked
+        // synchronously.
+        scope.launch { callback?.let { it(true, null) } }
     }
 
     override fun sendSetProbeID(
@@ -288,7 +290,9 @@ internal class SimulatedProbeBleDevice(
         callback: ((Boolean, Any?) -> Unit)?
     ) {
         probeID = probeId
-        callback?.let { it(true, null) }
+        // See sendSetPowerMode for why this is dispatched via scope.launch rather than invoked
+        // synchronously.
+        scope.launch { callback?.let { it(true, null) } }
     }
 
     override fun sendSetPrediction(
@@ -297,7 +301,9 @@ internal class SimulatedProbeBleDevice(
         reqId: UInt?,
         callback: ((Boolean, Any?) -> Unit)?
     ) {
-        callback?.let { it(true, null) }
+        // See sendSetPowerMode for why this is dispatched via scope.launch rather than invoked
+        // synchronously.
+        scope.launch { callback?.let { it(true, null) } }
     }
 
     override fun sendConfigureFoodSafe(
@@ -329,7 +335,9 @@ internal class SimulatedProbeBleDevice(
         reqId: UInt?,
         callback: ((Boolean, Any?) -> Unit)?
     ) {
-        callback?.let { it(true, null) }
+        // See sendSetPowerMode for why this is dispatched via scope.launch rather than invoked
+        // synchronously.
+        scope.launch { callback?.let { it(true, null) } }
     }
 
     override val isSimulated: Boolean = true
@@ -341,7 +349,12 @@ internal class SimulatedProbeBleDevice(
         reqId: UInt?,
         callback: ((Boolean, Any?) -> Unit)?
     ) {
-        callback?.let { it(true, null) }
+        // Dispatched via scope.launch, not invoked synchronously: a synchronous callback here can
+        // race CommandCoordinator.sendRoutedCommand's registerAttempt (called with this function's
+        // return value, i.e. after this function -- including any synchronous callback -- has
+        // already run), completing the command before its attempt key is even registered and
+        // losing the completion signal entirely.
+        scope.launch { callback?.let { it(true, null) } }
     }
 
     private fun publishConnectionState() {

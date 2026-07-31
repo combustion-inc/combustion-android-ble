@@ -47,6 +47,7 @@ import kotlin.random.nextUInt
 
 internal class WiFiNodesManager(
     private val scope: CoroutineScope,
+    private val commandCoordinator: CommandCoordinator = CommandCoordinator(),
     private val getNodeDevice: (deviceId: String) -> NodeBleDevice,
 ) {
     private val connectedWiFiNodes = StateFlowMutableMap<String, NodeBleDevice>()
@@ -71,20 +72,66 @@ internal class WiFiNodesManager(
             nodeToMutexMap[deviceId] = it
         })
 
+    /**
+     * Sends via [commandCoordinator]. Unlike Engine/Gauge/Probe's `set*` functions, [request] is
+     * a generic, consumer-supplied payload with no
+     * corresponding [SpecializedDeviceStatus] field to confirm against, so [isConfirmed] is always
+     * `false` -- this can only complete via a matching response (see [CommandCoordinator.completeAttempt]),
+     * not [CommandCoordinator.confirmCommandStatus].
+     *
+     * A fresh [GenericNodeRequest] (same payload, a new request ID) is built on every attempt --
+     * [request]'s own `requestId` is unused, since callers can only construct one via the public
+     * 2-arg constructor, which always sets it to null; reusing that null on every retry would key
+     * every attempt to the same [NodeBleDevice] response handler slot, which rejects a repeat wait
+     * on the same key while the previous one is still outstanding (see
+     * [UartBleDevice.MessageCompletionHandler.wait]).
+     *
+     * [getNodeMutex] still serializes concurrent calls for the same [deviceId] as before, but now
+     * held for the duration of the whole retry cycle rather than a single attempt.
+     */
     suspend fun sendNodeRequestRequiringWiFi(
         deviceId: String,
         request: GenericNodeRequest,
         completionHandler: (Boolean, GenericNodeResponse?) -> Unit,
     ) {
-        connectedWiFiNodes[deviceId]?.let {
-            val mutex = getNodeMutex(deviceId)
-            mutex.acquire()
-            it.sendNodeRequest(request) { status, data ->
-                mutex.release()
-                completionHandler(status, data as? GenericNodeResponse)
-            }
-        } ?: run {
-            completionHandler(false, null)
+        val mutex = getNodeMutex(deviceId)
+        mutex.acquire()
+        try {
+            var responseData: GenericNodeResponse? = null
+
+            val result = commandCoordinator.sendRoutedCommand(
+                targetSerialNumber = deviceId,
+                send = {
+                    val node = connectedWiFiNodes[deviceId]
+                    if (node == null) {
+                        emptySet()
+                    } else {
+                        val requestId = Random.nextUInt()
+                        val key = CommandAttemptKey.Node(request.messageId, requestId)
+                        val freshRequest = GenericNodeRequest(
+                            outgoingPayload = request.outgoingPayload,
+                            nodeSerialNumber = request.nodeSerialNumber,
+                            requestId = requestId,
+                            payloadLength = request.payloadLength,
+                            messageId = request.messageId,
+                        )
+
+                        node.sendNodeRequest(freshRequest) { success, data ->
+                            responseData = data as? GenericNodeResponse
+                            if (success) {
+                                commandCoordinator.completeAttempt(key, success = true)
+                            }
+                        }
+
+                        setOf(key)
+                    }
+                },
+                isConfirmed = { false },
+            )
+
+            completionHandler(result == CommandResult.SUCCESS, responseData)
+        } finally {
+            mutex.release()
         }
     }
 

@@ -37,10 +37,10 @@ import com.juul.kable.characteristicOf
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.service.DebugSettings
+import inc.combustion.framework.service.utils.ConcurrentSnapshotMap
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.onCompletion
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -51,45 +51,54 @@ internal open class UartBleDevice(
     adapter: BluetoothAdapter
 ) : DeviceInformationBleDevice(mac, advertisement, scope, adapter) {
 
+    /**
+     * Tracks pending completions for one message type, keyed by request ID (`null` representing
+     * "no specific request ID"). Unlike a single-slot handler, more than one request ID can be
+     * pending at once -- needed so a future retry (which may re-send with a fresh request ID
+     * before an earlier attempt's timeout has elapsed) doesn't have to cancel/discard the earlier
+     * attempt just to register the new one. A `null`-keyed wait still behaves as a single slot,
+     * since a map key can only ever hold one entry -- matching the original handler's behavior for
+     * request-ID-less waits, where only one could ever be pending at a time.
+     *
+     * One deliberate behavior change from the previous single-slot handler: previously, calling
+     * [wait] again for a *different* request ID while one was already pending would silently
+     * cancel and discard the earlier wait (without notifying its caller) and take over. Now, a
+     * different request ID is simply tracked alongside the existing one -- both remain pending
+     * independently, each completed or timed out on its own. Calling [wait] again for the *same*
+     * request ID (including `null`) while it's already pending is still rejected immediately with
+     * `callback(false, null)`, same as before.
+     */
     class MessageCompletionHandler {
-        private val waiting = AtomicBoolean(false)
-        private var completionCallback: ((Boolean, Any?) -> Unit)? = null
-        private var job: Job? = null
+        // ConcurrentSnapshotMap requires non-null keys (it's backed by ConcurrentHashMap), so the
+        // nullable reqId is wrapped in a small non-null key type rather than represented with a
+        // sentinel value that could theoretically collide with a real request ID.
+        private data class Key(val reqId: UInt?)
 
+        private class Entry(val callback: ((Boolean, Any?) -> Unit)?) {
+            var job: Job? = null
+        }
+
+        private val pending = ConcurrentSnapshotMap<Key, Entry>()
+
+        // Reflects the most recently registered request ID for callers that inspect this after
+        // wait() -- not a reliable "the" pending request ID once more than one can be pending at
+        // once, but no existing caller relies on it for anything beyond that.
         var requestId: UInt? = null
             private set
 
         val isWaiting: Boolean
-            get() {
-                return waiting.get()
-            }
+            get() = !pending.isEmpty()
 
-        // Returns true if the message reqId matched or the callback was called
+        // Returns true if a pending wait for this reqId was found (and, if it had a callback,
+        // the callback was invoked).
         fun handled(result: Boolean, data: Any?, reqId: UInt? = null): Boolean {
-            var matched = false
-            // if we are waiting for a specific request id
-            requestId?.let {
-                // and we weren't called with the request id we are looking for
-                if (it == reqId) {
-                    matched = true
-                } else {
-                    return matched
-                }
-            }
-
-            job?.cancel()
-            waiting.set(false)
-            // Make a local copy of the completion callback and then cleanup the state
-            // This allows for sending additional messages from within the callback
-            val localCallback = completionCallback
-            cleanup()
-
-            localCallback?.let {
-                it(result, data)
-                matched = true
-            }
-
-            return matched
+            // Remove before invoking the callback (not after) so a re-entrant wait() call from
+            // within the callback -- e.g. an immediate retry -- isn't rejected by a stale entry
+            // that's about to be cleaned up anyway.
+            val entry = pending.remove(Key(reqId)) ?: return false
+            entry.job?.cancel()
+            entry.callback?.let { it(result, data) }
+            return true
         }
 
         fun wait(
@@ -98,53 +107,33 @@ internal open class UartBleDevice(
             reqId: UInt? = null,
             callback: ((Boolean, Any?) -> Unit)?,
         ) {
-            requestId?.let {
-                // if we are waiting for a specific request id and asked to wait again, then
-                // we callback to the caller with an error (the current wait has not completed).
-                if (it == reqId) {
-                    callback?.let { it(false, null) }
-                    return
-                }
-
-                // otherwise, cancel the current wait and start a new wait with the new request.
-                cancel()
-            }
-
-            // if we are already waiting for a completion callback, then we callback to the
-            // caller with an error (the current wait has not completed).
-            completionCallback?.let {
+            val key = Key(reqId)
+            val entry = Entry(callback)
+            // Atomically check-and-insert: if a wait for this exact request ID (including null)
+            // is already pending, reject the new one -- matching the original handler's rejection
+            // behavior for a repeated wait on the same key.
+            if (pending.putIfAbsent(key, entry) != null) {
                 callback?.let { it(false, null) }
                 return
             }
 
-            if (waiting.get()) {
-                callback?.let { it(false, null) }
-                return
-            }
-
-            waiting.set(true)
-            completionCallback = callback
             requestId = reqId
-
-            job = scope.launch {
+            entry.job = scope.launch {
                 delay(duration)
-                if (waiting.getAndSet(false)) {
+                if (pending.remove(key, entry)) {
                     withContext(Dispatchers.Main) {
                         callback?.let { it(false, null) }
                     }
-                    cleanup()
                 }
             }
         }
 
         fun cancel() {
-            job?.cancel()
-            waiting.set(false)
-            cleanup()
-        }
-
-        private fun cleanup() {
-            completionCallback = null
+            pending.snapshotEntries().forEach { (key, entry) ->
+                if (pending.remove(key, entry)) {
+                    entry.job?.cancel()
+                }
+            }
             requestId = null
         }
     }

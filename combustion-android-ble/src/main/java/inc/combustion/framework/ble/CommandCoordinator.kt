@@ -1,0 +1,291 @@
+/*
+ * Project: Combustion Inc. Android Framework
+ * File: CommandCoordinator.kt
+ * Author:
+ *
+ * MIT License
+ *
+ * Copyright (c) 2026. Combustion Inc.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+package inc.combustion.framework.ble
+
+import android.util.Log
+import inc.combustion.framework.LOG_TAG
+import inc.combustion.framework.ble.CommandCoordinator.Companion.valueConfirmation
+import inc.combustion.framework.ble.device.DeviceID
+import inc.combustion.framework.ble.uart.MessageType
+import inc.combustion.framework.ble.uart.meatnet.NodeMessage
+import inc.combustion.framework.ble.uart.meatnet.NodeMessageType
+import inc.combustion.framework.service.utils.ConcurrentSnapshotMap
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
+
+/**
+ * Outcome of a coordinated command. See [CommandCoordinator].
+ */
+internal enum class CommandResult {
+    SUCCESS,
+    FAILURE,
+    CANCELLED,
+}
+
+/**
+ * Identifies a single transport attempt for a command response.
+ *
+ * A command sent via [CommandCoordinator.sendRoutedCommand] can be retried over a different
+ * transport than its first attempt (e.g. direct BLE, then MeatNet on a later retry). Each attempt
+ * registers the key(s) that should complete it if a matching response arrives, so a response for
+ * *any* prior attempt -- not just the most recent one -- can still complete the command.
+ */
+internal sealed class CommandAttemptKey {
+    /** A response expected directly from the device at [deviceId]. */
+    data class Direct(val messageType: MessageType, val deviceId: DeviceID) : CommandAttemptKey()
+
+    /**
+     * A response expected from a MeatNet node, matched by the request ID it was sent with.
+     *
+     * [messageType] is typed as the open [NodeMessage] interface, not the closed
+     * [NodeMessageType] enum, so this also covers generic/vendor node requests
+     * ([WiFiNodesManager.sendNodeRequestRequiringWiFi]), whose message ID isn't one of the
+     * framework's own known [NodeMessageType] values.
+     */
+    data class Node(val messageType: NodeMessage, val requestId: UInt) : CommandAttemptKey()
+}
+
+/**
+ * Coordinates a single BLE command's lifetime: retry, completion, and cleanup.
+ *
+ * Each of [EngineManager], [GaugeManager], [ProbeManager], and [WiFiNodesManager] owns its own
+ * instance and calls [sendRoutedCommand] from its command functions
+ * (`EngineManager.setControlDevice`/`setTemperatureSetPoint`,
+ * `GaugeManager.setHighLowAlarmStatus`, `ProbeManager.setPowerMode`/`setProbeHighLowAlarmStatus`/
+ * `setProbeColor`/`setProbeID`/`setPrediction`, `WiFiNodesManager.sendNodeRequestRequiringWiFi`).
+ * The first four managers call [confirmCommandStatus] from their status-handling path;
+ * [WiFiNodesManager]'s generic requests have no corresponding status to confirm against, so it
+ * never does.
+ *
+ * `ProbeManager`'s direct-link (non-MeatNet) commands are a special case worth knowing about
+ * before touching them: [ProbeBleDevice]'s raw UART response processing always matches a response
+ * against a fixed null key, unlike Engine/Gauge/MeatNet's real per-attempt request IDs -- see
+ * `ProbeManager.setPowerMode`'s KDoc and `ProbeManager.PROBE_DIRECT_RETRY_INTERVAL_MS` for the
+ * consequences that has for both key construction and retry timing.
+ *
+ * Unlike iOS's `CommandCoordinator` (a manually timer-polled state machine, needed because GCD has
+ * no structured concurrency), this relies on plain coroutine suspension: [sendRoutedCommand] is a
+ * single suspend function whose retry loop and timeout are expressed directly with
+ * `withTimeout`/`withTimeoutOrNull`, and ordinary coroutine cancellation (the caller's coroutine
+ * being cancelled) cleans up registered attempt keys via `finally`, with no separate cancel-handle
+ * API needed.
+ */
+internal class CommandCoordinator(
+    private val requestTimeoutMs: Long = REQUEST_TIMEOUT_MS,
+    private val retryIntervalMs: Long = RETRY_INTERVAL_MS,
+) {
+    companion object {
+        private const val REQUEST_TIMEOUT_MS = 30_000L
+        private const val RETRY_INTERVAL_MS = 5_000L
+
+        /**
+         * Builds an `isConfirmed` predicate (for [sendRoutedCommand]) that completes the command
+         * as SUCCESS as soon as either:
+         *  1. the observed value equals [commandedValue] -- the command's own effect was
+         *     confirmed, or
+         *  2. the observed value differs from [startingValue] at all, even if it doesn't match
+         *     [commandedValue] -- something else already changed it, most plausibly a competing
+         *     command from another device targeting the same value. Retrying our own command
+         *     against that outcome would just fight it, potentially bouncing indefinitely between
+         *     two competing commands each re-asserting their own value. Treating "changed at all"
+         *     as good enough to stop retrying avoids that.
+         *
+         * Returns false (not confirmed) if [extractValue] can't find the value in a given status
+         * (e.g. an advertising-only status missing full status fields) -- an absent value should
+         * never be treated as a coincidental match for either condition.
+         *
+         * @param startingValue The value observed before this command was sent.
+         * @param commandedValue The value this command is trying to set.
+         * @param extractValue Reads the relevant value out of a device status, or null if this
+         * particular status doesn't carry it.
+         */
+        fun <T> valueConfirmation(
+            startingValue: T,
+            commandedValue: T,
+            extractValue: (SpecializedDeviceStatus) -> T?,
+        ): (SpecializedDeviceStatus) -> Boolean = confirmed@{ status ->
+            val observed = extractValue(status) ?: return@confirmed false
+            observed == commandedValue || observed != startingValue
+        }
+    }
+
+    private class PendingCommand(
+        val deferred: CompletableDeferred<CommandResult>,
+        val targetSerialNumber: String,
+        val isConfirmed: (SpecializedDeviceStatus) -> Boolean,
+        var attemptKeys: Set<CommandAttemptKey>,
+        var attemptCount: Int = 0,
+    )
+
+    // Keyed by attempt key, not by request "slot" -- multiple concurrent, distinct commands per
+    // device are possible, and a single command accumulates one entry per key across retries that
+    // switch transport. The same PendingCommand instance may be the value for several keys at
+    // once. Only ever contains entries for commands whose `send` has returned at least one key --
+    // see allPendingCommands for why that's not sufficient on its own.
+    private val pendingByAttemptKey = ConcurrentSnapshotMap<CommandAttemptKey, PendingCommand>()
+
+    // Every currently in-flight sendRoutedCommand call, independent of whether it currently has
+    // any registered attempt keys. Needed because confirmCommandStatus must be able to complete a
+    // command purely from an observed status even when `send` has never registered a key at all
+    // (e.g. nothing is currently connected/reachable) -- pendingByAttemptKey alone can't answer
+    // "what's pending for this serial number" in that case, since it would have no entry for the
+    // command at all. Uses PendingCommand's reference identity as the key (plain class, no
+    // structural equals/hashCode) -- this is a concurrent set, the Unit values are unused.
+    private val allPendingCommands = ConcurrentSnapshotMap<PendingCommand, Unit>()
+
+    /**
+     * Sends a command over a route chosen -- and re-chosen on every retry -- by [send], completing
+     * when a matching response arrives (see [completeAttempt]), a device status confirms the
+     * requested change (see [confirmCommandStatus]), the overall timeout elapses, or the calling
+     * coroutine is cancelled.
+     *
+     * @param targetSerialNumber Device the command targets; used to route [confirmCommandStatus]
+     * confirmations to the right pending command.
+     * @param send Selects the current best transport, performs the write, and returns the attempt
+     * key(s) that should complete this attempt. Called once immediately, then again on every retry
+     * while [retriesEnabled] and no completion has arrived; passed the 1-based number of this
+     * attempt (1 for the initial send, 2 for the first retry, etc.) for logging/diagnostics.
+     * @param isConfirmed Predicate over a device status update that, if true, completes this
+     * command as [CommandResult.SUCCESS] even if no response packet ever arrives. For "set field
+     * X to value Y" commands, prefer building this with [valueConfirmation] rather than a plain
+     * equality check against the commanded value alone, so a competing command that already
+     * changed the value to something else doesn't cause indefinite retry-bouncing between the two.
+     * @param retriesEnabled Whether [send] should be retried every [retryIntervalMs] until
+     * [requestTimeoutMs] elapses; when false, [send] is called once and the command waits out the
+     * full timeout for either completion source.
+     */
+    suspend fun sendRoutedCommand(
+        targetSerialNumber: String,
+        send: (attemptNumber: Int) -> Set<CommandAttemptKey>,
+        isConfirmed: (SpecializedDeviceStatus) -> Boolean,
+        retriesEnabled: Boolean = true,
+    ): CommandResult {
+        val pendingCommand = PendingCommand(
+            deferred = CompletableDeferred(),
+            targetSerialNumber = targetSerialNumber,
+            isConfirmed = isConfirmed,
+            attemptKeys = emptySet(),
+        )
+        allPendingCommands[pendingCommand] = Unit
+
+        fun sendAttempt(): Set<CommandAttemptKey> {
+            pendingCommand.attemptCount++
+            Log.d(
+                LOG_TAG,
+                "D3V CommandCoordinator: attempt ${pendingCommand.attemptCount} to $targetSerialNumber",
+            )
+            return send(pendingCommand.attemptCount)
+        }
+
+        return try {
+            Log.v("D3V", "sendRoutedCommand to $targetSerialNumber")
+            withTimeout(requestTimeoutMs) {
+                registerAttempt(pendingCommand, sendAttempt())
+                while (true) {
+                    val result =
+                        withTimeoutOrNull(retryIntervalMs) { pendingCommand.deferred.await() }
+                    Log.v("D3V", "sendRoutedCommand: result = $result")
+                    if (result != null) {
+                        return@withTimeout result
+                    }
+                    if (retriesEnabled) {
+                        registerAttempt(pendingCommand, sendAttempt())
+                    }
+                }
+                @Suppress("UNREACHABLE_CODE")
+                CommandResult.FAILURE
+            }
+        } catch (e: TimeoutCancellationException) {
+            Log.e("D3V", "TimeoutCancellationException", e)
+            CommandResult.FAILURE
+        } finally {
+            unregister(pendingCommand)
+        }
+    }
+
+    /**
+     * Completes whichever pending command has [key] among its registered attempt keys, if any.
+     *
+     * @return true if a pending command was found and completed, false if [key] matched nothing
+     * (e.g. the command already completed via another route, or timed out).
+     */
+    fun completeAttempt(key: CommandAttemptKey, success: Boolean): Boolean {
+        val pendingCommand = pendingByAttemptKey[key] ?: return false
+        pendingCommand.deferred.complete(
+            if (success) CommandResult.SUCCESS else CommandResult.FAILURE,
+        )
+        return true
+    }
+
+    /**
+     * Completes any pending command targeting [serialNumber] whose confirmation predicate matches
+     * [status]. Intended to be called from each manager's status-handling path so a command can
+     * complete from a status broadcast even if its response packet is lost.
+     */
+    fun confirmCommandStatus(serialNumber: String, status: SpecializedDeviceStatus) {
+        allPendingCommands.snapshotKeys()
+            .asSequence()
+            .filter { it.targetSerialNumber == serialNumber }
+            .filter { it.isConfirmed(status) }
+            .forEach { it.deferred.complete(CommandResult.SUCCESS) }
+    }
+
+    /**
+     * Purges attempt keys tied to [deviceId] (i.e. [CommandAttemptKey.Direct] keys for that
+     * device) so a pending command can still complete via a later retry over a different route,
+     * rather than being stuck waiting on a response that can never arrive on a now-disconnected
+     * link.
+     */
+    fun handleDeviceDisconnected(deviceId: DeviceID) {
+        Log.v("D3V", "handleDeviceDisconnected, deviceId = $deviceId")
+        pendingByAttemptKey.removeIf { (key, _) ->
+            key is CommandAttemptKey.Direct && key.deviceId == deviceId
+        }
+    }
+
+    private fun registerAttempt(pendingCommand: PendingCommand, newKeys: Set<CommandAttemptKey>) {
+        if (newKeys.isEmpty()) return
+        Log.v("D3V", "registerAttempt, newKeys = $newKeys")
+        pendingCommand.attemptKeys += newKeys
+        newKeys.forEach { key -> pendingByAttemptKey[key] = pendingCommand }
+    }
+
+    private fun unregister(pendingCommand: PendingCommand) {
+        Log.v("D3V", "unregister")
+        pendingCommand.attemptKeys.forEach { key ->
+            pendingByAttemptKey.remove(
+                key,
+                pendingCommand
+            )
+        }
+        allPendingCommands.remove(pendingCommand)
+    }
+}

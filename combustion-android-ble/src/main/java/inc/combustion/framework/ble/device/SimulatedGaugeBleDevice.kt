@@ -35,6 +35,7 @@ import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
 import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import kotlin.random.Random
 
 internal class SimulatedGaugeBleDevice(
@@ -125,7 +126,12 @@ internal class SimulatedGaugeBleDevice(
         reqId: UInt?,
         callback: ((Boolean, Any?) -> Unit)?,
     ) {
-        callback?.let { it(true, null) }
+        // Dispatched via scope.launch, not invoked synchronously: a synchronous callback here can
+        // race CommandCoordinator.sendRoutedCommand's registerAttempt (called with this function's
+        // return value, i.e. after this function -- including any synchronous callback -- has
+        // already run), completing the command before its attempt key is even registered and
+        // losing the completion signal entirely.
+        scope.launch { callback?.let { it(true, null) } }
     }
 
     override fun sendGaugeLogRequest(

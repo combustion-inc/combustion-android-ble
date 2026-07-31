@@ -32,7 +32,9 @@ import inc.combustion.framework.InstantReadFilter
 import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.ble.device.*
 import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
+import inc.combustion.framework.ble.uart.MessageType
 import inc.combustion.framework.ble.uart.ProbeLogResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeMessageType
 import inc.combustion.framework.service.*
 import inc.combustion.framework.service.utils.DefaultLinearizationTimerImpl
 import inc.combustion.framework.service.utils.PredictionManager
@@ -41,6 +43,7 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -61,11 +64,25 @@ internal class ProbeManager(
     serialNumber: String,
     private val scope: CoroutineScope,
     private val settings: DeviceManager.Settings,
-    private val dfuDisconnectedNodeCallback: (DeviceID) -> Unit
+    private val dfuDisconnectedNodeCallback: (DeviceID) -> Unit,
+    private val commandCoordinator: CommandCoordinator = CommandCoordinator(
+        retryIntervalMs = PROBE_DIRECT_RETRY_INTERVAL_MS,
+    ),
 ) : BleManager() {
     companion object {
         private const val MEATNET_STATUS_NOTIFICATIONS_TIMEOUT_MS = 30_000L
         private const val PREDICTION_IDLE_TIMEOUT_MS = Probe.PREDICTION_IDLE_TIMEOUT_MS
+
+        // The raw probe-direct UART protocol has no per-request ID: ProbeBleDevice.processUartResponses
+        // always matches a response against a fixed null key, regardless of what (if anything) was
+        // passed to the corresponding send*/wait() call -- see setPowerMode's KDoc. A retried
+        // direct-link attempt's wait() call therefore always registers under that same null key,
+        // so it only avoids colliding with the still-outstanding previous attempt if that attempt's
+        // own per-transmission timeout (UartCapableProbe.PROBE_MESSAGE_RESPONSE_TIMEOUT_MS) has
+        // already cleared it by the time the next retry fires -- i.e. this must stay strictly
+        // greater than that timeout, with enough margin to absorb scheduling jitter.
+        private const val PROBE_DIRECT_RETRY_INTERVAL_MS =
+            UartCapableProbe.PROBE_MESSAGE_RESPONSE_TIMEOUT_MS + 1_000L
         private const val PROBE_INSTANT_READ_IDLE_TIMEOUT_MS = 5000L
     }
 
@@ -79,6 +96,20 @@ internal class ProbeManager(
     // arbitrator's session/sequence bookkeeping or clobber each other's _deviceFlow update --
     // mirrors the same fix in EngineManager/GaugeManager.
     private val handleStatusMutex = Mutex()
+
+    // Serializes concurrent CommandCoordinator-driven calls to the *same* command on this probe
+    // (e.g. two overlapping setPowerMode() calls), one Mutex per MessageType, created lazily. This
+    // guards a real collision on the direct link: CommandAttemptKey.Direct has no per-call
+    // discriminator (no reqId -- see PROBE_DIRECT_RETRY_INTERVAL_MS), so two concurrent commands
+    // of the same type would both register under the identical key, and whichever registers last
+    // would silently steal the other's eventual response/completion. Held around the whole
+    // sendRoutedCommand call (all its retries), not just one attempt, so a second concurrent call
+    // waits for the first to fully resolve before starting its own -- mirrors
+    // WiFiNodesManager.getNodeMutex.
+    private val commandMutexes: MutableMap<MessageType, Mutex> = ConcurrentHashMap()
+
+    private fun getCommandMutex(messageType: MessageType): Mutex =
+        commandMutexes[messageType] ?: Mutex().also { commandMutexes[messageType] = it }
 
     // idle monitors
     private val instantReadMonitor = IdleMonitor()
@@ -397,83 +428,196 @@ internal class ProbeManager(
         simulatedProbe?.disconnect()
     }
 
+    /**
+     * Sends via [commandCoordinator] (see [PROBE_DIRECT_RETRY_INTERVAL_MS] for why retrying this
+     * command safely needs its own retry interval). No MeatNet route exists for this command, so
+     * it only ever registers a [CommandAttemptKey.Direct] keyed by
+     * [MessageType.SET_PROBE_COLOR] -- see [setPowerMode]'s KDoc for why that attempt is sent with
+     * `reqId = null`, and for why the whole call is wrapped in [getCommandMutex].
+     */
     fun setProbeColor(color: ProbeColor, completionHandler: (Boolean) -> Unit) {
-        simulatedProbe?.sendSetProbeColor(color) { status, _ ->
-            completionHandler(status)
-        } ?: run {
-            // Note: not supported by MeatNet
-            arbitrator.directLink?.sendSetProbeColor(color) { status, _ ->
-                completionHandler(status)
-            } ?: run {
-                completionHandler(false)
-            }
-        }
-    }
+        val startingColor = _deviceFlow.value.color
 
-    fun setProbeID(probeId: ProbeID, completionHandler: (Boolean) -> Unit) {
-        val onCompletion: (Boolean) -> Unit = { success ->
-            if (success) {
-                _deviceFlow.update {
-                    it.copy(
-                        id = probeId,
-                    )
-                }
-            }
-            completionHandler(success)
-        }
-
-        simulatedProbe?.sendSetProbeID(probeId) { status, _ ->
-            onCompletion(status)
-        } ?: run {
-            arbitrator.directLink?.sendSetProbeID(probeId) { status, _ ->
-                onCompletion(status)
-            } ?: run {
-                val nodeLinks = arbitrator.connectedNodeLinks
-                if (nodeLinks.isNotEmpty()) {
-                    val handled = AtomicBoolean(false)
-                    val requestId = makeRequestId()
-                    nodeLinks.forEach {
-                        it.sendSetProbeID(probeId = probeId, requestId) { status, _ ->
-                            if (!handled.getAndSet(true)) {
-                                onCompletion(status)
+        scope.launch {
+            val result = getCommandMutex(MessageType.SET_PROBE_COLOR).withLock {
+                commandCoordinator.sendRoutedCommand(
+                    targetSerialNumber = serialNumber,
+                    send = {
+                        val directLink = simulatedProbe ?: arbitrator.directLink
+                        val key = directLink?.let {
+                            CommandAttemptKey.Direct(MessageType.SET_PROBE_COLOR, it.id)
+                        }
+                        val onResponse: (Boolean, Any?) -> Unit = { success, _ ->
+                            if (success && key != null) {
+                                commandCoordinator.completeAttempt(key, success = true)
                             }
                         }
-                    }
 
-                } else {
-                    onCompletion(false)
-                }
+                        // Note: not supported by MeatNet.
+                        val sent = simulatedProbe?.sendSetProbeColor(color, onResponse)
+                            ?: arbitrator.directLink?.sendSetProbeColor(color, onResponse)
+
+                        if (sent != null && key != null) setOf(key) else emptySet()
+                    },
+                    isConfirmed = CommandCoordinator.valueConfirmation(
+                        startingValue = startingColor,
+                        commandedValue = color,
+                        extractValue = { (it as? ProbeStatus)?.color },
+                    ),
+                )
+            }
+
+            withContext(Dispatchers.Main.immediate) {
+                completionHandler(result == CommandResult.SUCCESS)
             }
         }
     }
 
+    /**
+     * Sends via [commandCoordinator]. See [setPowerMode]'s KDoc for the Direct-vs-Node key
+     * routing rationale and the null-vs-real request ID split, both of which apply identically
+     * here.
+     *
+     * Deliberately does not optimistically write [id] into `_deviceFlow` on completion -- see
+     * `EngineManager.setControlDevice`'s KDoc for why.
+     */
+    fun setProbeID(probeId: ProbeID, completionHandler: (Boolean) -> Unit) {
+        val startingProbeId = _deviceFlow.value.id
+
+        scope.launch {
+            val result = getCommandMutex(MessageType.SET_PROBE_ID).withLock {
+                commandCoordinator.sendRoutedCommand(
+                    targetSerialNumber = serialNumber,
+                    send = {
+                        val directLink = simulatedProbe ?: arbitrator.directLink
+                        val nodeLinks = arbitrator.connectedNodeLinks
+                        val nodeRequestId = makeRequestId()
+
+                        val key = when {
+                            directLink != null ->
+                                CommandAttemptKey.Direct(MessageType.SET_PROBE_ID, directLink.id)
+
+                            nodeLinks.isNotEmpty() ->
+                                CommandAttemptKey.Node(NodeMessageType.SET_PROBE_ID, nodeRequestId)
+
+                            else -> null
+                        }
+                        val onResponse: (Boolean, Any?) -> Unit = { success, _ ->
+                            if (success && key != null) {
+                                commandCoordinator.completeAttempt(key, success = true)
+                            }
+                        }
+
+                        val sent = simulatedProbe?.sendSetProbeID(probeId, null, onResponse)
+                            ?: arbitrator.directLink?.sendSetProbeID(probeId, null, onResponse)
+                            ?: run {
+                                if (nodeLinks.isEmpty()) {
+                                    null
+                                } else {
+                                    nodeLinks.forEach {
+                                        it.sendSetProbeID(probeId, nodeRequestId, onResponse)
+                                    }
+                                }
+                            }
+
+                        if (sent != null && key != null) setOf(key) else emptySet()
+                    },
+                    isConfirmed = CommandCoordinator.valueConfirmation(
+                        startingValue = startingProbeId,
+                        commandedValue = probeId,
+                        extractValue = { (it as? ProbeStatus)?.id },
+                    ),
+                )
+            }
+
+            withContext(Dispatchers.Main.immediate) {
+                completionHandler(result == CommandResult.SUCCESS)
+            }
+        }
+    }
+
+    /**
+     * Sends via [commandCoordinator]. See [setPowerMode]'s KDoc for the Direct-vs-Node key
+     * routing rationale and the null-vs-real request ID split, both of which apply identically
+     * here.
+     *
+     * [mode] and [removalTemperatureC] are confirmed together as a single pair -- see
+     * [PredictionStatus.predictionMode]/[PredictionStatus.setPointTemperature] -- since a status
+     * only shows both changed together, never independently, for this command.
+     */
     fun setPrediction(
         removalTemperatureC: Double,
         mode: ProbePredictionMode,
         completionHandler: (Boolean) -> Unit
     ) {
-        simulatedProbe?.sendSetPrediction(removalTemperatureC, mode) { status, _ ->
-            completionHandler(status)
-        } ?: run {
-            // if there is a direct link to the probe, then use that
-            arbitrator.directLink?.sendSetPrediction(removalTemperatureC, mode) { status, _ ->
-                completionHandler(status)
-            } ?: run {
-                val nodeLinks = arbitrator.connectedNodeLinks
-                if (nodeLinks.isNotEmpty()) {
-                    val handled = AtomicBoolean(false)
-                    val requestId = makeRequestId()
-                    nodeLinks.forEach {
-                        it.sendSetPrediction(removalTemperatureC, mode, requestId) { status, _ ->
-                            if (!handled.getAndSet(true)) {
-                                completionHandler(status)
+        val startingPrediction =
+            _deviceFlow.value.predictionMode to _deviceFlow.value.setPointTemperatureCelsius
+
+        scope.launch {
+            val result = getCommandMutex(MessageType.SET_PREDICTION).withLock {
+                commandCoordinator.sendRoutedCommand(
+                    targetSerialNumber = serialNumber,
+                    send = {
+                        val directLink = simulatedProbe ?: arbitrator.directLink
+                        val nodeLinks = arbitrator.connectedNodeLinks
+                        val nodeRequestId = makeRequestId()
+
+                        val key = when {
+                            directLink != null ->
+                                CommandAttemptKey.Direct(MessageType.SET_PREDICTION, directLink.id)
+
+                            nodeLinks.isNotEmpty() ->
+                                CommandAttemptKey.Node(NodeMessageType.SET_PREDICTION, nodeRequestId)
+
+                            else -> null
+                        }
+                        val onResponse: (Boolean, Any?) -> Unit = { success, _ ->
+                            if (success && key != null) {
+                                commandCoordinator.completeAttempt(key, success = true)
                             }
                         }
-                    }
 
-                } else {
-                    completionHandler(false)
-                }
+                        val sent = simulatedProbe?.sendSetPrediction(
+                            removalTemperatureC,
+                            mode,
+                            null,
+                            onResponse,
+                        ) ?: arbitrator.directLink?.sendSetPrediction(
+                            removalTemperatureC,
+                            mode,
+                            null,
+                            onResponse,
+                        ) ?: run {
+                            if (nodeLinks.isEmpty()) {
+                                null
+                            } else {
+                                nodeLinks.forEach {
+                                    it.sendSetPrediction(
+                                        removalTemperatureC,
+                                        mode,
+                                        nodeRequestId,
+                                        onResponse,
+                                    )
+                                }
+                            }
+                        }
+
+                        if (sent != null && key != null) setOf(key) else emptySet()
+                    },
+                    isConfirmed = CommandCoordinator.valueConfirmation(
+                        startingValue = startingPrediction,
+                        commandedValue = mode to removalTemperatureC,
+                        extractValue = {
+                            (it as? ProbeStatus)?.predictionStatus?.let { prediction ->
+                                prediction.predictionMode to prediction.setPointTemperature
+                            }
+                        },
+                    ),
+                )
+            }
+
+            withContext(Dispatchers.Main.immediate) {
+                completionHandler(result == CommandResult.SUCCESS)
             }
         }
     }
@@ -532,42 +676,89 @@ internal class ProbeManager(
         }
     }
 
+    /**
+     * Sends via [commandCoordinator]. Unlike Engine/Gauge,
+     * [arbitrator]'s direct link is a genuine separate GATT/UART connection to the probe, distinct
+     * from a MeatNet node link -- so an attempt over it is registered as a
+     * [CommandAttemptKey.Direct] keyed by [MessageType.SET_POWER_MODE] and the probe's device ID,
+     * while an attempt over a node is a [CommandAttemptKey.Node] keyed by
+     * [NodeMessageType.SET_POWER_MODE] and the request ID; [handleConnectionState] purges the
+     * former via [CommandCoordinator.handleDeviceDisconnected] when that direct link drops.
+     *
+     * The direct-link attempt is always sent with `reqId = null`, never a freshly generated one:
+     * [ProbeBleDevice]'s raw UART response processing always matches a response against a fixed
+     * null key regardless of what was passed to `wait()`, so passing a real ID there wouldn't just
+     * fail to help, it would make the response *never* match at all (registered under a non-null
+     * key, looked up under null) -- see [PROBE_DIRECT_RETRY_INTERVAL_MS] for how retries stay safe
+     * despite every direct-link attempt sharing that same null key. Only the MeatNet/node path
+     * (matched by real per-attempt request IDs -- see [RepeatedProbeBleDevice]) is given one.
+     *
+     * The whole call (all its retries) is wrapped in [getCommandMutex]: since
+     * [CommandAttemptKey.Direct] has no per-call discriminator either, two concurrent calls to
+     * this same command would both register under the identical key, and whichever registers last
+     * would silently steal the other's eventual response/completion. The mutex makes a second
+     * concurrent call wait for the first to fully resolve rather than racing it.
+     *
+     * Deliberately does not optimistically write [ThermometerPreferences.powerMode] into
+     * `_deviceFlow` on completion -- see `EngineManager.setControlDevice`'s KDoc for why.
+     */
     fun setPowerMode(powerMode: ProbePowerMode, completionHandler: (Boolean) -> Unit) {
-        val onCompletion: (Boolean) -> Unit = { success ->
-            if (success) {
-                val probeVal = _deviceFlow.value
-                _deviceFlow.update {
-                    probeVal.copy(
-                        thermometerPrefs = probeVal.thermometerPrefs?.copy(
-                            powerMode = powerMode,
-                        ) ?: ThermometerPreferences(powerMode = powerMode),
-                    )
-                }
-            }
-            completionHandler(success)
-        }
-        simulatedProbe?.sendSetPowerMode(powerMode) { status, _ ->
-            onCompletion(status)
-        } ?: run {
-            // if there is a direct link to the probe, then use that
-            arbitrator.directLink?.sendSetPowerMode(powerMode) { status, _ ->
-                onCompletion(status)
-            } ?: run {
-                val nodeLinks = arbitrator.connectedNodeLinks
-                if (nodeLinks.isNotEmpty()) {
-                    val handled = AtomicBoolean(false)
-                    val requestId = makeRequestId()
-                    nodeLinks.forEach {
-                        it.sendSetPowerMode(powerMode, requestId) { status, _ ->
-                            if (!handled.getAndSet(true)) {
-                                onCompletion(status)
+        val startingPowerMode = _deviceFlow.value.thermometerPrefs?.powerMode
+
+        scope.launch {
+            val result = getCommandMutex(MessageType.SET_POWER_MODE).withLock {
+                commandCoordinator.sendRoutedCommand(
+                    targetSerialNumber = serialNumber,
+                    send = {
+                        val directLink = simulatedProbe ?: arbitrator.directLink
+                        val nodeLinks = arbitrator.connectedNodeLinks
+                        val nodeRequestId = makeRequestId()
+
+                        val key = when {
+                            directLink != null ->
+                                CommandAttemptKey.Direct(MessageType.SET_POWER_MODE, directLink.id)
+
+                            nodeLinks.isNotEmpty() ->
+                                CommandAttemptKey.Node(NodeMessageType.SET_POWER_MODE, nodeRequestId)
+
+                            else -> null
+                        }
+                        val onResponse: (Boolean, Any?) -> Unit = { success, _ ->
+                            if (success && key != null) {
+                                commandCoordinator.completeAttempt(key, success = true)
                             }
                         }
-                    }
 
-                } else {
-                    onCompletion(false)
-                }
+                        val sent = simulatedProbe?.sendSetPowerMode(
+                            powerMode,
+                            null,
+                            onResponse,
+                        ) ?: arbitrator.directLink?.sendSetPowerMode(
+                            powerMode,
+                            null,
+                            onResponse,
+                        ) ?: run {
+                            if (nodeLinks.isEmpty()) {
+                                null
+                            } else {
+                                nodeLinks.forEach {
+                                    it.sendSetPowerMode(powerMode, nodeRequestId, onResponse)
+                                }
+                            }
+                        }
+
+                        if (sent != null && key != null) setOf(key) else emptySet()
+                    },
+                    isConfirmed = CommandCoordinator.valueConfirmation(
+                        startingValue = startingPowerMode,
+                        commandedValue = powerMode,
+                        extractValue = { (it as? ProbeStatus)?.thermometerPrefs?.powerMode },
+                    ),
+                )
+            }
+
+            withContext(Dispatchers.Main.immediate) {
+                completionHandler(result == CommandResult.SUCCESS)
             }
         }
     }
@@ -599,45 +790,84 @@ internal class ProbeManager(
         }
     }
 
+    /**
+     * Sends via [commandCoordinator]. See [setPowerMode]'s KDoc for the Direct-vs-Node key
+     * routing rationale and the null-vs-real request ID split, both of which apply identically
+     * here.
+     *
+     * Deliberately does not optimistically write [probeHighLowAlarmStatus] into `_deviceFlow` on
+     * completion -- see `EngineManager.setControlDevice`'s KDoc for why.
+     */
     fun setProbeHighLowAlarmStatus(
         probeHighLowAlarmStatus: ProbeHighLowAlarmStatus,
         completionHandler: (Boolean) -> Unit,
     ) {
-        val onCompletion: (Boolean) -> Unit = { success ->
-            if (success) {
-                _deviceFlow.update {
-                    _deviceFlow.value.copy(
-                        highLowAlarmStatus = probeHighLowAlarmStatus,
-                    )
-                }
-            }
-            completionHandler(success)
-        }
+        val startingHighLowAlarmStatus = _deviceFlow.value.highLowAlarmStatus
 
-        simulatedProbe?.sendSetProbeHighLowAlarmStatus(probeHighLowAlarmStatus) { status, _ ->
-            onCompletion(status)
-        } ?: run {
-            val requestId = makeRequestId()
-            arbitrator.directLink?.sendSetProbeHighLowAlarmStatus(probeHighLowAlarmStatus) { status, _ ->
-                onCompletion(status)
-            } ?: run {
-                val nodeLinks = arbitrator.connectedNodeLinks
-                if (nodeLinks.isNotEmpty()) {
-                    val handled = AtomicBoolean(false)
-                    nodeLinks.forEach { node ->
-                        node.sendSetProbeHighLowAlarmStatus(
-                            probeHighLowAlarmStatus,
-                            requestId,
-                        ) { status, _ ->
-                            if (!handled.getAndSet(true)) {
-                                onCompletion(status)
+        scope.launch {
+            val result = getCommandMutex(MessageType.SET_PROBE_HIGH_LOW_ALARM).withLock {
+                commandCoordinator.sendRoutedCommand(
+                    targetSerialNumber = serialNumber,
+                    send = {
+                        val directLink = simulatedProbe ?: arbitrator.directLink
+                        val nodeLinks = arbitrator.connectedNodeLinks
+                        val nodeRequestId = makeRequestId()
+
+                        val key = when {
+                            directLink != null ->
+                                CommandAttemptKey.Direct(
+                                    MessageType.SET_PROBE_HIGH_LOW_ALARM,
+                                    directLink.id,
+                                )
+
+                            nodeLinks.isNotEmpty() ->
+                                CommandAttemptKey.Node(
+                                    NodeMessageType.SET_PROBE_HIGH_LOW_ALARM,
+                                    nodeRequestId,
+                                )
+
+                            else -> null
+                        }
+                        val onResponse: (Boolean, Any?) -> Unit = { success, _ ->
+                            if (success && key != null) {
+                                commandCoordinator.completeAttempt(key, success = true)
                             }
                         }
-                    }
 
-                } else {
-                    onCompletion(false)
-                }
+                        val sent = simulatedProbe?.sendSetProbeHighLowAlarmStatus(
+                            probeHighLowAlarmStatus,
+                            null,
+                            onResponse,
+                        ) ?: arbitrator.directLink?.sendSetProbeHighLowAlarmStatus(
+                            probeHighLowAlarmStatus,
+                            null,
+                            onResponse,
+                        ) ?: run {
+                            if (nodeLinks.isEmpty()) {
+                                null
+                            } else {
+                                nodeLinks.forEach { node ->
+                                    node.sendSetProbeHighLowAlarmStatus(
+                                        probeHighLowAlarmStatus,
+                                        nodeRequestId,
+                                        onResponse,
+                                    )
+                                }
+                            }
+                        }
+
+                        if (sent != null && key != null) setOf(key) else emptySet()
+                    },
+                    isConfirmed = CommandCoordinator.valueConfirmation(
+                        startingValue = startingHighLowAlarmStatus,
+                        commandedValue = probeHighLowAlarmStatus,
+                        extractValue = { (it as? ProbeStatus)?.probeHighLowAlarmStatus },
+                    ),
+                )
+            }
+
+            withContext(Dispatchers.Main.immediate) {
+                completionHandler(result == CommandResult.SUCCESS)
             }
         }
     }
@@ -764,6 +994,11 @@ internal class ProbeManager(
                         logUploadPercent = it.logUploadPercent,
                     )
                 }
+
+                // Lets a pending setPowerMode/setProbeHighLowAlarmStatus/etc. retry loop complete
+                // early from this status alone, even if its own response packet is lost -- see
+                // CommandCoordinator.
+                commandCoordinator.confirmCommandStatus(serialNumber, status)
             }
         }
 
@@ -854,6 +1089,11 @@ internal class ProbeManager(
 
             // remove this item from the list of firmware details for the network
             dfuDisconnectedNodeCallback(device.id)
+
+            // Purges any CommandAttemptKey.Direct entries tied to this link so a pending command
+            // can still complete via a later retry over a different route (e.g. MeatNet), rather
+            // than waiting on a response that can never arrive on this now-disconnected link.
+            commandCoordinator.handleDeviceDisconnected(device.id)
         }
 
         // use the arbitrated connection state, fw version, hw revision, model information
