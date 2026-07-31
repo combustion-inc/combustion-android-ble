@@ -35,6 +35,7 @@ import inc.combustion.framework.ble.device.SimulatedProbeBleDevice
 import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
 import inc.combustion.framework.service.CombustionProductType
 import inc.combustion.framework.service.DeviceManager
+import inc.combustion.framework.service.FoodSafeData
 import inc.combustion.framework.service.OverheatingSensors
 import inc.combustion.framework.service.PredictionStatus
 import inc.combustion.framework.service.ProbeBatteryStatus
@@ -267,6 +268,30 @@ class ProbeManagerTest {
 
         var result: Boolean? = null
         manager.setPrediction(60.0, ProbePredictionMode.TIME_TO_REMOVAL) { result = it }
+        runCurrent()
+
+        assertEquals(true, result)
+    }
+
+    @Test
+    fun `configureFoodSafe succeeds via a simulated device response`() = runTest {
+        val manager = ProbeManager(
+            serialNumber = "12345678",
+            scope = backgroundScope,
+            settings = DeviceManager.Settings(),
+            dfuDisconnectedNodeCallback = {},
+        )
+        manager.addSimulatedProbe(
+            SimulatedProbeBleDevice(scope = backgroundScope, serialNumber = "12345678"),
+        )
+
+        var result: Boolean? = null
+        manager.configureFoodSafe(
+            FoodSafeData.Simplified(
+                product = FoodSafeData.Simplified.Product.BeefCuts,
+                serving = FoodSafeData.Serving.Immediately,
+            ),
+        ) { result = it }
         runCurrent()
 
         assertEquals(true, result)

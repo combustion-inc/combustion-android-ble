@@ -311,7 +311,9 @@ internal class SimulatedProbeBleDevice(
         reqId: UInt?,
         callback: ((Boolean, Any?) -> Unit)?
     ) {
-        callback?.let { it(true, null) }
+        // See sendSetPowerMode for why this is dispatched via scope.launch rather than invoked
+        // synchronously.
+        scope.launch { callback?.let { it(true, null) } }
     }
 
     override fun sendResetFoodSafe(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {

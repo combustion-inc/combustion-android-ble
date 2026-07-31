@@ -622,33 +622,94 @@ internal class ProbeManager(
         }
     }
 
+    /**
+     * Sends via [commandCoordinator]. See [setPowerMode]'s KDoc for the Direct-vs-Node key
+     * routing rationale and the null-vs-real request ID split, both of which apply identically
+     * here.
+     *
+     * Deliberately does not optimistically write [foodSafeData] into `_deviceFlow` on completion
+     * -- see `EngineManager.setControlDevice`'s KDoc for why.
+     */
     fun configureFoodSafe(foodSafeData: FoodSafeData, completionHandler: (Boolean) -> Unit) {
-        simulatedProbe?.sendConfigureFoodSafe(foodSafeData) { status, _ ->
-            completionHandler(status)
-        } ?: run {
-            // if there is a direct link to the probe, then use that
-            arbitrator.directLink?.sendConfigureFoodSafe(foodSafeData) { status, _ ->
-                completionHandler(status)
-            } ?: run {
-                val nodeLinks = arbitrator.connectedNodeLinks
-                if (nodeLinks.isNotEmpty()) {
-                    val handled = AtomicBoolean(false)
-                    val requestId = makeRequestId()
-                    nodeLinks.forEach {
-                        it.sendConfigureFoodSafe(foodSafeData, requestId) { status, _ ->
-                            if (!handled.getAndSet(true)) {
-                                completionHandler(status)
+        val startingFoodSafeData = _deviceFlow.value.foodSafeData
+
+        scope.launch {
+            val result = getCommandMutex(MessageType.CONFIGURE_FOOD_SAFE).withLock {
+                commandCoordinator.sendRoutedCommand(
+                    targetSerialNumber = serialNumber,
+                    send = {
+                        val directLink = simulatedProbe ?: arbitrator.directLink
+                        val nodeLinks = arbitrator.connectedNodeLinks
+                        val nodeRequestId = makeRequestId()
+
+                        val key = when {
+                            directLink != null ->
+                                CommandAttemptKey.Direct(
+                                    MessageType.CONFIGURE_FOOD_SAFE,
+                                    directLink.id,
+                                )
+
+                            nodeLinks.isNotEmpty() ->
+                                CommandAttemptKey.Node(
+                                    NodeMessageType.CONFIGURE_FOOD_SAFE,
+                                    nodeRequestId,
+                                )
+
+                            else -> null
+                        }
+                        val onResponse: (Boolean, Any?) -> Unit = { success, _ ->
+                            if (success && key != null) {
+                                commandCoordinator.completeAttempt(key, success = true)
                             }
                         }
-                    }
 
-                } else {
-                    completionHandler(false)
-                }
+                        val sent = simulatedProbe?.sendConfigureFoodSafe(
+                            foodSafeData,
+                            null,
+                            onResponse,
+                        ) ?: arbitrator.directLink?.sendConfigureFoodSafe(
+                            foodSafeData,
+                            null,
+                            onResponse,
+                        ) ?: run {
+                            if (nodeLinks.isEmpty()) {
+                                null
+                            } else {
+                                nodeLinks.forEach {
+                                    it.sendConfigureFoodSafe(
+                                        foodSafeData,
+                                        nodeRequestId,
+                                        onResponse,
+                                    )
+                                }
+                            }
+                        }
+
+                        if (sent != null && key != null) setOf(key) else emptySet()
+                    },
+                    isConfirmed = CommandCoordinator.valueConfirmation(
+                        startingValue = startingFoodSafeData,
+                        commandedValue = foodSafeData,
+                        extractValue = { (it as? ProbeStatus)?.foodSafeData },
+                    ),
+                )
+            }
+
+            withContext(Dispatchers.Main.immediate) {
+                completionHandler(result == CommandResult.SUCCESS)
             }
         }
     }
 
+    /**
+     * Not ported to [commandCoordinator]: Reset Food Safe (0x08) is idempotent in principle (it
+     * resets to a fixed state), but a spurious retry after a lost ACK could still wipe out a few
+     * seconds of legitimately re-accumulated tracking, and there's no status field that fits
+     * [CommandCoordinator.valueConfirmation] to confirm it early anyway -- see the discussion on
+     * `ProbeManager.resetProbe` for the closely related reasoning on `resetProbe` itself, which
+     * has a stronger, data-loss version of this same problem (each execution starts a new
+     * session, not just a reset to a fixed state).
+     */
     fun resetFoodSafe(completionHandler: (Boolean) -> Unit) {
         simulatedProbe?.sendResetFoodSafe { status, _ ->
             completionHandler(status)
@@ -763,6 +824,14 @@ internal class ProbeManager(
         }
     }
 
+    /**
+     * Not ported to [commandCoordinator]: Reset Thermometer (0x0A) starts a brand new cook
+     * session each time it runs, clearing prediction and data buffers -- unlike
+     * [resetFoodSafe]'s "reset to a fixed state," this is not idempotent. A spurious retry after
+     * a lost ACK (not a real failure) would start a second new session on top of the first,
+     * silently orphaning whatever the probe had already begun logging under the first one. There
+     * is also no status field a reboot could confirm against in the first place.
+     */
     fun resetProbe(completionHandler: (Boolean) -> Unit) {
         simulatedProbe?.sendResetProbe { status, _ ->
             completionHandler(status)

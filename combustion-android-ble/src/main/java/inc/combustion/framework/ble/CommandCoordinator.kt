@@ -80,10 +80,17 @@ internal sealed class CommandAttemptKey {
  * instance and calls [sendRoutedCommand] from its command functions
  * (`EngineManager.setControlDevice`/`setTemperatureSetPoint`,
  * `GaugeManager.setHighLowAlarmStatus`, `ProbeManager.setPowerMode`/`setProbeHighLowAlarmStatus`/
- * `setProbeColor`/`setProbeID`/`setPrediction`, `WiFiNodesManager.sendNodeRequestRequiringWiFi`).
- * The first four managers call [confirmCommandStatus] from their status-handling path;
- * [WiFiNodesManager]'s generic requests have no corresponding status to confirm against, so it
- * never does.
+ * `setProbeColor`/`setProbeID`/`setPrediction`/`configureFoodSafe`,
+ * `WiFiNodesManager.sendNodeRequestRequiringWiFi`).
+ * The first four managers call [confirmCommandStatus] from their status-handling path, so most of
+ * their commands can complete early from a status update alone. [WiFiNodesManager]'s generic
+ * requests are the one exception -- they have no corresponding status field at all, so they
+ * always pass `isConfirmed = { false }` and rely purely on a matching response.
+ *
+ * Not every command that's structurally portable is worth porting: `ProbeManager.resetFoodSafe`/
+ * `resetProbe` were deliberately left as single-shot sends (see their own KDocs) because a
+ * spurious retry after a lost ACK -- not a real failure -- could re-execute a command whose
+ * effects aren't purely idempotent, at a real (if usually small) cost.
  *
  * `ProbeManager`'s direct-link (non-MeatNet) commands are a special case worth knowing about
  * before touching them: [ProbeBleDevice]'s raw UART response processing always matches a response
