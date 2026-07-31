@@ -29,10 +29,7 @@
 package inc.combustion.framework.ble.scanning
 
 import com.juul.kable.Identifier
-import inc.combustion.framework.service.CombustionProductType
-import inc.combustion.framework.service.GaugeStatusFlags
-import inc.combustion.framework.service.HighLowAlarmStatus
-import inc.combustion.framework.service.SensorTemperature
+import inc.combustion.framework.service.*
 import inc.combustion.framework.utf8StringFromRange
 
 /**
@@ -47,6 +44,7 @@ internal class GaugeAdvertisingData(
     val gaugeTemperature: SensorTemperature,
     val gaugeStatusFlags: GaugeStatusFlags,
     val highLowAlarmStatus: HighLowAlarmStatus,
+    val gaugePreferences: GaugePreferences?,
 ) : BaseAdvertisingData(
     mac = mac,
     name = name,
@@ -61,6 +59,7 @@ internal class GaugeAdvertisingData(
         private val STATUS_FLAGS_RANGE = 13..13
         private val RESERVED_RANGE = 14..14 // previously BATTERY_PERCENTAGE_RANGE
         private val HIGH_LOW_ALARM_RANGE = 15..18
+        private val PREFERENCES_RANGE = 19..19
 
         internal fun create(
             address: Identifier,
@@ -72,16 +71,24 @@ internal class GaugeAdvertisingData(
             val serialNumber = manufacturerData.utf8StringFromRange(SERIAL_RANGE)
 
             val gaugeTemperature = SensorTemperature.fromRawDataStart(
-                manufacturerData.copyOf().sliceArray(TEMPERATURE_RANGE)
+                manufacturerData.sliceArray(TEMPERATURE_RANGE)
             )
 
             val gaugeStatusFlags: GaugeStatusFlags = GaugeStatusFlags.fromRawByte(
-                manufacturerData.copyOf().sliceArray(STATUS_FLAGS_RANGE)[0]
+                manufacturerData.sliceArray(STATUS_FLAGS_RANGE)[0]
             )
 
             val highLowAlarmStatus: HighLowAlarmStatus = HighLowAlarmStatus.fromRawData(
-                manufacturerData.copyOf().sliceArray(HIGH_LOW_ALARM_RANGE)
+                manufacturerData.sliceArray(HIGH_LOW_ALARM_RANGE)
             )
+
+            val preferences = if (manufacturerData.size > PREFERENCES_RANGE.last) {
+                GaugePreferences.fromRawByte(
+                    manufacturerData.sliceArray(PREFERENCES_RANGE)[0]
+                )
+            } else {
+                null
+            }
 
             return GaugeAdvertisingData(
                 mac = address,
@@ -92,6 +99,7 @@ internal class GaugeAdvertisingData(
                 gaugeTemperature = gaugeTemperature,
                 gaugeStatusFlags = gaugeStatusFlags,
                 highLowAlarmStatus = highLowAlarmStatus,
+                gaugePreferences = preferences,
             )
         }
     }

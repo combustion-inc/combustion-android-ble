@@ -28,15 +28,34 @@
 
 package inc.combustion.framework.service
 
-data class ThermometerPreferences(val powerMode: ProbePowerMode) {
+import inc.combustion.framework.isBitSet
+
+data class ThermometerPreferences(
+    val powerMode: ProbePowerMode,
+    /**
+     * Probe V1 devices transmit at normal power (+0 dBm); Probe V2 and later transmit at high
+     * power (+8 dBm) for improved range and connection reliability. See
+     * [SpecializedDevice.highRadioPower] for how this affects RSSI-based proximity detection.
+     */
+    val highRadioPower: Boolean = false,
+) {
 
     companion object {
         const val PROBE_PREFS_SIZE_BYTES = 1
 
-        val DEFAULT = ThermometerPreferences(powerMode = ProbePowerMode.NORMAL)
+        // Bit 2, not bit 0: bits 0-1 are reserved for ProbePowerMode (see
+        // ProbePowerMode.PROBE_POWER_MODE_MASK). This differs from GaugePreferences and
+        // EnginePreferences, which have no power mode field and so use bit 0 for highRadioPower.
+        private const val HIGH_RADIO_POWER_BIT = 2
 
-        fun fromUByte(byte: UByte): ThermometerPreferences {
-            return ThermometerPreferences(powerMode = ProbePowerMode.fromUByte(byte))
+        val DEFAULT =
+            ThermometerPreferences(powerMode = ProbePowerMode.NORMAL, highRadioPower = false)
+
+        fun fromRawByte(byte: UByte): ThermometerPreferences {
+            return ThermometerPreferences(
+                powerMode = ProbePowerMode.fromUByte(byte),
+                highRadioPower = byte.isBitSet(HIGH_RADIO_POWER_BIT),
+            )
         }
     }
 }

@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: EnginePreferences.kt
+ * File: GaugePreferencesTest.kt
  * Author:
  *
  * MIT License
@@ -28,19 +28,36 @@
 
 package inc.combustion.framework.service
 
-import inc.combustion.framework.isBitSet
+import org.junit.Assert.assertEquals
+import org.junit.Test
 
-data class EnginePreferences(
-    val highRadioPower: Boolean = false,
-) {
+class GaugePreferencesTest {
+    @Test
+    fun `fromRawByte with no bits set`() {
+        assertEquals(
+            GaugePreferences(highRadioPower = false),
+            GaugePreferences.fromRawByte(0b0000_0000u),
+        )
+    }
 
-    companion object {
-        // Unlike ThermometerPreferences, the engine preferences byte has no power mode field
-        // occupying bits 0-1, so highRadioPower can use bit 0 directly.
-        private const val HIGH_RADIO_POWER_BIT = 0
+    @Test
+    fun `fromRawByte with highRadioPower set`() {
+        assertEquals(
+            GaugePreferences(highRadioPower = true),
+            GaugePreferences.fromRawByte(0b0000_0001u),
+        )
+    }
 
-        fun fromRawByte(byte: UByte): EnginePreferences {
-            return EnginePreferences(highRadioPower = byte.isBitSet(HIGH_RADIO_POWER_BIT))
-        }
+    @Test
+    fun `fromRawByte ignores unrelated high bits`() {
+        assertEquals(
+            GaugePreferences(highRadioPower = false),
+            GaugePreferences.fromRawByte(0b1111_1110u),
+        )
+    }
+
+    @Test
+    fun `DEFAULT has high radio power off`() {
+        assertEquals(GaugePreferences(highRadioPower = false), GaugePreferences.DEFAULT)
     }
 }

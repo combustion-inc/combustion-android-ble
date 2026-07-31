@@ -1,6 +1,6 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: EnginePreferences.kt
+ * File: GaugePreferences.kt
  * Author:
  *
  * MIT License
@@ -30,17 +30,20 @@ package inc.combustion.framework.service
 
 import inc.combustion.framework.isBitSet
 
-data class EnginePreferences(
+data class GaugePreferences(
     val highRadioPower: Boolean = false,
 ) {
-
     companion object {
-        // Unlike ThermometerPreferences, the engine preferences byte has no power mode field
+        val DEFAULT = GaugePreferences(highRadioPower = false)
+
+        // Unlike ThermometerPreferences, the gauge preferences byte has no power mode field
         // occupying bits 0-1, so highRadioPower can use bit 0 directly.
         private const val HIGH_RADIO_POWER_BIT = 0
 
-        fun fromRawByte(byte: UByte): EnginePreferences {
-            return EnginePreferences(highRadioPower = byte.isBitSet(HIGH_RADIO_POWER_BIT))
+        fun fromRawByte(byte: UByte): GaugePreferences {
+            return GaugePreferences(
+                highRadioPower = byte.isBitSet(HIGH_RADIO_POWER_BIT),
+            )
         }
     }
 }

@@ -39,6 +39,8 @@ import inc.combustion.framework.service.utils.PredictionManager
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -69,6 +71,14 @@ internal class ProbeManager(
 
     // encapsulates logic for managing network data links
     override val arbitrator = ProbeDataLinkArbitrator(settings)
+
+    // Probe status can arrive concurrently from more than one source (a direct BLE link and/or
+    // multiple mesh-relay nodes, one observer registered per link in observe()), all invoking
+    // handleProbeStatus() for the same probe. This mutex serializes the read-decide-write
+    // sequence in handleProbeStatus() so two overlapping status updates can't race on the
+    // arbitrator's session/sequence bookkeeping or clobber each other's _deviceFlow update --
+    // mirrors the same fix in EngineManager/GaugeManager.
+    private val handleStatusMutex = Mutex()
 
     // idle monitors
     private val instantReadMonitor = IdleMonitor()
@@ -716,42 +726,44 @@ internal class ProbeManager(
     }
 
     private suspend fun handleProbeStatus(status: ProbeStatus, hopCount: UInt?) {
-        if (arbitrator.shouldUpdateDataFromStatus(status, sessionInfo, hopCount)) {
-            Log.v(LOG_TAG, "ProbeManager.handleProbeStatus: $serialNumber $status")
+        handleStatusMutex.withLock {
+            if (arbitrator.shouldUpdateDataFromStatus(status, sessionInfo, hopCount)) {
+                Log.v(LOG_TAG, "ProbeManager.handleProbeStatus: $serialNumber $status")
 
-            var updatedProbe = _deviceFlow.value
+                var updatedProbe = _deviceFlow.value.copy(hasReceivedStatus = true)
 
-            updatedProbe = updateLink(updatedProbe)
-            updatedProbe =
-                updateBatteryIdColor(status.batteryStatus, status.id, status.color, updatedProbe)
-            updatedProbe = updateSequenceNumbers(
-                status.minSequenceNumber,
-                status.maxSequenceNumber,
-                updatedProbe
-            )
-            updatedProbe = updateThermometerPreferences(status.thermometerPrefs, updatedProbe)
-            updatedProbe = updateHighLowAlarms(status.probeHighLowAlarmStatus, updatedProbe)
-
-            if (status.mode == ProbeMode.NORMAL) {
-                updatedProbe = updateNormalMode(status, updatedProbe)
-
-                _normalModeProbeStatusFlow.emit(status)
-
-                // redundantly check for device information
-                fetchDeviceInfo()
-            } else if (status.mode == ProbeMode.INSTANT_READ) {
-                updatedProbe = updateInstantRead(status, updatedProbe)
-            }
-
-            // These log-related items can be updated outside of this function--specifically, these
-            // are updated by the LogManager when we emit a new status to the
-            // normalModeProbeStatusFlow.
-            _deviceFlow.update {
-                updatedProbe.copy(
-                    uploadState = it.uploadState,
-                    recordsDownloaded = it.recordsDownloaded,
-                    logUploadPercent = it.logUploadPercent,
+                updatedProbe = updateLink(updatedProbe)
+                updatedProbe =
+                    updateBatteryIdColor(status.batteryStatus, status.id, status.color, updatedProbe)
+                updatedProbe = updateSequenceNumbers(
+                    status.minSequenceNumber,
+                    status.maxSequenceNumber,
+                    updatedProbe
                 )
+                updatedProbe = updateThermometerPreferences(status.thermometerPrefs, updatedProbe)
+                updatedProbe = updateHighLowAlarms(status.probeHighLowAlarmStatus, updatedProbe)
+
+                if (status.mode == ProbeMode.NORMAL) {
+                    updatedProbe = updateNormalMode(status, updatedProbe)
+
+                    _normalModeProbeStatusFlow.emit(status)
+
+                    // redundantly check for device information
+                    fetchDeviceInfo()
+                } else if (status.mode == ProbeMode.INSTANT_READ) {
+                    updatedProbe = updateInstantRead(status, updatedProbe)
+                }
+
+                // These log-related items can be updated outside of this function--specifically, these
+                // are updated by the LogManager when we emit a new status to the
+                // normalModeProbeStatusFlow.
+                _deviceFlow.update {
+                    updatedProbe.copy(
+                        uploadState = it.uploadState,
+                        recordsDownloaded = it.recordsDownloaded,
+                        logUploadPercent = it.logUploadPercent,
+                    )
+                }
             }
         }
 
@@ -994,10 +1006,17 @@ internal class ProbeManager(
     private fun fetchSessionInfo() {
         simulatedProbe?.let { device ->
             if (sessionInfo == null) {
+                // Same handleStatusMutex protection as handleSessionInfo() below -- this
+                // completion callback writes sessionInfo/_deviceFlow and can otherwise race
+                // handleProbeStatus(), which reads/writes the same state.
                 device.sendSessionInformationRequest { status, info ->
                     if (status && info is SessionInformation) {
-                        sessionInfo = info
-                        _deviceFlow.update { it.copy(sessionInfo = info) }
+                        scope.launch {
+                            handleStatusMutex.withLock {
+                                sessionInfo = info
+                                _deviceFlow.update { it.copy(sessionInfo = info) }
+                            }
+                        }
                     }
                 }
             }
@@ -1036,30 +1055,42 @@ internal class ProbeManager(
             return
         }
 
-        sessionInfoTimeout = false
-        val info = any as SessionInformation
-        var minSequence = minSequenceNumber
-        var maxSequence = maxSequenceNumber
+        // This is a completion callback from an explicit session-info request (fetchSessionInfo,
+        // called from fetchDeviceInfo()), fired from a UART completion handler that can run
+        // concurrently with handleProbeStatus() -- both read/write sessionInfo, uploadState,
+        // logTransferLink, and _deviceFlow.minSequence/maxSequence/sessionInfo, so this needs the
+        // same handleStatusMutex protection handleProbeStatus() uses for that state. No
+        // consumer-facing callback is invoked here (logTransferCompleteCallback is internal
+        // bookkeeping only -- see LogManager), so unlike EngineManager.setControlDevice's
+        // completionHandler, nothing here needs to land on a specific dispatcher.
+        scope.launch {
+            handleStatusMutex.withLock {
+                sessionInfoTimeout = false
+                val info = any as SessionInformation
+                var minSequence = minSequenceNumber
+                var maxSequence = maxSequenceNumber
 
-        // if the session information has changed, then we need to finish the previous log session.
-        if (sessionInfo != info) {
-            logTransferCompleteCallback()
-            logTransferLink = null
-            uploadState = ProbeUploadState.Unavailable
+                // if the session information has changed, then we need to finish the previous log session.
+                if (sessionInfo != info) {
+                    logTransferCompleteCallback()
+                    logTransferLink = null
+                    uploadState = ProbeUploadState.Unavailable
 
-            minSequence = null
-            maxSequence = null
+                    minSequence = null
+                    maxSequence = null
 
-            Log.i(LOG_TAG, "PM($serialNumber): finished log transfer.")
-        }
+                    Log.i(LOG_TAG, "PM($serialNumber): finished log transfer.")
+                }
 
-        sessionInfo = info
-        _deviceFlow.update {
-            it.copy(
-                minSequence = minSequence,
-                maxSequence = maxSequence,
-                sessionInfo = info,
-            )
+                sessionInfo = info
+                _deviceFlow.update {
+                    it.copy(
+                        minSequence = minSequence,
+                        maxSequence = maxSequence,
+                        sessionInfo = info,
+                    )
+                }
+            }
         }
     }
 
@@ -1088,6 +1119,12 @@ internal class ProbeManager(
             else -> {
                 updatedProbe
             }
+        }
+
+        advertisement.thermometerPreferences?.let {
+            updatedProbe = updatedProbe.copy(
+                thermometerPrefs = it
+            )
         }
 
         return updateBatteryIdColor(

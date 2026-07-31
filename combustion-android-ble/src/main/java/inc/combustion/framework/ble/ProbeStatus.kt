@@ -145,7 +145,7 @@ internal data class ProbeStatus(
                 probeRefsByteStartIndex until probeRefsByteStartIndex + ThermometerPreferences.PROBE_PREFS_SIZE_BYTES
             val probePrefs = if (data.size > probeRefsRange.last) {
                 val probePrefsRaw = data.sliceArray(probeRefsRange)[0]
-                ThermometerPreferences.fromUByte(probePrefsRaw)
+                ThermometerPreferences.fromRawByte(probePrefsRaw)
             } else {
                 ThermometerPreferences.DEFAULT
             }

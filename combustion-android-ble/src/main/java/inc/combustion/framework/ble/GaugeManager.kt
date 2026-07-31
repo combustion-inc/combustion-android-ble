@@ -41,6 +41,8 @@ import inc.combustion.framework.service.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -71,6 +73,13 @@ internal class GaugeManager(
 
     override val arbitrator = GaugeDataLinkArbitrator()
 
+    // Gauge status can arrive concurrently from more than one source (a direct BLE link and/or
+    // multiple mesh-relay nodes), all invoking handleStatus() for the same gauge. This mutex
+    // serializes the read-decide-write sequence in handleStatus() so two overlapping status
+    // updates can't race on the arbitrator's session/sequence bookkeeping or clobber each
+    // other's _deviceFlow update -- mirrors the same fix in EngineManager.
+    private val handleStatusMutex = Mutex()
+
     override val _deviceFlow =
         MutableStateFlow(Gauge.create(serialNumber = serialNumber, mac = mac))
 
@@ -99,11 +108,17 @@ internal class GaugeManager(
     // Abstract method implementations
 
     override fun Gauge.withBaseDevice(baseDevice: Device): Gauge = copy(baseDevice = baseDevice)
-    override fun Gauge.withStatusNotificationsStale(stale: Boolean): Gauge = copy(statusNotificationsStale = stale)
+    override fun Gauge.withStatusNotificationsStale(stale: Boolean): Gauge =
+        copy(statusNotificationsStale = stale)
+
     override fun Gauge.withUploadState(state: ProbeUploadState): Gauge = copy(uploadState = state)
     override fun Gauge.withRecordsDownloaded(count: Int): Gauge = copy(recordsDownloaded = count)
     override fun Gauge.withLogUploadPercent(percent: UInt): Gauge = copy(logUploadPercent = percent)
-    override fun Gauge.withSessionInfo(info: SessionInformation, minSequenceNumber: UInt, maxSequenceNumber: UInt): Gauge =
+    override fun Gauge.withSessionInfo(
+        info: SessionInformation,
+        minSequenceNumber: UInt,
+        maxSequenceNumber: UInt
+    ): Gauge =
         copy(minSequence = minSequenceNumber, maxSequence = maxSequenceNumber, sessionInfo = info)
 
     override fun castToAdvertisementType(advertisement: DeviceAdvertisingData): GaugeAdvertisingData? =
@@ -220,31 +235,33 @@ internal class GaugeManager(
         // TODO : do update after check if logic is changed
         statusNotificationsMonitor.activity()
 
-        if (simulated || arbitrator.shouldUpdateDataFromStatusForNormalMode(
-                status,
-                sessionInfo,
-            )
-        ) {
-            handleSessionInfo(
-                status.sessionInformation,
-                minSequenceNumber = status.minSequenceNumber,
-                maxSequenceNumber = status.maxSequenceNumber,
-            )
-
-            _normalModeStatusFlow.emit(status)
-
-            if (!simulated) {
-                fetchDeviceInfo()
-            }
-
-            _deviceFlow.update {
-                it.copy(
-                    highLowAlarmStatus = status.highLowAlarmStatus,
-                    gaugeStatusFlags = status.gaugeStatusFlags,
-                    temperatureCelsius = if (status.gaugeStatusFlags.sensorPresent) status.temperature else null,
-                    newRecordFlag = status.isNewRecord,
-                    hopCount = status.hopCount.hopCount,
+        handleStatusMutex.withLock {
+            if (simulated || arbitrator.shouldUpdateDataFromStatusForNormalMode(
+                    status,
+                    status.sessionInformation,
                 )
+            ) {
+                handleSessionInfo(
+                    status.sessionInformation,
+                    minSequenceNumber = status.minSequenceNumber,
+                    maxSequenceNumber = status.maxSequenceNumber,
+                )
+
+                _normalModeStatusFlow.emit(status)
+
+                if (!simulated) {
+                    fetchDeviceInfo()
+                }
+
+                _deviceFlow.update {
+                    it.copy(
+                        highLowAlarmStatus = status.highLowAlarmStatus,
+                        gaugeStatusFlags = status.gaugeStatusFlags,
+                        temperatureCelsius = if (status.gaugeStatusFlags.sensorPresent) status.temperature else null,
+                        newRecordFlag = status.isNewRecord,
+                        hopCount = status.hopCount.hopCount,
+                    )
+                }
             }
         }
     }
@@ -261,6 +278,7 @@ internal class GaugeManager(
             gaugeStatusFlags = advertisement.gaugeStatusFlags,
             temperatureCelsius = if (advertisement.gaugeStatusFlags.sensorPresent) advertisement.gaugeTemperature else null,
             highLowAlarmStatus = advertisement.highLowAlarmStatus,
+            gaugePrefs = advertisement.gaugePreferences ?: updatedGauge.gaugePrefs,
         )
     }
 }

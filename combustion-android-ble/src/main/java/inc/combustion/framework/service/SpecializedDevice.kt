@@ -53,6 +53,16 @@ interface SpecializedDevice {
 
     val isOverheating: Boolean
 
+    /**
+     * Whether the device transmits at high radio power (+8 dBm) rather than normal power
+     * (+0 dBm).
+     *
+     * When using RSSI for proximity detection, applications should adjust thresholds based on
+     * this value: high power devices show approximately 8 dB higher (less negative) RSSI at the
+     * same physical distance as normal power devices.
+     */
+    val highRadioPower: Boolean
+
     val serialNumber: String
         get() = baseDevice.serialNumber
     val mac: String

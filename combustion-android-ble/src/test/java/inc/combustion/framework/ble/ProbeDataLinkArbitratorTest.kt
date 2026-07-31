@@ -30,6 +30,7 @@ package inc.combustion.framework.ble
 
 import inc.combustion.framework.service.DeviceManager
 import inc.combustion.framework.service.ProbeMode
+import inc.combustion.framework.service.SessionInformation
 import io.mockk.every
 import io.mockk.mockk
 import junitparams.JUnitParamsRunner
@@ -38,6 +39,8 @@ import junitparams.naming.TestCaseName
 import org.junit.runner.RunWith
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 @RunWith(JUnitParamsRunner::class)
 internal class ProbeDataLinkArbitratorTest {
@@ -96,4 +99,76 @@ internal class ProbeDataLinkArbitratorTest {
         arrayOf(null as? UInt?, true, 0u, true),
         arrayOf(1u, true, 2u, true),
     )
+
+    // shouldUpdateDataFromStatusForNormalMode -- called directly here (bypassing
+    // shouldUpdateDataFromStatus's mode-based routing, which isn't relevant to this logic).
+
+    private fun normalModeStatus(maxSequenceNumber: UInt): ProbeStatus {
+        val status: ProbeStatus = mockk(relaxed = true)
+        every { status.maxSequenceNumber } returns maxSequenceNumber
+        return status
+    }
+
+    @Test
+    fun `normal mode -- first status is always accepted regardless of sequence number`() {
+        val tested = getTested()
+        assertTrue(
+            tested.shouldUpdateDataFromStatusForNormalMode(
+                normalModeStatus(maxSequenceNumber = 0u),
+                SessionInformation(sessionID = 1u, samplePeriod = 1u),
+            ),
+        )
+    }
+
+    @Test
+    fun `normal mode -- same session with a higher sequence number is accepted`() {
+        val tested = getTested()
+        val session = SessionInformation(sessionID = 1u, samplePeriod = 1u)
+        tested.shouldUpdateDataFromStatusForNormalMode(normalModeStatus(1u), session)
+
+        assertTrue(tested.shouldUpdateDataFromStatusForNormalMode(normalModeStatus(2u), session))
+    }
+
+    @Test
+    fun `normal mode -- same session with an equal sequence number is rejected as a duplicate`() {
+        val tested = getTested()
+        val session = SessionInformation(sessionID = 1u, samplePeriod = 1u)
+        tested.shouldUpdateDataFromStatusForNormalMode(normalModeStatus(5u), session)
+
+        assertFalse(tested.shouldUpdateDataFromStatusForNormalMode(normalModeStatus(5u), session))
+    }
+
+    @Test
+    fun `normal mode -- same session with a lower sequence number is rejected as stale`() {
+        val tested = getTested()
+        val session = SessionInformation(sessionID = 1u, samplePeriod = 1u)
+        tested.shouldUpdateDataFromStatusForNormalMode(normalModeStatus(5u), session)
+
+        assertFalse(tested.shouldUpdateDataFromStatusForNormalMode(normalModeStatus(3u), session))
+    }
+
+    @Test
+    fun `normal mode -- a rejected stale status does not lower the bar for a later still-stale status`() {
+        // Regression test: currentStatus must only advance on acceptance. It was previously
+        // overwritten unconditionally, so a rejected status could make a later, still-stale status
+        // look like an advance relative to it.
+        val tested = getTested()
+        val session = SessionInformation(sessionID = 1u, samplePeriod = 1u)
+        tested.shouldUpdateDataFromStatusForNormalMode(normalModeStatus(5u), session)
+
+        assertFalse(tested.shouldUpdateDataFromStatusForNormalMode(normalModeStatus(3u), session))
+        assertFalse(tested.shouldUpdateDataFromStatusForNormalMode(normalModeStatus(4u), session))
+    }
+
+    @Test
+    fun `normal mode -- a session change is always accepted even with a lower sequence number`() {
+        val tested = getTested()
+        val firstSession = SessionInformation(sessionID = 1u, samplePeriod = 1u)
+        val secondSession = SessionInformation(sessionID = 2u, samplePeriod = 1u)
+        tested.shouldUpdateDataFromStatusForNormalMode(normalModeStatus(5u), firstSession)
+
+        assertTrue(
+            tested.shouldUpdateDataFromStatusForNormalMode(normalModeStatus(0u), secondSession),
+        )
+    }
 }

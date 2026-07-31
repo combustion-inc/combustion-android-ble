@@ -82,6 +82,7 @@ internal class SimulatedGaugeBleDevice(
                         temperature = SensorTemperature(100.0),
                     ),
                 ),
+                gaugePreferences = GaugePreferences.DEFAULT,
             )
         }
     }

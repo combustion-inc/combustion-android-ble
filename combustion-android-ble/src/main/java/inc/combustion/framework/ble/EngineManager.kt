@@ -39,8 +39,13 @@ import inc.combustion.framework.ble.scanning.EngineAdvertisingData
 import inc.combustion.framework.ble.uart.LogResponse
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
 
 internal class EngineManager(
@@ -57,6 +62,12 @@ internal class EngineManager(
 ) {
 
     override val arbitrator = EngineDataLinkArbitrator()
+
+    // Engine status can arrive concurrently from more than one source (a direct BLE link and/or
+    // multiple mesh-relay nodes), all invoking handleStatus() for the same engine. This mutex
+    // serializes the read-decide-write sequence below so two overlapping status updates can't
+    // clobber each other's _deviceFlow update with a stale `previous` snapshot.
+    private val handleStatusMutex = Mutex()
 
     override val _deviceFlow = Engine.create(serialNumber = serialNumber, mac = mac).let { base ->
         MutableStateFlow(initialEngineAdvertisingData?.let { updateDataFromAdvertisement(it, base) }
@@ -150,38 +161,46 @@ internal class EngineManager(
 
         statusNotificationsMonitor.activity()
 
-        if (simulated || arbitrator.shouldUpdateDataFromStatusForNormalMode(
-                status,
-                sessionInfo,
-            )
-        ) {
-            handleSessionInfo(
-                status.sessionInformation,
-                minSequenceNumber = status.minSequenceNumber,
-                maxSequenceNumber = status.maxSequenceNumber,
-            )
-
-            _normalModeStatusFlow.emit(status)
-
-            if (!simulated) {
-                fetchDeviceInfo()
-            }
-
-            _deviceFlow.update {
-                it.copy(
-                    engineBatteryStatus = status.engineBatteryStatus,
-                    engineStatusFlags = status.engineStatusFlags,
-                    engineFanStatus = status.engineFanStatus,
-                    engineControllerStatus = status.engineControllerStatus,
-                    temperatureSetPointCelsius = status.temperatureSetPoint,
-                    controlDeviceType = status.controlDeviceType,
-                    controlSerialNumber = status.controlSerialNumber,
-                    controlTemperature = status.controlTemperature,
-                    knobVoltageMillivolts = status.knobVoltageMillivolts,
-                    knobAngleTenthsDegrees = status.knobAngleTenthsDegrees,
-                    hopCount = status.hopCount.hopCount,
-                    chargingFault = status.chargingFault,
+        handleStatusMutex.withLock {
+            if (simulated || arbitrator.shouldUpdateDataFromStatusForNormalMode(
+                    status,
+                    status.sessionInformation,
                 )
+            ) {
+                handleSessionInfo(
+                    status.sessionInformation,
+                    minSequenceNumber = status.minSequenceNumber,
+                    maxSequenceNumber = status.maxSequenceNumber,
+                )
+
+                _normalModeStatusFlow.emit(status)
+
+                if (!simulated) {
+                    fetchDeviceInfo()
+                }
+
+                // engineStatusFlags.controlDeviceConnected is reported here exactly as firmware
+                // sent it -- no debounce. A consuming application is recommended to apply its own
+                // momentary radio-drop confirmation delay before displaying this flag, since this
+                // framework is BLE-only and has no visibility into cloud-relayed engine status
+                // (e.g. from other users' phones or node devices) -- a debounce implemented here
+                // could only ever protect a viewer with their own direct BLE link to the engine.
+                _deviceFlow.update {
+                    it.copy(
+                        engineBatteryStatus = status.engineBatteryStatus,
+                        engineStatusFlags = status.engineStatusFlags,
+                        engineFanStatus = status.engineFanStatus,
+                        engineControllerStatus = status.engineControllerStatus,
+                        temperatureSetPointCelsius = status.temperatureSetPoint,
+                        controlDeviceType = status.controlDeviceType,
+                        controlSerialNumber = status.controlSerialNumber,
+                        controlTemperature = status.controlTemperature,
+                        knobVoltageMillivolts = status.knobVoltageMillivolts,
+                        knobAngleTenthsDegrees = status.knobAngleTenthsDegrees,
+                        hopCount = status.hopCount.hopCount,
+                        chargingFault = status.chargingFault,
+                    )
+                }
             }
         }
     }
@@ -190,6 +209,12 @@ internal class EngineManager(
         temperature: SensorTemperature,
         completionHandler: (Boolean) -> Unit,
     ) {
+        // No lock needed here, unlike setControlDevice: this only writes _deviceFlow, via a
+        // self-contained transform (it.copy(temperatureSetPointCelsius = temperature)) with no
+        // dependency on any other shared mutable state. MutableStateFlow.update{} already
+        // guarantees that write is atomic and never lost against a concurrent handleStatus()
+        // update -- a lock here wouldn't change which write "wins" when both land close together,
+        // only how they interleave, so it would add complexity without fixing anything.
         val onCompletion: (Boolean) -> Unit = { success ->
             if (success) {
                 _deviceFlow.update {
@@ -235,20 +260,37 @@ internal class EngineManager(
         controlSerialNumber: String,
         completionHandler: (Boolean) -> Unit,
     ) {
+        // Dispatched onto scope and taken under handleStatusMutex -- this callback fires from a
+        // UART completion handler that can run concurrently with handleStatus(), and both paths
+        // read/write the same control-device _deviceFlow fields. Without the lock, this could
+        // race with a concurrent handleStatus() call and either clobber its decision or be
+        // clobbered by it. The lock/update itself has no thread-affinity requirement and runs on
+        // scope's default dispatcher; only completionHandler is explicitly switched to
+        // Dispatchers.Main.immediate below, since it's public API and the UART completion path it
+        // previously ran on synchronously (UartBleDevice.MessageCompletionHandler.handled(),
+        // invoked from NodeBleDevice's UART message loop) always delivers on Dispatchers.Main --
+        // callers may reasonably do UI work in completionHandler, same as before this lock was
+        // added.
         val onCompletion: (Boolean) -> Unit = { success ->
-            if (success) {
-                val newControlSerialNumber = controlSerialNumber.takeIf(String::isNotEmpty)
-                _deviceFlow.update { engine ->
-                    engine.copy(
-                        controlDeviceType = newControlSerialNumber?.let { controlDeviceType },
-                        controlSerialNumber = newControlSerialNumber,
-                        engineStatusFlags = engine.engineStatusFlags.copy(
-                            controlDeviceConnected = newControlSerialNumber != null,
-                        ),
-                    )
+            scope.launch {
+                if (success) {
+                    val newControlSerialNumber = controlSerialNumber.takeIf(String::isNotEmpty)
+                    handleStatusMutex.withLock {
+                        _deviceFlow.update { engine ->
+                            engine.copy(
+                                controlDeviceType = newControlSerialNumber?.let { controlDeviceType },
+                                controlSerialNumber = newControlSerialNumber,
+                                engineStatusFlags = engine.engineStatusFlags.copy(
+                                    controlDeviceConnected = newControlSerialNumber != null,
+                                ),
+                            )
+                        }
+                    }
+                }
+                withContext(Dispatchers.Main.immediate) {
+                    completionHandler(success)
                 }
             }
-            completionHandler(success)
         }
 
         val requestId = makeRequestId()
