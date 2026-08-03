@@ -206,13 +206,12 @@ internal class CommandCoordinator(
             pendingCommand.attemptCount++
             Log.d(
                 LOG_TAG,
-                "D3V CommandCoordinator: attempt ${pendingCommand.attemptCount} to $targetSerialNumber",
+                "CommandCoordinator: attempt ${pendingCommand.attemptCount} to $targetSerialNumber",
             )
             return send(pendingCommand.attemptCount)
         }
 
         return try {
-            Log.v("D3V", "sendRoutedCommand to $targetSerialNumber")
             withTimeout(requestTimeoutMs) {
                 registerAttempt(pendingCommand, sendAttempt())
                 if (!retriesEnabled) {
@@ -223,7 +222,6 @@ internal class CommandCoordinator(
                 while (true) {
                     val result =
                         withTimeoutOrNull(retryIntervalMs) { pendingCommand.deferred.await() }
-                    Log.v("D3V", "sendRoutedCommand: result = $result")
                     if (result != null) {
                         return@withTimeout result
                     }
@@ -233,7 +231,7 @@ internal class CommandCoordinator(
                 CommandResult.FAILURE
             }
         } catch (e: TimeoutCancellationException) {
-            Log.e("D3V", "TimeoutCancellationException", e)
+            Log.w(LOG_TAG, "sendRoutedCommand TimeoutCancellationException", e)
             CommandResult.FAILURE
         } finally {
             unregister(pendingCommand)
@@ -274,7 +272,6 @@ internal class CommandCoordinator(
      * link.
      */
     fun handleDeviceDisconnected(deviceId: DeviceID) {
-        Log.v("D3V", "handleDeviceDisconnected, deviceId = $deviceId")
         pendingByAttemptKey.removeIf { (key, _) ->
             key is CommandAttemptKey.Direct && key.deviceId == deviceId
         }
@@ -282,13 +279,11 @@ internal class CommandCoordinator(
 
     private fun registerAttempt(pendingCommand: PendingCommand, newKeys: Set<CommandAttemptKey>) {
         if (newKeys.isEmpty()) return
-        Log.v("D3V", "registerAttempt, newKeys = $newKeys")
         pendingCommand.attemptKeys += newKeys
         newKeys.forEach { key -> pendingByAttemptKey[key] = pendingCommand }
     }
 
     private fun unregister(pendingCommand: PendingCommand) {
-        Log.v("D3V", "unregister")
         pendingCommand.attemptKeys.forEach { key ->
             pendingByAttemptKey.remove(
                 key,

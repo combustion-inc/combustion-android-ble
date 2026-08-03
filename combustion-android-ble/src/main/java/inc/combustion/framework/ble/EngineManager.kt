@@ -47,7 +47,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import java.util.concurrent.atomic.AtomicBoolean
 
 internal class EngineManager(
     mac: String,
@@ -334,9 +333,7 @@ internal class EngineManager(
                         NodeMessageType.SET_ENGINE_CONTROL_DEVICE,
                         requestId,
                     )
-                    Log.v("D3V", "setControlDevice, requestId = $requestId, key = $key")
                     val onResponse: (Boolean, Any?) -> Unit = { success, _ ->
-                        Log.v("D3V", "setControlDevice, success = $success")
                         if (success) {
                             commandCoordinator.completeAttempt(key, success = true)
                         }
