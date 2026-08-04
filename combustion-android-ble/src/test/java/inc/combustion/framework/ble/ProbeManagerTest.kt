@@ -521,6 +521,43 @@ class ProbeManagerTest {
         }
 
     @Test
+    fun `setProbeHighLowAlarmStatus does not confirm when an unrelated sensor's tripped or alarming flag differs, only set and temperature matter`() =
+        runTest {
+            // Regression test: AlarmStatus.tripped/alarming are live, device-computed flags, not
+            // something this command sets -- comparing the full ProbeHighLowAlarmStatus (rather
+            // than just Threshold's set/temperature, per sensor) would let an unrelated flip on
+            // ANY of the 11 sensors spuriously look like a change to the commanded value. See
+            // AlarmStatus.Threshold's KDoc.
+            val (manager, deliverStatus) = probeManagerWithMockedProbe(backgroundScope)
+            val commandedStatus = ProbeHighLowAlarmStatus(
+                t1 = HighLowAlarmStatus.DEFAULT.copy(
+                    highStatus = HighLowAlarmStatus.DEFAULT.highStatus.copy(set = true),
+                ),
+            )
+
+            var result: Boolean? = null
+            manager.setProbeHighLowAlarmStatus(commandedStatus) { result = it }
+            runCurrent()
+
+            // set/temperature still match the (unconfirmed, all-default) starting value -- the
+            // command hasn't landed -- but an unrelated tripped flag on a different sensor (t5)
+            // has flipped.
+            deliverStatus(
+                status(
+                    maxSequenceNumber = 1u,
+                    probeHighLowAlarmStatus = ProbeHighLowAlarmStatus(
+                        t5 = HighLowAlarmStatus.DEFAULT.copy(
+                            lowStatus = HighLowAlarmStatus.DEFAULT.lowStatus.copy(tripped = true),
+                        ),
+                    ),
+                ),
+            )
+            runCurrent()
+
+            assertNull(result)
+        }
+
+    @Test
     fun `setPowerMode serializes two concurrent calls to the same probe rather than racing them`() =
         runTest {
             val manager = ProbeManager(

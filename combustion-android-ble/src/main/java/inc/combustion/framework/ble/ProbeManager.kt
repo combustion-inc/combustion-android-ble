@@ -952,15 +952,21 @@ internal class ProbeManager(
                         if (sent != null && key != null) setOf(key) else emptySet()
                     },
                     isConfirmed = CommandCoordinator.valueConfirmation(
-                        startingValue = startingHighLowAlarmStatus.toExtractedValue(),
-                        commandedValue = probeHighLowAlarmStatus,
+                        // Compares HighLowAlarmStatus.Threshold per sensor, not the full
+                        // ProbeHighLowAlarmStatus -- AlarmStatus.tripped/alarming are live,
+                        // device-computed flags, not something this command sets, so comparing
+                        // them too would let an unrelated flip on ANY of the 11 sensors
+                        // spuriously look like "the commanded value changed." See
+                        // AlarmStatus.Threshold's KDoc.
+                        startingValue = startingHighLowAlarmStatus?.thresholds.toExtractedValue(),
+                        commandedValue = probeHighLowAlarmStatus.thresholds,
                         // Not extractedAs: a null probeHighLowAlarmStatus means the status packet
                         // didn't include those trailing bytes (older firmware/truncated relay,
                         // see ProbeStatus.fromRawData) -- never a legitimate "present but null"
                         // observation, so it must fall back to Absent. See configureFoodSafe's
                         // extractValue for the same reasoning.
                         extractValue = {
-                            (it as? ProbeStatus)?.probeHighLowAlarmStatus?.let { v -> ExtractedValue.Present(v) }
+                            (it as? ProbeStatus)?.probeHighLowAlarmStatus?.let { v -> ExtractedValue.Present(v.thresholds) }
                                 ?: ExtractedValue.Absent
                         },
                     ),

@@ -155,7 +155,14 @@ internal class GaugeManager(
         highLowAlarmStatus: HighLowAlarmStatus,
         completionHandler: (Boolean) -> Unit,
     ) {
-        val startingHighLowAlarmStatus = _deviceFlow.value.highLowAlarmStatus
+        // Gauge.highLowAlarmStatus defaults to a non-null sentinel (HighLowAlarmStatus.DEFAULT),
+        // unlike Engine.controlSerialNumber's null default -- so gating on hasReceivedStatus,
+        // not nullability, is what actually distinguishes "no confirmed starting value yet" from
+        // "confirmed default." See CommandCoordinator.valueConfirmation's KDoc and
+        // EngineManager.setControlDevice's equivalent handling.
+        val startingHighLowAlarmStatus = _deviceFlow.value.let {
+            if (it.hasReceivedStatus) ExtractedValue.Present(it.highLowAlarmStatus.threshold) else ExtractedValue.Absent
+        }
 
         scope.launch {
             val result = commandCoordinator.sendRoutedCommand(
@@ -199,9 +206,14 @@ internal class GaugeManager(
                     if (sent != null) setOf(key) else emptySet()
                 },
                 isConfirmed = CommandCoordinator.valueConfirmation(
-                    startingValue = startingHighLowAlarmStatus.toExtractedValue(),
-                    commandedValue = highLowAlarmStatus,
-                    extractValue = { it.extractedAs<GaugeStatus, _> { s -> s.highLowAlarmStatus } },
+                    // Compares HighLowAlarmStatus.Threshold, not the full HighLowAlarmStatus --
+                    // AlarmStatus.tripped/alarming are live, device-computed flags, not something
+                    // this command sets, so comparing them too would let an unrelated flip
+                    // spuriously look like "the commanded value changed." See
+                    // AlarmStatus.Threshold's KDoc.
+                    startingValue = startingHighLowAlarmStatus,
+                    commandedValue = highLowAlarmStatus.threshold,
+                    extractValue = { it.extractedAs<GaugeStatus, _> { s -> s.highLowAlarmStatus.threshold } },
                 ),
             )
 

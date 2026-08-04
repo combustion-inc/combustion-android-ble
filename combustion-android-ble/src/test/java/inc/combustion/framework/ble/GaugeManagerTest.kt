@@ -166,8 +166,14 @@ class GaugeManagerTest {
         }
 
     @Test
-    fun `setHighLowAlarmStatus completes early when a status shows a different value, instead of bouncing against a competing command`() =
+    fun `setHighLowAlarmStatus does not complete from a status showing a different value when the starting value was never confirmed`() =
         runTest {
+            // Regression test: no status has ever been received, so the starting value is
+            // unknown (Absent) -- Gauge.highLowAlarmStatus defaulting to a non-null sentinel
+            // (HighLowAlarmStatus.DEFAULT) must not be mistaken for a confirmed starting value.
+            // A status arriving with some other value must not be treated as "a competing command
+            // already changed it" -- there's no confirmed prior value for it to have changed
+            // *from*. See CommandCoordinator.valueConfirmation's KDoc.
             val manager = manager(backgroundScope)
             val commandedStatus = HighLowAlarmStatus.DEFAULT.copy(
                 highStatus = HighLowAlarmStatus.DEFAULT.highStatus.copy(set = true),
@@ -180,16 +186,104 @@ class GaugeManagerTest {
             manager.setHighLowAlarmStatus(commandedStatus) { result = it }
             runCurrent()
 
-            // Neither the (default) starting value nor the commanded value -- some other actor
-            // already changed it. Per CommandCoordinator.valueConfirmation, this still completes
-            // as success rather than retrying against that competing command until timeout.
             advanceTimeBy(2_000)
             manager.observedGaugeStatus(
                 gaugeStatus(maxSequenceNumber = 1u, highLowAlarmStatus = competingStatus),
             )
             runCurrent()
 
+            assertNull(result)
+        }
+
+    @Test
+    fun `setHighLowAlarmStatus completes early when a status shows a different value than a confirmed starting status, instead of bouncing against a competing command`() =
+        runTest {
+            val manager = manager(backgroundScope)
+            val startingStatus = HighLowAlarmStatus.DEFAULT.copy(
+                highStatus = HighLowAlarmStatus.DEFAULT.highStatus.copy(
+                    temperature = SensorTemperature(10.0),
+                ),
+            )
+            val commandedStatus = HighLowAlarmStatus.DEFAULT.copy(
+                highStatus = HighLowAlarmStatus.DEFAULT.highStatus.copy(set = true),
+            )
+            val competingStatus = HighLowAlarmStatus.DEFAULT.copy(
+                lowStatus = HighLowAlarmStatus.DEFAULT.lowStatus.copy(set = true),
+            )
+
+            // Establish a confirmed starting value via a real status before the command is even
+            // issued.
+            manager.observedGaugeStatus(
+                gaugeStatus(maxSequenceNumber = 1u, highLowAlarmStatus = startingStatus),
+            )
+
+            var result: Boolean? = null
+            manager.setHighLowAlarmStatus(commandedStatus) { result = it }
+            runCurrent()
+
+            // Neither the confirmed starting value nor the commanded value -- some other actor
+            // already changed it. Per CommandCoordinator.valueConfirmation, this still completes
+            // as success rather than retrying against that competing command until timeout.
+            advanceTimeBy(2_000)
+            manager.observedGaugeStatus(
+                gaugeStatus(maxSequenceNumber = 2u, highLowAlarmStatus = competingStatus),
+            )
+            runCurrent()
+
             assertEquals(true, result)
+        }
+
+    @Test
+    fun `setHighLowAlarmStatus confirms an exact match even when the starting value was never confirmed`() =
+        runTest {
+            val manager = manager(backgroundScope)
+            val commandedStatus = HighLowAlarmStatus.DEFAULT.copy(
+                highStatus = HighLowAlarmStatus.DEFAULT.highStatus.copy(set = true),
+            )
+
+            var result: Boolean? = null
+            manager.setHighLowAlarmStatus(commandedStatus) { result = it }
+            runCurrent()
+
+            advanceTimeBy(2_000)
+            manager.observedGaugeStatus(
+                gaugeStatus(maxSequenceNumber = 1u, highLowAlarmStatus = commandedStatus),
+            )
+            runCurrent()
+
+            assertEquals(true, result)
+        }
+
+    @Test
+    fun `setHighLowAlarmStatus does not confirm when an unrelated tripped or alarming flag differs, only set and temperature matter`() =
+        runTest {
+            // Regression test: AlarmStatus.tripped/alarming are live, device-computed flags, not
+            // something this command sets -- comparing the full HighLowAlarmStatus (rather than
+            // just Threshold's set/temperature) would let this spuriously look like a change to
+            // the commanded value. See AlarmStatus.Threshold's KDoc.
+            val manager = manager(backgroundScope)
+            val commandedStatus = HighLowAlarmStatus.DEFAULT.copy(
+                highStatus = HighLowAlarmStatus.DEFAULT.highStatus.copy(set = true),
+            )
+
+            var result: Boolean? = null
+            manager.setHighLowAlarmStatus(commandedStatus) { result = it }
+            runCurrent()
+
+            // set/temperature still match the (unconfirmed) starting value -- the command hasn't
+            // landed -- but an unrelated tripped flag on the low sensor has flipped.
+            advanceTimeBy(2_000)
+            manager.observedGaugeStatus(
+                gaugeStatus(
+                    maxSequenceNumber = 1u,
+                    highLowAlarmStatus = HighLowAlarmStatus.DEFAULT.copy(
+                        lowStatus = HighLowAlarmStatus.DEFAULT.lowStatus.copy(tripped = true),
+                    ),
+                ),
+            )
+            runCurrent()
+
+            assertNull(result)
         }
 
     @Test
