@@ -270,9 +270,9 @@ internal class EngineManager(
                     if (sent != null) setOf(key) else emptySet()
                 },
                 isConfirmed = CommandCoordinator.valueConfirmation(
-                    startingValue = startingTemperature,
+                    startingValue = startingTemperature.toExtractedValue(),
                     commandedValue = temperature,
-                    extractValue = { (it as? EngineStatus)?.temperatureSetPoint },
+                    extractValue = { it.extractedAs<EngineStatus, _> { s -> s.temperatureSetPoint } },
                 ),
             )
 
@@ -322,7 +322,13 @@ internal class EngineManager(
         completionHandler: (Boolean) -> Unit,
     ) {
         val commandedSerialNumber = controlSerialNumber.takeIf(String::isNotEmpty)
-        val startingSerialNumber = _deviceFlow.value.controlSerialNumber
+        // EngineStatus parses all-or-nothing at a fixed size (no truncated-packet case like
+        // ProbeStatus's trailing optional fields), so once hasReceivedStatus is true, a null
+        // controlSerialNumber is a confirmed "no controller" rather than an unknown value -- see
+        // CommandCoordinator.valueConfirmation's KDoc.
+        val startingSerialNumber = _deviceFlow.value.let {
+            if (it.hasReceivedStatus) ExtractedValue.Present(it.controlSerialNumber) else ExtractedValue.Absent
+        }
 
         scope.launch {
             val result = commandCoordinator.sendRoutedCommand(
@@ -373,7 +379,7 @@ internal class EngineManager(
                 isConfirmed = CommandCoordinator.valueConfirmation(
                     startingValue = startingSerialNumber,
                     commandedValue = commandedSerialNumber,
-                    extractValue = { (it as? EngineStatus)?.controlSerialNumber },
+                    extractValue = { it.extractedAs<EngineStatus, _> { s -> s.controlSerialNumber } },
                 ),
             )
 

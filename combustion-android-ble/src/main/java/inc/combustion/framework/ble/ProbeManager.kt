@@ -464,9 +464,9 @@ internal class ProbeManager(
                         if (sent != null && key != null) setOf(key) else emptySet()
                     },
                     isConfirmed = CommandCoordinator.valueConfirmation(
-                        startingValue = startingColor,
+                        startingValue = startingColor.toExtractedValue(),
                         commandedValue = color,
-                        extractValue = { (it as? ProbeStatus)?.color },
+                        extractValue = { it.extractedAs<ProbeStatus, _> { s -> s.color } },
                     ),
                 )
             }
@@ -527,9 +527,9 @@ internal class ProbeManager(
                         if (sent != null && key != null) setOf(key) else emptySet()
                     },
                     isConfirmed = CommandCoordinator.valueConfirmation(
-                        startingValue = startingProbeId,
+                        startingValue = startingProbeId.toExtractedValue(),
                         commandedValue = probeId,
-                        extractValue = { (it as? ProbeStatus)?.id },
+                        extractValue = { it.extractedAs<ProbeStatus, _> { s -> s.id } },
                     ),
                 )
             }
@@ -554,8 +554,19 @@ internal class ProbeManager(
         mode: ProbePredictionMode,
         completionHandler: (Boolean) -> Unit
     ) {
-        val startingPrediction =
-            _deviceFlow.value.predictionMode to _deviceFlow.value.setPointTemperatureCelsius
+        // Built from Probe.predictionMode/setPointTemperatureCelsius (both null until a real
+        // status arrives, and only ever null/non-null together per this function's KDoc), not
+        // wrapped with toExtractedValue(): the Pair below is never itself null -- `to` always
+        // constructs one -- so gating on its component instead is what actually distinguishes "no
+        // confirmed prediction yet" from "confirmed prediction of some value." See
+        // CommandCoordinator.valueConfirmation's KDoc for why that distinction matters.
+        val startingPredictionMode = _deviceFlow.value.predictionMode
+        val startingSetPointTemperature = _deviceFlow.value.setPointTemperatureCelsius
+        val startingPrediction = if (startingPredictionMode != null && startingSetPointTemperature != null) {
+            ExtractedValue.Present(startingPredictionMode to startingSetPointTemperature)
+        } else {
+            ExtractedValue.Absent
+        }
 
         scope.launch {
             val result = getCommandMutex(MessageType.SET_PREDICTION).withLock {
@@ -612,8 +623,8 @@ internal class ProbeManager(
                         startingValue = startingPrediction,
                         commandedValue = mode to removalTemperatureC,
                         extractValue = {
-                            (it as? ProbeStatus)?.predictionStatus?.let { prediction ->
-                                prediction.predictionMode to prediction.setPointTemperature
+                            it.extractedAs<ProbeStatus, _> { s ->
+                                s.predictionStatus.predictionMode to s.predictionStatus.setPointTemperature
                             }
                         },
                     ),
@@ -692,9 +703,18 @@ internal class ProbeManager(
                         if (sent != null && key != null) setOf(key) else emptySet()
                     },
                     isConfirmed = CommandCoordinator.valueConfirmation(
-                        startingValue = startingFoodSafeData,
+                        startingValue = startingFoodSafeData.toExtractedValue(),
                         commandedValue = foodSafeData,
-                        extractValue = { (it as? ProbeStatus)?.foodSafeData },
+                        // Not extractedAs: a null foodSafeData means the status packet simply
+                        // didn't include those trailing bytes (older firmware/truncated relay,
+                        // see ProbeStatus.fromRawData's dataIncludesFoodSafe) -- it's never a
+                        // legitimate "present but null" observation the way
+                        // EngineStatus.controlSerialNumber's null is, so it must fall back to
+                        // Absent rather than being wrapped in Present.
+                        extractValue = {
+                            (it as? ProbeStatus)?.foodSafeData?.let { v -> ExtractedValue.Present(v) }
+                                ?: ExtractedValue.Absent
+                        },
                     ),
                 )
             }
@@ -815,9 +835,9 @@ internal class ProbeManager(
                         if (sent != null && key != null) setOf(key) else emptySet()
                     },
                     isConfirmed = CommandCoordinator.valueConfirmation(
-                        startingValue = startingPowerMode,
+                        startingValue = startingPowerMode.toExtractedValue(),
                         commandedValue = powerMode,
-                        extractValue = { (it as? ProbeStatus)?.thermometerPrefs?.powerMode },
+                        extractValue = { it.extractedAs<ProbeStatus, _> { s -> s.thermometerPrefs.powerMode } },
                     ),
                 )
             }
@@ -932,9 +952,17 @@ internal class ProbeManager(
                         if (sent != null && key != null) setOf(key) else emptySet()
                     },
                     isConfirmed = CommandCoordinator.valueConfirmation(
-                        startingValue = startingHighLowAlarmStatus,
+                        startingValue = startingHighLowAlarmStatus.toExtractedValue(),
                         commandedValue = probeHighLowAlarmStatus,
-                        extractValue = { (it as? ProbeStatus)?.probeHighLowAlarmStatus },
+                        // Not extractedAs: a null probeHighLowAlarmStatus means the status packet
+                        // didn't include those trailing bytes (older firmware/truncated relay,
+                        // see ProbeStatus.fromRawData) -- never a legitimate "present but null"
+                        // observation, so it must fall back to Absent. See configureFoodSafe's
+                        // extractValue for the same reasoning.
+                        extractValue = {
+                            (it as? ProbeStatus)?.probeHighLowAlarmStatus?.let { v -> ExtractedValue.Present(v) }
+                                ?: ExtractedValue.Absent
+                        },
                     ),
                 )
             }

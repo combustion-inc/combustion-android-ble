@@ -30,6 +30,7 @@ package inc.combustion.framework.ble
 
 import inc.combustion.framework.ble.uart.MessageType
 import inc.combustion.framework.ble.uart.meatnet.NodeMessageType
+import inc.combustion.framework.service.ProbeMode
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -270,23 +271,23 @@ class CommandCoordinatorTest {
     @Test
     fun `valueConfirmation confirms when the observed value matches the commanded value`() {
         val isConfirmed = CommandCoordinator.valueConfirmation(
-            startingValue = 1u,
+            startingValue = ExtractedValue.Present(1u),
             commandedValue = 2u,
-            extractValue = { it.maxSequenceNumber },
+            extractValue = { ExtractedValue.Present(it.maxSequenceNumber) },
         )
 
         assertTrue(isConfirmed(statusWithSequenceNumber(2u)))
     }
 
     @Test
-    fun `valueConfirmation confirms when the observed value merely differs from the starting value`() {
+    fun `valueConfirmation confirms when the observed value merely differs from a known starting value`() {
         // Neither the starting value (1) nor the commanded value (2) -- some other actor (e.g. a
         // competing command from another device) already changed it to 3. Confirmed anyway, so we
         // don't keep retrying and bouncing against that competing command indefinitely.
         val isConfirmed = CommandCoordinator.valueConfirmation(
-            startingValue = 1u,
+            startingValue = ExtractedValue.Present(1u),
             commandedValue = 2u,
-            extractValue = { it.maxSequenceNumber },
+            extractValue = { ExtractedValue.Present(it.maxSequenceNumber) },
         )
 
         assertTrue(isConfirmed(statusWithSequenceNumber(3u)))
@@ -295,9 +296,9 @@ class CommandCoordinatorTest {
     @Test
     fun `valueConfirmation does not confirm while the observed value still matches the starting value`() {
         val isConfirmed = CommandCoordinator.valueConfirmation(
-            startingValue = 1u,
+            startingValue = ExtractedValue.Present(1u),
             commandedValue = 2u,
-            extractValue = { it.maxSequenceNumber },
+            extractValue = { ExtractedValue.Present(it.maxSequenceNumber) },
         )
 
         assertFalse(isConfirmed(statusWithSequenceNumber(1u)))
@@ -306,12 +307,99 @@ class CommandCoordinatorTest {
     @Test
     fun `valueConfirmation does not confirm when the value can't be extracted from the status`() {
         val isConfirmed = CommandCoordinator.valueConfirmation<UInt>(
-            startingValue = 1u,
+            startingValue = ExtractedValue.Present(1u),
             commandedValue = 2u,
-            extractValue = { null },
+            extractValue = { ExtractedValue.Absent },
         )
 
         assertFalse(isConfirmed(statusWithSequenceNumber(2u)))
+    }
+
+    // Regression coverage for the two bugs found in review: a starting value of Absent (never
+    // observed) must not be treated the same as a confirmed value, whether that confirmed value is
+    // present or -- separately -- present-but-null. See CommandCoordinator.valueConfirmation's KDoc.
+
+    @Test
+    fun `valueConfirmation does not confirm a merely-different observation when the starting value is unknown`() {
+        // This is the original bug: with no confirmed starting value, the first status carrying
+        // *any* value would previously satisfy "observed != startingValue" and spuriously confirm
+        // a command that was never actually observed to land.
+        val isConfirmed = CommandCoordinator.valueConfirmation(
+            startingValue = ExtractedValue.Absent,
+            commandedValue = 2u,
+            extractValue = { ExtractedValue.Present(it.maxSequenceNumber) },
+        )
+
+        assertFalse(isConfirmed(statusWithSequenceNumber(3u)))
+    }
+
+    @Test
+    fun `valueConfirmation confirms an exact match even when the starting value is unknown`() {
+        val isConfirmed = CommandCoordinator.valueConfirmation(
+            startingValue = ExtractedValue.Absent,
+            commandedValue = 2u,
+            extractValue = { ExtractedValue.Present(it.maxSequenceNumber) },
+        )
+
+        assertTrue(isConfirmed(statusWithSequenceNumber(2u)))
+    }
+
+    @Test
+    fun `valueConfirmation treats a confirmed null starting value as known, confirming when observed differs from it`() {
+        // A Present(null) starting value -- e.g. EngineStatus.controlSerialNumber confirmed absent
+        // -- is a real observation, unlike Absent, so branch 2 ("changed at all") still applies
+        // even though the known value happens to be null.
+        val isConfirmed = CommandCoordinator.valueConfirmation(
+            startingValue = ExtractedValue.Present(null),
+            commandedValue = "B",
+            extractValue = { ExtractedValue.Present("C") },
+        )
+
+        assertTrue(isConfirmed(status()))
+    }
+
+    @Test
+    fun `valueConfirmation does not confirm a present-null observation against an unknown starting value unless it matches commandedValue`() {
+        val isConfirmed = CommandCoordinator.valueConfirmation(
+            startingValue = ExtractedValue.Absent,
+            commandedValue = "B",
+            extractValue = { ExtractedValue.Present(null) },
+        )
+
+        assertFalse(isConfirmed(status()))
+    }
+
+    @Test
+    fun `valueConfirmation confirms a present-null observation that exactly matches a null commandedValue`() {
+        val isConfirmed = CommandCoordinator.valueConfirmation(
+            startingValue = ExtractedValue.Present("A"),
+            commandedValue = null,
+            extractValue = { ExtractedValue.Present(null) },
+        )
+
+        assertTrue(isConfirmed(status()))
+    }
+
+    @Test
+    fun `extractedAs returns Present wrapping a null field when the status is the expected subtype`() {
+        val status: SpecializedDeviceStatus = FakeStatusA(field = null)
+
+        assertEquals(ExtractedValue.Present(null), status.extractedAs<FakeStatusA, String?> { it.field })
+    }
+
+    @Test
+    fun `extractedAs returns Absent when the status is not the expected subtype`() {
+        val status: SpecializedDeviceStatus = FakeStatusB()
+
+        assertEquals(ExtractedValue.Absent, status.extractedAs<FakeStatusA, String?> { it.field })
+    }
+
+    @Test
+    fun `toExtractedValue maps null to Absent and a real value to Present`() {
+        val nullValue: String? = null
+
+        assertEquals(ExtractedValue.Absent, nullValue.toExtractedValue())
+        assertEquals(ExtractedValue.Present("x"), "x".toExtractedValue())
     }
 
     @Test
@@ -319,9 +407,9 @@ class CommandCoordinatorTest {
         runTest {
             val coordinator = CommandCoordinator(requestTimeoutMs = 10_000, retryIntervalMs = 1000)
             val isConfirmed = CommandCoordinator.valueConfirmation(
-                startingValue = 1u,
+                startingValue = ExtractedValue.Present(1u),
                 commandedValue = 2u,
-                extractValue = { it.maxSequenceNumber },
+                extractValue = { ExtractedValue.Present(it.maxSequenceNumber) },
             )
 
             val resultDeferred = async {
@@ -339,4 +427,16 @@ class CommandCoordinatorTest {
 
             assertEquals(CommandResult.SUCCESS, resultDeferred.await())
         }
+
+    private data class FakeStatusA(val field: String?) : SpecializedDeviceStatus {
+        override val minSequenceNumber: UInt = 0u
+        override val maxSequenceNumber: UInt = 0u
+        override val mode: ProbeMode = ProbeMode.NORMAL
+    }
+
+    private data class FakeStatusB(val other: UInt = 0u) : SpecializedDeviceStatus {
+        override val minSequenceNumber: UInt = 0u
+        override val maxSequenceNumber: UInt = 0u
+        override val mode: ProbeMode = ProbeMode.NORMAL
+    }
 }

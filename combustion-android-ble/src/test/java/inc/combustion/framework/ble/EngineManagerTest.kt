@@ -268,22 +268,58 @@ class EngineManagerTest {
         }
 
     @Test
-    fun `setControlDevice completes early when a status shows a different value, instead of bouncing against a competing command`() =
+    fun `setControlDevice does not complete from a status showing a different value when the starting value was never confirmed`() =
         runTest {
+            // Regression test: no status has ever been received, so the starting value is
+            // unknown (Absent), not a confirmed null. A status arriving with some other value
+            // ("2222", neither the unknown starting value nor the commanded "1111") must not be
+            // treated as "a competing command already changed it" -- there's no confirmed prior
+            // value for it to have changed *from*. See CommandCoordinator.valueConfirmation's KDoc.
             val manager = manager(backgroundScope)
 
             var result: Boolean? = null
             manager.setControlDevice(CombustionProductType.PROBE, "1111") { result = it }
             runCurrent()
 
-            // Neither the (absent) starting value nor the commanded "1111" -- some other actor
-            // already set it to "2222". Per CommandCoordinator.valueConfirmation, this still
-            // completes as success rather than retrying against that competing command until
-            // timeout.
             advanceTimeBy(2_000)
             manager.observedEngineStatus(
                 engineStatus(
                     maxSequenceNumber = 1u,
+                    controlDeviceType = CombustionProductType.PROBE,
+                    controlSerialNumber = "2222",
+                ),
+            )
+            runCurrent()
+
+            assertNull(result)
+        }
+
+    @Test
+    fun `setControlDevice completes early when a status shows a different value than a confirmed starting controller, instead of bouncing against a competing command`() =
+        runTest {
+            val manager = manager(backgroundScope)
+
+            // Establish a confirmed starting value ("3333") via a real status before the command
+            // is even issued.
+            manager.observedEngineStatus(
+                engineStatus(
+                    maxSequenceNumber = 1u,
+                    controlDeviceType = CombustionProductType.PROBE,
+                    controlSerialNumber = "3333",
+                ),
+            )
+
+            var result: Boolean? = null
+            manager.setControlDevice(CombustionProductType.PROBE, "1111") { result = it }
+            runCurrent()
+
+            // Neither the confirmed starting value ("3333") nor the commanded "1111" -- some other
+            // actor already set it to "2222". Completes as success rather than retrying against
+            // that competing command until timeout.
+            advanceTimeBy(2_000)
+            manager.observedEngineStatus(
+                engineStatus(
+                    maxSequenceNumber = 2u,
                     controlDeviceType = CombustionProductType.PROBE,
                     controlSerialNumber = "2222",
                 ),
@@ -309,6 +345,26 @@ class EngineManagerTest {
             runCurrent()
 
             assertNull(result)
+        }
+
+    @Test
+    fun `setControlDevice confirms clearing the controller from a status showing a confirmed null, even with an unknown starting value`() =
+        runTest {
+            // commandedValue is null when controlSerialNumber is empty (clearing the controller).
+            // A status confirming controlSerialNumber == null is a legitimate Present(null)
+            // observation that exactly matches the null commandedValue -- distinct from the
+            // Absent case above, where no field was observed at all.
+            val manager = manager(backgroundScope)
+
+            var result: Boolean? = null
+            manager.setControlDevice(CombustionProductType.PROBE, "") { result = it }
+            runCurrent()
+
+            advanceTimeBy(2_000)
+            manager.observedEngineStatus(engineStatus(maxSequenceNumber = 1u))
+            runCurrent()
+
+            assertEquals(true, result)
         }
 
     @Test

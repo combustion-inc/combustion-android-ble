@@ -36,6 +36,7 @@ import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
 import inc.combustion.framework.service.CombustionProductType
 import inc.combustion.framework.service.DeviceManager
 import inc.combustion.framework.service.FoodSafeData
+import inc.combustion.framework.service.HighLowAlarmStatus
 import inc.combustion.framework.service.OverheatingSensors
 import inc.combustion.framework.service.PredictionStatus
 import inc.combustion.framework.service.ProbeBatteryStatus
@@ -49,6 +50,7 @@ import inc.combustion.framework.service.ProbeTemperatures
 import inc.combustion.framework.service.ProbeVirtualSensors
 import inc.combustion.framework.service.ThermometerPreferences
 import io.mockk.*
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -109,24 +111,59 @@ class ProbeManagerTest {
         )
     }
 
-    private fun status(): ProbeStatus {
+    private fun status(
+        maxSequenceNumber: UInt = 1u,
+        predictionStatus: PredictionStatus = PredictionStatus.withRandomData(),
+        foodSafeData: FoodSafeData? = null,
+        probeHighLowAlarmStatus: ProbeHighLowAlarmStatus? = null,
+    ): ProbeStatus {
         val probeTemperatures = ProbeTemperatures.withRandomData()
         return ProbeStatus(
             minSequenceNumber = 0u,
-            maxSequenceNumber = 1u,
+            maxSequenceNumber = maxSequenceNumber,
             temperatures = probeTemperatures,
             id = ProbeID.ID1,
             color = ProbeColor.COLOR1,
             mode = ProbeMode.NORMAL,
             batteryStatus = ProbeBatteryStatus.OK,
             virtualSensors = ProbeVirtualSensors.DEFAULT,
-            predictionStatus = PredictionStatus.withRandomData(),
-            foodSafeData = null,
+            predictionStatus = predictionStatus,
+            foodSafeData = foodSafeData,
             foodSafeStatus = null,
             overheatingSensors = OverheatingSensors.fromTemperatures(probeTemperatures),
             thermometerPrefs = ThermometerPreferences.DEFAULT,
-            probeHighLowAlarmStatus = null,
+            probeHighLowAlarmStatus = probeHighLowAlarmStatus,
         )
+    }
+
+    // Delivers a real ProbeStatus through the same path production code uses
+    // (ProbeBleDeviceBase.observeProbeStatusUpdates -> ProbeManager.handleProbeStatus), which is
+    // what actually calls CommandCoordinator.confirmCommandStatus -- addSimulatedProbe's status
+    // wiring is a separate, simpler path that does NOT call confirmCommandStatus, so it can't be
+    // used to test isConfirmed/valueConfirmation behavior. Mirrors the existing
+    // `hasReceivedStatus becomes true only once a real status message is handled` test's pattern.
+    private fun probeManagerWithMockedProbe(
+        scope: CoroutineScope,
+        commandCoordinator: CommandCoordinator =
+            CommandCoordinator(requestTimeoutMs = 10_000, retryIntervalMs = 5_000),
+    ): Pair<ProbeManager, suspend (ProbeStatus) -> Unit> {
+        val manager = ProbeManager(
+            serialNumber = "12345678",
+            scope = scope,
+            settings = DeviceManager.Settings(),
+            dfuDisconnectedNodeCallback = {},
+            commandCoordinator = commandCoordinator,
+        )
+
+        val probe = mockk<ProbeBleDevice>(relaxed = true)
+        val baseDevice = mockk<DeviceInformationBleDevice>(relaxed = true)
+        val statusCallback = slot<suspend (ProbeStatus, UInt?) -> Unit>()
+        every { probe.observeProbeStatusUpdates(any(), capture(statusCallback)) } returns Unit
+
+        manager.addProbe(probe, baseDevice, advertisement())
+
+        val deliverStatus: suspend (ProbeStatus) -> Unit = { status -> statusCallback.captured(status, null) }
+        return manager to deliverStatus
     }
 
     @Test
@@ -296,6 +333,192 @@ class ProbeManagerTest {
 
         assertEquals(true, result)
     }
+
+    // setPrediction confirmation via a status update. Regression coverage for a bug found in
+    // review: startingPrediction is built as `predictionMode to setPointTemperatureCelsius`, and
+    // a Pair is never itself null -- gating confirmation on "the Pair is null" (rather than its
+    // components) never actually detects an unconfirmed starting value. See
+    // ProbeManager.setPrediction and CommandCoordinator.valueConfirmation's KDocs.
+
+    @Test
+    fun `setPrediction does not confirm from an unrelated status when the starting prediction was never confirmed`() =
+        runTest {
+            val (manager, deliverStatus) = probeManagerWithMockedProbe(backgroundScope)
+
+            var result: Boolean? = null
+            manager.setPrediction(60.0, ProbePredictionMode.TIME_TO_REMOVAL) { result = it }
+            runCurrent()
+
+            // Neither the (never-confirmed) starting prediction nor the commanded one -- must not
+            // be mistaken for "a competing command already changed it."
+            deliverStatus(
+                status(
+                    predictionStatus = PredictionStatus.withRandomData().copy(
+                        predictionMode = ProbePredictionMode.REMOVAL_AND_RESTING,
+                        setPointTemperature = 45.0,
+                    ),
+                ),
+            )
+            runCurrent()
+
+            assertNull(result)
+        }
+
+    @Test
+    fun `setPrediction confirms an exact match even when the starting prediction was never confirmed`() =
+        runTest {
+            val (manager, deliverStatus) = probeManagerWithMockedProbe(backgroundScope)
+
+            var result: Boolean? = null
+            manager.setPrediction(60.0, ProbePredictionMode.TIME_TO_REMOVAL) { result = it }
+            runCurrent()
+
+            deliverStatus(
+                status(
+                    predictionStatus = PredictionStatus.withRandomData().copy(
+                        predictionMode = ProbePredictionMode.TIME_TO_REMOVAL,
+                        setPointTemperature = 60.0,
+                    ),
+                ),
+            )
+            runCurrent()
+
+            assertEquals(true, result)
+        }
+
+    @Test
+    fun `setPrediction confirms when a status shows a value different from a confirmed starting prediction, instead of bouncing against a competing command`() =
+        runTest {
+            val (manager, deliverStatus) = probeManagerWithMockedProbe(backgroundScope)
+
+            // Establish a confirmed starting prediction first.
+            deliverStatus(
+                status(
+                    maxSequenceNumber = 1u,
+                    predictionStatus = PredictionStatus.withRandomData().copy(
+                        predictionMode = ProbePredictionMode.REMOVAL_AND_RESTING,
+                        setPointTemperature = 40.0,
+                    ),
+                ),
+            )
+            runCurrent()
+
+            var result: Boolean? = null
+            manager.setPrediction(60.0, ProbePredictionMode.TIME_TO_REMOVAL) { result = it }
+            runCurrent()
+
+            // Neither the confirmed starting prediction (REMOVAL_AND_RESTING/40.0) nor the
+            // commanded one (TIME_TO_REMOVAL/60.0) -- some other actor already set NONE/50.0.
+            deliverStatus(
+                status(
+                    maxSequenceNumber = 2u,
+                    predictionStatus = PredictionStatus.withRandomData().copy(
+                        predictionMode = ProbePredictionMode.NONE,
+                        setPointTemperature = 50.0,
+                    ),
+                ),
+            )
+            runCurrent()
+
+            assertEquals(true, result)
+        }
+
+    // configureFoodSafe / setProbeHighLowAlarmStatus confirmation via a status update. Regression
+    // coverage for the structural-absence bug found in review: ProbeStatus.foodSafeData and
+    // .probeHighLowAlarmStatus are null both when the field genuinely was never included in any
+    // status format the device sends, and when a specific packet just didn't carry those trailing
+    // bytes (older firmware/truncated relay, see ProbeStatus.fromRawData) -- there's no legitimate
+    // "confirmed empty" case for either field, so a null observation must always be treated as
+    // absent, never as a confirmed value equal to (or different from) the previous one.
+
+    @Test
+    fun `configureFoodSafe does not confirm from a status whose packet omits food safe data, even after a previously confirmed value`() =
+        runTest {
+            val (manager, deliverStatus) = probeManagerWithMockedProbe(backgroundScope)
+            val startingData = FoodSafeData.Simplified(
+                product = FoodSafeData.Simplified.Product.BeefCuts,
+                serving = FoodSafeData.Serving.Immediately,
+            )
+            val commandedData = FoodSafeData.Simplified(
+                product = FoodSafeData.Simplified.Product.PorkCuts,
+                serving = FoodSafeData.Serving.Immediately,
+            )
+
+            // Establish a confirmed starting value.
+            deliverStatus(status(maxSequenceNumber = 1u, foodSafeData = startingData))
+            runCurrent()
+
+            var result: Boolean? = null
+            manager.configureFoodSafe(commandedData) { result = it }
+            runCurrent()
+
+            // A later status arrives from a route/firmware that doesn't include the food-safe
+            // bytes at all -- must not be mistaken for "the value changed to something else."
+            deliverStatus(status(maxSequenceNumber = 2u, foodSafeData = null))
+            runCurrent()
+
+            assertNull(result)
+        }
+
+    @Test
+    fun `configureFoodSafe confirms from a status showing the exact commanded food safe data`() =
+        runTest {
+            val (manager, deliverStatus) = probeManagerWithMockedProbe(backgroundScope)
+            val commandedData = FoodSafeData.Simplified(
+                product = FoodSafeData.Simplified.Product.BeefCuts,
+                serving = FoodSafeData.Serving.Immediately,
+            )
+
+            var result: Boolean? = null
+            manager.configureFoodSafe(commandedData) { result = it }
+            runCurrent()
+
+            deliverStatus(status(maxSequenceNumber = 1u, foodSafeData = commandedData))
+            runCurrent()
+
+            assertEquals(true, result)
+        }
+
+    @Test
+    fun `setProbeHighLowAlarmStatus does not confirm from a status whose packet omits alarm data, even after a previously confirmed value`() =
+        runTest {
+            val (manager, deliverStatus) = probeManagerWithMockedProbe(backgroundScope)
+            val startingStatus = ProbeHighLowAlarmStatus(
+                t1 = HighLowAlarmStatus(
+                    highStatus = HighLowAlarmStatus.AlarmStatus(set = true),
+                    lowStatus = HighLowAlarmStatus.AlarmStatus(),
+                ),
+            )
+            val commandedStatus = ProbeHighLowAlarmStatus()
+
+            deliverStatus(status(maxSequenceNumber = 1u, probeHighLowAlarmStatus = startingStatus))
+            runCurrent()
+
+            var result: Boolean? = null
+            manager.setProbeHighLowAlarmStatus(commandedStatus) { result = it }
+            runCurrent()
+
+            deliverStatus(status(maxSequenceNumber = 2u, probeHighLowAlarmStatus = null))
+            runCurrent()
+
+            assertNull(result)
+        }
+
+    @Test
+    fun `setProbeHighLowAlarmStatus confirms from a status showing the exact commanded alarm status`() =
+        runTest {
+            val (manager, deliverStatus) = probeManagerWithMockedProbe(backgroundScope)
+            val commandedStatus = ProbeHighLowAlarmStatus()
+
+            var result: Boolean? = null
+            manager.setProbeHighLowAlarmStatus(commandedStatus) { result = it }
+            runCurrent()
+
+            deliverStatus(status(maxSequenceNumber = 1u, probeHighLowAlarmStatus = commandedStatus))
+            runCurrent()
+
+            assertEquals(true, result)
+        }
 
     @Test
     fun `setPowerMode serializes two concurrent calls to the same probe rather than racing them`() =

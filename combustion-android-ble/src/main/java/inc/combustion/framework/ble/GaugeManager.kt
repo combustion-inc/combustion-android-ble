@@ -199,9 +199,9 @@ internal class GaugeManager(
                     if (sent != null) setOf(key) else emptySet()
                 },
                 isConfirmed = CommandCoordinator.valueConfirmation(
-                    startingValue = startingHighLowAlarmStatus,
+                    startingValue = startingHighLowAlarmStatus.toExtractedValue(),
                     commandedValue = highLowAlarmStatus,
-                    extractValue = { (it as? GaugeStatus)?.highLowAlarmStatus },
+                    extractValue = { it.extractedAs<GaugeStatus, _> { s -> s.highLowAlarmStatus } },
                 ),
             )
 

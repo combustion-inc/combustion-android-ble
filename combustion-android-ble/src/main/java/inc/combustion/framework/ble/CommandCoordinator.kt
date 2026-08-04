@@ -50,6 +50,43 @@ internal enum class CommandResult {
 }
 
 /**
+ * Result of reading a field out of a status update, for [CommandCoordinator.valueConfirmation].
+ *
+ * A plain `T?` return can't distinguish "this status doesn't carry the field at all" (e.g. an
+ * advertising-only status, or the wrong [SpecializedDeviceStatus] subtype) from "this status does
+ * carry the field, and its actual value is null" (e.g. [EngineStatus.controlSerialNumber] when no
+ * control device is set) -- both collapse to the same `null`. [Absent] and [Present] keep those
+ * two cases distinct, since [CommandCoordinator.valueConfirmation] treats them differently: an
+ * absent field never confirms, but a present-and-null value can legitimately equal a
+ * `commandedValue` of `null`.
+ */
+internal sealed class ExtractedValue<out T> {
+    data class Present<T>(val value: T) : ExtractedValue<T>()
+    data object Absent : ExtractedValue<Nothing>()
+}
+
+/**
+ * Convenience for building an `extractValue` lambda (for [CommandCoordinator.valueConfirmation]):
+ * casts [this] to [S], returning [ExtractedValue.Absent] if it isn't one, otherwise
+ * [ExtractedValue.Present] wrapping [select]'s result.
+ */
+internal inline fun <reified S : SpecializedDeviceStatus, T> SpecializedDeviceStatus.extractedAs(
+    select: (S) -> T,
+): ExtractedValue<T> =
+    (this as? S)?.let { ExtractedValue.Present(select(it)) } ?: ExtractedValue.Absent
+
+/**
+ * Convenience for building a [CommandCoordinator.valueConfirmation] `startingValue` out of a plain
+ * nullable field, for the common case where `null` can only ever mean "never observed" and never a
+ * legitimate confirmed value -- see [CommandCoordinator.valueConfirmation]'s KDoc. Not appropriate
+ * for a field (like [EngineStatus.controlSerialNumber]) where a confirmed `null` is possible; build
+ * an [ExtractedValue] for those directly instead, gated on whatever signals a real observation
+ * (e.g. `Engine.hasReceivedStatus`).
+ */
+internal fun <T> T?.toExtractedValue(): ExtractedValue<T> =
+    this?.let { ExtractedValue.Present(it) } ?: ExtractedValue.Absent
+
+/**
  * Identifies a single transport attempt for a command response.
  *
  * A command sent via [CommandCoordinator.sendRoutedCommand] can be retried over a different
@@ -124,22 +161,43 @@ internal class CommandCoordinator(
          *     two competing commands each re-asserting their own value. Treating "changed at all"
          *     as good enough to stop retrying avoids that.
          *
-         * Returns false (not confirmed) if [extractValue] can't find the value in a given status
-         * (e.g. an advertising-only status missing full status fields) -- an absent value should
-         * never be treated as a coincidental match for either condition.
+         * Returns false (not confirmed) if [extractValue] reports [ExtractedValue.Absent] for a
+         * given status (e.g. an advertising-only status missing full status fields) -- an absent
+         * value should never be treated as a coincidental match for either condition. This is
+         * distinct from [ExtractedValue.Present] wrapping a `null` value, which is a legitimate
+         * observation (see [ExtractedValue]'s KDoc) and is compared normally.
          *
-         * @param startingValue The value observed before this command was sent.
+         * [startingValue] is itself an [ExtractedValue] for the same reason: [ExtractedValue.Absent]
+         * -- e.g. a field that's only ever populated from a full status and the device hasn't sent
+         * one yet -- means there's no known prior value, so branch 2 is skipped and only an exact
+         * match against [commandedValue] confirms; the anti-bouncing rationale for "changed at all"
+         * only holds when there was a known prior value to change from, and treating an *unknown*
+         * starting value as if it were a known `null` would let the first status that happens to
+         * carry any value at all spuriously satisfy `observed != startingValue`. A confirmed
+         * [ExtractedValue.Present] -- including one wrapping `null`, e.g.
+         * [EngineStatus.controlSerialNumber] confirmed absent -- is a known prior value, so branch 2
+         * applies normally. Most callers can build this with [toExtractedValue].
+         *
+         * @param startingValue The value observed before this command was sent, or
+         * [ExtractedValue.Absent] if no confirmed observation exists yet.
          * @param commandedValue The value this command is trying to set.
-         * @param extractValue Reads the relevant value out of a device status, or null if this
-         * particular status doesn't carry it.
+         * @param extractValue Reads the relevant value out of a device status -- typically built
+         * with [extractedAs] -- or [ExtractedValue.Absent] if this particular status doesn't carry
+         * it at all.
          */
         fun <T> valueConfirmation(
-            startingValue: T,
+            startingValue: ExtractedValue<T>,
             commandedValue: T,
-            extractValue: (SpecializedDeviceStatus) -> T?,
+            extractValue: (SpecializedDeviceStatus) -> ExtractedValue<T>,
         ): (SpecializedDeviceStatus) -> Boolean = confirmed@{ status ->
-            val observed = extractValue(status) ?: return@confirmed false
-            observed == commandedValue || observed != startingValue
+            val observed = when (val extracted = extractValue(status)) {
+                is ExtractedValue.Absent -> return@confirmed false
+                is ExtractedValue.Present -> extracted.value
+            }
+            when (startingValue) {
+                is ExtractedValue.Absent -> observed == commandedValue
+                is ExtractedValue.Present -> observed == commandedValue || observed != startingValue.value
+            }
         }
     }
 
