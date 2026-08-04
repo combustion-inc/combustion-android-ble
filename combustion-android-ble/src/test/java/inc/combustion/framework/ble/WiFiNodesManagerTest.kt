@@ -307,4 +307,86 @@ class WiFiNodesManagerTest {
             runCurrent()
             assertEquals(false, result?.first)
         }
+
+    @Test
+    fun `sendNodeRequestRequiringWiFi keeps the winning attempt's response data despite a losing attempt's stale callback`() =
+        runTest {
+            // Regression test: with retriesEnabled = true, an earlier attempt's own
+            // per-transmission wait (independent of CommandCoordinator, never cancelled by a
+            // later attempt winning) can still fire its callback after the command has already
+            // completed via a different attempt. That stale (false, null) callback must not be
+            // able to clobber the response data a winning attempt already delivered.
+            val nodeConnectionFlow = MutableSharedFlow<Set<String>>()
+            val deviceManager = mockk<BleManager>(relaxed = true)
+            every { deviceManager.nodeConnectionFlow } returns nodeConnectionFlow
+
+            val node = mockk<NodeBleDevice>(relaxed = true)
+            every { node.deviceInfoSerialNumber } returns "device-1"
+            every { node.sendFeatureFlagRequest(any(), any()) } answers {
+                secondArg<((Boolean, Any?) -> Unit)?>()?.invoke(
+                    true,
+                    NodeReadFeatureFlagsResponse(
+                        nodeSerialNumber = "device-1",
+                        wifi = true,
+                        success = true,
+                        requestId = 1u,
+                        responseId = 1u,
+                        payloadLength = NodeReadFeatureFlagsResponse.PAYLOAD_LENGTH,
+                    ),
+                )
+            }
+
+            val sendNodeRequestCallbacks = mutableListOf<(Boolean, Any?) -> Unit>()
+            every { node.sendNodeRequest(any(), any()) } answers {
+                secondArg<((Boolean, Any?) -> Unit)?>()?.let { sendNodeRequestCallbacks.add(it) }
+            }
+
+            val manager = WiFiNodesManager(
+                scope = backgroundScope,
+                commandCoordinator = CommandCoordinator(requestTimeoutMs = 3_000, retryIntervalMs = 1_000),
+                getNodeDevice = { node },
+            )
+            manager.subscribeToNodeFlow(deviceManager)
+            runCurrent()
+
+            nodeConnectionFlow.emit(setOf("device-1"))
+            runCurrent()
+
+            var result: Pair<Boolean, Any?>? = null
+            launch {
+                manager.sendNodeRequestRequiringWiFi(
+                    deviceId = "device-1",
+                    request = GenericNodeRequest(ubyteArrayOf(1u, 2u), NodeMessageType.SESSION_INFO),
+                    retriesEnabled = true,
+                ) { success, data ->
+                    result = success to data
+                }
+            }
+            runCurrent()
+
+            // Trigger a retry -- now two attempts, and two independent callbacks, are in flight.
+            advanceTimeBy(1001)
+            runCurrent()
+            assertEquals(2, sendNodeRequestCallbacks.size)
+
+            val realResponse = GenericNodeResponse(
+                payload = ubyteArrayOf(9u),
+                success = true,
+                requestId = 2u,
+                responseId = 2u,
+                payloadLength = 1u,
+                messageId = NodeMessageType.SESSION_INFO,
+            )
+            // The second (later) attempt's response arrives and wins -- completes the deferred,
+            // but the coroutine hasn't resumed to read responseData yet (no runCurrent() here).
+            sendNodeRequestCallbacks[1](true, realResponse)
+            // The first (earlier) attempt's own per-transmission timeout fires its stale
+            // callback in that same window, before the winning completion has been processed.
+            sendNodeRequestCallbacks[0](false, null)
+
+            runCurrent()
+
+            assertEquals(true, result?.first)
+            assertEquals(realResponse, result?.second)
+        }
 }

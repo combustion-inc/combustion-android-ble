@@ -141,8 +141,17 @@ internal class WiFiNodesManager(
                         )
 
                         node.sendNodeRequest(freshRequest) { success, data ->
-                            responseData = data as? GenericNodeResponse
+                            // Assigning only under success, not unconditionally, matters once
+                            // retriesEnabled allows more than one attempt: an earlier attempt's
+                            // own per-transmission timeout (independent of CommandCoordinator's
+                            // bookkeeping -- nothing cancels it once a later attempt wins) can
+                            // still fire its callback with (false, null) after a later attempt
+                            // already succeeded. Writing responseData only here keeps every write
+                            // on the same happens-before edge as completeAttempt -> deferred.complete()
+                            // -> the awaiting coroutine, so a losing attempt's stale write can
+                            // never race the read below.
                             if (success) {
+                                responseData = data as? GenericNodeResponse
                                 commandCoordinator.completeAttempt(key, success = true)
                             }
                         }
