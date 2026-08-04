@@ -117,6 +117,56 @@ class UartBleDeviceMessageCompletionHandlerTest {
         }
 
     @Test
+    fun `handled clears requestId once the last pending wait completes`() = runTest {
+        // Regression test: the previous single-slot handler's cleanup() reset requestId on every
+        // completion path (both handled() and timeout) -- restoring that invariant for the keyed
+        // rewrite, since a stale non-null requestId on a non-waiting handler is a footgun for
+        // callers that read it back (see the class's own KDoc).
+        val handler = UartBleDevice.MessageCompletionHandler()
+
+        handler.wait(scope = backgroundScope, duration = 10_000, reqId = 1u) { _, _ -> }
+        assertEquals(1u, handler.requestId)
+
+        handler.handled(result = true, data = null, reqId = 1u)
+
+        assertNull(handler.requestId)
+    }
+
+    @Test
+    fun `wait times out and clears requestId once the last pending wait elapses`() = runTest {
+        val handler = UartBleDevice.MessageCompletionHandler()
+
+        handler.wait(scope = backgroundScope, duration = 1000, reqId = 1u) { _, _ -> }
+        assertEquals(1u, handler.requestId)
+
+        advanceTimeBy(1001)
+        runCurrent()
+
+        assertNull(handler.requestId)
+    }
+
+    @Test
+    fun `requestId is only cleared once pending drains to empty, not on every individual completion`() =
+        runTest {
+            val handler = UartBleDevice.MessageCompletionHandler()
+
+            handler.wait(scope = backgroundScope, duration = 10_000, reqId = 1u) { _, _ -> }
+            handler.wait(scope = backgroundScope, duration = 10_000, reqId = 2u) { _, _ -> }
+            assertEquals(2u, handler.requestId)
+
+            // Completing the most-recently-registered wait first -- reqId 1 is still pending, so
+            // requestId must not be cleared out from under it.
+            handler.handled(result = true, data = null, reqId = 2u)
+            assertTrue(handler.isWaiting)
+            assertEquals(2u, handler.requestId)
+
+            // Now the last pending wait completes -- requestId is finally cleared.
+            handler.handled(result = true, data = null, reqId = 1u)
+            assertFalse(handler.isWaiting)
+            assertNull(handler.requestId)
+        }
+
+    @Test
     fun `a second wait for the same request id is rejected immediately while the first is pending`() =
         runTest {
             val handler = UartBleDevice.MessageCompletionHandler()

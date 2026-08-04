@@ -123,6 +123,7 @@ internal open class UartBleDevice(
             }
             entry.job?.cancel()
             entry.callback?.let { it(result, data) }
+            clearRequestIdIfEmpty()
             return true
         }
 
@@ -149,7 +150,18 @@ internal open class UartBleDevice(
                     withContext(Dispatchers.Main) {
                         callback?.let { it(false, null) }
                     }
+                    clearRequestIdIfEmpty()
                 }
+            }
+        }
+
+        // Restores the pre-refactor invariant that requestId is null whenever nothing is pending
+        // (the previous single-slot handler's cleanup() reset it on every completion path). Only
+        // clears on pending going empty, not on every individual completion -- with more than one
+        // wait pending at once, one finishing shouldn't null out a still-relevant id for another.
+        private fun clearRequestIdIfEmpty() {
+            if (pending.isEmpty()) {
+                requestId = null
             }
         }
 
