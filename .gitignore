@@ -44,6 +44,9 @@ captures/
 .idea/workspace.xml
 .idea/tasks.xml
 .idea/gradle.xml
+.idea/misc.xml
+# Leftover merge-conflict-tool artifacts (e.g. misc_BACKUP_8045.xml, misc_BASE_8045.xml)
+.idea/misc_*.xml
 .idea/assetWizardSettings.xml
 .idea/dictionaries
 .idea/libraries
