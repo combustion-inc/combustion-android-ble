@@ -1270,13 +1270,45 @@ class DeviceManager(
         sendNodeRequestRequiringWiFi(deviceId, request, completionHandler)
     }
 
+    /**
+     * Sends [request] to the WiFi-capable node identified by [deviceId], invoking
+     * [completionHandler] with the result.
+     *
+     * Does not retry a lost or slow response: [request]'s payload is yours, not the framework's,
+     * so there's no way for the framework to know whether sending it again is safe. If your
+     * specific request is safe to retry (e.g. a pure read), use the overload that takes
+     * [retriesEnabled] instead.
+     */
     fun sendNodeRequestRequiringWiFi(
         deviceId: String,
         request: GenericNodeRequest,
         completionHandler: (Boolean, GenericNodeResponse?) -> Unit,
     ) {
+        sendNodeRequestRequiringWiFi(deviceId, request, retriesEnabled = false, completionHandler = completionHandler)
+    }
+
+    /**
+     * Sends [request] to the WiFi-capable node identified by [deviceId], invoking
+     * [completionHandler] with the result.
+     *
+     * @param retriesEnabled Whether a lost or slow response should cause [request] to be re-sent
+     * before giving up, instead of failing after a single attempt. Only pass `true` if you know
+     * your specific request is safe to send more than once (e.g. a pure read) -- the framework
+     * can't inspect [request]'s payload to judge that for you.
+     */
+    fun sendNodeRequestRequiringWiFi(
+        deviceId: String,
+        request: GenericNodeRequest,
+        retriesEnabled: Boolean,
+        completionHandler: (Boolean, GenericNodeResponse?) -> Unit,
+    ) {
         doWhenNetworkManagerInitialized {
-            it.sendNodeRequestRequiringWiFi(deviceId, request, completionHandler)
+            it.sendNodeRequestRequiringWiFi(
+                deviceId,
+                request,
+                retriesEnabled = retriesEnabled,
+                completionHandler = completionHandler,
+            )
         }
     }
 

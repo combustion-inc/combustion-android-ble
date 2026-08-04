@@ -41,6 +41,7 @@ import io.mockk.unmockkStatic
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -180,5 +181,130 @@ class WiFiNodesManagerTest {
             runCurrent()
 
             assertTrue(result?.first == true)
+        }
+
+    @Test
+    fun `sendNodeRequestRequiringWiFi does not retry by default when a connected node never responds`() =
+        runTest {
+            // Regression test: retriesEnabled defaults to false for this generic, opaque-payload
+            // path (unlike Engine/Gauge/Probe's set* commands) -- see the KDoc. A merely slow or
+            // lost response must not cause the framework to silently re-send an arbitrary
+            // consumer-supplied command.
+            val nodeConnectionFlow = MutableSharedFlow<Set<String>>()
+            val deviceManager = mockk<BleManager>(relaxed = true)
+            every { deviceManager.nodeConnectionFlow } returns nodeConnectionFlow
+
+            val node = mockk<NodeBleDevice>(relaxed = true)
+            every { node.deviceInfoSerialNumber } returns "device-1"
+            every { node.sendFeatureFlagRequest(any(), any()) } answers {
+                secondArg<((Boolean, Any?) -> Unit)?>()?.invoke(
+                    true,
+                    NodeReadFeatureFlagsResponse(
+                        nodeSerialNumber = "device-1",
+                        wifi = true,
+                        success = true,
+                        requestId = 1u,
+                        responseId = 1u,
+                        payloadLength = NodeReadFeatureFlagsResponse.PAYLOAD_LENGTH,
+                    ),
+                )
+            }
+
+            var sendCount = 0
+            every { node.sendNodeRequest(any(), any()) } answers { sendCount++ }
+
+            val manager = WiFiNodesManager(
+                scope = backgroundScope,
+                commandCoordinator = CommandCoordinator(requestTimeoutMs = 3_000, retryIntervalMs = 1_000),
+                getNodeDevice = { node },
+            )
+            manager.subscribeToNodeFlow(deviceManager)
+            runCurrent()
+
+            nodeConnectionFlow.emit(setOf("device-1"))
+            runCurrent()
+
+            var result: Pair<Boolean, Any?>? = null
+            launch {
+                manager.sendNodeRequestRequiringWiFi(
+                    deviceId = "device-1",
+                    request = GenericNodeRequest(ubyteArrayOf(1u, 2u), NodeMessageType.SESSION_INFO),
+                ) { success, data ->
+                    result = success to data
+                }
+            }
+            runCurrent()
+            assertEquals(1, sendCount)
+
+            // Past what would have been the first retry interval if retries were enabled.
+            advanceTimeBy(1001)
+            runCurrent()
+            assertEquals(1, sendCount)
+
+            // Out to the overall timeout -- still only ever sent once.
+            advanceTimeBy(2000)
+            runCurrent()
+            assertEquals(1, sendCount)
+            assertEquals(false, result?.first)
+        }
+
+    @Test
+    fun `sendNodeRequestRequiringWiFi retries when a caller opts in with retriesEnabled = true`() =
+        runTest {
+            val nodeConnectionFlow = MutableSharedFlow<Set<String>>()
+            val deviceManager = mockk<BleManager>(relaxed = true)
+            every { deviceManager.nodeConnectionFlow } returns nodeConnectionFlow
+
+            val node = mockk<NodeBleDevice>(relaxed = true)
+            every { node.deviceInfoSerialNumber } returns "device-1"
+            every { node.sendFeatureFlagRequest(any(), any()) } answers {
+                secondArg<((Boolean, Any?) -> Unit)?>()?.invoke(
+                    true,
+                    NodeReadFeatureFlagsResponse(
+                        nodeSerialNumber = "device-1",
+                        wifi = true,
+                        success = true,
+                        requestId = 1u,
+                        responseId = 1u,
+                        payloadLength = NodeReadFeatureFlagsResponse.PAYLOAD_LENGTH,
+                    ),
+                )
+            }
+
+            var sendCount = 0
+            every { node.sendNodeRequest(any(), any()) } answers { sendCount++ }
+
+            val manager = WiFiNodesManager(
+                scope = backgroundScope,
+                commandCoordinator = CommandCoordinator(requestTimeoutMs = 3_000, retryIntervalMs = 1_000),
+                getNodeDevice = { node },
+            )
+            manager.subscribeToNodeFlow(deviceManager)
+            runCurrent()
+
+            nodeConnectionFlow.emit(setOf("device-1"))
+            runCurrent()
+
+            var result: Pair<Boolean, Any?>? = null
+            launch {
+                manager.sendNodeRequestRequiringWiFi(
+                    deviceId = "device-1",
+                    request = GenericNodeRequest(ubyteArrayOf(1u, 2u), NodeMessageType.SESSION_INFO),
+                    retriesEnabled = true,
+                ) { success, data ->
+                    result = success to data
+                }
+            }
+            runCurrent()
+            assertEquals(1, sendCount)
+
+            advanceTimeBy(1001)
+            runCurrent()
+            assertEquals(2, sendCount)
+
+            // Out to the overall 3s timeout.
+            advanceTimeBy(2000)
+            runCurrent()
+            assertEquals(false, result?.first)
         }
 }

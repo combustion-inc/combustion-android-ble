@@ -89,10 +89,23 @@ internal class WiFiNodesManager(
      *
      * [getNodeMutex] still serializes concurrent calls for the same [deviceId] as before, but now
      * held for the duration of the whole retry cycle rather than a single attempt.
+     *
+     * [retriesEnabled] defaults to `false` -- unlike Engine/Gauge/Probe's `set*` commands, whose
+     * effects the framework authored and knows to be idempotent, [request]'s payload is opaque
+     * (see this function's own vendor/custom-message-ID use case). With no way to judge
+     * idempotency and no [isConfirmed] signal to stop early on a merely slow (not lost) response,
+     * blindly retrying could re-execute an arbitrary command up to five extra times -- the same
+     * reasoning `ProbeManager.resetProbe`/`resetFoodSafe` apply to opt out of
+     * [commandCoordinator] retries entirely, except here the framework has even less basis to
+     * judge, since it can't inspect the payload at all. Callers that know their specific request
+     * is safe to retry (e.g. a pure read) can pass `true`.
+     *
+     * @param retriesEnabled Forwarded to [CommandCoordinator.sendRoutedCommand]; see its KDoc.
      */
     suspend fun sendNodeRequestRequiringWiFi(
         deviceId: String,
         request: GenericNodeRequest,
+        retriesEnabled: Boolean = false,
         completionHandler: (Boolean, GenericNodeResponse?) -> Unit,
     ) {
         if (connectedWiFiNodes[deviceId] == null) {
@@ -138,6 +151,7 @@ internal class WiFiNodesManager(
                     }
                 },
                 isConfirmed = { false },
+                retriesEnabled = retriesEnabled,
             )
 
             completionHandler(result == CommandResult.SUCCESS, responseData)

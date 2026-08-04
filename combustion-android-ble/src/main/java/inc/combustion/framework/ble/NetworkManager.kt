@@ -748,9 +748,15 @@ internal class NetworkManager(
     internal suspend fun sendNodeRequestRequiringWiFi(
         deviceId: String,
         request: GenericNodeRequest,
+        retriesEnabled: Boolean = false,
         completionHandler: (Boolean, GenericNodeResponse?) -> Unit,
     ) {
-        wifiNodesManager.sendNodeRequestRequiringWiFi(deviceId, request, completionHandler)
+        wifiNodesManager.sendNodeRequestRequiringWiFi(
+            deviceId,
+            request,
+            retriesEnabled = retriesEnabled,
+            completionHandler = completionHandler,
+        )
     }
 
     @ExperimentalCoroutinesApi
