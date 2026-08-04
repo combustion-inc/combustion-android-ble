@@ -67,6 +67,21 @@ internal open class UartBleDevice(
      * independently, each completed or timed out on its own. Calling [wait] again for the *same*
      * request ID (including `null`) while it's already pending is still rejected immediately with
      * `callback(false, null)`, same as before.
+     *
+     * A second, easier-to-miss behavior change: the previous handler treated a `null`-registered
+     * wait as a wildcard -- if it wasn't currently waiting on a specific request ID, [handled]
+     * would match (and complete) *any* incoming `reqId`, null or not. The keyed [pending] map has
+     * no such wildcard: `Key(null)` only ever matches [handled] being called with `reqId = null`.
+     * This is safe today because every `send*` caller that can reach a request-ID-bearing message
+     * type (MeatNet/`NodeRequest`-backed sends) always passes a real, non-null ID -- but it's a
+     * live trap for a future caller that doesn't: `NodeRequest` substitutes its own random ID onto
+     * the wire when constructed with `requestId = null` (see `NodeRequest.requestId`), so
+     * `wait(reqId = null, ...)` paired with such a send would register `Key(null)` while the
+     * actual response comes back carrying that random, non-null ID -- the two can never match, and
+     * the wait would silently run out its own timeout instead of ever completing, indistinguishable
+     * from a genuinely dropped response. If you need a `send*`/`wait` pair to remain correct
+     * whether or not its caller passes a real ID, build the outgoing request first and pass back
+     * its *resolved* `requestId` to [wait] -- see `NodeBleDevice.sendNodeRequest` for the pattern.
      */
     class MessageCompletionHandler {
         // ConcurrentSnapshotMap requires non-null keys (it's backed by ConcurrentHashMap), so the
@@ -95,7 +110,17 @@ internal open class UartBleDevice(
             // Remove before invoking the callback (not after) so a re-entrant wait() call from
             // within the callback -- e.g. an immediate retry -- isn't rejected by a stale entry
             // that's about to be cleaned up anyway.
-            val entry = pending.remove(Key(reqId)) ?: return false
+            val entry = pending.remove(Key(reqId))
+            if (entry == null) {
+                // Worth flagging: a non-null reqId with no matching wait can mean a response
+                // simply arrived after its own wait already timed out (harmless, if slow) -- but
+                // it's also exactly what a Key(null)/random-wire-id mismatch looks like (see this
+                // class's KDoc), which otherwise fails silently as an indistinguishable timeout.
+                if (reqId != null) {
+                    Log.w(LOG_TAG, "MessageCompletionHandler.handled: no pending wait for reqId $reqId")
+                }
+                return false
+            }
             entry.job?.cancel()
             entry.callback?.let { it(result, data) }
             return true
