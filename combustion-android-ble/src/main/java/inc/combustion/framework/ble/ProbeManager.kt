@@ -459,7 +459,7 @@ internal class ProbeManager(
 
                         // Note: not supported by MeatNet.
                         val sent = simulatedProbe?.sendSetProbeColor(color, onResponse)
-                            ?: arbitrator.directLink?.sendSetProbeColor(color, onResponse)
+                            ?: directLink?.sendSetProbeColor(color, onResponse)
 
                         if (sent != null && key != null) setOf(key) else emptySet()
                     },
@@ -513,7 +513,7 @@ internal class ProbeManager(
                         }
 
                         val sent = simulatedProbe?.sendSetProbeID(probeId, null, onResponse)
-                            ?: arbitrator.directLink?.sendSetProbeID(probeId, null, onResponse)
+                            ?: directLink?.sendSetProbeID(probeId, null, onResponse)
                             ?: run {
                                 if (nodeLinks.isEmpty()) {
                                     null
@@ -597,7 +597,7 @@ internal class ProbeManager(
                             mode,
                             null,
                             onResponse,
-                        ) ?: arbitrator.directLink?.sendSetPrediction(
+                        ) ?: directLink?.sendSetPrediction(
                             removalTemperatureC,
                             mode,
                             null,
@@ -682,7 +682,7 @@ internal class ProbeManager(
                             foodSafeData,
                             null,
                             onResponse,
-                        ) ?: arbitrator.directLink?.sendConfigureFoodSafe(
+                        ) ?: directLink?.sendConfigureFoodSafe(
                             foodSafeData,
                             null,
                             onResponse,
@@ -818,7 +818,7 @@ internal class ProbeManager(
                             powerMode,
                             null,
                             onResponse,
-                        ) ?: arbitrator.directLink?.sendSetPowerMode(
+                        ) ?: directLink?.sendSetPowerMode(
                             powerMode,
                             null,
                             onResponse,
@@ -931,7 +931,7 @@ internal class ProbeManager(
                             probeHighLowAlarmStatus,
                             null,
                             onResponse,
-                        ) ?: arbitrator.directLink?.sendSetProbeHighLowAlarmStatus(
+                        ) ?: directLink?.sendSetProbeHighLowAlarmStatus(
                             probeHighLowAlarmStatus,
                             null,
                             onResponse,
