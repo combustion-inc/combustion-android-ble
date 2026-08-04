@@ -74,11 +74,16 @@ class WiFiNodesManagerTest {
     }
 
     @Test
-    fun `sendNodeRequestRequiringWiFi retries and fails when no WiFi node is connected for the device`() =
+    fun `sendNodeRequestRequiringWiFi fails immediately when no WiFi node is connected for the device, without waiting out the retry window`() =
         runTest {
+            // Regression test: this must fail fast (matching the pre-CommandCoordinator
+            // behavior), not retry CommandCoordinator's window out -- see
+            // WiFiNodesManager.sendNodeRequestRequiringWiFi's KDoc. A deliberately large
+            // timeout/retry window here proves the assertion below isn't just "it happened to
+            // finish before the window closed."
             val manager = WiFiNodesManager(
                 scope = backgroundScope,
-                commandCoordinator = CommandCoordinator(requestTimeoutMs = 300, retryIntervalMs = 100),
+                commandCoordinator = CommandCoordinator(requestTimeoutMs = 30_000, retryIntervalMs = 5_000),
                 getNodeDevice = { mockk<NodeBleDevice>(relaxed = true) },
             )
 
@@ -90,8 +95,9 @@ class WiFiNodesManagerTest {
                 result = success to data
             }
 
-            // suspend fun awaited directly -- runTest fast-forwards virtual time through the
-            // retry/timeout delays automatically since nothing else is runnable meanwhile.
+            // No virtual time needed to elapse at all -- returns synchronously, never touching
+            // CommandCoordinator's retry/timeout machinery.
+            assertEquals(0L, testScheduler.currentTime)
             assertEquals(false, result?.first)
             assertNull(result?.second)
         }

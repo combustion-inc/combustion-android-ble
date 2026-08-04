@@ -95,6 +95,16 @@ internal class WiFiNodesManager(
         request: GenericNodeRequest,
         completionHandler: (Boolean, GenericNodeResponse?) -> Unit,
     ) {
+        if (connectedWiFiNodes[deviceId] == null) {
+            // Fail fast, matching the pre-CommandCoordinator behavior (see git history): unlike
+            // Engine/Gauge/Probe managers, this function was never designed to wait out a
+            // reconnection, so retrying via CommandCoordinator's 30s window when nothing is
+            // connected right now buys nothing -- it can only ever register an empty key set (see
+            // `send` below) -- and just turns an instant failure into a 30s hang for the caller.
+            completionHandler(false, null)
+            return
+        }
+
         val mutex = getNodeMutex(deviceId)
         mutex.acquire()
         try {
