@@ -41,6 +41,18 @@ data class HighLowAlarmStatus(
         val alarming: Boolean = false,
         val temperature: SensorTemperature = SensorTemperature(-20.0),
     ) {
+        /**
+         * The alarm threshold itself -- armed or not, and at what temperature -- as opposed to
+         * [tripped]/[alarming], which are live, device-computed flags reflecting current
+         * temperature against that threshold, not something a command sets. Command-confirmation
+         * logic must compare this projection rather than the full [AlarmStatus], or an unrelated
+         * tripped/alarming flip (e.g. a threshold crossed during the retry window, for any sensor)
+         * would look like a change to the value the command actually cares about. See
+         * `CommandCoordinator.valueConfirmation`'s KDoc.
+         */
+        data class Threshold(val set: Boolean, val temperature: SensorTemperature)
+
+        val threshold: Threshold get() = Threshold(set, temperature)
 
         fun toBytes(): UByteArray {
             val bytes = temperature.toRawDataEnd()
@@ -86,6 +98,11 @@ data class HighLowAlarmStatus(
         val lowBytes = lowStatus.toBytes()
         return highBytes + lowBytes
     }
+
+    /** See [AlarmStatus.Threshold]'s KDoc -- the command-relevant projection of this status. */
+    data class Threshold(val highStatus: AlarmStatus.Threshold, val lowStatus: AlarmStatus.Threshold)
+
+    val threshold: Threshold get() = Threshold(highStatus.threshold, lowStatus.threshold)
 
     val isSet: Boolean
         get() = highStatus.set || lowStatus.set

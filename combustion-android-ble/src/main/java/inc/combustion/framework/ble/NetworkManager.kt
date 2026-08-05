@@ -192,13 +192,16 @@ internal class NetworkManager(
     private val deviceInformationDevices =
         ConcurrentSnapshotMap<DeviceID, DeviceInformationBleDevice>()
     private var proximityDevices = ConcurrentSnapshotMap<String, ProximityDevice>()
-    private val wifiNodesManager = WiFiNodesManager(scope) { deviceId ->
-        when (val node = devices[deviceId]) {
-            is DeviceHolder.ProbeHolder -> NOT_IMPLEMENTED("getNodeDevice is not implemented for probe with id = $deviceId, type = ${node.probe.productType}, and serialNumber = ${node.probe.serialNumber}")
-            is DeviceHolder.RepeaterHolder -> node.repeater
-            else -> NOT_IMPLEMENTED("getNodeDevice is not implemented for unknown device $node with id = $deviceId")
-        }
-    }
+    private val wifiNodesManager = WiFiNodesManager(
+        scope = scope,
+        getNodeDevice = { deviceId ->
+            when (val node = devices[deviceId]) {
+                is DeviceHolder.ProbeHolder -> NOT_IMPLEMENTED("getNodeDevice is not implemented for probe with id = $deviceId, type = ${node.probe.productType}, and serialNumber = ${node.probe.serialNumber}")
+                is DeviceHolder.RepeaterHolder -> node.repeater
+                else -> NOT_IMPLEMENTED("getNodeDevice is not implemented for unknown device $node with id = $deviceId")
+            }
+        },
+    )
 
     private val probeIdManager = ProbeIdManager(::setProbeID, scope)
     private val setProbeIdLock = Mutex()
@@ -745,9 +748,15 @@ internal class NetworkManager(
     internal suspend fun sendNodeRequestRequiringWiFi(
         deviceId: String,
         request: GenericNodeRequest,
+        retriesEnabled: Boolean = false,
         completionHandler: (Boolean, GenericNodeResponse?) -> Unit,
     ) {
-        wifiNodesManager.sendNodeRequestRequiringWiFi(deviceId, request, completionHandler)
+        wifiNodesManager.sendNodeRequestRequiringWiFi(
+            deviceId,
+            request,
+            retriesEnabled = retriesEnabled,
+            completionHandler = completionHandler,
+        )
     }
 
     @ExperimentalCoroutinesApi
