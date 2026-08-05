@@ -36,12 +36,17 @@ import inc.combustion.framework.ble.device.GaugeBleDevice
 import inc.combustion.framework.ble.device.SimulatedGaugeBleDevice
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
+import inc.combustion.framework.ble.uart.meatnet.NodeMessageType
 import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
-import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 /**
  * This class is responsible for managing and arbitrating the data links to a gauge.
@@ -63,6 +68,7 @@ internal class GaugeManager(
     scope: CoroutineScope,
     settings: DeviceManager.Settings,
     dfuDisconnectedNodeCallback: (DeviceID) -> Unit,
+    private val commandCoordinator: CommandCoordinator = CommandCoordinator(),
 ) : NodeHybridManager<GaugeBleDevice, GaugeAdvertisingData, Gauge, SimulatedGaugeBleDevice>(
     scope = scope,
     settings = settings,
@@ -70,6 +76,13 @@ internal class GaugeManager(
 ) {
 
     override val arbitrator = GaugeDataLinkArbitrator()
+
+    // Gauge status can arrive concurrently from more than one source (a direct BLE link and/or
+    // multiple mesh-relay nodes), all invoking handleStatus() for the same gauge. This mutex
+    // serializes the read-decide-write sequence in handleStatus() so two overlapping status
+    // updates can't race on the arbitrator's session/sequence bookkeeping or clobber each
+    // other's _deviceFlow update -- mirrors the same fix in EngineManager.
+    private val handleStatusMutex = Mutex()
 
     override val _deviceFlow =
         MutableStateFlow(Gauge.create(serialNumber = serialNumber, mac = mac))
@@ -99,11 +112,17 @@ internal class GaugeManager(
     // Abstract method implementations
 
     override fun Gauge.withBaseDevice(baseDevice: Device): Gauge = copy(baseDevice = baseDevice)
-    override fun Gauge.withStatusNotificationsStale(stale: Boolean): Gauge = copy(statusNotificationsStale = stale)
+    override fun Gauge.withStatusNotificationsStale(stale: Boolean): Gauge =
+        copy(statusNotificationsStale = stale)
+
     override fun Gauge.withUploadState(state: ProbeUploadState): Gauge = copy(uploadState = state)
     override fun Gauge.withRecordsDownloaded(count: Int): Gauge = copy(recordsDownloaded = count)
     override fun Gauge.withLogUploadPercent(percent: UInt): Gauge = copy(logUploadPercent = percent)
-    override fun Gauge.withSessionInfo(info: SessionInformation, minSequenceNumber: UInt, maxSequenceNumber: UInt): Gauge =
+    override fun Gauge.withSessionInfo(
+        info: SessionInformation,
+        minSequenceNumber: UInt,
+        maxSequenceNumber: UInt
+    ): Gauge =
         copy(minSequence = minSequenceNumber, maxSequence = maxSequenceNumber, sessionInfo = info)
 
     override fun castToAdvertisementType(advertisement: DeviceAdvertisingData): GaugeAdvertisingData? =
@@ -121,46 +140,85 @@ internal class GaugeManager(
 
     fun addSimulatedGauge(simGauge: SimulatedGaugeBleDevice) = addSimulatedDevice(simGauge)
 
+    /**
+     * Sends via [commandCoordinator] following the same shape as
+     * `EngineManager.setControlDevice`. Gauge, like Engine, has no pure-GATT-direct transport
+     * distinct from the MeatNet/UART mechanism, so every attempt is a [CommandAttemptKey.Node]
+     * keyed by [NodeMessageType.SET_GAUGE_HIGH_LOW_ALARM] and the request ID.
+     *
+     * Deliberately does not optimistically write [highLowAlarmStatus] into `_deviceFlow` on
+     * completion -- see `EngineManager.setControlDevice`'s KDoc for why: a `SUCCESS` result can
+     * come from [CommandCoordinator.valueConfirmation]'s "changed to something else" branch, so
+     * the next real status update refreshes `_deviceFlow` through [handleStatus] instead.
+     */
     fun setHighLowAlarmStatus(
         highLowAlarmStatus: HighLowAlarmStatus,
         completionHandler: (Boolean) -> Unit,
     ) {
-        val onCompletion: (Boolean) -> Unit = { success ->
-            if (success) {
-                _deviceFlow.update {
-                    _deviceFlow.value.copy(
-                        highLowAlarmStatus = highLowAlarmStatus,
-                    )
-                }
-            }
-            completionHandler(success)
+        // Gauge.highLowAlarmStatus defaults to a non-null sentinel (HighLowAlarmStatus.DEFAULT),
+        // unlike Engine.controlSerialNumber's null default -- so gating on hasReceivedStatus,
+        // not nullability, is what actually distinguishes "no confirmed starting value yet" from
+        // "confirmed default." See CommandCoordinator.valueConfirmation's KDoc and
+        // EngineManager.setControlDevice's equivalent handling.
+        val startingHighLowAlarmStatus = _deviceFlow.value.let {
+            if (it.hasReceivedStatus) ExtractedValue.Present(it.highLowAlarmStatus.threshold) else ExtractedValue.Absent
         }
 
-        val requestId = makeRequestId()
-        simulatedDevice?.sendSetHighLowAlarmStatus(highLowAlarmStatus, requestId) { status, _ ->
-            onCompletion(status)
-        } ?: arbitrator.directLink?.sendSetHighLowAlarmStatus(
-            highLowAlarmStatus,
-            requestId,
-        ) { status, _ ->
-            onCompletion(status)
-        } ?: run {
-            val nodeLinks = arbitrator.connectedNodeLinks
-            if (nodeLinks.isNotEmpty()) {
-                val handled = AtomicBoolean(false)
-                nodeLinks.forEach { node ->
-                    node.sendSetGaugeHighLowAlarmStatus(
-                        serialNumber,
-                        highLowAlarmStatus,
+        scope.launch {
+            val result = commandCoordinator.sendRoutedCommand(
+                targetSerialNumber = serialNumber,
+                send = {
+                    val requestId = makeRequestId()
+                    val key = CommandAttemptKey.Node(
+                        NodeMessageType.SET_GAUGE_HIGH_LOW_ALARM,
                         requestId,
-                    ) { status, _ ->
-                        if (!handled.getAndSet(true)) {
-                            onCompletion(status)
+                    )
+                    val onResponse: (Boolean, Any?) -> Unit = { success, _ ->
+                        if (success) {
+                            commandCoordinator.completeAttempt(key, success = true)
                         }
                     }
-                }
-            } else {
-                onCompletion(false)
+
+                    val sent = simulatedDevice?.sendSetHighLowAlarmStatus(
+                        highLowAlarmStatus,
+                        requestId,
+                        onResponse,
+                    ) ?: arbitrator.directLink?.sendSetHighLowAlarmStatus(
+                        highLowAlarmStatus,
+                        requestId,
+                        onResponse,
+                    ) ?: run {
+                        val nodeLinks = arbitrator.connectedNodeLinks
+                        if (nodeLinks.isEmpty()) {
+                            null
+                        } else {
+                            nodeLinks.forEach { node ->
+                                node.sendSetGaugeHighLowAlarmStatus(
+                                    serialNumber,
+                                    highLowAlarmStatus,
+                                    requestId,
+                                    onResponse,
+                                )
+                            }
+                        }
+                    }
+
+                    if (sent != null) setOf(key) else emptySet()
+                },
+                isConfirmed = CommandCoordinator.valueConfirmation(
+                    // Compares HighLowAlarmStatus.Threshold, not the full HighLowAlarmStatus --
+                    // AlarmStatus.tripped/alarming are live, device-computed flags, not something
+                    // this command sets, so comparing them too would let an unrelated flip
+                    // spuriously look like "the commanded value changed." See
+                    // AlarmStatus.Threshold's KDoc.
+                    startingValue = startingHighLowAlarmStatus,
+                    commandedValue = highLowAlarmStatus.threshold,
+                    extractValue = { it.extractedAs<GaugeStatus, _> { s -> s.highLowAlarmStatus.threshold } },
+                ),
+            )
+
+            withContext(Dispatchers.Main.immediate) {
+                completionHandler(result == CommandResult.SUCCESS)
             }
         }
     }
@@ -220,31 +278,37 @@ internal class GaugeManager(
         // TODO : do update after check if logic is changed
         statusNotificationsMonitor.activity()
 
-        if (simulated || arbitrator.shouldUpdateDataFromStatusForNormalMode(
-                status,
-                sessionInfo,
-            )
-        ) {
-            handleSessionInfo(
-                status.sessionInformation,
-                minSequenceNumber = status.minSequenceNumber,
-                maxSequenceNumber = status.maxSequenceNumber,
-            )
-
-            _normalModeStatusFlow.emit(status)
-
-            if (!simulated) {
-                fetchDeviceInfo()
-            }
-
-            _deviceFlow.update {
-                it.copy(
-                    highLowAlarmStatus = status.highLowAlarmStatus,
-                    gaugeStatusFlags = status.gaugeStatusFlags,
-                    temperatureCelsius = if (status.gaugeStatusFlags.sensorPresent) status.temperature else null,
-                    newRecordFlag = status.isNewRecord,
-                    hopCount = status.hopCount.hopCount,
+        handleStatusMutex.withLock {
+            if (simulated || arbitrator.shouldUpdateDataFromStatusForNormalMode(
+                    status,
+                    status.sessionInformation,
                 )
+            ) {
+                handleSessionInfo(
+                    status.sessionInformation,
+                    minSequenceNumber = status.minSequenceNumber,
+                    maxSequenceNumber = status.maxSequenceNumber,
+                )
+
+                _normalModeStatusFlow.emit(status)
+
+                if (!simulated) {
+                    fetchDeviceInfo()
+                }
+
+                _deviceFlow.update {
+                    it.copy(
+                        highLowAlarmStatus = status.highLowAlarmStatus,
+                        gaugeStatusFlags = status.gaugeStatusFlags,
+                        temperatureCelsius = if (status.gaugeStatusFlags.sensorPresent) status.temperature else null,
+                        newRecordFlag = status.isNewRecord,
+                        hopCount = status.hopCount.hopCount,
+                    )
+                }
+
+                // Lets a pending setHighLowAlarmStatus retry loop complete early from this status
+                // alone, even if its own response packet is lost -- see CommandCoordinator.
+                commandCoordinator.confirmCommandStatus(serialNumber, status)
             }
         }
     }
@@ -261,6 +325,7 @@ internal class GaugeManager(
             gaugeStatusFlags = advertisement.gaugeStatusFlags,
             temperatureCelsius = if (advertisement.gaugeStatusFlags.sensorPresent) advertisement.gaugeTemperature else null,
             highLowAlarmStatus = advertisement.highLowAlarmStatus,
+            gaugePrefs = advertisement.gaugePreferences ?: updatedGauge.gaugePrefs,
         )
     }
 }

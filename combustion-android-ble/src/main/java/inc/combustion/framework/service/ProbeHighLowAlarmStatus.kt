@@ -44,6 +44,9 @@ data class ProbeHighLowAlarmStatus(
     val orderedSensorList: List<HighLowAlarmStatus> =
         listOf(t1, t2, t3, t4, t5, t6, t7, t8, virtualCore, virtualSurface, virtualAmbient)
 
+    /** See [HighLowAlarmStatus.Threshold]'s KDoc -- the command-relevant projection, per sensor. */
+    val thresholds: List<HighLowAlarmStatus.Threshold> get() = orderedSensorList.map { it.threshold }
+
     fun anySensor(predicate: HighLowAlarmStatus.() -> Boolean): Boolean {
         return orderedSensorList.any { it.predicate() }
     }

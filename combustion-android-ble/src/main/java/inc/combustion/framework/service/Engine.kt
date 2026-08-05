@@ -61,6 +61,8 @@ data class Engine(
     override val lowBattery: Boolean = engineBatteryStatus.batteryLevel != EngineBatteryLevel.OK
 
     override val isOverheating: Boolean = false
+    override val highRadioPower: Boolean
+        get() = enginePreferences.highRadioPower
 
     /**
      * Fields like [hasConfirmedController], [controlSerialNumber], and [controlTemperature] are only ever
@@ -76,6 +78,17 @@ data class Engine(
     // Engine object ever reflected a real status message) and hasConfirmedController (below).
     val hasConfirmedController: Boolean =
         hasReceivedStatus && (controlSerialNumber != null) && (controlDeviceType != null)
+
+    /**
+     * Whether the control device is confirmed connected -- [engineStatusFlags.controlDeviceConnected]
+     * gated on [hasReceivedStatus], as a tri-state: null means not yet settled (no real status has
+     * arrived, so [engineStatusFlags] is still at its all-false default and can't be trusted either
+     * way), distinct from a confirmed `false` (genuinely disconnected). Collapsing "not yet known"
+     * into `false` (as a plain Boolean AND would) makes a freshly-turned-on engine indistinguishable
+     * from a real disconnect -- callers should treat `null` as "don't show disconnected."
+     */
+    val settledControlDeviceConnected: Boolean? =
+        if (hasReceivedStatus) engineStatusFlags.controlDeviceConnected else null
 
     val knobVoltageVolts: Float? = knobVoltageMillivolts?.let { it.toFloat() / 1000.0f }
     val knobAngleDegrees: Float? = knobAngleTenthsDegrees?.let { it.toFloat() / 10.0f }

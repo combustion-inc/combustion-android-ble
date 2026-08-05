@@ -29,15 +29,7 @@
 package inc.combustion.framework.ble.scanning
 
 import com.juul.kable.Identifier
-import inc.combustion.framework.service.CombustionProductType
-import inc.combustion.framework.service.HopCount
-import inc.combustion.framework.service.OverheatingSensors
-import inc.combustion.framework.service.ProbeBatteryStatus
-import inc.combustion.framework.service.ProbeColor
-import inc.combustion.framework.service.ProbeID
-import inc.combustion.framework.service.ProbeMode
-import inc.combustion.framework.service.ProbeTemperatures
-import inc.combustion.framework.service.ProbeVirtualSensors
+import inc.combustion.framework.service.*
 
 /**
  * Advertises probe data - source can be a probe or a repeater node.
@@ -56,6 +48,7 @@ internal class ProbeAdvertisingData(
     val batteryStatus: ProbeBatteryStatus,
     val virtualSensors: ProbeVirtualSensors,
     val overheatingSensors: OverheatingSensors,
+    val thermometerPreferences: ThermometerPreferences?,
     val hopCount: UInt = 0u,
 ) : BaseAdvertisingData(mac, name, rssi, productType, isConnectable), DeviceAdvertisingData {
 
@@ -65,6 +58,15 @@ internal class ProbeAdvertisingData(
         private val MODE_COLOR_ID_RANGE = 18..18
         private val STATUS_RANGE = 19..19
         private val NETWORK_INFO_RANGE = 20..20
+
+        // Byte 21 carries firmware's own overheat-flag byte. It's deliberately not parsed --
+        // overheatingSensors below is computed purely from temperature thresholds instead, since
+        // there's no field evidence every probe/repeater build populates this byte correctly (or
+        // at all) when present, and repeater firmware <= 2.2.0 has a known bug that can cause it
+        // to be incorrectly set. Left commented out (rather than removed) to document the offset,
+        // so the gap between NETWORK_INFO_RANGE and PREFERENCES_RANGE isn't a mystery.
+        // private val OVERHEAT_RANGE = 21..21
+        private val PREFERENCES_RANGE = 22..22
 
         fun create(
             address: Identifier,
@@ -77,7 +79,7 @@ internal class ProbeAdvertisingData(
             var serial: UInt = 0u
             // Reverse the byte order (this is a little-endian packed bitfield)
             val rawSerialNumber =
-                manufacturerData.copyOf().sliceArray(SERIAL_RANGE)
+                manufacturerData.sliceArray(SERIAL_RANGE)
             for (byte in rawSerialNumber.reversed()) {
                 serial = serial shl 8
                 serial = serial or byte.toUInt()
@@ -92,25 +94,25 @@ internal class ProbeAdvertisingData(
             }
 
             val probeTemperatures = ProbeTemperatures.fromRawData(
-                manufacturerData.copyOf().sliceArray(TEMPERATURE_RANGE)
+                manufacturerData.sliceArray(TEMPERATURE_RANGE)
             )
 
             // use mode and color ID if available
             val modeColorId = if (manufacturerData.size > 18)
-                manufacturerData.copyOf().sliceArray(MODE_COLOR_ID_RANGE)[0]
+                manufacturerData.sliceArray(MODE_COLOR_ID_RANGE)[0]
             else
                 null
 
             // use device status if available
             val deviceStatus = if (manufacturerData.size > 19)
-                manufacturerData.copyOf().sliceArray(STATUS_RANGE)[0]
+                manufacturerData.sliceArray(STATUS_RANGE)[0]
             else
                 null
 
             // use hopCount if available (and turn it into an unsigned integer)
             val hopCount = if (type.isRepeater && manufacturerData.size > 20)
                 HopCount.fromUByte(
-                    manufacturerData.copyOf().sliceArray(NETWORK_INFO_RANGE)[0]
+                    manufacturerData.sliceArray(NETWORK_INFO_RANGE)[0]
                 ).hopCount
             else
                 0u
@@ -123,7 +125,16 @@ internal class ProbeAdvertisingData(
                 ?: run { ProbeBatteryStatus.OK }
             val virtualSensors = deviceStatus?.let { ProbeVirtualSensors.fromDeviceStatus(it) }
                 ?: run { ProbeVirtualSensors.DEFAULT }
+
             val overheatingSensors = OverheatingSensors.fromTemperatures(probeTemperatures)
+
+            val preferences = if (manufacturerData.size > PREFERENCES_RANGE.last) {
+                ThermometerPreferences.fromRawByte(
+                    manufacturerData.sliceArray(PREFERENCES_RANGE)[0]
+                )
+            } else {
+                null
+            }
 
             return ProbeAdvertisingData(
                 mac = address,
@@ -140,6 +151,7 @@ internal class ProbeAdvertisingData(
                 virtualSensors = virtualSensors,
                 overheatingSensors = overheatingSensors,
                 hopCount = hopCount,
+                thermometerPreferences = preferences,
             )
         }
     }

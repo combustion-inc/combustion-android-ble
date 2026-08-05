@@ -37,11 +37,16 @@ import inc.combustion.framework.ble.device.SimulatedEngineBleDevice
 import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
 import inc.combustion.framework.ble.scanning.EngineAdvertisingData
 import inc.combustion.framework.ble.uart.LogResponse
+import inc.combustion.framework.ble.uart.meatnet.NodeMessageType
 import inc.combustion.framework.service.*
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
-import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 internal class EngineManager(
     mac: String,
@@ -50,6 +55,7 @@ internal class EngineManager(
     scope: CoroutineScope,
     settings: DeviceManager.Settings,
     dfuDisconnectedNodeCallback: (DeviceID) -> Unit,
+    private val commandCoordinator: CommandCoordinator = CommandCoordinator(),
 ) : NodeHybridManager<EngineBleDevice, EngineAdvertisingData, Engine, SimulatedEngineBleDevice>(
     scope = scope,
     settings = settings,
@@ -57,6 +63,12 @@ internal class EngineManager(
 ) {
 
     override val arbitrator = EngineDataLinkArbitrator()
+
+    // Engine status can arrive concurrently from more than one source (a direct BLE link and/or
+    // multiple mesh-relay nodes), all invoking handleStatus() for the same engine. This mutex
+    // serializes the read-decide-write sequence below so two overlapping status updates can't
+    // clobber each other's _deviceFlow update with a stale `previous` snapshot.
+    private val handleStatusMutex = Mutex()
 
     override val _deviceFlow = Engine.create(serialNumber = serialNumber, mac = mac).let { base ->
         MutableStateFlow(initialEngineAdvertisingData?.let { updateDataFromAdvertisement(it, base) }
@@ -150,138 +162,229 @@ internal class EngineManager(
 
         statusNotificationsMonitor.activity()
 
-        if (simulated || arbitrator.shouldUpdateDataFromStatusForNormalMode(
-                status,
-                sessionInfo,
-            )
-        ) {
-            handleSessionInfo(
-                status.sessionInformation,
-                minSequenceNumber = status.minSequenceNumber,
-                maxSequenceNumber = status.maxSequenceNumber,
-            )
-
-            _normalModeStatusFlow.emit(status)
-
-            if (!simulated) {
-                fetchDeviceInfo()
-            }
-
-            _deviceFlow.update {
-                it.copy(
-                    engineBatteryStatus = status.engineBatteryStatus,
-                    engineStatusFlags = status.engineStatusFlags,
-                    engineFanStatus = status.engineFanStatus,
-                    engineControllerStatus = status.engineControllerStatus,
-                    temperatureSetPointCelsius = status.temperatureSetPoint,
-                    controlDeviceType = status.controlDeviceType,
-                    controlSerialNumber = status.controlSerialNumber,
-                    controlTemperature = status.controlTemperature,
-                    knobVoltageMillivolts = status.knobVoltageMillivolts,
-                    knobAngleTenthsDegrees = status.knobAngleTenthsDegrees,
-                    hopCount = status.hopCount.hopCount,
-                    chargingFault = status.chargingFault,
+        handleStatusMutex.withLock {
+            if (simulated || arbitrator.shouldUpdateDataFromStatusForNormalMode(
+                    status,
+                    status.sessionInformation,
                 )
+            ) {
+                handleSessionInfo(
+                    status.sessionInformation,
+                    minSequenceNumber = status.minSequenceNumber,
+                    maxSequenceNumber = status.maxSequenceNumber,
+                )
+
+                _normalModeStatusFlow.emit(status)
+
+                if (!simulated) {
+                    fetchDeviceInfo()
+                }
+
+                // engineStatusFlags.controlDeviceConnected is reported here exactly as firmware
+                // sent it -- no debounce. A consuming application is recommended to apply its own
+                // momentary radio-drop confirmation delay before displaying this flag, since this
+                // framework is BLE-only and has no visibility into cloud-relayed engine status
+                // (e.g. from other users' phones or node devices) -- a debounce implemented here
+                // could only ever protect a viewer with their own direct BLE link to the engine.
+                _deviceFlow.update {
+                    it.copy(
+                        engineBatteryStatus = status.engineBatteryStatus,
+                        engineStatusFlags = status.engineStatusFlags,
+                        engineFanStatus = status.engineFanStatus,
+                        engineControllerStatus = status.engineControllerStatus,
+                        temperatureSetPointCelsius = status.temperatureSetPoint,
+                        controlDeviceType = status.controlDeviceType,
+                        controlSerialNumber = status.controlSerialNumber,
+                        controlTemperature = status.controlTemperature,
+                        knobVoltageMillivolts = status.knobVoltageMillivolts,
+                        knobAngleTenthsDegrees = status.knobAngleTenthsDegrees,
+                        hopCount = status.hopCount.hopCount,
+                        chargingFault = status.chargingFault,
+                    )
+                }
+
+                // Lets a pending setControlDevice/etc. retry loop complete early from this status
+                // alone, even if its own response packet is lost -- see CommandCoordinator.
+                commandCoordinator.confirmCommandStatus(serialNumber, status)
             }
         }
     }
 
+    /**
+     * Sends via [commandCoordinator], retrying with a freshly re-evaluated route every 5s for up
+     * to 30s, following the same shape as [setControlDevice]. Engine has no pure-GATT-direct
+     * transport (see [setControlDevice]'s KDoc), so every attempt is a [CommandAttemptKey.Node]
+     * keyed by [NodeMessageType.SET_ENGINE_TEMPERATURE_SET_POINT] and the request ID.
+     *
+     * Deliberately does not optimistically write [Engine.temperatureSetPointCelsius] into
+     * `_deviceFlow` on completion, for the same reason as [setControlDevice]: a `SUCCESS` result
+     * can come from [CommandCoordinator.valueConfirmation]'s "changed to something else" branch, in
+     * which case the commanded value would be wrong to display. The next real status update
+     * refreshes `_deviceFlow` through [handleStatus] instead.
+     */
     fun setTemperatureSetPoint(
         temperature: SensorTemperature,
         completionHandler: (Boolean) -> Unit,
     ) {
-        val onCompletion: (Boolean) -> Unit = { success ->
-            if (success) {
-                _deviceFlow.update {
-                    it.copy(
-                        temperatureSetPointCelsius = temperature,
-                    )
-                }
-            }
-            completionHandler(success)
-        }
+        val startingTemperature = _deviceFlow.value.temperatureSetPointCelsius
 
-        val requestId = makeRequestId()
-        simulatedDevice?.sendSetTemperatureSetPoint(temperature, requestId) { status, _ ->
-            onCompletion(status)
-        } ?: arbitrator.directLink?.sendSetTemperatureSetPoint(
-            temperature,
-            requestId,
-        ) { status, _ ->
-            onCompletion(status)
-        } ?: run {
-            val nodeLinks = arbitrator.connectedNodeLinks
-            if (nodeLinks.isNotEmpty()) {
-                val handled = AtomicBoolean(false)
-                nodeLinks.forEach { node ->
-                    node.sendSetEngineTemperatureSetPoint(
-                        serialNumber,
-                        temperature,
+        scope.launch {
+            val result = commandCoordinator.sendRoutedCommand(
+                targetSerialNumber = serialNumber,
+                send = {
+                    val requestId = makeRequestId()
+                    val key = CommandAttemptKey.Node(
+                        NodeMessageType.SET_ENGINE_TEMPERATURE_SET_POINT,
                         requestId,
-                    ) { status, _ ->
-                        if (!handled.getAndSet(true)) {
-                            onCompletion(status)
+                    )
+                    val onResponse: (Boolean, Any?) -> Unit = { success, _ ->
+                        if (success) {
+                            commandCoordinator.completeAttempt(key, success = true)
                         }
                     }
-                }
-            } else {
-                onCompletion(false)
+
+                    val sent = simulatedDevice?.sendSetTemperatureSetPoint(
+                        temperature,
+                        requestId,
+                        onResponse,
+                    ) ?: arbitrator.directLink?.sendSetTemperatureSetPoint(
+                        temperature,
+                        requestId,
+                        onResponse,
+                    ) ?: run {
+                        val nodeLinks = arbitrator.connectedNodeLinks
+                        if (nodeLinks.isEmpty()) {
+                            null
+                        } else {
+                            nodeLinks.forEach { node ->
+                                node.sendSetEngineTemperatureSetPoint(
+                                    serialNumber,
+                                    temperature,
+                                    requestId,
+                                    onResponse,
+                                )
+                            }
+                        }
+                    }
+
+                    if (sent != null) setOf(key) else emptySet()
+                },
+                isConfirmed = CommandCoordinator.valueConfirmation(
+                    startingValue = startingTemperature.toExtractedValue(),
+                    commandedValue = temperature,
+                    extractValue = { it.extractedAs<EngineStatus, _> { s -> s.temperatureSetPoint } },
+                ),
+            )
+
+            withContext(Dispatchers.Main.immediate) {
+                completionHandler(result == CommandResult.SUCCESS)
             }
         }
     }
 
+    /**
+     * Sends via [commandCoordinator], retrying with a freshly re-evaluated route (direct link,
+     * else MeatNet nodes) every 5s for up to 30s, and completing early either from a raw ACK/NACK
+     * response or from a later status
+     * update that shows the change already took effect -- see [CommandCoordinator.valueConfirmation]
+     * for why "already changed, even if not to what we asked for" also counts as done, rather than
+     * fighting a competing command from another device indefinitely.
+     *
+     * Engine has no pure-GATT-direct transport distinct from the MeatNet/UART mechanism --
+     * [EngineBleDevice.sendSetControlDevice] itself just delegates to a wrapped [NodeBleDevice]
+     * (see NodeHybridBleDevice) -- so every attempt, whether over the "direct" link or a relaying
+     * node, is registered as a [CommandAttemptKey.Node] keyed by [NodeMessageType.SET_ENGINE_CONTROL_DEVICE]
+     * and the request ID, never [CommandAttemptKey.Direct] (that key exists for pure-probe-direct
+     * commands, a later phase).
+     *
+     * A per-transmission response timeout still exists underneath, inside
+     * [UartBleDevice.MessageCompletionHandler] (unchanged, still governs a single UART
+     * write/response pair) -- but only an explicit success from it is forwarded to
+     * [CommandCoordinator.completeAttempt]; its own timeout failures are not, so a slow single
+     * transmission can't prematurely end the outer 30s/5s retry cycle. [CommandCoordinator]'s own
+     * timer is what decides when to give up or retry.
+     *
+     * Deliberately does not optimistically write [controlSerialNumber]/[controlDeviceType] into
+     * `_deviceFlow` on completion (the previous implementation did). A `SUCCESS` result can now
+     * come from [CommandCoordinator.valueConfirmation]'s "value changed to something else" branch
+     * -- i.e. a *different* command won -- and blindly writing our own commanded value in that case
+     * would display the wrong controller. The next real status update (which should follow shortly
+     * either way) updates `_deviceFlow` through the normal [handleStatus] path instead.
+     *
+     * Does not wire [CommandCoordinator.handleDeviceDisconnected] -- it only purges
+     * [CommandAttemptKey.Direct] entries, which this command never registers. A disconnect
+     * mid-retry is instead handled by `send` simply being re-evaluated fresh on the next retry,
+     * naturally picking whatever route (if any) is currently available.
+     */
     fun setControlDevice(
         controlDeviceType: CombustionProductType,
         controlSerialNumber: String,
         completionHandler: (Boolean) -> Unit,
     ) {
-        val onCompletion: (Boolean) -> Unit = { success ->
-            if (success) {
-                val newControlSerialNumber = controlSerialNumber.takeIf(String::isNotEmpty)
-                _deviceFlow.update { engine ->
-                    engine.copy(
-                        controlDeviceType = newControlSerialNumber?.let { controlDeviceType },
-                        controlSerialNumber = newControlSerialNumber,
-                        engineStatusFlags = engine.engineStatusFlags.copy(
-                            controlDeviceConnected = newControlSerialNumber != null,
-                        ),
-                    )
-                }
-            }
-            completionHandler(success)
+        val commandedSerialNumber = controlSerialNumber.takeIf(String::isNotEmpty)
+        // EngineStatus parses all-or-nothing at a fixed size (no truncated-packet case like
+        // ProbeStatus's trailing optional fields), so once hasReceivedStatus is true, a null
+        // controlSerialNumber is a confirmed "no controller" rather than an unknown value -- see
+        // CommandCoordinator.valueConfirmation's KDoc.
+        val startingSerialNumber = _deviceFlow.value.let {
+            if (it.hasReceivedStatus) ExtractedValue.Present(it.controlSerialNumber) else ExtractedValue.Absent
         }
 
-        val requestId = makeRequestId()
-        simulatedDevice?.sendSetControlDevice(
-            controlDeviceType,
-            controlSerialNumber,
-            requestId
-        ) { status, _ ->
-            onCompletion(status)
-        } ?: arbitrator.directLink?.sendSetControlDevice(
-            controlDeviceType,
-            controlSerialNumber,
-            requestId,
-        ) { status, _ ->
-            onCompletion(status)
-        } ?: run {
-            val nodeLinks = arbitrator.connectedNodeLinks
-            if (nodeLinks.isNotEmpty()) {
-                val handled = AtomicBoolean(false)
-                nodeLinks.forEach { node ->
-                    node.sendSetEngineControlDevice(
-                        serialNumber,
+        scope.launch {
+            val result = commandCoordinator.sendRoutedCommand(
+                targetSerialNumber = serialNumber,
+                send = {
+                    val requestId = makeRequestId()
+                    val key = CommandAttemptKey.Node(
+                        NodeMessageType.SET_ENGINE_CONTROL_DEVICE,
+                        requestId,
+                    )
+                    val onResponse: (Boolean, Any?) -> Unit = { success, _ ->
+                        if (success) {
+                            commandCoordinator.completeAttempt(key, success = true)
+                        }
+                        // A failure/timeout from this one transmission is not forwarded --
+                        // CommandCoordinator's own retry timer decides when to try again.
+                    }
+
+                    val sent = simulatedDevice?.sendSetControlDevice(
                         controlDeviceType,
                         controlSerialNumber,
                         requestId,
-                    ) { status, _ ->
-                        if (!handled.getAndSet(true)) {
-                            onCompletion(status)
+                        onResponse,
+                    ) ?: arbitrator.directLink?.sendSetControlDevice(
+                        controlDeviceType,
+                        controlSerialNumber,
+                        requestId,
+                        onResponse,
+                    ) ?: run {
+                        val nodeLinks = arbitrator.connectedNodeLinks
+                        if (nodeLinks.isEmpty()) {
+                            null
+                        } else {
+                            nodeLinks.forEach { node ->
+                                node.sendSetEngineControlDevice(
+                                    serialNumber,
+                                    controlDeviceType,
+                                    controlSerialNumber,
+                                    requestId,
+                                    onResponse,
+                                )
+                            }
                         }
                     }
-                }
-            } else {
-                onCompletion(false)
+
+                    if (sent != null) setOf(key) else emptySet()
+                },
+                isConfirmed = CommandCoordinator.valueConfirmation(
+                    startingValue = startingSerialNumber,
+                    commandedValue = commandedSerialNumber,
+                    extractValue = { it.extractedAs<EngineStatus, _> { s -> s.controlSerialNumber } },
+                ),
+            )
+
+            withContext(Dispatchers.Main.immediate) {
+                completionHandler(result == CommandResult.SUCCESS)
             }
         }
     }

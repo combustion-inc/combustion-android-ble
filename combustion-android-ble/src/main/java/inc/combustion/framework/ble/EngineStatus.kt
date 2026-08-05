@@ -121,17 +121,22 @@ data class EngineStatus(
             val engineStatusFlags =
                 EngineStatusFlags.fromRawByte(data.sliceArray(ENGINE_STATUS_FLAGS_RANGE)[0])
 
-            // controlDeviceType/controlSerialNumber/controlTemp are only meaningful once a
-            // controller is actually connected -- firmware can leave stale/sentinel bytes (e.g.
-            // controlDeviceType = PROBE with a zeroed-out serial) in these ranges after a
-            // controller is cleared, so gate all three on the flag rather than inferring
-            // "connected" from the byte contents.
-            val controlDeviceType = if (engineStatusFlags.controlDeviceConnected) {
-                data.sliceArray(CONTROL_DEVICE_TYPE_RANGE)
-                    .takeIfIsSet { CombustionProductType.fromUByte(it[0]) }
-            } else {
-                null
-            }
+            // Deliberately parsed unconditionally rather than gated on
+            // engineStatusFlags.controlDeviceConnected: a consuming application is recommended to
+            // implement its own disconnect-confirmation debounce (see the note in
+            // EngineManager.handleStatus for why that belongs above this framework rather than in
+            // it), and such a debounce depends on controlDeviceType/controlSerialNumber
+            // continuing to reflect the last known controller while controlDeviceConnected is
+            // transiently false, so it can keep attributing the engine to that controller until
+            // the disconnect is confirmed -- gating this on the flag would null the identity out
+            // immediately and make a debounce built on top of this data a no-op. takeIfIsSet
+            // treats an all-zero range as "not set" (null), which is what determines validity
+            // here; it does not protect against a stale-but-nonzero byte left behind after a
+            // controller is explicitly cleared (as opposed to a transient disconnect) -- if
+            // firmware is later found to do that, prefer fixing it at the explicit-clear call site
+            // (see EngineManager.setControlDevice) rather than re-introducing a blanket gate here.
+            val controlDeviceType = data.sliceArray(CONTROL_DEVICE_TYPE_RANGE)
+                .takeIfIsSet { CombustionProductType.fromUByte(it[0]) }
 
             val controlSerialNumber = when (controlDeviceType) {
                 null -> null
@@ -143,7 +148,7 @@ data class EngineStatus(
                     .takeIfIsSet { data.utf8StringFromRange(NODE_SERIAL_RANGE) }
             }
 
-            val controlTemp = if (controlDeviceType != null) {
+            val controlTemp = if (controlSerialNumber != null) {
                 SensorTemperature.fromRawDataStart(data.sliceArray(CONTROL_TEMP_RANGE))
             } else {
                 null
