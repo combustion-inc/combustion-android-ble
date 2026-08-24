@@ -1063,6 +1063,7 @@ internal class ProbeManager(
     }
 
     private suspend fun handleProbeStatus(status: ProbeStatus, hopCount: UInt?) {
+        Log.v(LOG_TAG, "ProbeManager.handleProbeStatus RECEIVED: $serialNumber $status")
         handleStatusMutex.withLock {
             if (arbitrator.shouldUpdateDataFromStatus(status, sessionInfo, hopCount)) {
                 Log.v(LOG_TAG, "ProbeManager.handleProbeStatus: $serialNumber $status")
