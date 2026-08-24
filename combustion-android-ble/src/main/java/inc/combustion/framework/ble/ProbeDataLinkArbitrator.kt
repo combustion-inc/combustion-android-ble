@@ -399,6 +399,14 @@ internal class ProbeDataLinkArbitrator(
             currentStatus = status
         }
 
+        Log.v(
+            LOG_TAG,
+            "shouldUpdateDataFromStatusForNormalMode: " +
+                "${(bleDevice ?: repeatedProbeBleDevices.firstOrNull())?.serialNumber} " +
+                "shouldUpdate=$shouldUpdate currentSessionInfo=$currentSessionInfo sessionInfo=$sessionInfo " +
+                "currentMax=${currentStatus?.maxSequenceNumber} newMax=${status.maxSequenceNumber}"
+        )
+
         return shouldUpdate
     }
 
