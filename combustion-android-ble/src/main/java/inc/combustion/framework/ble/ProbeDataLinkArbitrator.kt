@@ -40,6 +40,7 @@ import inc.combustion.framework.service.DeviceManager
 import inc.combustion.framework.service.ProbeMode
 import inc.combustion.framework.service.SessionInformation
 import inc.combustion.framework.service.utils.ConcurrentSnapshotMap
+import java.util.concurrent.CopyOnWriteArrayList
 
 // Number of seconds to ignore other lower-priority (higher hop count) sources of information for Instant Read
 private const val INSTANT_READ_IDLE_TIMEOUT = 1000L
@@ -60,8 +61,11 @@ internal class ProbeDataLinkArbitrator(
     override var bleDevice: ProbeBleDeviceBase? = null
         private set
 
-    // meatnet links to probe
-    val repeatedProbeBleDevices = mutableListOf<RepeatedProbeBleDevice>()
+    // meatnet links to probe -- CopyOnWriteArrayList because this is written from device
+    // connect/disconnect callbacks while concurrently being iterated (e.g. from connection-state
+    // handling) on other threads; a plain ArrayList here caused a fatal
+    // ConcurrentModificationException in meatNetIsOutOfRange.
+    val repeatedProbeBleDevices: MutableList<RepeatedProbeBleDevice> = CopyOnWriteArrayList()
 
     // probe discovery timestamp
     override var directLinkDiscoverTimestamp: Long? = null
@@ -394,6 +398,14 @@ internal class ProbeDataLinkArbitrator(
             currentSessionInfo = sessionInfo
             currentStatus = status
         }
+
+        Log.v(
+            LOG_TAG,
+            "shouldUpdateDataFromStatusForNormalMode: " +
+                "${(bleDevice ?: repeatedProbeBleDevices.firstOrNull())?.serialNumber} " +
+                "shouldUpdate=$shouldUpdate currentSessionInfo=$currentSessionInfo sessionInfo=$sessionInfo " +
+                "currentMax=${currentStatus?.maxSequenceNumber} newMax=${status.maxSequenceNumber}"
+        )
 
         return shouldUpdate
     }
