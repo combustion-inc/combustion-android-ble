@@ -45,6 +45,15 @@ internal class GaugeAdvertisingData(
     val gaugeStatusFlags: GaugeStatusFlags,
     val highLowAlarmStatus: HighLowAlarmStatus,
     val gaugePreferences: GaugePreferences?,
+    /**
+     * Raw wire value, not [GaugeID] -- see `GaugeStatus.id`'s KDoc for why. Null means the
+     * advertising packet is too short to carry one at all (legacy firmware) -- distinct from a
+     * genuinely-present-but-out-of-range byte, which [GaugeID.fromUByte] would resolve to null
+     * too, but which this field still reports as that raw value. Callers merging this into a
+     * device's last-known id (see `GaugeManager.updateDataFromAdvertisement`) should fall back to
+     * the existing value, not to 0, when this is null.
+     */
+    val gaugeId: UByte?,
 ) : BaseAdvertisingData(
     mac = mac,
     name = name,
@@ -60,6 +69,7 @@ internal class GaugeAdvertisingData(
         private val RESERVED_RANGE = 14..14 // previously BATTERY_PERCENTAGE_RANGE
         private val HIGH_LOW_ALARM_RANGE = 15..18
         private val PREFERENCES_RANGE = 19..19
+        private val ID_RANGE = 20..20
 
         internal fun create(
             address: Identifier,
@@ -90,6 +100,12 @@ internal class GaugeAdvertisingData(
                 null
             }
 
+            val gaugeId = if (manufacturerData.size > ID_RANGE.last) {
+                manufacturerData.sliceArray(ID_RANGE)[0]
+            } else {
+                null
+            }
+
             return GaugeAdvertisingData(
                 mac = address,
                 name = name,
@@ -100,6 +116,7 @@ internal class GaugeAdvertisingData(
                 gaugeStatusFlags = gaugeStatusFlags,
                 highLowAlarmStatus = highLowAlarmStatus,
                 gaugePreferences = preferences,
+                gaugeId = gaugeId,
             )
         }
     }

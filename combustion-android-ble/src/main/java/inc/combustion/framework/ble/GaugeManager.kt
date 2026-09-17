@@ -404,6 +404,7 @@ internal class GaugeManager(
             temperatureCelsius = if (advertisement.gaugeStatusFlags.sensorPresent) advertisement.gaugeTemperature else null,
             highLowAlarmStatus = advertisement.highLowAlarmStatus,
             gaugePrefs = advertisement.gaugePreferences ?: updatedGauge.gaugePrefs,
+            id = advertisement.gaugeId ?: updatedGauge.id,
         )
     }
 }

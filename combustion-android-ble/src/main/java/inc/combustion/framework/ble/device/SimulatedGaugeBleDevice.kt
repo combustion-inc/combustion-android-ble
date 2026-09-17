@@ -84,6 +84,7 @@ internal class SimulatedGaugeBleDevice(
                     ),
                 ),
                 gaugePreferences = GaugePreferences.DEFAULT,
+                gaugeId = GaugeID.ID1.type,
             )
         }
     }
