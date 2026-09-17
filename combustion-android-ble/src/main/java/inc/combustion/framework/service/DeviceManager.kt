@@ -504,6 +504,19 @@ class DeviceManager(
             initialValue = ProbeID.entries,
         )
 
+    /**
+     * Observe GaugeIDs that are not currently assigned to an active device.
+     */
+    val availableGaugeIDs: StateFlow<List<GaugeID>> = NetworkManager.instanceFlow
+        .flatMapLatest { mgr ->
+            mgr?.availableGaugeIDs ?: flowOf(GaugeID.entries)
+        }
+        .stateIn(
+            scope = appApiScope,
+            started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
+            initialValue = GaugeID.entries,
+        )
+
     private fun doWhenNetworkManagerInitialized(onInitialized: suspend (NetworkManager) -> Unit) {
         appApiScope.launch {
             NetworkManager.instanceFlow.first { it != null }?.let {
@@ -1106,6 +1119,21 @@ class DeviceManager(
         )
         doWhenNetworkManagerInitialized {
             it.setProbeHighLowAlarmStatus(serialNumber, probeHighLowAlarmStatus, completionHandler)
+        }
+    }
+
+    /**
+     * Sends a request to the device to the set the gauge ID. The completion handler will
+     * be called when a response is received or after timeout.
+     *
+     * @param serialNumber the serial number of the gauge.
+     * @param id the ID to set the gauge.
+     * @param completionHandler completion handler to be called operation is complete
+     *
+     */
+    fun setGaugeID(serialNumber: String, id: GaugeID, completionHandler: (Boolean) -> Unit) {
+        doWhenNetworkManagerInitialized {
+            it.setGaugeID(serialNumber, id, completionHandler)
         }
     }
 

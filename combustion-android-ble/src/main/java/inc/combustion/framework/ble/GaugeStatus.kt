@@ -45,6 +45,12 @@ data class GaugeStatus(
     val highLowAlarmStatus: HighLowAlarmStatus,
     val isNewRecord: Boolean,
     val hopCount: HopCount,
+    /**
+     * Raw wire value, not [GaugeID] -- a gauge can be assigned an ID beyond what that 8-entry
+     * enum models (see [GaugeID.fromUByte]'s KDoc), so this stays a [UByte] here and is resolved
+     * to a [GaugeID]? only where something needs the 8-way picker's shape (see `Gauge.knownId`).
+     */
+    val id: UByte = 0u,
 ) : SpecializedDeviceStatus {
 
     override val mode: ProbeMode = ProbeMode.NORMAL
@@ -60,8 +66,13 @@ data class GaugeStatus(
         private val HIGH_LOW_ALARM_RANGE = 18..21
         private val NEW_RECORD_FLAG_RANGE = 22..22
         private val HOP_COUNT_RANGE = 23..23
+        private val GAUGE_ID_RANGE = 24..24
 
-        val RAW_SIZE = NEW_RECORD_FLAG_RANGE.last + 1
+        // HOP_COUNT_RANGE, not NEW_RECORD_FLAG_RANGE: fromRawData slices hopCount unconditionally
+        // (unlike the id byte right after it), so the minimum accepted size must cover it too, or
+        // a packet of exactly NEW_RECORD_FLAG_RANGE.last + 1 bytes would pass this check and then
+        // throw slicing HOP_COUNT_RANGE.
+        val RAW_SIZE = HOP_COUNT_RANGE.last + 1
 
         fun fromRawData(data: UByteArray): GaugeStatus? {
             if (data.size < RAW_SIZE) return null
@@ -92,6 +103,15 @@ data class GaugeStatus(
 
             val hopCount: HopCount = HopCount.fromUByte(data.sliceArray(HOP_COUNT_RANGE)[0])
 
+            // Older firmware doesn't send the trailing id byte at all -- default to 0 (displayed
+            // as ID1) rather than rejecting the packet, so status from those devices keeps parsing
+            // exactly as it did before this field existed.
+            val id: UByte = if (data.size > GAUGE_ID_RANGE.last) {
+                data.sliceArray(GAUGE_ID_RANGE)[0]
+            } else {
+                0u
+            }
+
             return GaugeStatus(
                 sessionInformation = sessionInformation,
                 samplePeriod = samplePeriod,
@@ -102,6 +122,7 @@ data class GaugeStatus(
                 highLowAlarmStatus = highLowAlarmStatus,
                 isNewRecord = isNewRecord,
                 hopCount = hopCount,
+                id = id,
             )
         }
     }

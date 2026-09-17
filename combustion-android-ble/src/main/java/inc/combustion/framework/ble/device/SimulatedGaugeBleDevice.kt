@@ -134,6 +134,16 @@ internal class SimulatedGaugeBleDevice(
         scope.launch { callback?.let { it(true, null) } }
     }
 
+    override fun sendSetGaugeID(
+        gaugeId: GaugeID,
+        reqId: UInt?,
+        callback: ((Boolean, Any?) -> Unit)?,
+    ) {
+        // See sendSetHighLowAlarmStatus's comment: dispatched via scope.launch, not invoked
+        // synchronously, to avoid racing CommandCoordinator.sendRoutedCommand's registerAttempt.
+        scope.launch { callback?.let { it(true, null) } }
+    }
+
     override fun sendGaugeLogRequest(
         minSequence: UInt,
         maxSequence: UInt,

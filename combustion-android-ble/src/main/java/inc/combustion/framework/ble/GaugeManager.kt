@@ -223,6 +223,78 @@ internal class GaugeManager(
         }
     }
 
+    /**
+     * Sends via [commandCoordinator] following the same shape as [setHighLowAlarmStatus] --
+     * Node-only, keyed by [NodeMessageType.SET_GAUGE_ID] and the request ID.
+     *
+     * Confirmed by comparing raw bytes ([Gauge.id]/`GaugeStatus.id`, not [GaugeID]): a gauge can
+     * report an ID beyond the 8 [gaugeId] can ever be, so resolving through [GaugeID] here (which
+     * can return null for that) would make an out-of-range observed value silently fail to
+     * confirm anything, including "something else already changed it." `GaugeStatus.id` defaults
+     * to `0` rather than being absent on legacy firmware that predates this field (see
+     * [GaugeStatus]'s parsing), so [Gauge.hasReceivedStatus] -- not nullability -- is what
+     * distinguishes "no confirmed starting value yet" from "confirmed 0." See
+     * [CommandCoordinator.valueConfirmation]'s KDoc.
+     */
+    fun setGaugeID(gaugeId: GaugeID, completionHandler: (Boolean) -> Unit) {
+        val startingGaugeId = _deviceFlow.value.let {
+            if (it.hasReceivedStatus) ExtractedValue.Present(it.id) else ExtractedValue.Absent
+        }
+
+        scope.launch {
+            val result = commandCoordinator.sendRoutedCommand(
+                targetSerialNumber = serialNumber,
+                send = {
+                    val requestId = makeRequestId()
+                    val key = CommandAttemptKey.Node(
+                        NodeMessageType.SET_GAUGE_ID,
+                        requestId,
+                    )
+                    val onResponse: (Boolean, Any?) -> Unit = { success, _ ->
+                        if (success) {
+                            commandCoordinator.completeAttempt(key, success = true)
+                        }
+                    }
+
+                    val sent = simulatedDevice?.sendSetGaugeID(
+                        gaugeId,
+                        requestId,
+                        onResponse,
+                    ) ?: arbitrator.directLink?.sendSetGaugeID(
+                        gaugeId,
+                        requestId,
+                        onResponse,
+                    ) ?: run {
+                        val nodeLinks = arbitrator.connectedNodeLinks
+                        if (nodeLinks.isEmpty()) {
+                            null
+                        } else {
+                            nodeLinks.forEach { node ->
+                                node.sendSetGaugeID(
+                                    serialNumber,
+                                    gaugeId,
+                                    requestId,
+                                    onResponse,
+                                )
+                            }
+                        }
+                    }
+
+                    if (sent != null) setOf(key) else emptySet()
+                },
+                isConfirmed = CommandCoordinator.valueConfirmation(
+                    startingValue = startingGaugeId,
+                    commandedValue = gaugeId.type,
+                    extractValue = { it.extractedAs<GaugeStatus, _> { s -> s.id } },
+                ),
+            )
+
+            withContext(Dispatchers.Main.immediate) {
+                completionHandler(result == CommandResult.SUCCESS)
+            }
+        }
+    }
+
     override fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt) {
         val requestId = makeRequestId()
         val callback: suspend (NodeReadGaugeLogsResponse) -> Unit = {
@@ -284,6 +356,12 @@ internal class GaugeManager(
                     status.sessionInformation,
                 )
             ) {
+                // Set id here, before handleSessionInfo's own _deviceFlow update flips
+                // isPlaceholder() to false below -- DeviceIdManager gates on isPlaceholder() and
+                // acts on id (including live SET_GAUGE_ID writes on conflict), so it must never be
+                // able to observe a non-placeholder Gauge whose id hasn't been updated yet.
+                _deviceFlow.update { it.copy(id = status.id) }
+
                 handleSessionInfo(
                     status.sessionInformation,
                     minSequenceNumber = status.minSequenceNumber,

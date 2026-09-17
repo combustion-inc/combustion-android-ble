@@ -30,6 +30,7 @@ internal class NodeBleDevice(
     private val genericRequestHandler = UartBleDevice.MessageCompletionHandler()
     private val readFeatureFlagsRequest = UartBleDevice.MessageCompletionHandler()
     private val setGaugeHighLowAlarmStatusHandler = UartBleDevice.MessageCompletionHandler()
+    private val setGaugeIdHandler = UartBleDevice.MessageCompletionHandler()
     private val silenceAlarmsHandler = UartBleDevice.MessageCompletionHandler()
     private val setEngineTemperatureSetPointHandler = UartBleDevice.MessageCompletionHandler()
     private val setEngineControlDeviceHandler = UartBleDevice.MessageCompletionHandler()
@@ -131,6 +132,21 @@ internal class NodeBleDevice(
             callback,
         )
         sendUartRequest(NodeSetGaugeHighLowAlarmRequest(serialNumber, highLowAlarmStatus, reqId))
+    }
+
+    fun sendSetGaugeID(
+        serialNumber: String,
+        gaugeId: GaugeID,
+        reqId: UInt?,
+        callback: ((Boolean, Any?) -> Unit)?,
+    ) {
+        setGaugeIdHandler.wait(
+            uart.scope,
+            MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS,
+            reqId,
+            callback,
+        )
+        sendUartRequest(NodeSetGaugeIDRequest(serialNumber, gaugeId, reqId))
     }
 
     fun sendGaugeLogRequest(
@@ -303,6 +319,14 @@ internal class NodeBleDevice(
 
                     message is NodeSetGaugeHighLowAlarmResponse -> {
                         setGaugeHighLowAlarmStatusHandler.handled(
+                            message.success,
+                            null,
+                            message.requestId
+                        )
+                    }
+
+                    message is NodeSetGaugeIDResponse -> {
+                        setGaugeIdHandler.handled(
                             message.success,
                             null,
                             message.requestId

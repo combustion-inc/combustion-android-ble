@@ -30,6 +30,7 @@ package inc.combustion.framework.ble.device
 
 import inc.combustion.framework.ble.scanning.GaugeAdvertisingData
 import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
+import inc.combustion.framework.service.GaugeID
 import inc.combustion.framework.service.HighLowAlarmStatus
 
 internal class GaugeBleDevice(
@@ -46,6 +47,19 @@ internal class GaugeBleDevice(
         nodeParent.sendSetGaugeHighLowAlarmStatus(
             serialNumber,
             highLowAlarmStatus,
+            reqId,
+            callback,
+        )
+    }
+
+    override fun sendSetGaugeID(
+        gaugeId: GaugeID,
+        reqId: UInt?,
+        callback: ((Boolean, Any?) -> Unit)?,
+    ) {
+        nodeParent.sendSetGaugeID(
+            serialNumber,
+            gaugeId,
             reqId,
             callback,
         )

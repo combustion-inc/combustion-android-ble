@@ -47,9 +47,22 @@ data class Gauge(
     val newRecordFlag: Boolean = false,
     override val hopCount: UInt? = null,
     val gaugePrefs: GaugePreferences? = null,
+    /**
+     * Raw wire value, not [GaugeID] -- see `GaugeStatus.id`'s KDoc for why. Use [knownId] for the
+     * 8-way picker's shape.
+     */
+    val id: UByte = 0u,
 ) : SpecializedDevice {
     override val lowBattery: Boolean
         get() = gaugeStatusFlags.lowBattery
+
+    /**
+     * [id] resolved to one of the 8 [GaugeID] values the picker offers, or null if the gauge is
+     * actually assigned an ID beyond what those 8 model -- see [GaugeID.fromUByte]'s KDoc. Treat
+     * null as "none of the picker's options match," not as "assume ID1."
+     */
+    val knownId: GaugeID?
+        get() = GaugeID.fromUByte(id)
 
     companion object {
         fun create(serialNumber: String = "", mac: String = ""): Gauge {
