@@ -98,8 +98,11 @@ data class GaugeStatus(
                 data.sliceArray(HIGH_LOW_ALARM_RANGE)
             )
 
-            val isNewRecord: Boolean =
-                data.getLittleEndianUShortAt(NEW_RECORD_FLAG_RANGE.first).toInt() == 1
+            // A single byte, not getLittleEndianUShortAt: NEW_RECORD_FLAG_RANGE is one byte, and
+            // reading it as a UShort pulls in HOP_COUNT_RANGE's byte right after it as the high
+            // byte, so the comparison to 1 silently fails whenever hop count isn't HOP1 (whose top
+            // two bits are the only ones HopCount.fromUByte's mask/shift constrains to zero).
+            val isNewRecord: Boolean = data[NEW_RECORD_FLAG_RANGE.first].toInt() == 1
 
             val hopCount: HopCount = HopCount.fromUByte(data.sliceArray(HOP_COUNT_RANGE)[0])
 

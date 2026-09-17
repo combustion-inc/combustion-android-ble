@@ -58,7 +58,7 @@ enum class GaugeID(override val type: UByte) : IdTag {
         fun fromUByte(byte: UByte): GaugeID? = idTagFromType(entries, byte)
 
         fun stringValues(): List<String> {
-            return values().toList().map { it.toString() }
+            return entries.map { it.toString() }
         }
     }
 }
