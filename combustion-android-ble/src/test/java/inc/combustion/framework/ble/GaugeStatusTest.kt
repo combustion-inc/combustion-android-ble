@@ -30,6 +30,7 @@ package inc.combustion.framework.ble
 
 import inc.combustion.framework.service.HopCount
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -78,8 +79,17 @@ class GaugeStatusTest {
     }
 
     @Test
-    fun `id defaults to 0 when the trailing byte is absent`() {
+    fun `id is null when the trailing byte is absent -- legacy firmware, not ID1`() {
         val status = GaugeStatus.fromRawData(buildStatusData(newRecordFlag = 0u, hopCountByte = 0u))
+        assertNotNull(status)
+        assertNull(status?.id)
+    }
+
+    @Test
+    fun `id of 0 is parsed as present, distinct from absent`() {
+        val status = GaugeStatus.fromRawData(
+            buildStatusData(newRecordFlag = 0u, hopCountByte = 0u, id = 0u),
+        )
         assertEquals(0u.toUByte(), status?.id)
     }
 

@@ -49,20 +49,31 @@ data class Gauge(
     val gaugePrefs: GaugePreferences? = null,
     /**
      * Raw wire value, not [GaugeID] -- see `GaugeStatus.id`'s KDoc for why. Use [knownId] for the
-     * 8-way picker's shape.
+     * 8-way picker's shape. Null means no status has carried an ID yet: either none has been
+     * received, the gauge's firmware predates gauge IDs, or every status so far came through a
+     * MeatNet node on older firmware that drops the ID (see [supportsId]).
      */
-    val id: UByte = 0u,
+    val id: UByte? = null,
 ) : SpecializedDevice {
     override val lowBattery: Boolean
         get() = gaugeStatusFlags.lowBattery
 
     /**
      * [id] resolved to one of the 8 [GaugeID] values the picker offers, or null if the gauge is
-     * actually assigned an ID beyond what those 8 model -- see [GaugeID.fromUByte]'s KDoc. Treat
-     * null as "none of the picker's options match," not as "assume ID1."
+     * actually assigned an ID beyond what those 8 model -- see [GaugeID.fromUByte]'s KDoc -- or if
+     * [id] is null. Treat null as "none of the picker's options match," not as "assume ID1."
      */
     val knownId: GaugeID?
-        get() = GaugeID.fromUByte(id)
+        get() = id?.let { GaugeID.fromUByte(it) }
+
+    /**
+     * True once a status has carried an ID, so [DeviceManager.setGaugeID] can be applied. False
+     * for gauges on firmware that predates gauge IDs (pre-GAU-96), before any status has been
+     * received, and for a gauge only reachable through MeatNet nodes on older firmware, which
+     * drop the ID when relaying status.
+     */
+    val supportsId: Boolean
+        get() = hasReceivedStatus && (id != null)
 
     companion object {
         fun create(serialNumber: String = "", mac: String = ""): Gauge {

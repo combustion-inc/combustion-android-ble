@@ -107,7 +107,7 @@ internal class DeviceIdManager<T, D : SpecializedDevice>(
             Pair(conflictId, lowestAvailableId)
         }
 
-        // assign the losing (non-winning) serial number to the lowest id
+        // assign the winning serial number to the lowest id
         val (newDeviceId, currentDeviceId) = if (newDeviceWins) {
             Pair(lowerId, higherId)
         } else {

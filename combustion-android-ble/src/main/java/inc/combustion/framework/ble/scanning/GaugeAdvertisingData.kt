@@ -46,12 +46,11 @@ internal class GaugeAdvertisingData(
     val highLowAlarmStatus: HighLowAlarmStatus,
     val gaugePreferences: GaugePreferences?,
     /**
-     * Raw wire value, not [GaugeID] -- see `GaugeStatus.id`'s KDoc for why. Null means the
-     * advertising packet is too short to carry one at all (legacy firmware) -- distinct from a
-     * genuinely-present-but-out-of-range byte, which [GaugeID.fromUByte] would resolve to null
-     * too, but which this field still reports as that raw value. Callers merging this into a
-     * device's last-known id (see `GaugeManager.updateDataFromAdvertisement`) should fall back to
-     * the existing value, not to 0, when this is null.
+     * Raw wire value, not [GaugeID] -- see `GaugeStatus.id`'s KDoc for why. Can't distinguish
+     * legacy firmware: GAU-96 repurposed a reserved byte of the advertising data, which older
+     * firmware always sends zeroed, so a legacy gauge advertises 0 here, indistinguishable from a
+     * genuine ID1. Only trust this once status has shown the gauge reports an id -- see
+     * `mergeAdvertisedGaugeId`. Null only for a malformed, short packet.
      */
     val gaugeId: UByte?,
 ) : BaseAdvertisingData(

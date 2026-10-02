@@ -50,10 +50,11 @@ enum class ProbeID(override val type: UByte) : IdTag {
         }
 
         fun fromRaw(raw: UInt) : ProbeID {
-            // fromUByte already masked this to 3 bits, so idTagFromType can never actually miss --
-            // ID1 here is just a defensive fallback, unlike GaugeID.fromUByte's genuine "not one
-            // of the 8" null (a gauge, unlike a probe, can be assigned an ID this enum doesn't
-            // model at all).
+            // Out-of-range values fall back to ID1 -- a defensive fallback, unlike
+            // GaugeID.fromUByte's genuine "not one of the 8" null (a gauge, unlike a probe, can be
+            // assigned an ID this enum doesn't model at all). Guard before narrowing: toUByte()
+            // would otherwise wrap e.g. 0x101 to 0x01 (ID2).
+            if (raw > 0xFFu) return ID1
             return idTagFromType(entries, raw.toUByte()) ?: ID1
         }
 

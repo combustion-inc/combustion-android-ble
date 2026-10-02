@@ -49,8 +49,13 @@ data class GaugeStatus(
      * Raw wire value, not [GaugeID] -- a gauge can be assigned an ID beyond what that 8-entry
      * enum models (see [GaugeID.fromUByte]'s KDoc), so this stays a [UByte] here and is resolved
      * to a [GaugeID]? only where something needs the 8-way picker's shape (see `Gauge.knownId`).
+     * Null means this message didn't carry the trailing id byte: either the gauge's firmware
+     * predates it (pre-GAU-96), or a MeatNet node on older shared firmware relayed it -- such a
+     * node truncates a payload longer than its own struct to that struct's size before
+     * rebroadcasting, dropping the byte. So null is "not known from this message," never "the
+     * gauge doesn't support IDs" -- see `GaugeManager.handleStatus`. A present 0 is a genuine ID1.
      */
-    val id: UByte = 0u,
+    val id: UByte?,
 ) : SpecializedDeviceStatus {
 
     override val mode: ProbeMode = ProbeMode.NORMAL
@@ -106,13 +111,14 @@ data class GaugeStatus(
 
             val hopCount: HopCount = HopCount.fromUByte(data.sliceArray(HOP_COUNT_RANGE)[0])
 
-            // Older firmware doesn't send the trailing id byte at all -- default to 0 (displayed
-            // as ID1) rather than rejecting the packet, so status from those devices keeps parsing
-            // exactly as it did before this field existed.
-            val id: UByte = if (data.size > GAUGE_ID_RANGE.last) {
+            // The trailing id byte is missing from older gauge firmware and from status relayed by
+            // older nodes (see the id KDoc) -- report null rather than rejecting the packet or
+            // defaulting to 0, which would masquerade as a genuine ID1 to ID-conflict resolution
+            // and SET_GAUGE_ID confirmation.
+            val id: UByte? = if (data.size > GAUGE_ID_RANGE.last) {
                 data.sliceArray(GAUGE_ID_RANGE)[0]
             } else {
-                0u
+                null
             }
 
             return GaugeStatus(
