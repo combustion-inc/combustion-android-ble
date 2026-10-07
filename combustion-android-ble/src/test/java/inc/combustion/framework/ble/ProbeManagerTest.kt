@@ -28,6 +28,7 @@
 
 package inc.combustion.framework.ble
 
+import android.os.SystemClock
 import android.util.Log
 import inc.combustion.framework.ble.device.DeviceInformationBleDevice
 import inc.combustion.framework.ble.device.ProbeBleDevice
@@ -48,12 +49,14 @@ import inc.combustion.framework.service.ProbePowerMode
 import inc.combustion.framework.service.ProbePredictionMode
 import inc.combustion.framework.service.ProbeTemperatures
 import inc.combustion.framework.service.ProbeVirtualSensors
+import inc.combustion.framework.service.SessionInformation
 import inc.combustion.framework.service.ThermometerPreferences
 import io.mockk.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -86,6 +89,7 @@ class ProbeManagerTest {
     fun tearDown() {
         Dispatchers.resetMain()
         unmockkStatic(Log::class)
+        unmockkStatic(SystemClock::class)
     }
 
     private fun advertisement(
@@ -610,4 +614,128 @@ class ProbeManagerTest {
 
             assertEquals(true, result2)
         }
+
+    // Session info re-read on a falling sequence number (rereadSessionInfoIfSequenceFell): after a
+    // reset the probe reboots into a new session whose sequence numbers restart, so the arbitrator
+    // rejects its statuses until the cached session info changes. Through a MeatNet node no
+    // reconnect re-reads it, so the falling sequence number must.
+
+    private class SessionInfoHarness(
+        val deliverStatus: suspend (ProbeStatus) -> Unit,
+        val sessionInfoCallbacks: List<(Boolean, Any?) -> Unit>,
+    ) {
+        fun sessionInfoRequests(): Int = sessionInfoCallbacks.size
+    }
+
+    private var nowMs = 100_000L
+
+    private fun sessionInfoHarness(scope: CoroutineScope): SessionInfoHarness {
+        mockkStatic(SystemClock::class)
+        every { SystemClock.elapsedRealtime() } answers { nowMs }
+
+        val manager = ProbeManager(
+            serialNumber = "12345678",
+            scope = scope,
+            settings = DeviceManager.Settings(),
+            dfuDisconnectedNodeCallback = {},
+        )
+        val probe = mockk<ProbeBleDevice>(relaxed = true)
+        // connected, so it's the direct link that session info is requested over
+        every { probe.isConnected } returns true
+        val sessionInfoCallbacks = mutableListOf<(Boolean, Any?) -> Unit>()
+        every { probe.sendSessionInformationRequest(any(), any()) } answers {
+            secondArg<((Boolean, Any?) -> Unit)?>()?.let { sessionInfoCallbacks += it }
+        }
+        val statusCallback = slot<suspend (ProbeStatus, UInt?) -> Unit>()
+        every { probe.observeProbeStatusUpdates(any(), capture(statusCallback)) } returns Unit
+
+        manager.addProbe(probe, mockk<DeviceInformationBleDevice>(relaxed = true), advertisement())
+
+        return SessionInfoHarness(
+            deliverStatus = { status -> statusCallback.captured(status, null) },
+            sessionInfoCallbacks = sessionInfoCallbacks,
+        )
+    }
+
+    /** Establishes session 1 with an accepted status at [maxSequenceNumber]. */
+    private suspend fun TestScope.establishSession(
+        harness: SessionInfoHarness,
+        maxSequenceNumber: UInt,
+    ) {
+        // the first status is accepted (no session info yet) and requests it
+        harness.deliverStatus(status(maxSequenceNumber = maxSequenceNumber - 1u))
+        runCurrent()
+        harness.sessionInfoCallbacks.last()(true, SessionInformation(sessionID = 1u, samplePeriod = 5000u))
+        runCurrent()
+        // accepted against the now-known session
+        harness.deliverStatus(status(maxSequenceNumber = maxSequenceNumber))
+        runCurrent()
+    }
+
+    @Test
+    fun `a status whose sequence number falls below the last accepted one re-reads session info`() =
+        runTest {
+            val harness = sessionInfoHarness(backgroundScope)
+            establishSession(harness, maxSequenceNumber = 370u)
+            val requestsBefore = harness.sessionInfoRequests()
+
+            // the probe rebooted into a new session: rejected, so it doesn't trigger the usual
+            // re-read after an accepted status
+            harness.deliverStatus(status(maxSequenceNumber = 2u))
+            runCurrent()
+
+            assertEquals(requestsBefore + 1, harness.sessionInfoRequests())
+        }
+
+    @Test
+    fun `falling sequence re-reads are rate limited`() = runTest {
+        val harness = sessionInfoHarness(backgroundScope)
+        establishSession(harness, maxSequenceNumber = 370u)
+        val requestsBefore = harness.sessionInfoRequests()
+
+        harness.deliverStatus(status(maxSequenceNumber = 2u))
+        runCurrent()
+        nowMs += 5_000
+        harness.deliverStatus(status(maxSequenceNumber = 3u))
+        runCurrent()
+        assertEquals(requestsBefore + 1, harness.sessionInfoRequests())
+
+        // past the minimum interval since the last re-read
+        nowMs += 1_001
+        harness.deliverStatus(status(maxSequenceNumber = 4u))
+        runCurrent()
+        assertEquals(requestsBefore + 2, harness.sessionInfoRequests())
+    }
+
+    @Test
+    fun `a rejected status that does not fall below the last accepted one does not re-read session info`() =
+        runTest {
+            val harness = sessionInfoHarness(backgroundScope)
+            establishSession(harness, maxSequenceNumber = 370u)
+            val requestsBefore = harness.sessionInfoRequests()
+
+            // e.g. the same status relayed again over another route
+            harness.deliverStatus(status(maxSequenceNumber = 370u))
+            runCurrent()
+
+            assertEquals(requestsBefore, harness.sessionInfoRequests())
+        }
+
+    @Test
+    fun `the new session is accepted once the re-read returns it`() = runTest {
+        val harness = sessionInfoHarness(backgroundScope)
+        establishSession(harness, maxSequenceNumber = 370u)
+
+        harness.deliverStatus(status(maxSequenceNumber = 2u))
+        runCurrent()
+        harness.sessionInfoCallbacks.last()(true, SessionInformation(sessionID = 2u, samplePeriod = 5000u))
+        runCurrent()
+        val requestsBefore = harness.sessionInfoRequests()
+
+        // accepted (new session), which re-reads session info as every accepted Normal Mode status does
+        harness.deliverStatus(status(maxSequenceNumber = 3u))
+        runCurrent()
+
+        assertEquals(requestsBefore + 1, harness.sessionInfoRequests())
+    }
 }

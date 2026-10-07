@@ -84,6 +84,14 @@ internal class ProbeManager(
         private const val PROBE_DIRECT_RETRY_INTERVAL_MS =
             UartCapableProbe.PROBE_MESSAGE_RESPONSE_TIMEOUT_MS + 1_000L
         private const val PROBE_INSTANT_READ_IDLE_TIMEOUT_MS = 5000L
+
+        // Minimum time between session info re-reads triggered by a falling sequence number (see
+        // rereadSessionInfoIfSequenceFell). Out-of-order statuses relayed over slower MeatNet routes
+        // can trigger it repeatedly, and a direct-link request is matched under a fixed null key, so
+        // the previous one must have timed out (PROBE_MESSAGE_RESPONSE_TIMEOUT_MS) before the next
+        // is sent, or the next fails immediately and reads as a session info timeout -- the same
+        // reason as PROBE_DIRECT_RETRY_INTERVAL_MS.
+        private const val SESSION_INFO_REREAD_MIN_INTERVAL_MS = PROBE_DIRECT_RETRY_INTERVAL_MS
     }
 
     // encapsulates logic for managing network data links
@@ -119,6 +127,11 @@ internal class ProbeManager(
     private val instantReadMonitor = IdleMonitor()
     private val statusNotificationsMonitor = IdleMonitor()
     private val predictionMonitor = IdleMonitor()
+
+    // max sequence number of the last accepted Normal Mode status, and when a falling sequence
+    // number last triggered a session info re-read -- see rereadSessionInfoIfSequenceFell()
+    private var lastAcceptedNormalMaxSequence: UInt? = null
+    private val sessionInfoRereadMonitor = IdleMonitor()
 
     // holds the current state and data for this probe
     private val _deviceFlow = MutableStateFlow(Probe.create(serialNumber = serialNumber))
@@ -1062,10 +1075,46 @@ internal class ProbeManager(
         )
     }
 
+    /**
+     * Re-reads session info when a rejected Normal Mode [status] has a lower max sequence number
+     * than the last accepted one -- i.e. the probe has likely started a new session (e.g. a reset,
+     * from this or another device) that the cached session info doesn't reflect yet.
+     *
+     * The arbitrator only accepts a status if the session info changed or its sequence number
+     * increased, and session info is otherwise only re-read on connect or after an accepted
+     * status. A reset reboots the probe, which forces a reconnect on a direct link -- but through a
+     * MeatNet node the link stays up, so without this every status of the new session would be
+     * rejected until its sequence number passed the old session's.
+     *
+     * Rate-limited to one re-read per [SESSION_INFO_REREAD_MIN_INTERVAL_MS]; a re-read that finds the
+     * same session (e.g. after an out-of-order relayed status) changes nothing.
+     */
+    private fun rereadSessionInfoIfSequenceFell(status: ProbeStatus) {
+        val lastAccepted = lastAcceptedNormalMaxSequence ?: return
+        if (status.maxSequenceNumber >= lastAccepted) return
+        if (!sessionInfoRereadMonitor.isIdle(SESSION_INFO_REREAD_MIN_INTERVAL_MS)) return
+
+        sessionInfoRereadMonitor.activity()
+        Log.i(
+            LOG_TAG,
+            "PM($serialNumber): status sequence ${status.maxSequenceNumber} fell below last accepted " +
+                "$lastAccepted on session ${sessionInfo?.sessionID}, re-reading session info."
+        )
+        fetchSessionInfo()
+    }
+
     private suspend fun handleProbeStatus(status: ProbeStatus, hopCount: UInt?) {
         Log.v(LOG_TAG, "ProbeManager.handleProbeStatus RECEIVED: $serialNumber $status")
         handleStatusMutex.withLock {
-            if (arbitrator.shouldUpdateDataFromStatus(status, sessionInfo, hopCount)) {
+            val accepted = arbitrator.shouldUpdateDataFromStatus(status, sessionInfo, hopCount)
+            if (status.mode == ProbeMode.NORMAL) {
+                if (accepted) {
+                    lastAcceptedNormalMaxSequence = status.maxSequenceNumber
+                } else {
+                    rereadSessionInfoIfSequenceFell(status)
+                }
+            }
+            if (accepted) {
                 Log.v(LOG_TAG, "ProbeManager.handleProbeStatus: $serialNumber $status")
 
                 var updatedProbe = _deviceFlow.value.copy(hasReceivedStatus = true)
