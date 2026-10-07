@@ -31,6 +31,7 @@ package inc.combustion.framework.ble
 import inc.combustion.framework.ble.device.ProbeBleDevice
 import inc.combustion.framework.ble.device.ProbeBleDeviceBase
 import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
+import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
 import inc.combustion.framework.service.DeviceManager
 import inc.combustion.framework.service.ProbeMode
 import inc.combustion.framework.service.SessionInformation
@@ -61,9 +62,10 @@ internal class ProbeDataLinkArbitratorTest {
         every { it.mode } returns ProbeMode.INSTANT_READ
     }
     private val directLink: ProbeBleDevice = mockk(relaxed = true)
-    private fun repeatedLink(): RepeatedProbeBleDevice = mockk<RepeatedProbeBleDevice>(relaxed = true).also {
-        every { it.hopCount } returns 0u
-    }
+    private fun repeatedLink(hopCount: UInt = 0u): RepeatedProbeBleDevice =
+        mockk<RepeatedProbeBleDevice>(relaxed = true).also {
+            every { it.hopCount } returns hopCount
+        }
 
     private fun ProbeDataLinkArbitrator.shouldUpdateInstantRead(link: ProbeBleDeviceBase, hopCount: UInt?) =
         shouldUpdateDataFromStatus(instantReadStatus, sessionInfo = null, link = link, hopCount = hopCount)
@@ -102,6 +104,57 @@ internal class ProbeDataLinkArbitratorTest {
         assertTrue(tested.shouldUpdateInstantRead(node, hopCount = 1u))
     }
 
+    // Instant Read advertising packets -- mapped onto the same shared rule: a direct link by its
+    // type, a relayed one by the advertising link's hop count
+
+    private val instantReadAdvertisement: ProbeAdvertisingData =
+        mockk<ProbeAdvertisingData>(relaxed = true).also {
+            every { it.mode } returns ProbeMode.INSTANT_READ
+        }
+
+    private fun ProbeDataLinkArbitrator.shouldUpdateInstantReadAdvertisement(link: ProbeBleDeviceBase) =
+        shouldUpdateDataFromAdvertisingPacket(link, instantReadAdvertisement)
+
+    @Test
+    fun `instant read advertising -- a direct link wins over a node one hop away, though both have hop count 0`() {
+        val tested = getTested()
+        val node = repeatedLink(hopCount = 0u)
+
+        assertTrue(tested.shouldUpdateInstantReadAdvertisement(node))
+        assertTrue(tested.shouldUpdateInstantReadAdvertisement(directLink))
+        // locked out by the direct link
+        assertFalse(tested.shouldUpdateInstantReadAdvertisement(node))
+    }
+
+    @Test
+    fun `instant read advertising -- a relayed packet uses the advertising link's hop count`() {
+        val tested = getTested()
+        val farNode = repeatedLink(hopCount = 2u)
+        val nearNode = repeatedLink(hopCount = 1u)
+
+        assertTrue(tested.shouldUpdateInstantReadAdvertisement(farNode))
+        assertTrue(tested.shouldUpdateInstantReadAdvertisement(nearNode))
+        // nearNode took over with its lower hop count
+        assertFalse(tested.shouldUpdateInstantReadAdvertisement(farNode))
+    }
+
+    @Test
+    fun `instant read -- advertising packets and statuses share one lockout`() {
+        val tested = getTested()
+        val node = repeatedLink(hopCount = 0u)
+
+        // a direct status locks out a relayed advertising packet ...
+        assertTrue(tested.shouldUpdateInstantRead(directLink, hopCount = null))
+        assertFalse(tested.shouldUpdateInstantReadAdvertisement(node))
+
+        // ... until the lock times out
+        nowMs += InstantReadArbitrator.LOCK_TIMEOUT_MS
+        assertTrue(tested.shouldUpdateInstantReadAdvertisement(node))
+        // and a direct advertising packet takes over from the node's statuses
+        assertTrue(tested.shouldUpdateInstantReadAdvertisement(directLink))
+        assertFalse(tested.shouldUpdateInstantRead(node, hopCount = 0u))
+    }
+
     // shouldUpdateDataFromStatusForNormalMode -- called directly here (bypassing
     // shouldUpdateDataFromStatus's mode-based routing, which isn't relevant to this logic).
 
@@ -129,6 +182,20 @@ internal class ProbeDataLinkArbitratorTest {
         tested.shouldUpdateDataFromStatusForNormalMode(normalModeStatus(1u), session)
 
         assertTrue(tested.shouldUpdateDataFromStatusForNormalMode(normalModeStatus(2u), session))
+    }
+
+    @Test
+    fun `normal mode -- after resetNormalModeStatus a lower sequence number is accepted and becomes the reference`() {
+        val tested = getTested()
+        val session = SessionInformation(sessionID = 1u, samplePeriod = 1u)
+        tested.shouldUpdateDataFromStatusForNormalMode(normalModeStatus(500u), session)
+        assertFalse(tested.shouldUpdateDataFromStatusForNormalMode(normalModeStatus(10u), session))
+
+        tested.resetNormalModeStatus()
+
+        assertTrue(tested.shouldUpdateDataFromStatusForNormalMode(normalModeStatus(10u), session))
+        assertFalse(tested.shouldUpdateDataFromStatusForNormalMode(normalModeStatus(9u), session))
+        assertTrue(tested.shouldUpdateDataFromStatusForNormalMode(normalModeStatus(11u), session))
     }
 
     @Test

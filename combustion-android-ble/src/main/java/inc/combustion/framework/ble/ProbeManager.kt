@@ -135,6 +135,10 @@ internal class ProbeManager(
     private var lastAcceptedNormalMaxSequence: UInt? = null
     private val sessionInfoRereadMonitor = IdleMonitor()
 
+    // set while a re-read triggered by a falling sequence number awaits its response -- see
+    // handleSessionInfo(), which resets the sequence bookkeeping if the session turns out unchanged
+    private val fallingSequenceRereadPending = AtomicBoolean(false)
+
     // holds the current state and data for this probe
     private val _deviceFlow = MutableStateFlow(Probe.create(serialNumber = serialNumber))
 
@@ -1128,8 +1132,10 @@ internal class ProbeManager(
      * MeatNet node the link stays up, so without this every status of the new session would be
      * rejected until its sequence number passed the old session's.
      *
-     * Rate-limited to one re-read per [SESSION_INFO_REREAD_MIN_INTERVAL_MS]; a re-read that finds the
-     * same session (e.g. after an out-of-order relayed status) changes nothing.
+     * Rate-limited to one re-read per [SESSION_INFO_REREAD_MIN_INTERVAL_MS]. If the re-read finds
+     * the same session, the last accepted sequence number was wrong (e.g. a bad status accepted
+     * with too high a value), and [handleSessionInfo] resets the sequence bookkeeping so the
+     * session's real statuses are accepted again rather than re-read forever.
      */
     private fun rereadSessionInfoIfSequenceFell(status: ProbeStatus) {
         val lastAccepted = lastAcceptedNormalMaxSequence ?: return
@@ -1138,6 +1144,7 @@ internal class ProbeManager(
         if (!sessionInfoRereadMonitor.isIdle(SESSION_INFO_REREAD_MIN_INTERVAL_MS)) return
 
         sessionInfoRereadMonitor.activity()
+        fallingSequenceRereadPending.set(true)
         Log.i(
             LOG_TAG,
             "PM($serialNumber): status sequence ${status.maxSequenceNumber} fell below last accepted " +
@@ -1498,6 +1505,9 @@ internal class ProbeManager(
     }
 
     private fun handleSessionInfo(status: Boolean, any: Any?) {
+        // cleared on any response, so a failed re-read is simply retried on the next fall
+        val afterFallingSequence = fallingSequenceRereadPending.getAndSet(false)
+
         // if we've timed out waiting for the message, then use that state
         // to help us identify NO_ROUTE connection state.
         if (!status) {
@@ -1533,6 +1543,17 @@ internal class ProbeManager(
                     maxSequence = null
 
                     Log.i(LOG_TAG, "PM($serialNumber): finished log transfer.")
+                } else if (afterFallingSequence) {
+                    // Same session, yet its statuses fell below the last accepted sequence
+                    // number: that number was wrong (e.g. a bad status accepted with too high a
+                    // value), so start over from the next status instead of rejecting them all.
+                    Log.i(
+                        LOG_TAG,
+                        "PM($serialNumber): session ${info.sessionID} unchanged after sequence " +
+                            "fell below last accepted $lastAcceptedNormalMaxSequence, resetting it."
+                    )
+                    lastAcceptedNormalMaxSequence = null
+                    arbitrator.resetNormalModeStatus()
                 }
 
                 sessionInfo = info

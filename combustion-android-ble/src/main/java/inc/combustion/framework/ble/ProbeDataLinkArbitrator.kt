@@ -387,6 +387,17 @@ internal class ProbeDataLinkArbitrator(
         else -> shouldUpdateDataFromStatusForNormalMode(status, sessionInfo)
     }
 
+    /**
+     * Forgets the last accepted Normal Mode status, so the next one is accepted whatever its
+     * sequence number, and becomes the new reference. For when the last accepted sequence number
+     * turned out to be wrong -- e.g. a bad status accepted with too high a value would otherwise
+     * get every later real status of the same session rejected.
+     */
+    fun resetNormalModeStatus() {
+        currentSessionInfo = null
+        currentStatus = null
+    }
+
     override fun shouldUpdateDataFromStatusForNormalMode(
         status: SpecializedDeviceStatus,
         sessionInfo: SessionInformation?,
