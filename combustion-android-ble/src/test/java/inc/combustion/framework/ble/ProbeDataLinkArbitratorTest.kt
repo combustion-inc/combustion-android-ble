@@ -28,77 +28,79 @@
 
 package inc.combustion.framework.ble
 
+import inc.combustion.framework.ble.device.ProbeBleDevice
+import inc.combustion.framework.ble.device.ProbeBleDeviceBase
+import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
 import inc.combustion.framework.service.DeviceManager
 import inc.combustion.framework.service.ProbeMode
 import inc.combustion.framework.service.SessionInformation
 import io.mockk.every
 import io.mockk.mockk
-import junitparams.JUnitParamsRunner
-import junitparams.Parameters
-import junitparams.naming.TestCaseName
-import org.junit.runner.RunWith
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-@RunWith(JUnitParamsRunner::class)
 internal class ProbeDataLinkArbitratorTest {
 
-    private val probStatus: ProbeStatus = mockk(relaxed = true)
     private val settings: DeviceManager.Settings = mockk(relaxed = true)
-    private val instantReadIdleMonitor: IdleMonitor = mockk(relaxed = true)
 
-    private fun getTested(currentHopCount: UInt? = null): ProbeDataLinkArbitrator {
+    private var nowMs = 100_000L
+
+    private fun getTested(): ProbeDataLinkArbitrator {
         return ProbeDataLinkArbitrator(
             settings = settings,
-            instantReadIdleMonitor = instantReadIdleMonitor,
-            currentHopCount = currentHopCount,
+            instantReadArbitrator = InstantReadArbitrator(clock = { nowMs }),
         )
+    }
+
+    // Instant Read status arbitration -- the rule itself is covered by InstantReadArbitratorTest;
+    // these check that statuses are mapped onto it correctly: a direct link by its type (its hop
+    // count is 0, like a node one hop from the probe), a relayed one by the status's hop count.
+
+    private val instantReadStatus: ProbeStatus = mockk<ProbeStatus>(relaxed = true).also {
+        every { it.mode } returns ProbeMode.INSTANT_READ
+    }
+    private val directLink: ProbeBleDevice = mockk(relaxed = true)
+    private fun repeatedLink(): RepeatedProbeBleDevice = mockk<RepeatedProbeBleDevice>(relaxed = true).also {
+        every { it.hopCount } returns 0u
+    }
+
+    private fun ProbeDataLinkArbitrator.shouldUpdateInstantRead(link: ProbeBleDeviceBase, hopCount: UInt?) =
+        shouldUpdateDataFromStatus(instantReadStatus, sessionInfo = null, link = link, hopCount = hopCount)
+
+    @Test
+    fun `instant read -- a direct link wins over a node one hop away, though both report hop count 0`() {
+        val tested = getTested()
+        val node = repeatedLink()
+
+        assertTrue(tested.shouldUpdateInstantRead(node, hopCount = 0u))
+        assertTrue(tested.shouldUpdateInstantRead(directLink, hopCount = 0u))
+        // locked out by the direct link
+        assertFalse(tested.shouldUpdateInstantRead(node, hopCount = 0u))
     }
 
     @Test
-    @Parameters(method = "shouldUpdateDataFromProbeStatusForInstantReadModeParams")
-    @TestCaseName("given currentHopCount {0} and isIdle is {1} when get shouldUpdateDataFromProbeStatus for instant read with hopCount {2} then return {3}")
-    fun `given currentHopCount and idle state when get shouldUpdateDataFromProbeStatus for instant read with a hopCount then verify correct return value`(
-        givenCurrentHopCount: UInt?,
-        givenIsIdle: Boolean,
-        givenHopCount: UInt?,
-        expectedValue: Boolean,
-    ) {
-        // given
-        val tested = getTested(currentHopCount = givenCurrentHopCount)
-        every { instantReadIdleMonitor.isIdle(1000L) } returns givenIsIdle
-        every { probStatus.mode } returns ProbeMode.INSTANT_READ
+    fun `instant read -- a relayed status uses the hop count reported with it`() {
+        val tested = getTested()
+        val farNode = repeatedLink()
+        val nearNode = repeatedLink()
 
-        // when / then
-        assertEquals(
-            expectedValue,
-            tested.shouldUpdateDataFromStatus(
-                status = probStatus,
-                sessionInfo = null,
-                hopCount = givenHopCount
-            )
-        )
+        assertTrue(tested.shouldUpdateInstantRead(farNode, hopCount = 2u))
+        // nearNode's own hop count is 0, but the status says 3: worse, so ignored
+        assertFalse(tested.shouldUpdateInstantRead(nearNode, hopCount = 3u))
+        assertTrue(tested.shouldUpdateInstantRead(nearNode, hopCount = 1u))
     }
 
-    fun shouldUpdateDataFromProbeStatusForInstantReadModeParams() = arrayOf(
-        // when hopCount is null then always true
-        arrayOf(null as? UInt?, false, null as? UInt?, true),
-        arrayOf(0u, false, null as? UInt?, true),
-        arrayOf(1u, false, null as? UInt?, true),
-        arrayOf(2u, false, null as? UInt?, true),
+    @Test
+    fun `instant read -- after the lock timeout any link takes over`() {
+        val tested = getTested()
+        val node = repeatedLink()
 
-        // when not idle then hopCount should be <= currentHopCount
-        arrayOf(null as? UInt?, false, 0u, false),
-        arrayOf(1u, false, 0u, true),
-        arrayOf(1u, false, 1u, true),
-        arrayOf(1u, false, 2u, false),
+        assertTrue(tested.shouldUpdateInstantRead(directLink, hopCount = null))
+        nowMs += InstantReadArbitrator.LOCK_TIMEOUT_MS
 
-        // when idle then always return true
-        arrayOf(null as? UInt?, true, 0u, true),
-        arrayOf(1u, true, 2u, true),
-    )
+        assertTrue(tested.shouldUpdateInstantRead(node, hopCount = 1u))
+    }
 
     // shouldUpdateDataFromStatusForNormalMode -- called directly here (bypassing
     // shouldUpdateDataFromStatus's mode-based routing, which isn't relevant to this logic).

@@ -57,6 +57,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -64,6 +65,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -117,6 +119,7 @@ class ProbeManagerTest {
 
     private fun status(
         maxSequenceNumber: UInt = 1u,
+        mode: ProbeMode = ProbeMode.NORMAL,
         predictionStatus: PredictionStatus = PredictionStatus.withRandomData(),
         foodSafeData: FoodSafeData? = null,
         probeHighLowAlarmStatus: ProbeHighLowAlarmStatus? = null,
@@ -128,7 +131,7 @@ class ProbeManagerTest {
             temperatures = probeTemperatures,
             id = ProbeID.ID1,
             color = ProbeColor.COLOR1,
-            mode = ProbeMode.NORMAL,
+            mode = mode,
             batteryStatus = ProbeBatteryStatus.OK,
             virtualSensors = ProbeVirtualSensors.DEFAULT,
             predictionStatus = predictionStatus,
@@ -737,5 +740,48 @@ class ProbeManagerTest {
         runCurrent()
 
         assertEquals(requestsBefore + 1, harness.sessionInfoRequests())
+    }
+
+    // Instant Read stale clearing (monitorInstantReadStale)
+
+    private fun TestScope.advanceClock(ms: Long) {
+        nowMs += ms
+        advanceTimeBy(ms)
+        runCurrent()
+    }
+
+    @Test
+    fun `instant read clears once no instant read data has been used for 5 s`() = runTest {
+        mockkStatic(SystemClock::class)
+        every { SystemClock.elapsedRealtime() } answers { nowMs }
+        val (manager, deliverStatus) = probeManagerWithMockedProbe(backgroundScope)
+
+        deliverStatus(status(mode = ProbeMode.INSTANT_READ))
+        runCurrent()
+        assertNotNull(manager.device.instantReadCelsius)
+
+        advanceClock(4_000)
+        assertNotNull(manager.device.instantReadCelsius)
+
+        // cleared even though no other data arrived in the meantime
+        advanceClock(1_000)
+        assertNull(manager.device.instantReadCelsius)
+        assertNull(manager.device.instantReadFahrenheit)
+        assertNull(manager.device.instantReadRawCelsius)
+    }
+
+    @Test
+    fun `instant read stays while instant read data keeps arriving`() = runTest {
+        mockkStatic(SystemClock::class)
+        every { SystemClock.elapsedRealtime() } answers { nowMs }
+        val (manager, deliverStatus) = probeManagerWithMockedProbe(backgroundScope)
+
+        repeat(4) {
+            deliverStatus(status(mode = ProbeMode.INSTANT_READ))
+            runCurrent()
+            advanceClock(2_000)
+        }
+
+        assertNotNull(manager.device.instantReadCelsius)
     }
 }

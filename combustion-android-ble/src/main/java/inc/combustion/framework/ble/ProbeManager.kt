@@ -84,6 +84,7 @@ internal class ProbeManager(
         private const val PROBE_DIRECT_RETRY_INTERVAL_MS =
             UartCapableProbe.PROBE_MESSAGE_RESPONSE_TIMEOUT_MS + 1_000L
         private const val PROBE_INSTANT_READ_IDLE_TIMEOUT_MS = 5000L
+        private const val INSTANT_READ_STALE_POLL_RATE_MS = 1000L
 
         // Minimum time between session info re-reads triggered by a falling sequence number (see
         // rereadSessionInfoIfSequenceFell). Out-of-order statuses relayed over slower MeatNet routes
@@ -337,6 +338,7 @@ internal class ProbeManager(
         }
 
         monitorStatusNotifications()
+        monitorInstantReadStale()
     }
 
 //    fun addJob(serialNumber: String, job: Job) = jobManager.addJob(serialNumber, job)
@@ -1033,12 +1035,48 @@ internal class ProbeManager(
         base.observeProbeStatusUpdates(hopCount = base.hopCount) { status, hopCount ->
             handleProbeStatus(
                 status,
-                hopCount
+                hopCount,
+                link = base,
             )
         }
         base.observeRemoteRssi { rssi ->
             _deviceFlow.update { handleRemoteRssi(base, rssi, it) }
         }
+    }
+
+    /**
+     * Clears the Instant Read temperature once no Instant Read data has been used for
+     * [PROBE_INSTANT_READ_IDLE_TIMEOUT_MS] -- e.g. the probe left Instant Read mode, or went out of
+     * range or offline -- so a stale reading isn't shown as current. Checked on a timer rather
+     * than only when other data arrives, so it also clears when nothing arrives at all.
+     */
+    private fun monitorInstantReadStale() {
+        addJob(
+            serialNumber,
+            scope.launch(CoroutineName("${serialNumber}.monitorInstantReadStale")) {
+                while (isActive) {
+                    delay(INSTANT_READ_STALE_POLL_RATE_MS)
+
+                    if ((_deviceFlow.value.instantReadCelsius != null) &&
+                        instantReadMonitor.isIdle(PROBE_INSTANT_READ_IDLE_TIMEOUT_MS)
+                    ) {
+                        // same lock as handleProbeStatus, so a concurrent status can't write back
+                        // the reading this just cleared from its own copy of the state
+                        handleStatusMutex.withLock {
+                            if (instantReadMonitor.isIdle(PROBE_INSTANT_READ_IDLE_TIMEOUT_MS)) {
+                                _deviceFlow.update {
+                                    it.copy(
+                                        instantReadCelsius = null,
+                                        instantReadFahrenheit = null,
+                                        instantReadRawCelsius = null,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        )
     }
 
     private fun monitorStatusNotifications() {
@@ -1103,10 +1141,14 @@ internal class ProbeManager(
         fetchSessionInfo()
     }
 
-    private suspend fun handleProbeStatus(status: ProbeStatus, hopCount: UInt?) {
+    private suspend fun handleProbeStatus(
+        status: ProbeStatus,
+        hopCount: UInt?,
+        link: ProbeBleDeviceBase,
+    ) {
         Log.v(LOG_TAG, "ProbeManager.handleProbeStatus RECEIVED: $serialNumber $status")
         handleStatusMutex.withLock {
-            val accepted = arbitrator.shouldUpdateDataFromStatus(status, sessionInfo, hopCount)
+            val accepted = arbitrator.shouldUpdateDataFromStatus(status, sessionInfo, link, hopCount)
             if (status.mode == ProbeMode.NORMAL) {
                 if (accepted) {
                     lastAcceptedNormalMaxSequence = status.maxSequenceNumber
@@ -1608,26 +1650,14 @@ internal class ProbeManager(
         sensors: ProbeVirtualSensors,
         overheatingSensors: OverheatingSensors,
         currentProbe: Probe,
-    ): Probe {
-        var probe = currentProbe.copy(
-            temperaturesCelsius = temperatures,
-            virtualSensors = sensors,
-            coreTemperatureCelsius = temperatures.coreTemperatureCelsius(sensors),
-            surfaceTemperatureCelsius = temperatures.surfaceTemperatureCelsius(sensors),
-            ambientTemperatureCelsius = temperatures.ambientTemperatureCelsius(sensors),
-            overheatingSensors = overheatingSensors.values,
-        )
-
-        if (instantReadMonitor.isIdle(PROBE_INSTANT_READ_IDLE_TIMEOUT_MS)) {
-            probe = probe.copy(
-                instantReadCelsius = null,
-                instantReadFahrenheit = null,
-                instantReadRawCelsius = null,
-            )
-        }
-
-        return probe
-    }
+    ): Probe = currentProbe.copy(
+        temperaturesCelsius = temperatures,
+        virtualSensors = sensors,
+        coreTemperatureCelsius = temperatures.coreTemperatureCelsius(sensors),
+        surfaceTemperatureCelsius = temperatures.surfaceTemperatureCelsius(sensors),
+        ambientTemperatureCelsius = temperatures.ambientTemperatureCelsius(sensors),
+        overheatingSensors = overheatingSensors.values,
+    )
 
     private fun updateFoodSafe(
         foodSafeData: FoodSafeData?,

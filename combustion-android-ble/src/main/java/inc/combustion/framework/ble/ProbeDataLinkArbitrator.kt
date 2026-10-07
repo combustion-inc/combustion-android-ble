@@ -42,20 +42,17 @@ import inc.combustion.framework.service.SessionInformation
 import inc.combustion.framework.service.utils.ConcurrentSnapshotMap
 import java.util.concurrent.CopyOnWriteArrayList
 
-// Number of seconds to ignore other lower-priority (higher hop count) sources of information for Instant Read
-private const val INSTANT_READ_IDLE_TIMEOUT = 1000L
-
 internal class ProbeDataLinkArbitrator(
     private val settings: DeviceManager.Settings,
-    private val instantReadIdleMonitor: IdleMonitor = IdleMonitor(),
-    private var currentHopCount: UInt? = null,
+    // shared by advertising packets and status notifications
+    private val instantReadArbitrator: InstantReadArbitrator = InstantReadArbitrator(),
 ) : DataLinkArbitrator<ProbeBleDeviceBase, ProbeAdvertisingData> {
 
     // meatnet network nodes
     private val networkNodes = ConcurrentSnapshotMap<DeviceID, DeviceInformationBleDevice>()
 
     // advertising data arbitration
-    private val advertisingArbitrator = AdvertisingArbitrator()
+    private val advertisingArbitrator = AdvertisingArbitrator(instantReadArbitrator)
 
     // direct ble link to probe
     override var bleDevice: ProbeBleDeviceBase? = null
@@ -370,12 +367,23 @@ internal class ProbeDataLinkArbitrator(
     private var currentStatus: SpecializedDeviceStatus? = null
     private var currentSessionInfo: SessionInformation? = null
 
+    /**
+     * @param link the link [status] arrived on.
+     * @param hopCount the hop count reported with [status] when relayed through MeatNet.
+     */
     fun shouldUpdateDataFromStatus(
         status: ProbeStatus,
         sessionInfo: SessionInformation?,
+        link: ProbeBleDeviceBase,
         hopCount: UInt?,
     ): Boolean = when (status.mode) {
-        ProbeMode.INSTANT_READ -> shouldUpdateDataFromProbeStatusForInstantReadMode(hopCount)
+        ProbeMode.INSTANT_READ -> instantReadArbitrator.shouldUpdate(
+            link = link,
+            // a direct link is identified by its type, not its hop count, which is 0 for both a
+            // direct link and a node one hop from the probe
+            hopCount = if (link is RepeatedProbeBleDevice) (hopCount ?: link.hopCount) else null,
+        )
+
         else -> shouldUpdateDataFromStatusForNormalMode(status, sessionInfo)
     }
 
@@ -408,23 +416,6 @@ internal class ProbeDataLinkArbitrator(
         )
 
         return shouldUpdate
-    }
-
-    private fun shouldUpdateDataFromProbeStatusForInstantReadMode(hopCount: UInt?): Boolean {
-        val immutableCurrentHopCount = currentHopCount
-        return when {
-            // If hopCount is nil, this is direct from a Probe and we should always update.
-            hopCount == null -> true
-            // This hop count is equal or better priority than the last, so update.
-            (immutableCurrentHopCount != null) && (hopCount <= immutableCurrentHopCount) -> true
-            // If we haven't received Instant Read data for more than the lockout period, we should always update.
-            else -> instantReadIdleMonitor.isIdle(INSTANT_READ_IDLE_TIMEOUT)
-        }.also { shouldUpdate ->
-            if (shouldUpdate) {
-                instantReadIdleMonitor.activity()
-                currentHopCount = hopCount
-            }
-        }
     }
 
     override fun shouldUpdateOnRemoteRssi(device: ProbeBleDeviceBase): Boolean {
