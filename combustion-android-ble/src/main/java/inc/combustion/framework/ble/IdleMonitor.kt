@@ -30,6 +30,8 @@ package inc.combustion.framework.ble
 import android.os.SystemClock
 
 class IdleMonitor {
+    // written and read from different threads (e.g. status handling and monitoring loops)
+    @Volatile
     var lastUpdateTime: Long = 0
 
     fun activity() {

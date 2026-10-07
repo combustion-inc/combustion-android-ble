@@ -129,8 +129,9 @@ internal class ProbeManager(
     private val statusNotificationsMonitor = IdleMonitor()
     private val predictionMonitor = IdleMonitor()
 
-    // max sequence number of the last accepted Normal Mode status, and when a falling sequence
-    // number last triggered a session info re-read -- see rereadSessionInfoIfSequenceFell()
+    // max sequence number of the last accepted Normal Mode status in the current session (cleared
+    // when the session changes), and when a falling sequence number last triggered a session info
+    // re-read -- see rereadSessionInfoIfSequenceFell()
     private var lastAcceptedNormalMaxSequence: UInt? = null
     private val sessionInfoRereadMonitor = IdleMonitor()
 
@@ -1114,9 +1115,12 @@ internal class ProbeManager(
     }
 
     /**
-     * Re-reads session info when a rejected Normal Mode [status] has a lower max sequence number
-     * than the last accepted one -- i.e. the probe has likely started a new session (e.g. a reset,
-     * from this or another device) that the cached session info doesn't reflect yet.
+     * Re-reads session info when [status] -- a rejected Normal Mode status, or any Instant Read
+     * status -- has a max sequence number clearly below that of the last accepted Normal Mode
+     * status, i.e. the probe has likely started a new session (e.g. a reset, from this or another
+     * device) that the cached session info doesn't reflect yet. "Clearly" means more than one
+     * below: a status relayed over a slower MeatNet route can arrive one sample behind, while a
+     * new session restarts near zero.
      *
      * The arbitrator only accepts a status if the session info changed or its sequence number
      * increased, and session info is otherwise only re-read on connect or after an accepted
@@ -1129,7 +1133,8 @@ internal class ProbeManager(
      */
     private fun rereadSessionInfoIfSequenceFell(status: ProbeStatus) {
         val lastAccepted = lastAcceptedNormalMaxSequence ?: return
-        if (status.maxSequenceNumber >= lastAccepted) return
+        // compared as a difference, so a sequence number at UInt.MAX_VALUE can't wrap around
+        if (status.maxSequenceNumber >= lastAccepted || lastAccepted - status.maxSequenceNumber < 2u) return
         if (!sessionInfoRereadMonitor.isIdle(SESSION_INFO_REREAD_MIN_INTERVAL_MS)) return
 
         sessionInfoRereadMonitor.activity()
@@ -1149,12 +1154,18 @@ internal class ProbeManager(
         Log.v(LOG_TAG, "ProbeManager.handleProbeStatus RECEIVED: $serialNumber $status")
         handleStatusMutex.withLock {
             val accepted = arbitrator.shouldUpdateDataFromStatus(status, sessionInfo, link, hopCount)
-            if (status.mode == ProbeMode.NORMAL) {
-                if (accepted) {
+            when (status.mode) {
+                ProbeMode.NORMAL -> if (accepted) {
                     lastAcceptedNormalMaxSequence = status.maxSequenceNumber
                 } else {
                     rereadSessionInfoIfSequenceFell(status)
                 }
+
+                // Instant Read statuses are arbitrated without a sequence check, so check them
+                // regardless -- a reset may first show up as Instant Read statuses
+                ProbeMode.INSTANT_READ -> rereadSessionInfoIfSequenceFell(status)
+
+                else -> {}
             }
             if (accepted) {
                 Log.v(LOG_TAG, "ProbeManager.handleProbeStatus: $serialNumber $status")
@@ -1511,6 +1522,9 @@ internal class ProbeManager(
 
                 // if the session information has changed, then we need to finish the previous log session.
                 if (sessionInfo != info) {
+                    // the last accepted sequence number belonged to the previous session
+                    lastAcceptedNormalMaxSequence = null
+
                     logTransferCompleteCallback()
                     logTransferLink = null
                     uploadState = ProbeUploadState.Unavailable

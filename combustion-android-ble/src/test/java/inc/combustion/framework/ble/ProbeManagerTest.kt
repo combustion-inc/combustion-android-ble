@@ -725,6 +725,54 @@ class ProbeManagerTest {
         }
 
     @Test
+    fun `an instant read status whose sequence number falls below the last accepted one re-reads session info`() =
+        runTest {
+            val harness = sessionInfoHarness(backgroundScope)
+            establishSession(harness, maxSequenceNumber = 370u)
+            val requestsBefore = harness.sessionInfoRequests()
+
+            // a reset can first show up as Instant Read statuses, which skip the sequence check
+            harness.deliverStatus(status(maxSequenceNumber = 2u, mode = ProbeMode.INSTANT_READ))
+            runCurrent()
+
+            assertEquals(requestsBefore + 1, harness.sessionInfoRequests())
+        }
+
+    @Test
+    fun `a status one sample behind the last accepted one does not re-read session info`() = runTest {
+        val harness = sessionInfoHarness(backgroundScope)
+        establishSession(harness, maxSequenceNumber = 370u)
+        val requestsBefore = harness.sessionInfoRequests()
+
+        // e.g. relayed over a slower MeatNet route
+        harness.deliverStatus(status(maxSequenceNumber = 369u))
+        runCurrent()
+        harness.deliverStatus(status(maxSequenceNumber = 369u, mode = ProbeMode.INSTANT_READ))
+        runCurrent()
+
+        assertEquals(requestsBefore, harness.sessionInfoRequests())
+    }
+
+    @Test
+    fun `statuses of the new session don't re-read session info again once it's known`() = runTest {
+        val harness = sessionInfoHarness(backgroundScope)
+        establishSession(harness, maxSequenceNumber = 370u)
+        harness.deliverStatus(status(maxSequenceNumber = 2u))
+        runCurrent()
+        harness.sessionInfoCallbacks.last()(true, SessionInformation(sessionID = 2u, samplePeriod = 5000u))
+        runCurrent()
+        val requestsBefore = harness.sessionInfoRequests()
+
+        // past the rate limit, before any Normal Mode status of the new session is accepted: its
+        // low sequence numbers must not be compared against the previous session's
+        nowMs += 10_000
+        harness.deliverStatus(status(maxSequenceNumber = 3u, mode = ProbeMode.INSTANT_READ))
+        runCurrent()
+
+        assertEquals(requestsBefore, harness.sessionInfoRequests())
+    }
+
+    @Test
     fun `the new session is accepted once the re-read returns it`() = runTest {
         val harness = sessionInfoHarness(backgroundScope)
         establishSession(harness, maxSequenceNumber = 370u)
