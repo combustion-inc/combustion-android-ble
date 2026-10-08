@@ -223,6 +223,86 @@ internal class GaugeManager(
         }
     }
 
+    /**
+     * Sends via [commandCoordinator] following the same shape as [setHighLowAlarmStatus] --
+     * Node-only, keyed by [NodeMessageType.SET_GAUGE_ID] and the request ID.
+     *
+     * Confirmed by comparing raw bytes ([Gauge.id]/`GaugeStatus.id`, not [GaugeID]): a gauge can
+     * report an ID beyond the 8 [gaugeId] can ever be, so resolving through [GaugeID] here (which
+     * can return null for that) would make an out-of-range observed value silently fail to
+     * confirm anything, including "something else already changed it." See
+     * [CommandCoordinator.valueConfirmation]'s KDoc.
+     *
+     * Fails immediately, without sending, when status has been received but none has carried an
+     * id ([Gauge.supportsId] false) -- the gauge's firmware predates gauge IDs, or every route to it
+     * drops the id (see `GaugeStatus.id`), so no status could ever confirm the change. A status
+     * without an id likewise never counts as confirmation.
+     */
+    fun setGaugeID(gaugeId: GaugeID, completionHandler: (Boolean) -> Unit) {
+        val current = _deviceFlow.value
+        if (current.hasReceivedStatus && !current.supportsId) {
+            Log.w(LOG_TAG, "setGaugeID: $serialNumber hasn't reported a gauge ID")
+            completionHandler(false)
+            return
+        }
+        // id is only ever set from status (see mergeAdvertisedGaugeId), so null here means no
+        // status yet -- no confirmed starting value.
+        val startingGaugeId = current.id.toExtractedValue()
+
+        scope.launch {
+            val result = commandCoordinator.sendRoutedCommand(
+                targetSerialNumber = serialNumber,
+                send = {
+                    val requestId = makeRequestId()
+                    val key = CommandAttemptKey.Node(
+                        NodeMessageType.SET_GAUGE_ID,
+                        requestId,
+                    )
+                    val onResponse: (Boolean, Any?) -> Unit = { success, _ ->
+                        if (success) {
+                            commandCoordinator.completeAttempt(key, success = true)
+                        }
+                    }
+
+                    val sent = simulatedDevice?.sendSetGaugeID(
+                        gaugeId,
+                        requestId,
+                        onResponse,
+                    ) ?: arbitrator.directLink?.sendSetGaugeID(
+                        gaugeId,
+                        requestId,
+                        onResponse,
+                    ) ?: run {
+                        val nodeLinks = arbitrator.connectedNodeLinks
+                        if (nodeLinks.isEmpty()) {
+                            null
+                        } else {
+                            nodeLinks.forEach { node ->
+                                node.sendSetGaugeID(
+                                    serialNumber,
+                                    gaugeId,
+                                    requestId,
+                                    onResponse,
+                                )
+                            }
+                        }
+                    }
+
+                    if (sent != null) setOf(key) else emptySet()
+                },
+                isConfirmed = CommandCoordinator.valueConfirmation(
+                    startingValue = startingGaugeId,
+                    commandedValue = gaugeId.type,
+                    extractValue = { (it as? GaugeStatus)?.id.toExtractedValue() },
+                ),
+            )
+
+            withContext(Dispatchers.Main.immediate) {
+                completionHandler(result == CommandResult.SUCCESS)
+            }
+        }
+    }
+
     override fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt) {
         val requestId = makeRequestId()
         val callback: suspend (NodeReadGaugeLogsResponse) -> Unit = {
@@ -284,6 +364,14 @@ internal class GaugeManager(
                     status.sessionInformation,
                 )
             ) {
+                // Set id here, before handleSessionInfo's own _deviceFlow update flips
+                // isPlaceholder() to false below -- DeviceIdManager gates on isPlaceholder() and
+                // acts on id (including live SET_GAUGE_ID writes on conflict), so it must never be
+                // able to observe a non-placeholder Gauge whose id hasn't been updated yet.
+                // A status without an id keeps the last known one: it may have been relayed by a
+                // node that drops the byte (see GaugeStatus.id), not sent by legacy firmware.
+                _deviceFlow.update { it.copy(id = status.id ?: it.id) }
+
                 handleSessionInfo(
                     status.sessionInformation,
                     minSequenceNumber = status.minSequenceNumber,
@@ -326,6 +414,15 @@ internal class GaugeManager(
             temperatureCelsius = if (advertisement.gaugeStatusFlags.sensorPresent) advertisement.gaugeTemperature else null,
             highLowAlarmStatus = advertisement.highLowAlarmStatus,
             gaugePrefs = advertisement.gaugePreferences ?: updatedGauge.gaugePrefs,
+            id = mergeAdvertisedGaugeId(updatedGauge.id, advertisement.gaugeId),
         )
     }
 }
+
+/**
+ * Legacy firmware advertises 0 for the gauge id (see [GaugeAdvertisingData.gaugeId]), so an
+ * advertised id is only tracked once status has shown the gauge reports one at all
+ * ([currentId] non-null).
+ */
+internal fun mergeAdvertisedGaugeId(currentId: UByte?, advertisedId: UByte?): UByte? =
+    if (currentId != null) advertisedId ?: currentId else null

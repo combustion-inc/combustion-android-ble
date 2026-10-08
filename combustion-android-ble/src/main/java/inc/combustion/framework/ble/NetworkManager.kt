@@ -203,8 +203,39 @@ internal class NetworkManager(
         },
     )
 
-    private val probeIdManager = ProbeIdManager(::setProbeID, scope)
+    private val probeIdManager = DeviceIdManager<ProbeID, Probe>(
+        logTag = "ProbeIdManager",
+        allIds = ProbeID.entries,
+        extractId = { it.id },
+        // Probe serial numbers are always hex-encoded numbers -- see NodeSetProbeIDRequest --
+        // so a higher numeric value wins. Null if either can't be parsed as one, matching the
+        // pre-generic behavior of aborting rather than guessing.
+        serialNumberWinsOver = { candidate, other ->
+            val candidateNumeric = candidate.toLongOrNull(16)
+            val otherNumeric = other.toLongOrNull(16)
+            if (candidateNumeric == null || otherNumeric == null) null
+            else candidateNumeric > otherNumeric
+        },
+        setId = ::setProbeID,
+        scope = scope,
+    )
     private val setProbeIdLock = Mutex()
+
+    private val gaugeIdManager = DeviceIdManager<GaugeID, Gauge>(
+        logTag = "GaugeIdManager",
+        allIds = GaugeID.entries,
+        // Only a gauge's *known* ID (one of the 8 this enum models) ever competes for a slot --
+        // see Gauge.knownId's KDoc -- so a gauge reporting an ID this manager doesn't recognize
+        // simply never enters conflict tracking.
+        extractId = { it.knownId },
+        // Gauge serial numbers are arbitrary UTF-8 strings (see NodeSetGaugeIDRequest), not
+        // hex-encoded numbers like a probe's, so there's no numeric parse to fail -- plain
+        // lexicographic order always ranks the two.
+        serialNumberWinsOver = { candidate, other -> candidate > other },
+        setId = ::setGaugeID,
+        scope = scope,
+    )
+    private val setGaugeIdLock = Mutex()
 
     var deviceAllowlist: Set<String>? = settings.probeAllowlist
         private set
@@ -322,7 +353,8 @@ internal class NetworkManager(
     val silenceAlarmsRequestFlow: SharedFlow<SilenceAlarmsRequest>
         get() = _silenceAlarmsRequestFlow.asSharedFlow()
 
-    val availableProbeIDs: Flow<List<ProbeID>> = probeIdManager.availableProbeIDs
+    val availableProbeIDs: Flow<List<ProbeID>> = probeIdManager.availableIds
+    val availableGaugeIDs: Flow<List<GaugeID>> = gaugeIdManager.availableIds
 
     init {
         require(context.applicationContext === context) {
@@ -581,11 +613,11 @@ internal class NetworkManager(
         scope.launch(Dispatchers.Main) {
             // Serializes concurrent explicit setProbeID calls against each other's conflict check.
             // Does NOT protect against the gap between dispatching the BLE write and the
-            // observation flow updating knownProbeIdAssignedToDevice; any collision that slips
-            // through that window is caught and resolved by ProbeIdManager.addDevice.
+            // observation flow updating the manager's known-assignment map; any collision that
+            // slips through that window is caught and resolved by DeviceIdManager.addDevice.
             setProbeIdLock.withLock {
                 Log.v(LOG_TAG, "setProbeID: assign $probeId to $serialNumber")
-                if (probeIdManager.hasProbeIdConflict(serialNumber, probeId)) {
+                if (probeIdManager.hasIdConflict(serialNumber, probeId)) {
                     Log.w(
                         LOG_TAG,
                         "setProbeID: unable to perform since there is an existing probe assigned to $probeId",
@@ -652,6 +684,29 @@ internal class NetworkManager(
     internal fun resetProbe(serialNumber: String, completionHandler: (Boolean) -> Unit) {
         probeManagers[serialNumber]?.resetProbe(completionHandler) ?: run {
             completionHandler(false)
+        }
+    }
+
+    internal fun setGaugeID(
+        serialNumber: String,
+        gaugeId: GaugeID,
+        completionHandler: (Boolean) -> Unit,
+    ) {
+        scope.launch(Dispatchers.Main) {
+            // See setProbeID's KDoc for the lock's purpose and its one known gap.
+            setGaugeIdLock.withLock {
+                Log.v(LOG_TAG, "setGaugeID: assign $gaugeId to $serialNumber")
+                if (gaugeIdManager.hasIdConflict(serialNumber, gaugeId)) {
+                    Log.w(
+                        LOG_TAG,
+                        "setGaugeID: unable to perform since there is an existing gauge assigned to $gaugeId",
+                    )
+                    completionHandler(false)
+                } else {
+                    gaugeManagers[serialNumber]?.setGaugeID(gaugeId, completionHandler)
+                        ?: completionHandler(false)
+                }
+            }
         }
     }
 
@@ -763,6 +818,7 @@ internal class NetworkManager(
     fun clearDevices() {
         (probeManagers.snapshot() + gaugeManagers.snapshot() + engineManagers.snapshot()).forEach { (_, manager) -> manager.finish() }
         probeIdManager.clear()
+        gaugeIdManager.clear()
         deviceInformationDevices.snapshot().forEach { (_, device) -> device.finish() }
         deviceInformationDevices.clear()
         probeManagers.clear()
@@ -896,7 +952,7 @@ internal class NetworkManager(
             probeManagers[probeSerialNumber] = manager
             LogManager.instance.manageProbe(scope, manager)
             wifiNodesManager.subscribeToNodeFlow(manager)
-            probeIdManager.addDevice(probeSerialNumber, manager)
+            probeIdManager.addDevice(probeSerialNumber, manager.deviceFlow)
 
             true
         } else {
@@ -928,6 +984,7 @@ internal class NetworkManager(
             LogManager.instance.manageGauge(scope, manager)
 
             wifiNodesManager.subscribeToNodeFlow(manager)
+            gaugeIdManager.addDevice(gaugeSerialNumber, manager.deviceFlow)
             true
         } else {
             false
@@ -1302,9 +1359,11 @@ internal class NetworkManager(
             ?: gaugeManagers.remove(serialNumber)
             ?: engineManagers.remove(serialNumber)
 
-        // Remove from probeId logic
+        // Remove from id-conflict tracking
         if (deviceManager is ProbeManager) {
             probeIdManager.removeDevice(serialNumber)
+        } else if (deviceManager is GaugeManager) {
+            gaugeIdManager.removeDevice(serialNumber)
         }
 
         val deviceId = deviceManager?.device?.baseDevice?.id
