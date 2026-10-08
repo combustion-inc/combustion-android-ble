@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: ProbeID.kt
- * Author: https://github.com/miwright2
+ * File: GaugeID.kt
+ * Author:
  *
  * MIT License
  *
- * Copyright (c) 2022. Combustion Inc.
+ * Copyright (c) 2026. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -27,10 +27,16 @@
  */
 package inc.combustion.framework.service
 
-import inc.combustion.framework.ble.shl
-import inc.combustion.framework.ble.shr
-
-enum class ProbeID(override val type: UByte) : IdTag {
+/**
+ * The 1-8 ID a gauge can be assigned via [DeviceManager.setGaugeID], distinct from [ProbeID] --
+ * see [IdTag]'s KDoc -- even though the two share the same underlying encoding.
+ *
+ * Unlike [ProbeID]'s [fromUByte][ProbeID.fromUByte], this decodes a full, dedicated status byte
+ * (see `GaugeStatus.id`) rather than bits packed alongside other fields, so no mask/shift is
+ * needed -- see [fromUByte] for why it also doesn't fall back to [ID1] the way [ProbeID.fromRaw]
+ * does.
+ */
+enum class GaugeID(override val type: UByte) : IdTag {
     ID1(0x00u),
     ID2(0x01u),
     ID3(0x02u),
@@ -41,25 +47,18 @@ enum class ProbeID(override val type: UByte) : IdTag {
     ID8(0x07u);
 
     companion object {
-        private const val PROBE_ID_MASK = 0x07
-        private const val PROBE_ID_SHIFT = 5
+        /**
+         * Returns null for a byte outside 0-7. Unlike [ProbeID.fromRaw]'s fallback to [ID1], this
+         * isn't defensive: a gauge genuinely supports more IDs than this 8-entry enum models, so
+         * an out-of-range byte is a real device state, not corrupt/legacy data -- silently
+         * reporting it as ID1 would misrepresent the device. Callers that need to show *something*
+         * for the picker's 8 options should treat null as "none selected," not coerce to ID1 --
+         * see `Gauge.knownId`.
+         */
+        fun fromUByte(byte: UByte): GaugeID? = idTagFromType(entries, byte)
 
-        fun fromUByte(byte: UByte) : ProbeID {
-            val rawProbeID = ((byte.toUShort() and (PROBE_ID_MASK.toUShort() shl PROBE_ID_SHIFT)) shr PROBE_ID_SHIFT).toUInt()
-            return fromRaw(rawProbeID)
-        }
-
-        fun fromRaw(raw: UInt) : ProbeID {
-            // Out-of-range values fall back to ID1 -- a defensive fallback, unlike
-            // GaugeID.fromUByte's genuine "not one of the 8" null (a gauge, unlike a probe, can be
-            // assigned an ID this enum doesn't model at all). Guard before narrowing: toUByte()
-            // would otherwise wrap e.g. 0x101 to 0x01 (ID2).
-            if (raw > 0xFFu) return ID1
-            return idTagFromType(entries, raw.toUByte()) ?: ID1
-        }
-
-        fun stringValues() : List<String> {
-            return values().toList().map { it.toString() }
+        fun stringValues(): List<String> {
+            return entries.map { it.toString() }
         }
     }
 }

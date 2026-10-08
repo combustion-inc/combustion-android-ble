@@ -271,6 +271,15 @@ internal open class NodeResponse(
                     )
                 }
 
+                NodeMessageType.SET_GAUGE_ID -> {
+                    NodeSetGaugeIDResponse.fromData(
+                        success,
+                        requestId,
+                        responseId,
+                        payloadLength,
+                    )
+                }
+
                 NodeMessageType.SILENCE_ALARMS -> {
                     NodeSilenceAlarmsResponse.fromData(
                         data,

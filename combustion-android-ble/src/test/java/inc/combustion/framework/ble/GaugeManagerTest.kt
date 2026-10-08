@@ -31,6 +31,7 @@ package inc.combustion.framework.ble
 import android.util.Log
 import inc.combustion.framework.ble.device.SimulatedGaugeBleDevice
 import inc.combustion.framework.service.DeviceManager
+import inc.combustion.framework.service.GaugeID
 import inc.combustion.framework.service.GaugeStatusFlags
 import inc.combustion.framework.service.HighLowAlarmStatus
 import inc.combustion.framework.service.HopCount
@@ -50,7 +51,9 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -70,6 +73,7 @@ class GaugeManagerTest {
         every { Log.d(any(), any()) } returns 0
         every { Log.i(any(), any()) } returns 0
         every { Log.e(any(), any()) } returns 0
+        every { Log.w(any(), any<String>()) } returns 0
 
         // setHighLowAlarmStatus (and SimulatedGaugeBleDevice's own completion callback) dispatch
         // onto Dispatchers.Main -- tie it to the test's virtual-time scheduler.
@@ -94,6 +98,7 @@ class GaugeManagerTest {
         sessionID: UInt = 1u,
         maxSequenceNumber: UInt = 1u,
         highLowAlarmStatus: HighLowAlarmStatus = HighLowAlarmStatus.DEFAULT,
+        id: UByte? = 0u,
     ): GaugeStatus = GaugeStatus(
         sessionInformation = SessionInformation(sessionID = sessionID, samplePeriod = 1u),
         samplePeriod = 1u,
@@ -104,6 +109,7 @@ class GaugeManagerTest {
         highLowAlarmStatus = highLowAlarmStatus,
         isNewRecord = false,
         hopCount = HopCount.HOP1,
+        id = id,
     )
 
     // setHighLowAlarmStatus
@@ -305,5 +311,120 @@ class GaugeManagerTest {
             runCurrent()
 
             assertNull(result)
+        }
+
+    // gauge id / legacy firmware
+
+    @Test
+    fun `a status without an id leaves the gauge with no id and supportsId false`() =
+        runTest {
+            val manager = manager(backgroundScope)
+
+            manager.observedGaugeStatus(gaugeStatus(id = null))
+            runCurrent()
+
+            val gauge = manager.deviceFlow.value
+            assertNull(gauge.id)
+            assertNull(gauge.knownId)
+            assertFalse(gauge.supportsId)
+        }
+
+    @Test
+    fun `a status with id 0 reports ID1 and supportsId true`() =
+        runTest {
+            val manager = manager(backgroundScope)
+
+            manager.observedGaugeStatus(gaugeStatus(id = 0u))
+            runCurrent()
+
+            val gauge = manager.deviceFlow.value
+            assertEquals(GaugeID.ID1, gauge.knownId)
+            assertTrue(gauge.supportsId)
+        }
+
+    @Test
+    fun `a status without an id keeps the id from an earlier status -- relayed by a node that drops it`() =
+        runTest {
+            val manager = manager(backgroundScope)
+
+            manager.observedGaugeStatus(gaugeStatus(maxSequenceNumber = 1u, id = 3u))
+            runCurrent()
+            manager.observedGaugeStatus(gaugeStatus(maxSequenceNumber = 2u, id = null))
+            runCurrent()
+
+            assertEquals(3u.toUByte(), manager.deviceFlow.value.id)
+            assertTrue(manager.deviceFlow.value.supportsId)
+        }
+
+    @Test
+    fun `an advertised id is ignored until a status has carried one -- legacy firmware advertises 0`() {
+        assertNull(mergeAdvertisedGaugeId(currentId = null, advertisedId = 0u))
+    }
+
+    @Test
+    fun `an advertised id updates the id once a status has carried one`() {
+        assertEquals(5u.toUByte(), mergeAdvertisedGaugeId(currentId = 2u, advertisedId = 5u))
+    }
+
+    @Test
+    fun `a missing advertised id keeps the current id`() {
+        assertEquals(2u.toUByte(), mergeAdvertisedGaugeId(currentId = 2u, advertisedId = null))
+    }
+
+    @Test
+    fun `an advertised 0 updates a known id -- the gauge was set to ID1`() {
+        assertEquals(0u.toUByte(), mergeAdvertisedGaugeId(currentId = 2u, advertisedId = 0u))
+    }
+
+    @Test
+    fun `setGaugeID fails immediately on a gauge whose firmware does not report an id`() =
+        runTest {
+            val manager = manager(backgroundScope)
+            manager.observedGaugeStatus(gaugeStatus(id = null))
+            runCurrent()
+
+            var result: Boolean? = null
+            manager.setGaugeID(GaugeID.ID1) { result = it }
+
+            // No retry loop or 30s timeout -- the completion is synchronous.
+            assertEquals(false, result)
+        }
+
+    @Test
+    fun `setGaugeID is not confirmed by a status that carries no id`() =
+        runTest {
+            // Regression test: legacy status previously parsed its missing id as 0, so commanding
+            // ID1 was "confirmed" by any later status from a gauge that can't apply it at all.
+            val manager = manager(backgroundScope)
+
+            var result: Boolean? = null
+            manager.setGaugeID(GaugeID.ID1) { result = it }
+            runCurrent()
+
+            advanceTimeBy(2_000)
+            manager.observedGaugeStatus(gaugeStatus(maxSequenceNumber = 1u, id = null))
+            runCurrent()
+
+            assertNull(result)
+        }
+
+    @Test
+    fun `setGaugeID completes early from a status confirming the commanded id`() =
+        runTest {
+            val manager = manager(backgroundScope)
+            manager.observedGaugeStatus(gaugeStatus(maxSequenceNumber = 1u, id = 0u))
+            runCurrent()
+
+            var result: Boolean? = null
+            manager.setGaugeID(GaugeID.ID3) { result = it }
+            runCurrent()
+
+            advanceTimeBy(2_000)
+            manager.observedGaugeStatus(
+                gaugeStatus(maxSequenceNumber = 2u, id = GaugeID.ID3.type),
+            )
+            runCurrent()
+
+            assertEquals(true, result)
         }
 }
