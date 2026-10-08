@@ -43,6 +43,7 @@ class GaugeAdvertisingDataTest {
         statusFlags: UByte = 0b0000_0001u, // sensorPresent
         highLowAlarmStatus: HighLowAlarmStatus = HighLowAlarmStatus.DEFAULT,
         preferences: UByte = 0b0000_0001u, // highRadioPower
+        id: UByte? = null,
         size: Int = 20,
     ): UByteArray {
         val data = UByteArray(size)
@@ -56,6 +57,7 @@ class GaugeAdvertisingDataTest {
         highLowAlarmStatus.toRawData().copyInto(data, destinationOffset = 15)
 
         if (size > 19) data[19] = preferences
+        if (size > 20 && id != null) data[20] = id
 
         return data
     }
@@ -158,6 +160,32 @@ class GaugeAdvertisingDataTest {
         )
 
         assertNull(advertisingData.gaugePreferences)
+    }
+
+    @Test
+    fun `create parses gauge id when byte is present`() {
+        val advertisingData = GaugeAdvertisingData.create(
+            address = "AA:BB:CC:DD:EE:FF",
+            name = "Gauge",
+            rssi = -50,
+            isConnectable = true,
+            manufacturerData = buildManufacturerData(id = 4u, size = 21),
+        )
+
+        assertEquals(4u.toUByte(), advertisingData.gaugeId)
+    }
+
+    @Test
+    fun `create leaves gauge id null when byte is not present`() {
+        val advertisingData = GaugeAdvertisingData.create(
+            address = "AA:BB:CC:DD:EE:FF",
+            name = "Gauge",
+            rssi = -50,
+            isConnectable = true,
+            manufacturerData = buildManufacturerData(size = 20),
+        )
+
+        assertNull(advertisingData.gaugeId)
     }
 
     @Test

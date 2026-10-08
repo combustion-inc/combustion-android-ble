@@ -45,6 +45,14 @@ internal class GaugeAdvertisingData(
     val gaugeStatusFlags: GaugeStatusFlags,
     val highLowAlarmStatus: HighLowAlarmStatus,
     val gaugePreferences: GaugePreferences?,
+    /**
+     * Raw wire value, not [GaugeID] -- see `GaugeStatus.id`'s KDoc for why. Can't distinguish
+     * legacy firmware: GAU-96 repurposed a reserved byte of the advertising data, which older
+     * firmware always sends zeroed, so a legacy gauge advertises 0 here, indistinguishable from a
+     * genuine ID1. Only trust this once status has shown the gauge reports an id -- see
+     * `mergeAdvertisedGaugeId`. Null only for a malformed, short packet.
+     */
+    val gaugeId: UByte?,
 ) : BaseAdvertisingData(
     mac = mac,
     name = name,
@@ -60,6 +68,7 @@ internal class GaugeAdvertisingData(
         private val RESERVED_RANGE = 14..14 // previously BATTERY_PERCENTAGE_RANGE
         private val HIGH_LOW_ALARM_RANGE = 15..18
         private val PREFERENCES_RANGE = 19..19
+        private val ID_RANGE = 20..20
 
         internal fun create(
             address: Identifier,
@@ -90,6 +99,12 @@ internal class GaugeAdvertisingData(
                 null
             }
 
+            val gaugeId = if (manufacturerData.size > ID_RANGE.last) {
+                manufacturerData.sliceArray(ID_RANGE)[0]
+            } else {
+                null
+            }
+
             return GaugeAdvertisingData(
                 mac = address,
                 name = name,
@@ -100,6 +115,7 @@ internal class GaugeAdvertisingData(
                 gaugeStatusFlags = gaugeStatusFlags,
                 highLowAlarmStatus = highLowAlarmStatus,
                 gaugePreferences = preferences,
+                gaugeId = gaugeId,
             )
         }
     }

@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: GaugeUartCapable.kt
+ * File: NodeSetGaugeIDResponse.kt
  * Author:
  *
  * MIT License
  *
- * Copyright (c) 2025. Combustion Inc.
+ * Copyright (c) 2026. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -26,30 +26,43 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble.device
+package inc.combustion.framework.ble.uart.meatnet
 
-import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
-import inc.combustion.framework.service.GaugeID
-import inc.combustion.framework.service.HighLowAlarmStatus
+internal class NodeSetGaugeIDResponse(
+    success: Boolean,
+    requestId: UInt,
+    responseId: UInt,
+    payloadLength: UByte,
+) : NodeResponse(
+    success,
+    requestId,
+    responseId,
+    payloadLength,
+    NodeMessageType.SET_GAUGE_ID,
+) {
+    override fun toString(): String {
+        return "${super.toString()} $success"
+    }
 
-internal interface UartCapableGauge : UartCapableSpecializedDevice {
+    companion object {
+        private const val PAYLOAD_LENGTH: UByte = 0u
 
-    fun sendSetHighLowAlarmStatus(
-        highLowAlarmStatus: HighLowAlarmStatus,
-        reqId: UInt?,
-        callback: ((Boolean, Any?) -> Unit)?,
-    )
+        fun fromData(
+            success: Boolean,
+            requestId: UInt,
+            responseId: UInt,
+            payloadLength: UByte,
+        ): NodeSetGaugeIDResponse? {
+            if (payloadLength < PAYLOAD_LENGTH) {
+                return null
+            }
 
-    fun sendSetGaugeID(
-        gaugeId: GaugeID,
-        reqId: UInt?,
-        callback: ((Boolean, Any?) -> Unit)?,
-    )
-
-    fun sendGaugeLogRequest(
-        minSequence: UInt,
-        maxSequence: UInt,
-        reqId: UInt?,
-        callback: suspend (NodeReadGaugeLogsResponse) -> Unit,
-    )
+            return NodeSetGaugeIDResponse(
+                success,
+                requestId,
+                responseId,
+                payloadLength
+            )
+        }
+    }
 }

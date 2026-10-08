@@ -1,11 +1,11 @@
 /*
  * Project: Combustion Inc. Android Framework
- * File: GaugeUartCapable.kt
+ * File: ProbeIDTest.kt
  * Author:
  *
  * MIT License
  *
- * Copyright (c) 2025. Combustion Inc.
+ * Copyright (c) 2026. Combustion Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -26,30 +26,28 @@
  * SOFTWARE.
  */
 
-package inc.combustion.framework.ble.device
+package inc.combustion.framework.service
 
-import inc.combustion.framework.ble.uart.meatnet.NodeReadGaugeLogsResponse
-import inc.combustion.framework.service.GaugeID
-import inc.combustion.framework.service.HighLowAlarmStatus
+import org.junit.Assert.assertEquals
+import org.junit.Test
 
-internal interface UartCapableGauge : UartCapableSpecializedDevice {
+class ProbeIDTest {
 
-    fun sendSetHighLowAlarmStatus(
-        highLowAlarmStatus: HighLowAlarmStatus,
-        reqId: UInt?,
-        callback: ((Boolean, Any?) -> Unit)?,
-    )
+    @Test
+    fun `fromRaw maps 0-7 to ID1-ID8`() {
+        ProbeID.entries.forEachIndexed { index, id ->
+            assertEquals(id, ProbeID.fromRaw(index.toUInt()))
+        }
+    }
 
-    fun sendSetGaugeID(
-        gaugeId: GaugeID,
-        reqId: UInt?,
-        callback: ((Boolean, Any?) -> Unit)?,
-    )
+    @Test
+    fun `fromRaw falls back to ID1 for values above 7`() {
+        assertEquals(ProbeID.ID1, ProbeID.fromRaw(0x08u))
+        assertEquals(ProbeID.ID1, ProbeID.fromRaw(0xFFu))
+    }
 
-    fun sendGaugeLogRequest(
-        minSequence: UInt,
-        maxSequence: UInt,
-        reqId: UInt?,
-        callback: suspend (NodeReadGaugeLogsResponse) -> Unit,
-    )
+    @Test
+    fun `fromRaw falls back to ID1 for values above 0xFF rather than wrapping`() {
+        assertEquals(ProbeID.ID1, ProbeID.fromRaw(0x101u))
+    }
 }

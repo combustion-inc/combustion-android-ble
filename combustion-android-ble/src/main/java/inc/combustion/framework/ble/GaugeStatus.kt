@@ -45,6 +45,17 @@ data class GaugeStatus(
     val highLowAlarmStatus: HighLowAlarmStatus,
     val isNewRecord: Boolean,
     val hopCount: HopCount,
+    /**
+     * Raw wire value, not [GaugeID] -- a gauge can be assigned an ID beyond what that 8-entry
+     * enum models (see [GaugeID.fromUByte]'s KDoc), so this stays a [UByte] here and is resolved
+     * to a [GaugeID]? only where something needs the 8-way picker's shape (see `Gauge.knownId`).
+     * Null means this message didn't carry the trailing id byte: either the gauge's firmware
+     * predates it (pre-GAU-96), or a MeatNet node on older shared firmware relayed it -- such a
+     * node truncates a payload longer than its own struct to that struct's size before
+     * rebroadcasting, dropping the byte. So null is "not known from this message," never "the
+     * gauge doesn't support IDs" -- see `GaugeManager.handleStatus`. A present 0 is a genuine ID1.
+     */
+    val id: UByte?,
 ) : SpecializedDeviceStatus {
 
     override val mode: ProbeMode = ProbeMode.NORMAL
@@ -60,8 +71,13 @@ data class GaugeStatus(
         private val HIGH_LOW_ALARM_RANGE = 18..21
         private val NEW_RECORD_FLAG_RANGE = 22..22
         private val HOP_COUNT_RANGE = 23..23
+        private val GAUGE_ID_RANGE = 24..24
 
-        val RAW_SIZE = NEW_RECORD_FLAG_RANGE.last + 1
+        // HOP_COUNT_RANGE, not NEW_RECORD_FLAG_RANGE: fromRawData slices hopCount unconditionally
+        // (unlike the id byte right after it), so the minimum accepted size must cover it too, or
+        // a packet of exactly NEW_RECORD_FLAG_RANGE.last + 1 bytes would pass this check and then
+        // throw slicing HOP_COUNT_RANGE.
+        val RAW_SIZE = HOP_COUNT_RANGE.last + 1
 
         fun fromRawData(data: UByteArray): GaugeStatus? {
             if (data.size < RAW_SIZE) return null
@@ -87,10 +103,23 @@ data class GaugeStatus(
                 data.sliceArray(HIGH_LOW_ALARM_RANGE)
             )
 
-            val isNewRecord: Boolean =
-                data.getLittleEndianUShortAt(NEW_RECORD_FLAG_RANGE.first).toInt() == 1
+            // A single byte, not getLittleEndianUShortAt: NEW_RECORD_FLAG_RANGE is one byte, and
+            // reading it as a UShort pulls in HOP_COUNT_RANGE's byte right after it as the high
+            // byte, so the comparison to 1 silently fails whenever hop count isn't HOP1 (whose top
+            // two bits are the only ones HopCount.fromUByte's mask/shift constrains to zero).
+            val isNewRecord: Boolean = data[NEW_RECORD_FLAG_RANGE.first].toInt() == 1
 
             val hopCount: HopCount = HopCount.fromUByte(data.sliceArray(HOP_COUNT_RANGE)[0])
+
+            // The trailing id byte is missing from older gauge firmware and from status relayed by
+            // older nodes (see the id KDoc) -- report null rather than rejecting the packet or
+            // defaulting to 0, which would masquerade as a genuine ID1 to ID-conflict resolution
+            // and SET_GAUGE_ID confirmation.
+            val id: UByte? = if (data.size > GAUGE_ID_RANGE.last) {
+                data.sliceArray(GAUGE_ID_RANGE)[0]
+            } else {
+                null
+            }
 
             return GaugeStatus(
                 sessionInformation = sessionInformation,
@@ -102,6 +131,7 @@ data class GaugeStatus(
                 highLowAlarmStatus = highLowAlarmStatus,
                 isNewRecord = isNewRecord,
                 hopCount = hopCount,
+                id = id,
             )
         }
     }

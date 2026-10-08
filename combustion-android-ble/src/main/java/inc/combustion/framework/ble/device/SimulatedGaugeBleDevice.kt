@@ -56,6 +56,7 @@ internal class SimulatedGaugeBleDevice(
         fun randomAdvertisement(
             mac: String,
             serialNumber: String,
+            gaugeId: GaugeID = GaugeID.ID1,
         ): GaugeAdvertisingData {
             return GaugeAdvertisingData(
                 mac = mac,
@@ -84,13 +85,21 @@ internal class SimulatedGaugeBleDevice(
                     ),
                 ),
                 gaugePreferences = GaugePreferences.DEFAULT,
+                gaugeId = gaugeId.type,
             )
         }
     }
 
+    // Mirrors SimulatedProbeBleDevice's probeID field: sendSetGaugeID updates this, and
+    // generateAdvertisement/generateStatus (called fresh on each periodic tick, see
+    // SimulatedNodeHybridBleDevice) read it back, so a simulated gauge's reported id actually
+    // reflects a prior setGaugeID call instead of staying hardcoded at ID1 forever.
+    private var gaugeId = GaugeID.ID1
+
     override val productType: CombustionProductType = CombustionProductType.GAUGE
 
-    override fun generateAdvertisement(): DeviceAdvertisingData = randomAdvertisement(mac, serialNumber)
+    override fun generateAdvertisement(): DeviceAdvertisingData =
+        randomAdvertisement(mac, serialNumber, gaugeId)
 
     override fun generateStatus(): SpecializedDeviceStatus = GaugeStatus(
         sessionInformation = SessionInformation(sessionID = 1u, samplePeriod = 1u),
@@ -119,6 +128,7 @@ internal class SimulatedGaugeBleDevice(
         ),
         isNewRecord = true,
         hopCount = HopCount.HOP1,
+        id = gaugeId.type,
     )
 
     override fun sendSetHighLowAlarmStatus(
@@ -131,6 +141,17 @@ internal class SimulatedGaugeBleDevice(
         // return value, i.e. after this function -- including any synchronous callback -- has
         // already run), completing the command before its attempt key is even registered and
         // losing the completion signal entirely.
+        scope.launch { callback?.let { it(true, null) } }
+    }
+
+    override fun sendSetGaugeID(
+        gaugeId: GaugeID,
+        reqId: UInt?,
+        callback: ((Boolean, Any?) -> Unit)?,
+    ) {
+        this.gaugeId = gaugeId
+        // See sendSetHighLowAlarmStatus's comment: dispatched via scope.launch, not invoked
+        // synchronously, to avoid racing CommandCoordinator.sendRoutedCommand's registerAttempt.
         scope.launch { callback?.let { it(true, null) } }
     }
 
