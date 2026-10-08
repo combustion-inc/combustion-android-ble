@@ -84,6 +84,15 @@ internal class ProbeManager(
         private const val PROBE_DIRECT_RETRY_INTERVAL_MS =
             UartCapableProbe.PROBE_MESSAGE_RESPONSE_TIMEOUT_MS + 1_000L
         private const val PROBE_INSTANT_READ_IDLE_TIMEOUT_MS = 5000L
+        private const val INSTANT_READ_STALE_POLL_RATE_MS = 1000L
+
+        // Minimum time between session info re-reads triggered by a falling sequence number (see
+        // rereadSessionInfoIfSequenceFell). Out-of-order statuses relayed over slower MeatNet routes
+        // can trigger it repeatedly, and a direct-link request is matched under a fixed null key, so
+        // the previous one must have timed out (PROBE_MESSAGE_RESPONSE_TIMEOUT_MS) before the next
+        // is sent, or the next fails immediately and reads as a session info timeout -- the same
+        // reason as PROBE_DIRECT_RETRY_INTERVAL_MS.
+        private const val SESSION_INFO_REREAD_MIN_INTERVAL_MS = PROBE_DIRECT_RETRY_INTERVAL_MS
     }
 
     // encapsulates logic for managing network data links
@@ -119,6 +128,16 @@ internal class ProbeManager(
     private val instantReadMonitor = IdleMonitor()
     private val statusNotificationsMonitor = IdleMonitor()
     private val predictionMonitor = IdleMonitor()
+
+    // max sequence number of the last accepted Normal Mode status in the current session (cleared
+    // when the session changes), and when a falling sequence number last triggered a session info
+    // re-read -- see rereadSessionInfoIfSequenceFell()
+    private var lastAcceptedNormalMaxSequence: UInt? = null
+    private val sessionInfoRereadMonitor = IdleMonitor()
+
+    // set while a re-read triggered by a falling sequence number awaits its response -- see
+    // handleSessionInfo(), which resets the sequence bookkeeping if the session turns out unchanged
+    private val fallingSequenceRereadPending = AtomicBoolean(false)
 
     // holds the current state and data for this probe
     private val _deviceFlow = MutableStateFlow(Probe.create(serialNumber = serialNumber))
@@ -324,6 +343,7 @@ internal class ProbeManager(
         }
 
         monitorStatusNotifications()
+        monitorInstantReadStale()
     }
 
 //    fun addJob(serialNumber: String, job: Job) = jobManager.addJob(serialNumber, job)
@@ -1020,12 +1040,48 @@ internal class ProbeManager(
         base.observeProbeStatusUpdates(hopCount = base.hopCount) { status, hopCount ->
             handleProbeStatus(
                 status,
-                hopCount
+                hopCount,
+                link = base,
             )
         }
         base.observeRemoteRssi { rssi ->
             _deviceFlow.update { handleRemoteRssi(base, rssi, it) }
         }
+    }
+
+    /**
+     * Clears the Instant Read temperature once no Instant Read data has been used for
+     * [PROBE_INSTANT_READ_IDLE_TIMEOUT_MS] -- e.g. the probe left Instant Read mode, or went out of
+     * range or offline -- so a stale reading isn't shown as current. Checked on a timer rather
+     * than only when other data arrives, so it also clears when nothing arrives at all.
+     */
+    private fun monitorInstantReadStale() {
+        addJob(
+            serialNumber,
+            scope.launch(CoroutineName("${serialNumber}.monitorInstantReadStale")) {
+                while (isActive) {
+                    delay(INSTANT_READ_STALE_POLL_RATE_MS)
+
+                    if ((_deviceFlow.value.instantReadCelsius != null) &&
+                        instantReadMonitor.isIdle(PROBE_INSTANT_READ_IDLE_TIMEOUT_MS)
+                    ) {
+                        // same lock as handleProbeStatus, so a concurrent status can't write back
+                        // the reading this just cleared from its own copy of the state
+                        handleStatusMutex.withLock {
+                            if (instantReadMonitor.isIdle(PROBE_INSTANT_READ_IDLE_TIMEOUT_MS)) {
+                                _deviceFlow.update {
+                                    it.copy(
+                                        instantReadCelsius = null,
+                                        instantReadFahrenheit = null,
+                                        instantReadRawCelsius = null,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        )
     }
 
     private fun monitorStatusNotifications() {
@@ -1062,10 +1118,63 @@ internal class ProbeManager(
         )
     }
 
-    private suspend fun handleProbeStatus(status: ProbeStatus, hopCount: UInt?) {
+    /**
+     * Re-reads session info when [status] -- a rejected Normal Mode status, or any Instant Read
+     * status -- has a max sequence number clearly below that of the last accepted Normal Mode
+     * status, i.e. the probe has likely started a new session (e.g. a reset, from this or another
+     * device) that the cached session info doesn't reflect yet. "Clearly" means more than one
+     * below: a status relayed over a slower MeatNet route can arrive one sample behind, while a
+     * new session restarts near zero.
+     *
+     * The arbitrator only accepts a status if the session info changed or its sequence number
+     * increased, and session info is otherwise only re-read on connect or after an accepted
+     * status. A reset reboots the probe, which forces a reconnect on a direct link -- but through a
+     * MeatNet node the link stays up, so without this every status of the new session would be
+     * rejected until its sequence number passed the old session's.
+     *
+     * Rate-limited to one re-read per [SESSION_INFO_REREAD_MIN_INTERVAL_MS]. If the re-read finds
+     * the same session, the last accepted sequence number was wrong (e.g. a bad status accepted
+     * with too high a value), and [handleSessionInfo] resets the sequence bookkeeping so the
+     * session's real statuses are accepted again rather than re-read forever.
+     */
+    private fun rereadSessionInfoIfSequenceFell(status: ProbeStatus) {
+        val lastAccepted = lastAcceptedNormalMaxSequence ?: return
+        // compared as a difference, so a sequence number at UInt.MAX_VALUE can't wrap around
+        if (status.maxSequenceNumber >= lastAccepted || lastAccepted - status.maxSequenceNumber < 2u) return
+        if (!sessionInfoRereadMonitor.isIdle(SESSION_INFO_REREAD_MIN_INTERVAL_MS)) return
+
+        sessionInfoRereadMonitor.activity()
+        fallingSequenceRereadPending.set(true)
+        Log.i(
+            LOG_TAG,
+            "PM($serialNumber): status sequence ${status.maxSequenceNumber} fell below last accepted " +
+                "$lastAccepted on session ${sessionInfo?.sessionID}, re-reading session info."
+        )
+        fetchSessionInfo()
+    }
+
+    private suspend fun handleProbeStatus(
+        status: ProbeStatus,
+        hopCount: UInt?,
+        link: ProbeBleDeviceBase,
+    ) {
         Log.v(LOG_TAG, "ProbeManager.handleProbeStatus RECEIVED: $serialNumber $status")
         handleStatusMutex.withLock {
-            if (arbitrator.shouldUpdateDataFromStatus(status, sessionInfo, hopCount)) {
+            val accepted = arbitrator.shouldUpdateDataFromStatus(status, sessionInfo, link, hopCount)
+            when (status.mode) {
+                ProbeMode.NORMAL -> if (accepted) {
+                    lastAcceptedNormalMaxSequence = status.maxSequenceNumber
+                } else {
+                    rereadSessionInfoIfSequenceFell(status)
+                }
+
+                // Instant Read statuses are arbitrated without a sequence check, so check them
+                // regardless -- a reset may first show up as Instant Read statuses
+                ProbeMode.INSTANT_READ -> rereadSessionInfoIfSequenceFell(status)
+
+                else -> {}
+            }
+            if (accepted) {
                 Log.v(LOG_TAG, "ProbeManager.handleProbeStatus: $serialNumber $status")
 
                 var updatedProbe = _deviceFlow.value.copy(hasReceivedStatus = true)
@@ -1396,6 +1505,9 @@ internal class ProbeManager(
     }
 
     private fun handleSessionInfo(status: Boolean, any: Any?) {
+        // cleared on any response, so a failed re-read is simply retried on the next fall
+        val afterFallingSequence = fallingSequenceRereadPending.getAndSet(false)
+
         // if we've timed out waiting for the message, then use that state
         // to help us identify NO_ROUTE connection state.
         if (!status) {
@@ -1420,6 +1532,9 @@ internal class ProbeManager(
 
                 // if the session information has changed, then we need to finish the previous log session.
                 if (sessionInfo != info) {
+                    // the last accepted sequence number belonged to the previous session
+                    lastAcceptedNormalMaxSequence = null
+
                     logTransferCompleteCallback()
                     logTransferLink = null
                     uploadState = ProbeUploadState.Unavailable
@@ -1428,6 +1543,17 @@ internal class ProbeManager(
                     maxSequence = null
 
                     Log.i(LOG_TAG, "PM($serialNumber): finished log transfer.")
+                } else if (afterFallingSequence) {
+                    // Same session, yet its statuses fell below the last accepted sequence
+                    // number: that number was wrong (e.g. a bad status accepted with too high a
+                    // value), so start over from the next status instead of rejecting them all.
+                    Log.i(
+                        LOG_TAG,
+                        "PM($serialNumber): session ${info.sessionID} unchanged after sequence " +
+                            "fell below last accepted $lastAcceptedNormalMaxSequence, resetting it."
+                    )
+                    lastAcceptedNormalMaxSequence = null
+                    arbitrator.resetNormalModeStatus()
                 }
 
                 sessionInfo = info
@@ -1559,26 +1685,14 @@ internal class ProbeManager(
         sensors: ProbeVirtualSensors,
         overheatingSensors: OverheatingSensors,
         currentProbe: Probe,
-    ): Probe {
-        var probe = currentProbe.copy(
-            temperaturesCelsius = temperatures,
-            virtualSensors = sensors,
-            coreTemperatureCelsius = temperatures.coreTemperatureCelsius(sensors),
-            surfaceTemperatureCelsius = temperatures.surfaceTemperatureCelsius(sensors),
-            ambientTemperatureCelsius = temperatures.ambientTemperatureCelsius(sensors),
-            overheatingSensors = overheatingSensors.values,
-        )
-
-        if (instantReadMonitor.isIdle(PROBE_INSTANT_READ_IDLE_TIMEOUT_MS)) {
-            probe = probe.copy(
-                instantReadCelsius = null,
-                instantReadFahrenheit = null,
-                instantReadRawCelsius = null,
-            )
-        }
-
-        return probe
-    }
+    ): Probe = currentProbe.copy(
+        temperaturesCelsius = temperatures,
+        virtualSensors = sensors,
+        coreTemperatureCelsius = temperatures.coreTemperatureCelsius(sensors),
+        surfaceTemperatureCelsius = temperatures.surfaceTemperatureCelsius(sensors),
+        ambientTemperatureCelsius = temperatures.ambientTemperatureCelsius(sensors),
+        overheatingSensors = overheatingSensors.values,
+    )
 
     private fun updateFoodSafe(
         foodSafeData: FoodSafeData?,
