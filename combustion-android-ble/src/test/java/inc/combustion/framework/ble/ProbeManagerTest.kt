@@ -773,28 +773,88 @@ class ProbeManagerTest {
     }
 
     @Test
-    fun `a re-read that finds the same session resets a wrong sequence number so its statuses are accepted again`() =
+    fun `a same-session re-read resets a wrong sequence number once none is accepted for two sample periods`() =
         runTest {
             val harness = sessionInfoHarness(backgroundScope)
-            // e.g. a bad status accepted with too high a sequence number
+            // e.g. a late status of the previous session accepted with too high a sequence number
             establishSession(harness, maxSequenceNumber = 500u)
             val requestsBefore = harness.sessionInfoRequests()
 
+            // within two sample periods (10 s) of the last accepted status: no reset, so still
+            // rejected -- an accepted status would re-read session info, and a falling-sequence
+            // re-read is within the rate limit
             harness.deliverStatus(status(maxSequenceNumber = 10u))
             runCurrent()
+            harness.sessionInfoCallbacks.last()(true, SessionInformation(sessionID = 1u, samplePeriod = 5000u))
+            runCurrent()
+            harness.deliverStatus(status(maxSequenceNumber = 11u))
+            runCurrent()
             assertEquals(requestsBefore + 1, harness.sessionInfoRequests())
+
+            nowMs += 6_001
+            harness.deliverStatus(status(maxSequenceNumber = 12u))
+            runCurrent()
+            harness.sessionInfoCallbacks.last()(true, SessionInformation(sessionID = 1u, samplePeriod = 5000u))
+            runCurrent()
+            harness.deliverStatus(status(maxSequenceNumber = 13u))
+            runCurrent()
+            assertEquals(requestsBefore + 2, harness.sessionInfoRequests())
+
+            // past two sample periods: reset
+            nowMs += 6_001
+            harness.deliverStatus(status(maxSequenceNumber = 14u))
+            runCurrent()
+            assertEquals(requestsBefore + 3, harness.sessionInfoRequests())
             harness.sessionInfoCallbacks.last()(true, SessionInformation(sessionID = 1u, samplePeriod = 5000u))
             runCurrent()
 
             // accepted again -- each accepted Normal Mode status re-reads session info as usual --
             // within the re-read rate limit, so these aren't further falling-sequence re-reads
-            harness.deliverStatus(status(maxSequenceNumber = 11u))
+            harness.deliverStatus(status(maxSequenceNumber = 15u))
             runCurrent()
-            harness.deliverStatus(status(maxSequenceNumber = 12u))
+            harness.deliverStatus(status(maxSequenceNumber = 16u))
             runCurrent()
 
-            assertEquals(requestsBefore + 3, harness.sessionInfoRequests())
+            assertEquals(requestsBefore + 5, harness.sessionInfoRequests())
         }
+
+    @Test
+    fun `same-session re-reads caused by a lagging route never accept its stale statuses`() = runTest {
+        val harness = sessionInfoHarness(backgroundScope)
+        establishSession(harness, maxSequenceNumber = 370u)
+        val requestsBefore = harness.sessionInfoRequests()
+
+        // a slower MeatNet route lags 3 samples behind
+        harness.deliverStatus(status(maxSequenceNumber = 367u))
+        runCurrent()
+        assertEquals(requestsBefore + 1, harness.sessionInfoRequests())
+        val firstReread = harness.sessionInfoCallbacks.last()
+
+        // the faster route's next status is accepted, which re-reads session info as usual, before
+        // the first re-read's slow response arrives
+        nowMs += 5_000
+        harness.deliverStatus(status(maxSequenceNumber = 371u))
+        runCurrent()
+        assertEquals(requestsBefore + 2, harness.sessionInfoRequests())
+        nowMs += 500
+        firstReread(true, SessionInformation(sessionID = 1u, samplePeriod = 5000u))
+        runCurrent()
+
+        // the slow route falls behind again past the rate limit, and nothing has been accepted
+        // since the first re-read's response -- but 371 was accepted within two sample periods
+        nowMs += 1_000
+        harness.deliverStatus(status(maxSequenceNumber = 368u))
+        runCurrent()
+        assertEquals(requestsBefore + 3, harness.sessionInfoRequests())
+        harness.sessionInfoCallbacks.last()(true, SessionInformation(sessionID = 1u, samplePeriod = 5000u))
+        runCurrent()
+
+        // still rejected: an accepted status would re-read session info, and a falling-sequence
+        // re-read is within the rate limit
+        harness.deliverStatus(status(maxSequenceNumber = 369u))
+        runCurrent()
+        assertEquals(requestsBefore + 3, harness.sessionInfoRequests())
+    }
 
     @Test
     fun `a failed re-read keeps the sequence number and retries on a later fall`() = runTest {
