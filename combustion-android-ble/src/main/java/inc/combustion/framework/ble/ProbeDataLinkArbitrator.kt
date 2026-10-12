@@ -48,6 +48,14 @@ internal class ProbeDataLinkArbitrator(
     private val instantReadArbitrator: InstantReadArbitrator = InstantReadArbitrator(),
 ) : DataLinkArbitrator<ProbeBleDeviceBase, ProbeAdvertisingData> {
 
+    companion object {
+        // how far a status's max sequence number must be below the last accepted Normal Mode one
+        // to count as a fall -- see lastAcceptedMaxSequenceIfStatusFellBelow(). A status relayed
+        // over a slower MeatNet route can arrive one sample behind, while a new session restarts
+        // near zero.
+        private const val MIN_SEQUENCE_FALL = 2u
+    }
+
     // meatnet network nodes
     private val networkNodes = ConcurrentSnapshotMap<DeviceID, DeviceInformationBleDevice>()
 
@@ -396,6 +404,25 @@ internal class ProbeDataLinkArbitrator(
     fun resetNormalModeStatus() {
         currentSessionInfo = null
         currentStatus = null
+    }
+
+    /**
+     * Returns the max sequence number of the last accepted Normal Mode status if [status]'s is
+     * at least [MIN_SEQUENCE_FALL] below it in the same session, else null. For a rejected Normal
+     * Mode status, or any Instant Read status, which is arbitrated without a sequence check -- see
+     * ProbeManager.rereadSessionInfoIfSequenceFell().
+     */
+    fun lastAcceptedMaxSequenceIfStatusFellBelow(
+        status: ProbeStatus,
+        sessionInfo: SessionInformation?,
+    ): UInt? {
+        val lastAccepted = currentStatus?.maxSequenceNumber ?: return null
+        // the previous session's sequence numbers aren't comparable with this one's
+        if (currentSessionInfo != sessionInfo) return null
+        // compared as a difference, so a sequence number at UInt.MAX_VALUE can't wrap around
+        return lastAccepted.takeIf {
+            status.maxSequenceNumber < it && it - status.maxSequenceNumber >= MIN_SEQUENCE_FALL
+        }
     }
 
     override fun shouldUpdateDataFromStatusForNormalMode(

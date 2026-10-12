@@ -129,10 +129,8 @@ internal class ProbeManager(
     private val statusNotificationsMonitor = IdleMonitor()
     private val predictionMonitor = IdleMonitor()
 
-    // max sequence number of the last accepted Normal Mode status in the current session (cleared
-    // when the session changes), and when a falling sequence number last triggered a session info
-    // re-read -- see rereadSessionInfoIfSequenceFell()
-    private var lastAcceptedNormalMaxSequence: UInt? = null
+    // when a falling sequence number last triggered a session info re-read -- see
+    // rereadSessionInfoIfSequenceFell()
     private val sessionInfoRereadMonitor = IdleMonitor()
 
     // set while a re-read triggered by a falling sequence number awaits its response -- see
@@ -1125,10 +1123,9 @@ internal class ProbeManager(
     /**
      * Re-reads session info when [status] -- a rejected Normal Mode status, or any Instant Read
      * status -- has a max sequence number clearly below that of the last accepted Normal Mode
-     * status, i.e. the probe has likely started a new session (e.g. a reset, from this or another
-     * device) that the cached session info doesn't reflect yet. "Clearly" means more than one
-     * below: a status relayed over a slower MeatNet route can arrive one sample behind, while a
-     * new session restarts near zero.
+     * status (see [ProbeDataLinkArbitrator.lastAcceptedMaxSequenceIfStatusFellBelow]), i.e. the
+     * probe has likely started a new session (e.g. a reset, from this or another device) that the
+     * cached session info doesn't reflect yet.
      *
      * The arbitrator only accepts a status if the session info changed or its sequence number
      * increased, and session info is otherwise only re-read on connect or after an accepted
@@ -1145,9 +1142,7 @@ internal class ProbeManager(
      * status would be accepted.
      */
     private fun rereadSessionInfoIfSequenceFell(status: ProbeStatus) {
-        val lastAccepted = lastAcceptedNormalMaxSequence ?: return
-        // compared as a difference, so a sequence number at UInt.MAX_VALUE can't wrap around
-        if (status.maxSequenceNumber >= lastAccepted || lastAccepted - status.maxSequenceNumber < 2u) return
+        val lastAccepted = arbitrator.lastAcceptedMaxSequenceIfStatusFellBelow(status, sessionInfo) ?: return
         if (!sessionInfoRereadMonitor.isIdle(SESSION_INFO_REREAD_MIN_INTERVAL_MS)) return
 
         sessionInfoRereadMonitor.activity()
@@ -1170,7 +1165,6 @@ internal class ProbeManager(
             val accepted = arbitrator.shouldUpdateDataFromStatus(status, sessionInfo, link, hopCount)
             when (status.mode) {
                 ProbeMode.NORMAL -> if (accepted) {
-                    lastAcceptedNormalMaxSequence = status.maxSequenceNumber
                     normalStatusAcceptedMonitor.activity()
                 } else {
                     rereadSessionInfoIfSequenceFell(status)
@@ -1540,9 +1534,6 @@ internal class ProbeManager(
 
                 // if the session information has changed, then we need to finish the previous log session.
                 if (sessionInfo != info) {
-                    // the last accepted sequence number belonged to the previous session
-                    lastAcceptedNormalMaxSequence = null
-
                     logTransferCompleteCallback()
                     logTransferLink = null
                     uploadState = ProbeUploadState.Unavailable
@@ -1565,15 +1556,14 @@ internal class ProbeManager(
                         Log.i(
                             LOG_TAG,
                             "PM($serialNumber): session ${info.sessionID} unchanged after sequence " +
-                                "fell below last accepted $lastAcceptedNormalMaxSequence, resetting it."
+                                "fell below the last accepted one, resetting it."
                         )
-                        lastAcceptedNormalMaxSequence = null
                         arbitrator.resetNormalModeStatus()
                     } else {
                         Log.i(
                             LOG_TAG,
                             "PM($serialNumber): session ${info.sessionID} unchanged after sequence " +
-                                "fell below last accepted $lastAcceptedNormalMaxSequence, keeping it " +
+                                "fell below the last accepted one, keeping it " +
                                 "(a status was accepted within $noneAcceptedTimeoutMs ms)."
                         )
                     }

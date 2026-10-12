@@ -38,7 +38,9 @@ import inc.combustion.framework.service.SessionInformation
 import io.mockk.every
 import io.mockk.mockk
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class ProbeDataLinkArbitratorTest {
@@ -239,5 +241,63 @@ internal class ProbeDataLinkArbitratorTest {
         assertTrue(
             tested.shouldUpdateDataFromStatusForNormalMode(normalModeStatus(0u), secondSession),
         )
+    }
+
+    // lastAcceptedMaxSequenceIfStatusFellBelow -- whether a status is clearly older than the last
+    // accepted Normal Mode status of the same session, i.e. the probe may have started a new session
+
+    @Test
+    fun `sequence fell -- 2+ below the last accepted status in the same session returns it`() {
+        val tested = getTested()
+        val session = SessionInformation(sessionID = 1u, samplePeriod = 1u)
+        tested.shouldUpdateDataFromStatusForNormalMode(normalModeStatus(370u), session)
+
+        assertEquals(370u, tested.lastAcceptedMaxSequenceIfStatusFellBelow(normalModeStatus(368u), session))
+        assertEquals(370u, tested.lastAcceptedMaxSequenceIfStatusFellBelow(normalModeStatus(0u), session))
+    }
+
+    @Test
+    fun `sequence fell -- one below, equal or above the last accepted status is not a fall`() {
+        val tested = getTested()
+        val session = SessionInformation(sessionID = 1u, samplePeriod = 1u)
+        tested.shouldUpdateDataFromStatusForNormalMode(normalModeStatus(370u), session)
+
+        // e.g. relayed one sample behind over a slower MeatNet route
+        assertNull(tested.lastAcceptedMaxSequenceIfStatusFellBelow(normalModeStatus(369u), session))
+        assertNull(tested.lastAcceptedMaxSequenceIfStatusFellBelow(normalModeStatus(370u), session))
+        assertNull(tested.lastAcceptedMaxSequenceIfStatusFellBelow(normalModeStatus(371u), session))
+    }
+
+    @Test
+    fun `sequence fell -- the reference is the last accepted status, not the last rejected one`() {
+        val tested = getTested()
+        val session = SessionInformation(sessionID = 1u, samplePeriod = 1u)
+        tested.shouldUpdateDataFromStatusForNormalMode(normalModeStatus(370u), session)
+        tested.shouldUpdateDataFromStatusForNormalMode(normalModeStatus(100u), session)
+
+        assertEquals(370u, tested.lastAcceptedMaxSequenceIfStatusFellBelow(normalModeStatus(101u), session))
+    }
+
+    @Test
+    fun `sequence fell -- not compared against another session's sequence numbers`() {
+        val tested = getTested()
+        val firstSession = SessionInformation(sessionID = 1u, samplePeriod = 1u)
+        val secondSession = SessionInformation(sessionID = 2u, samplePeriod = 1u)
+        tested.shouldUpdateDataFromStatusForNormalMode(normalModeStatus(370u), firstSession)
+
+        // the second session is known, but none of its statuses has been accepted yet
+        assertNull(tested.lastAcceptedMaxSequenceIfStatusFellBelow(normalModeStatus(2u), secondSession))
+    }
+
+    @Test
+    fun `sequence fell -- not before any status is accepted, or after resetNormalModeStatus`() {
+        val tested = getTested()
+        val session = SessionInformation(sessionID = 1u, samplePeriod = 1u)
+        assertNull(tested.lastAcceptedMaxSequenceIfStatusFellBelow(normalModeStatus(2u), session))
+
+        tested.shouldUpdateDataFromStatusForNormalMode(normalModeStatus(370u), session)
+        tested.resetNormalModeStatus()
+
+        assertNull(tested.lastAcceptedMaxSequenceIfStatusFellBelow(normalModeStatus(2u), session))
     }
 }
