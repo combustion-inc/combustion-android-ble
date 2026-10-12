@@ -89,9 +89,11 @@ internal class ProbeManager(
         // Minimum time between session info re-reads triggered by a falling sequence number (see
         // rereadSessionInfoIfSequenceFell). Out-of-order statuses relayed over slower MeatNet routes
         // can trigger it repeatedly, and a direct-link request is matched under a fixed null key, so
-        // the previous one must have timed out (PROBE_MESSAGE_RESPONSE_TIMEOUT_MS) before the next
-        // is sent, or the next fails immediately and reads as a session info timeout -- the same
-        // reason as PROBE_DIRECT_RETRY_INTERVAL_MS.
+        // the previous re-read must have timed out (PROBE_MESSAGE_RESPONSE_TIMEOUT_MS) before the
+        // next is sent -- the same reason as PROBE_DIRECT_RETRY_INTERVAL_MS. This only keeps
+        // re-reads from colliding with each other: one sent while fetchDeviceInfo()'s session info
+        // request (after an accepted status) is still awaiting its response fails immediately and
+        // is retried on a later fall.
         private const val SESSION_INFO_REREAD_MIN_INTERVAL_MS = PROBE_DIRECT_RETRY_INTERVAL_MS
     }
 
