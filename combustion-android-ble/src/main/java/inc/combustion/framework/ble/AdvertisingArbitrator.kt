@@ -28,10 +28,18 @@
 package inc.combustion.framework.ble
 
 import inc.combustion.framework.ble.device.ProbeBleDeviceBase
+import inc.combustion.framework.ble.device.RepeatedProbeBleDevice
 import inc.combustion.framework.ble.scanning.ProbeAdvertisingData
 import inc.combustion.framework.service.ProbeMode
 
-internal class AdvertisingArbitrator {
+/**
+ * Arbitrates which link's advertising packets to use for a probe. Instant Read packets are decided
+ * by [instantReadArbitrator], which is shared with status notifications; Normal Mode packets by the
+ * preferred-advertiser logic below.
+ */
+internal class AdvertisingArbitrator(
+    private val instantReadArbitrator: InstantReadArbitrator,
+) {
     private data class Preferred(
         /// current preferred advertiser
         var device: ProbeBleDeviceBase? = null,
@@ -44,15 +52,16 @@ internal class AdvertisingArbitrator {
 
     companion object {
         private const val NORMAL_MODE_IDLE_TIMEOUT = 5000L
-        private const val INSTANT_READ_IDLE_TIMEOUT = 3000L
     }
 
-    private val instantReadMode: Preferred = Preferred()
     private val normalMode: Preferred = Preferred()
 
     fun shouldUpdate(device: ProbeBleDeviceBase, advertisement: ProbeAdvertisingData): Boolean {
         return when (advertisement.mode) {
-            ProbeMode.INSTANT_READ -> shouldUpdateForMode(device, instantReadMode, INSTANT_READ_IDLE_TIMEOUT)
+            ProbeMode.INSTANT_READ -> instantReadArbitrator.shouldUpdate(
+                link = device,
+                hopCount = (device as? RepeatedProbeBleDevice)?.hopCount,
+            )
             ProbeMode.NORMAL -> shouldUpdateForMode(device, normalMode, NORMAL_MODE_IDLE_TIMEOUT)
             else -> false
         }
