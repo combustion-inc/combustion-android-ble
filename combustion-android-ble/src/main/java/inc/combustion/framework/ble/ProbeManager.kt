@@ -1071,6 +1071,8 @@ internal class ProbeManager(
                     ) {
                         // same lock as handleProbeStatus, so a concurrent status can't write back
                         // the reading this just cleared from its own copy of the state
+                        // (handleAdvertisingPackets doesn't take it, so an advertising packet can
+                        // briefly restore it until the next tick)
                         handleStatusMutex.withLock {
                             if (instantReadMonitor.isIdle(PROBE_INSTANT_READ_IDLE_TIMEOUT_MS)) {
                                 _deviceFlow.update {
