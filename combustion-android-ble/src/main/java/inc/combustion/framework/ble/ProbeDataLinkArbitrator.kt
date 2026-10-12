@@ -42,20 +42,25 @@ import inc.combustion.framework.service.SessionInformation
 import inc.combustion.framework.service.utils.ConcurrentSnapshotMap
 import java.util.concurrent.CopyOnWriteArrayList
 
-// Number of seconds to ignore other lower-priority (higher hop count) sources of information for Instant Read
-private const val INSTANT_READ_IDLE_TIMEOUT = 1000L
-
 internal class ProbeDataLinkArbitrator(
     private val settings: DeviceManager.Settings,
-    private val instantReadIdleMonitor: IdleMonitor = IdleMonitor(),
-    private var currentHopCount: UInt? = null,
+    // shared by advertising packets and status notifications
+    private val instantReadArbitrator: InstantReadArbitrator = InstantReadArbitrator(),
 ) : DataLinkArbitrator<ProbeBleDeviceBase, ProbeAdvertisingData> {
+
+    companion object {
+        // how far a status's max sequence number must be below the last accepted Normal Mode one
+        // to count as a fall -- see lastAcceptedMaxSequenceIfStatusFellBelow(). A status relayed
+        // over a slower MeatNet route can arrive one sample behind, while a new session restarts
+        // near zero.
+        private const val MIN_SEQUENCE_FALL = 2u
+    }
 
     // meatnet network nodes
     private val networkNodes = ConcurrentSnapshotMap<DeviceID, DeviceInformationBleDevice>()
 
     // advertising data arbitration
-    private val advertisingArbitrator = AdvertisingArbitrator()
+    private val advertisingArbitrator = AdvertisingArbitrator(instantReadArbitrator)
 
     // direct ble link to probe
     override var bleDevice: ProbeBleDeviceBase? = null
@@ -370,13 +375,54 @@ internal class ProbeDataLinkArbitrator(
     private var currentStatus: SpecializedDeviceStatus? = null
     private var currentSessionInfo: SessionInformation? = null
 
+    /**
+     * @param link the link [status] arrived on.
+     * @param hopCount the hop count reported with [status] when relayed through MeatNet.
+     */
     fun shouldUpdateDataFromStatus(
         status: ProbeStatus,
         sessionInfo: SessionInformation?,
+        link: ProbeBleDeviceBase,
         hopCount: UInt?,
     ): Boolean = when (status.mode) {
-        ProbeMode.INSTANT_READ -> shouldUpdateDataFromProbeStatusForInstantReadMode(hopCount)
+        ProbeMode.INSTANT_READ -> instantReadArbitrator.shouldUpdate(
+            link = link,
+            // a direct link is identified by its type, not its hop count, which is 0 for both a
+            // direct link and a node one hop from the probe
+            hopCount = if (link is RepeatedProbeBleDevice) (hopCount ?: link.hopCount) else null,
+        )
+
         else -> shouldUpdateDataFromStatusForNormalMode(status, sessionInfo)
+    }
+
+    /**
+     * Forgets the last accepted Normal Mode status, so the next one is accepted whatever its
+     * sequence number, and becomes the new reference. For when the last accepted sequence number
+     * turned out to be wrong -- e.g. a bad status accepted with too high a value would otherwise
+     * get every later real status of the same session rejected.
+     */
+    fun resetNormalModeStatus() {
+        currentSessionInfo = null
+        currentStatus = null
+    }
+
+    /**
+     * Returns the max sequence number of the last accepted Normal Mode status if [status]'s is
+     * at least [MIN_SEQUENCE_FALL] below it in the same session, else null. For a rejected Normal
+     * Mode status, or any Instant Read status, which is arbitrated without a sequence check -- see
+     * ProbeManager.rereadSessionInfoIfSequenceFell().
+     */
+    fun lastAcceptedMaxSequenceIfStatusFellBelow(
+        status: ProbeStatus,
+        sessionInfo: SessionInformation?,
+    ): UInt? {
+        val lastAccepted = currentStatus?.maxSequenceNumber ?: return null
+        // the previous session's sequence numbers aren't comparable with this one's
+        if (currentSessionInfo != sessionInfo) return null
+        // compared as a difference, so a sequence number at UInt.MAX_VALUE can't wrap around
+        return lastAccepted.takeIf {
+            status.maxSequenceNumber < it && it - status.maxSequenceNumber >= MIN_SEQUENCE_FALL
+        }
     }
 
     override fun shouldUpdateDataFromStatusForNormalMode(
@@ -408,23 +454,6 @@ internal class ProbeDataLinkArbitrator(
         )
 
         return shouldUpdate
-    }
-
-    private fun shouldUpdateDataFromProbeStatusForInstantReadMode(hopCount: UInt?): Boolean {
-        val immutableCurrentHopCount = currentHopCount
-        return when {
-            // If hopCount is nil, this is direct from a Probe and we should always update.
-            hopCount == null -> true
-            // This hop count is equal or better priority than the last, so update.
-            (immutableCurrentHopCount != null) && (hopCount <= immutableCurrentHopCount) -> true
-            // If we haven't received Instant Read data for more than the lockout period, we should always update.
-            else -> instantReadIdleMonitor.isIdle(INSTANT_READ_IDLE_TIMEOUT)
-        }.also { shouldUpdate ->
-            if (shouldUpdate) {
-                instantReadIdleMonitor.activity()
-                currentHopCount = hopCount
-            }
-        }
     }
 
     override fun shouldUpdateOnRemoteRssi(device: ProbeBleDeviceBase): Boolean {
