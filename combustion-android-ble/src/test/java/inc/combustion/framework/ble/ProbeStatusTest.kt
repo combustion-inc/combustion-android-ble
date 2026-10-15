@@ -38,8 +38,10 @@ import inc.combustion.framework.service.ProbePredictionMode
 import inc.combustion.framework.service.ProbePredictionState
 import inc.combustion.framework.service.ProbePredictionType
 import inc.combustion.framework.service.ProbeVirtualSensors
+import inc.combustion.framework.service.SessionInformation
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -362,5 +364,76 @@ class ProbeStatusTest {
             sequenceNumber = 0xBEEFFACEu,
         )
         assertEquals(foodSafeStatus, ProbeStatus.fromRawData(raw)?.foodSafeStatus)
+    }
+
+    @Test
+    fun `Parses session information appended by newer firmware`() {
+        val status = ProbeStatus.fromRawData(GOLDEN_NOTIFICATION)
+
+        assertEquals(SessionInformation(sessionID = 0xDEADBEEFu, samplePeriod = 5000u), status?.sessionInformation)
+        // The fields before the session info still parse at their unchanged offsets.
+        assertEquals(0x01020304u, status?.minSequenceNumber)
+        assertEquals(0x05060708u, status?.maxSequenceNumber)
+        assertNotNull(status?.probeHighLowAlarmStatus)
+    }
+
+    @Test
+    fun `Older firmware without session information parses with null session information`() {
+        val raw = GOLDEN_NOTIFICATION.copyOfRange(0, SESSION_INFO_OFFSET)
+
+        val status = ProbeStatus.fromRawData(raw)
+
+        assertNotNull(status)
+        assertNotNull(status?.probeHighLowAlarmStatus)
+        assertNull(status?.sessionInformation)
+    }
+
+    @Test
+    fun `Partial session information is ignored`() {
+        val raw = GOLDEN_NOTIFICATION.copyOfRange(0, GOLDEN_NOTIFICATION.size - 1)
+
+        assertNull(ProbeStatus.fromRawData(raw)?.sessionInformation)
+    }
+
+    @Test
+    fun `Session ID of zero means not supplied`() {
+        val raw = GOLDEN_NOTIFICATION.copyOf()
+        raw.putLittleEndianUInt32At(SESSION_INFO_OFFSET, 0u)
+
+        assertNull(ProbeStatus.fromRawData(raw)?.sessionInformation)
+    }
+
+    @Test
+    fun `Sample period of zero means not supplied`() {
+        val raw = GOLDEN_NOTIFICATION.copyOf()
+        raw[SESSION_INFO_OFFSET + 4] = 0u
+        raw[SESSION_INFO_OFFSET + 5] = 0u
+
+        assertNull(ProbeStatus.fromRawData(raw)?.sessionInformation)
+    }
+
+    companion object {
+        private const val SESSION_INFO_OFFSET = 94
+
+        /**
+         * The 100-byte Probe Status notification from meat-dagger-firmware's
+         * firmware/tests/test_probe_status_layout.cpp (GOLDEN_NOTIFICATION), with session ID
+         * 0xDEADBEEF and sample period 5000 ms at [SESSION_INFO_OFFSET].
+         */
+        val GOLDEN_NOTIFICATION = ubyteArrayOf(
+            0x04u, 0x03u, 0x02u, 0x01u, 0x08u, 0x07u, 0x06u, 0x05u,
+            0x23u, 0xC1u, 0x8Au, 0x24u, 0x1Eu, 0x5Eu, 0xF5u, 0xDEu,
+            0x6Au, 0x82u, 0x91u, 0xB8u, 0x1Au, 0x89u, 0xA5u, 0x53u,
+            0x71u, 0x4Au, 0x03u, 0xE1u, 0xA0u, 0x55u, 0x08u, 0x20u,
+            0xB0u, 0xC4u, 0x12u, 0xE0u, 0x15u, 0x0Au, 0x60u, 0x04u,
+            0x09u, 0xA2u, 0x91u, 0x78u, 0x6Fu, 0x5Eu, 0x4Du, 0x04u,
+            0xA5u, 0x05u, 0x05u, 0x08u, 0x0Bu, 0x08u, 0x15u, 0x08u,
+            0x1Bu, 0x08u, 0x25u, 0x08u, 0x2Bu, 0x08u, 0x35u, 0x08u,
+            0x3Bu, 0x08u, 0x45u, 0x08u, 0x4Bu, 0x08u, 0x55u, 0x08u,
+            0x03u, 0x10u, 0x0Eu, 0x10u, 0x13u, 0x10u, 0x1Eu, 0x10u,
+            0x23u, 0x10u, 0x2Eu, 0x10u, 0x33u, 0x10u, 0x3Eu, 0x10u,
+            0x43u, 0x10u, 0x4Eu, 0x10u, 0x53u, 0x10u, 0xEFu, 0xBEu,
+            0xADu, 0xDEu, 0x88u, 0x13u,
+        )
     }
 }

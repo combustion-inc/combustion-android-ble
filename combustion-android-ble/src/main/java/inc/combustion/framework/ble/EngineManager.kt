@@ -163,6 +163,8 @@ internal class EngineManager(
         statusNotificationsMonitor.activity()
 
         handleStatusMutex.withLock {
+            if (isLateStatusOfOlderSession(status.sessionInformation, status)) return@withLock
+
             if (simulated || arbitrator.shouldUpdateDataFromStatusForNormalMode(
                     status,
                     status.sessionInformation,

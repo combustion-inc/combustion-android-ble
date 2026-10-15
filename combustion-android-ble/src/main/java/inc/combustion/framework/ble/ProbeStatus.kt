@@ -51,6 +51,15 @@ internal data class ProbeStatus(
     val overheatingSensors: OverheatingSensors,
     val thermometerPrefs: ThermometerPreferences,
     val probeHighLowAlarmStatus: ProbeHighLowAlarmStatus?,
+    /**
+     * Session ID and sample period appended to the end of the status by newer probe firmware
+     * (PRO-134). Null means this message didn't carry them: the probe's firmware predates them,
+     * a MeatNet node on older shared firmware relayed the status and dropped the trailing bytes,
+     * or the session ID was 0, which firmware reserves to mean "not supplied" (e.g. a newer node
+     * relaying a probe on older firmware). So null is "not known from this message" -- the
+     * session info can still be read with a session info request.
+     */
+    val sessionInformation: SessionInformation?,
 ) : SpecializedDeviceStatus {
     val virtualCoreTemperature: Double
         get() {
@@ -71,6 +80,10 @@ internal data class ProbeStatus(
         const val MIN_RAW_SIZE = 30
         const val RAW_SIZE_INCLUDING_FOOD_SAFE =
             MIN_RAW_SIZE + FoodSafeData.SIZE_BYTES + FoodSafeStatus.SIZE_BYTES
+
+        // session ID (4 bytes) then sample period (2 bytes)
+        private const val SESSION_INFO_SIZE_BYTES = 6
+        private const val SESSION_INFO_SAMPLE_PERIOD_OFFSET = 4
 
         private const val MIN_SEQ_INDEX = 0
         private const val MAX_SEQ_INDEX = 4
@@ -159,6 +172,27 @@ internal data class ProbeStatus(
                 null
             }
 
+            // Session info is appended after the alarms, so its offset follows overheatRange the
+            // same way the fields above do, which also covers the relayed node message layout.
+            val sessionInfoByteStartIndex = highLowAlarmsRange.last + 1
+            val sessionInfoRange =
+                sessionInfoByteStartIndex until sessionInfoByteStartIndex + SESSION_INFO_SIZE_BYTES
+            val sessionInformation = if (data.size > sessionInfoRange.last) {
+                val sessionID = data.getLittleEndianUInt32At(sessionInfoRange.first)
+                val samplePeriod = data.getLittleEndianUInt16At(
+                    sessionInfoRange.first + SESSION_INFO_SAMPLE_PERIOD_OFFSET
+                )
+                // A session ID of 0 is reserved to mean "not supplied". A sample period of 0 is
+                // never valid either, and would break timestamp math downstream.
+                if (sessionID != 0u && samplePeriod != 0u) {
+                    SessionInformation(sessionID = sessionID, samplePeriod = samplePeriod)
+                } else {
+                    null
+                }
+            } else {
+                null
+            }
+
             return ProbeStatus(
                 minSequenceNumber = minSequenceNumber,
                 maxSequenceNumber = maxSequenceNumber,
@@ -174,6 +208,7 @@ internal data class ProbeStatus(
                 overheatingSensors = overheatingSensors,
                 thermometerPrefs = probePrefs,
                 probeHighLowAlarmStatus = highLowAlarms,
+                sessionInformation = sessionInformation,
             )
         }
     }
