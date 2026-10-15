@@ -103,6 +103,44 @@ internal abstract class BleManager {
     var sessionInfo: SessionInformation? = null
         protected set
 
+    // when recently seen sessions started, to recognize a late message of an older session -- only
+    // accessed while holding the subclass's status handling mutex
+    private val sessionStarts = SessionStarts()
+
+    /**
+     * True if [status], of session [info], is a late status of a session that started before the
+     * current one -- e.g. relayed late over a slower MeatNet route after a reboot started a new
+     * session. It should then be ignored: switching back to its session would finish the current
+     * session's log transfer and split its log. See [SessionStarts]. Call with the status handling
+     * mutex held.
+     */
+    protected fun isLateStatusOfOlderSession(
+        info: SessionInformation,
+        status: SpecializedDeviceStatus,
+    ): Boolean {
+        if (sessionStarts.acceptStatus(info, status.maxSequenceNumber, sessionInfo)) return false
+        Log.i(
+            LOG_TAG,
+            "PM($serialNumber): ignoring late status of older session ${info.sessionID} " +
+                "(current ${sessionInfo?.sessionID})."
+        )
+        return true
+    }
+
+    /**
+     * Like [isLateStatusOfOlderSession], for session info without a status -- e.g. a session info
+     * response sent just before a reboot, arriving after a status of the new session.
+     */
+    protected fun isLateSessionInfoOfOlderSession(info: SessionInformation): Boolean {
+        if (sessionStarts.acceptSessionInfo(info, sessionInfo)) return false
+        Log.i(
+            LOG_TAG,
+            "PM($serialNumber): ignoring late session info of older session ${info.sessionID} " +
+                "(current ${sessionInfo?.sessionID})."
+        )
+        return true
+    }
+
     fun addJob(serialNumber: String, job: Job) = jobManager.addJob(serialNumber, job)
 
     protected fun makeRequestId(): UInt {

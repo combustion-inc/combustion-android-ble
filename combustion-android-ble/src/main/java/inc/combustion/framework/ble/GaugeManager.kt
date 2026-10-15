@@ -359,6 +359,8 @@ internal class GaugeManager(
         statusNotificationsMonitor.activity()
 
         handleStatusMutex.withLock {
+            if (isLateStatusOfOlderSession(status.sessionInformation, status)) return@withLock
+
             if (simulated || arbitrator.shouldUpdateDataFromStatusForNormalMode(
                     status,
                     status.sessionInformation,

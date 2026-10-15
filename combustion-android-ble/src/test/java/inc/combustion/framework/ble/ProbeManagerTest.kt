@@ -123,6 +123,7 @@ class ProbeManagerTest {
         predictionStatus: PredictionStatus = PredictionStatus.withRandomData(),
         foodSafeData: FoodSafeData? = null,
         probeHighLowAlarmStatus: ProbeHighLowAlarmStatus? = null,
+        sessionInformation: SessionInformation? = null,
     ): ProbeStatus {
         val probeTemperatures = ProbeTemperatures.withRandomData()
         return ProbeStatus(
@@ -140,6 +141,7 @@ class ProbeManagerTest {
             overheatingSensors = OverheatingSensors.fromTemperatures(probeTemperatures),
             thermometerPrefs = ThermometerPreferences.DEFAULT,
             probeHighLowAlarmStatus = probeHighLowAlarmStatus,
+            sessionInformation = sessionInformation,
         )
     }
 
@@ -618,12 +620,13 @@ class ProbeManagerTest {
             assertEquals(true, result2)
         }
 
-    // Session info re-read on a falling sequence number (rereadSessionInfoIfSequenceFell): after a
+    // Session info re-read on a falling sequence number (handleIfSequenceFell): after a
     // reset the probe reboots into a new session whose sequence numbers restart, so the arbitrator
     // rejects its statuses until the cached session info changes. Through a MeatNet node no
     // reconnect re-reads it, so the falling sequence number must.
 
     private class SessionInfoHarness(
+        val manager: ProbeManager,
         val deliverStatus: suspend (ProbeStatus) -> Unit,
         val sessionInfoCallbacks: List<(Boolean, Any?) -> Unit>,
     ) {
@@ -655,6 +658,7 @@ class ProbeManagerTest {
         manager.addProbe(probe, mockk<DeviceInformationBleDevice>(relaxed = true), advertisement())
 
         return SessionInfoHarness(
+            manager = manager,
             deliverStatus = { status -> statusCallback.captured(status, null) },
             sessionInfoCallbacks = sessionInfoCallbacks,
         )
@@ -894,6 +898,202 @@ class ProbeManagerTest {
         runCurrent()
 
         assertEquals(requestsBefore + 1, harness.sessionInfoRequests())
+    }
+
+    // Session info included in the status by newer probe firmware (ProbeStatus.sessionInformation)
+
+    private val session1 = SessionInformation(sessionID = 1u, samplePeriod = 5000u)
+    private val session2 = SessionInformation(sessionID = 2u, samplePeriod = 5000u)
+
+    @Test
+    fun `a status including a new session's info switches to it right away`() = runTest {
+        val harness = sessionInfoHarness(backgroundScope)
+        establishSession(harness, maxSequenceNumber = 370u)
+        val requestsBefore = harness.sessionInfoRequests()
+
+        harness.deliverStatus(status(maxSequenceNumber = 2u, sessionInformation = session2))
+        runCurrent()
+
+        // accepted without any session info request
+        assertEquals(session2, harness.manager.device.sessionInfo)
+        assertEquals(2u, harness.manager.device.maxSequence)
+        assertEquals(requestsBefore, harness.sessionInfoRequests())
+    }
+
+    @Test
+    fun `an accepted status including session info doesn't request it`() = runTest {
+        val harness = sessionInfoHarness(backgroundScope)
+        harness.deliverStatus(status(maxSequenceNumber = 10u, sessionInformation = session1))
+        runCurrent()
+        val requestsBefore = harness.sessionInfoRequests()
+
+        harness.deliverStatus(status(maxSequenceNumber = 11u, sessionInformation = session1))
+        runCurrent()
+        harness.deliverStatus(status(maxSequenceNumber = 12u, sessionInformation = session1))
+        runCurrent()
+
+        assertEquals(12u, harness.manager.device.maxSequence)
+        assertEquals(requestsBefore, harness.sessionInfoRequests())
+    }
+
+    @Test
+    fun `an accepted status without session info still requests it`() = runTest {
+        val harness = sessionInfoHarness(backgroundScope)
+        harness.deliverStatus(status(maxSequenceNumber = 10u, sessionInformation = session1))
+        runCurrent()
+        val requestsBefore = harness.sessionInfoRequests()
+
+        // e.g. relayed by an older MeatNet node that drops the session info
+        harness.deliverStatus(status(maxSequenceNumber = 11u))
+        runCurrent()
+
+        assertEquals(requestsBefore + 1, harness.sessionInfoRequests())
+    }
+
+    @Test
+    fun `a same-session fall of a status including session info resets without a re-read`() =
+        runTest {
+            val harness = sessionInfoHarness(backgroundScope)
+            // e.g. a late status of the previous session accepted with too high a sequence number
+            harness.deliverStatus(status(maxSequenceNumber = 500u, sessionInformation = session1))
+            runCurrent()
+            val requestsBefore = harness.sessionInfoRequests()
+
+            // within two sample periods of the last accepted status: kept, so still rejected
+            harness.deliverStatus(status(maxSequenceNumber = 10u, sessionInformation = session1))
+            runCurrent()
+            harness.deliverStatus(status(maxSequenceNumber = 11u, sessionInformation = session1))
+            runCurrent()
+            assertEquals(500u, harness.manager.device.maxSequence)
+
+            // past two sample periods: reset on the next fall, so the status after it is accepted
+            nowMs += 10_001
+            harness.deliverStatus(status(maxSequenceNumber = 12u, sessionInformation = session1))
+            runCurrent()
+            harness.deliverStatus(status(maxSequenceNumber = 13u, sessionInformation = session1))
+            runCurrent()
+
+            assertEquals(13u, harness.manager.device.maxSequence)
+            assertEquals(requestsBefore, harness.sessionInfoRequests())
+        }
+
+    @Test
+    fun `the first status including session info sets it before any session info response`() =
+        runTest {
+            val harness = sessionInfoHarness(backgroundScope)
+
+            harness.deliverStatus(status(maxSequenceNumber = 10u, sessionInformation = session1))
+            runCurrent()
+
+            assertEquals(session1, harness.manager.device.sessionInfo)
+            assertEquals(10u, harness.manager.device.maxSequence)
+        }
+
+    @Test
+    fun `a late status of an older session is ignored`() = runTest {
+        val harness = sessionInfoHarness(backgroundScope)
+        harness.deliverStatus(status(maxSequenceNumber = 370u, sessionInformation = session1))
+        runCurrent()
+        nowMs += 20_000
+        harness.deliverStatus(status(maxSequenceNumber = 2u, sessionInformation = session2))
+        runCurrent()
+        val requestsBefore = harness.sessionInfoRequests()
+
+        // relayed late over a slower MeatNet route
+        harness.deliverStatus(status(maxSequenceNumber = 371u, sessionInformation = session1))
+        runCurrent()
+
+        assertEquals(session2, harness.manager.device.sessionInfo)
+        assertEquals(2u, harness.manager.device.maxSequence)
+        assertEquals(requestsBefore, harness.sessionInfoRequests())
+    }
+
+    @Test
+    fun `a late status of an older session never seen before is ignored`() = runTest {
+        val harness = sessionInfoHarness(backgroundScope)
+        harness.deliverStatus(status(maxSequenceNumber = 2u, sessionInformation = session2))
+        runCurrent()
+
+        // the previous session's last status, relayed late over a slower MeatNet route
+        harness.deliverStatus(status(maxSequenceNumber = 370u, sessionInformation = session1))
+        runCurrent()
+
+        assertEquals(session2, harness.manager.device.sessionInfo)
+        assertEquals(2u, harness.manager.device.maxSequence)
+    }
+
+    @Test
+    fun `a new session is accepted even when its sequence number is above the old one's`() =
+        runTest {
+            val harness = sessionInfoHarness(backgroundScope)
+            harness.deliverStatus(status(maxSequenceNumber = 10u, sessionInformation = session1))
+            runCurrent()
+
+            // e.g. out of range for an hour, during which the probe was reset
+            nowMs += 3_600_000
+            harness.deliverStatus(status(maxSequenceNumber = 100u, sessionInformation = session2))
+            runCurrent()
+
+            assertEquals(session2, harness.manager.device.sessionInfo)
+            assertEquals(100u, harness.manager.device.maxSequence)
+        }
+
+    @Test
+    fun `a late session info response of an older session is ignored`() = runTest {
+        val harness = sessionInfoHarness(backgroundScope)
+        harness.deliverStatus(status(maxSequenceNumber = 370u, sessionInformation = session1))
+        runCurrent()
+        // relayed by an older MeatNet node that drops the session info, so session info is requested
+        harness.deliverStatus(status(maxSequenceNumber = 371u))
+        runCurrent()
+        val lateResponse = harness.sessionInfoCallbacks.last()
+
+        nowMs += 20_000
+        harness.deliverStatus(status(maxSequenceNumber = 2u, sessionInformation = session2))
+        runCurrent()
+        // the request was answered just before the reset
+        lateResponse(true, session1)
+        runCurrent()
+
+        assertEquals(session2, harness.manager.device.sessionInfo)
+        assertEquals(2u, harness.manager.device.maxSequence)
+    }
+
+    @Test
+    fun `a status without session info is arbitrated against the last known session`() = runTest {
+        val harness = sessionInfoHarness(backgroundScope)
+        harness.deliverStatus(status(maxSequenceNumber = 10u, sessionInformation = session1))
+        runCurrent()
+
+        // e.g. relayed by an older MeatNet node that drops the session info
+        harness.deliverStatus(status(maxSequenceNumber = 9u))
+        runCurrent()
+        assertEquals(10u, harness.manager.device.maxSequence)
+
+        harness.deliverStatus(status(maxSequenceNumber = 11u))
+        runCurrent()
+        assertEquals(session1, harness.manager.device.sessionInfo)
+        assertEquals(11u, harness.manager.device.maxSequence)
+    }
+
+    @Test
+    fun `simulated probe statuses are handled like a real link's`() = runTest {
+        val manager = ProbeManager(
+            serialNumber = "12345678",
+            scope = backgroundScope,
+            settings = DeviceManager.Settings(),
+            dfuDisconnectedNodeCallback = {},
+        )
+        val simProbe = mockk<SimulatedProbeBleDevice>(relaxed = true)
+        val statusCallback = slot<suspend (ProbeStatus, UInt?) -> Unit>()
+        every { simProbe.observeProbeStatusUpdates(any(), capture(statusCallback)) } returns Unit
+        manager.addSimulatedProbe(simProbe)
+
+        statusCallback.captured(status(maxSequenceNumber = 10u, sessionInformation = session1), null)
+
+        assertTrue(manager.device.hasReceivedStatus)
+        assertEquals(session1, manager.device.sessionInfo)
+        assertEquals(10u, manager.device.maxSequence)
     }
 
     // Instant Read stale clearing (monitorInstantReadStale)

@@ -60,6 +60,7 @@ internal class SimulatedProbeBleDevice(
     var shouldConnect: Boolean = false
 ) : ProbeBleDeviceBase() {
     companion object {
+        private val SIMULATED_SESSION_INFORMATION = SessionInformation(0x12345678u, 5000u)
 
         fun randomAdvertisement(
             mac: String,
@@ -175,6 +176,7 @@ internal class SimulatedProbeBleDevice(
                                 ),
                                 thermometerPrefs = ThermometerPreferences.DEFAULT,
                                 probeHighLowAlarmStatus = ProbeHighLowAlarmStatus.DEFAULT,
+                                sessionInformation = SIMULATED_SESSION_INFORMATION,
                             ),
                             null,
                         )
@@ -273,8 +275,7 @@ internal class SimulatedProbeBleDevice(
     }
 
     override fun sendSessionInformationRequest(reqId: UInt?, callback: ((Boolean, Any?) -> Unit)?) {
-        val sessionInformation = SessionInformation(0x12345678u, 5000u)
-        callback?.let { it(true, sessionInformation) }
+        callback?.let { it(true, SIMULATED_SESSION_INFORMATION) }
     }
 
     override fun sendSetProbeColor(color: ProbeColor, callback: ((Boolean, Any?) -> Unit)?) {
