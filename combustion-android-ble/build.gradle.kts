@@ -51,6 +51,7 @@ android {
         buildConfigField("String", "VERSION_NAME", "\"" + getVersionName() + "\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        consumerProguardFiles("consumer-rules.pro")
         vectorDrawables {
             useSupportLibrary = true
         }
