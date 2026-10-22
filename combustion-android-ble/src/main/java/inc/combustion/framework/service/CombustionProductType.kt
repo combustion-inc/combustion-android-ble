@@ -37,6 +37,18 @@ enum class CombustionProductType(val type: UByte) {
     PROBE(0x01u),
     NODE(0x02u),
     GAUGE(0x03u),
+
+    /**
+     * Display (Timer). Only reported by MeatNet messages that name a specific product, e.g.
+     * heartbeats and linking tables; a Display advertises and connects as [NODE].
+     */
+    DISPLAY(0x04u),
+
+    /**
+     * Booster (Charger). Only reported by MeatNet messages that name a specific product, e.g.
+     * heartbeats and linking tables; a Booster advertises and connects as [NODE].
+     */
+    CHARGER(0x05u),
     ENGINE(0x06u);
 
     companion object {
@@ -45,6 +57,8 @@ enum class CombustionProductType(val type: UByte) {
                 PROBE.type -> PROBE
                 NODE.type -> NODE
                 GAUGE.type -> GAUGE
+                DISPLAY.type -> DISPLAY
+                CHARGER.type -> CHARGER
                 ENGINE.type -> ENGINE
                 else -> UNKNOWN
             }

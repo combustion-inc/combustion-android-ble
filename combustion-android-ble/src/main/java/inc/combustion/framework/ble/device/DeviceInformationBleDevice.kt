@@ -53,7 +53,19 @@ internal open class DeviceInformationBleDevice(
             productType
         )
 
+    /**
+     * While true, [disconnect] does nothing, so none of the framework's own disconnects drop a
+     * connection the app asked to keep (see `DeviceManager.connectToNode`). Cleared by whoever
+     * set it before it disconnects deliberately.
+     */
+    @Volatile
+    var isConnectionHeld: Boolean = false
+
     override fun disconnect() {
+        if (isConnectionHeld) {
+            Log.d(LOG_TAG, "Not disconnecting $mac: connection is held")
+            return
+        }
         if (isConnected.get()) {
             serialNumber = null
             firmwareVersion = null

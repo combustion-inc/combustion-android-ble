@@ -55,6 +55,7 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.util.Date
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.random.Random
 import kotlin.random.nextUInt
@@ -201,6 +202,19 @@ internal class NetworkManager(
                 else -> NOT_IMPLEMENTED("getNodeDevice is not implemented for unknown device $node with id = $deviceId")
             }
         },
+    )
+    private val nodeLinkingManager = NodeLinkingManager(
+        scope = scope,
+        findConnectedNode = { serialNumber -> connectedNode(serialNumber) },
+    )
+    private val nodeConnectionManager = NodeConnectionManager(
+        scope = scope,
+        nodeDevice = { id -> (devices[id] as? DeviceHolder.RepeaterHolder)?.repeater },
+        createNodeDevice = { advertisement ->
+            trackProbeAdvertisingDeviceIfNew(advertisement.id, advertisement)
+            (devices[advertisement.id] as DeviceHolder.RepeaterHolder).repeater
+        },
+        isNeededByFramework = { id -> isNodeNeededByFramework(id) },
     )
 
     private val probeIdManager = DeviceIdManager<ProbeID, Probe>(
@@ -420,6 +434,9 @@ internal class NetworkManager(
 
         // if MeatNet is managing network, then stop returning probe scan results
         switchScanningPurpose(ScanningPurpose.Dfu)
+
+        // DFU disconnects everything, including Nodes the app asked to stay connected to
+        nodeConnectionManager.releaseAll()
 
         // disconnect everything at this level
         devices.forEach { (_, device) ->
@@ -814,8 +831,103 @@ internal class NetworkManager(
         )
     }
 
+    val nodeHeartbeatFlow: SharedFlow<NodeHeartbeat>
+        get() = nodeLinkingManager.heartbeatFlow
+
+    val meatNetNodesFlow: StateFlow<List<MeatNetNode>>
+        get() = nodeConnectionManager.nodesFlow
+
+    internal fun connectToNode(serialNumber: String) {
+        nodeConnectionManager.connect(serialNumber)
+    }
+
+    internal fun disconnectFromNode(serialNumber: String) {
+        nodeConnectionManager.disconnect(serialNumber)
+    }
+
+    /**
+     * Whether the framework itself uses the connection to the Node [id]: it relays an allowed
+     * probe (or, in MeatNet mode, it's one of the Nodes kept connected for relaying no probes), or
+     * it is an allowed Gauge or Engine.
+     */
+    private fun isNodeNeededByFramework(id: DeviceID): Boolean {
+        val relaysTrackedProbe = meatNetLinks.snapshotValues().any {
+            it is LinkHolder.RepeatedProbeHolder && it.repeatedProbe.id == id
+        }
+        val hybridSerialNumber = devices[id].hybridDeviceChild?.serialNumber
+        val isTrackedDevice = hybridSerialNumber != null &&
+                (gaugeManagers.containsKey(hybridSerialNumber) || engineManagers.containsKey(hybridSerialNumber))
+        return relaysTrackedProbe || isTrackedDevice
+    }
+
+    fun nodeLinkedDevicesFlow(serialNumber: String): StateFlow<List<NodeLinkingTableEntry>?> =
+        nodeLinkingManager.linkedDevicesFlow(serialNumber)
+
+    fun nodeUnlinkedDevicesFlow(serialNumber: String): StateFlow<List<NodeLinkingTableEntry>?> =
+        nodeLinkingManager.unlinkedDevicesFlow(serialNumber)
+
+    fun nodeProximityLinkingFlow(serialNumber: String): StateFlow<Boolean?> =
+        nodeLinkingManager.proximityLinkingFlow(serialNumber)
+
+    internal fun readNodeLinkingTable(
+        serialNumber: String,
+        kind: LinkingTableKind,
+        progressHandler: ((NodeLinkingTableProgress) -> Unit)?,
+        completionHandler: (Boolean) -> Unit,
+    ) {
+        nodeLinkingManager.readTable(serialNumber, kind, progressHandler, completionHandler)
+    }
+
+    internal fun setDeviceLinkedToNode(
+        serialNumber: String,
+        linked: Boolean,
+        deviceType: CombustionProductType,
+        deviceSerialNumber: String,
+        timestamp: Date?,
+        completionHandler: (Boolean) -> Unit,
+    ) {
+        nodeLinkingManager.setDeviceLinked(
+            serialNumber,
+            linked,
+            deviceType,
+            deviceSerialNumber,
+            timestamp,
+            completionHandler,
+        )
+    }
+
+    internal fun setNodeProximityLinking(
+        serialNumber: String,
+        enabled: Boolean,
+        completionHandler: (Boolean) -> Unit,
+    ) {
+        nodeLinkingManager.setProximityLinking(serialNumber, enabled, completionHandler)
+    }
+
+    internal fun readNodeProximityLinking(serialNumber: String, completionHandler: (Boolean) -> Unit) {
+        nodeLinkingManager.readProximityLinking(serialNumber, completionHandler)
+    }
+
+    /**
+     * The Node the phone is connected to with serial number [serialNumber], or null. A Node's
+     * serial number comes from its Device Information Service, which is read here if it hasn't
+     * been yet; a Gauge's or Engine's is also known from its advertising.
+     */
+    private suspend fun connectedNode(serialNumber: String): NodeBleDevice? {
+        nodeConnectionManager.connectedNodeDevice(serialNumber)?.let { return it }
+        val target = serialNumber.uppercase()
+        devices.getRepeaterNodes().filter { it.isConnected }.forEach { node ->
+            if (node.hybridDeviceChild?.serialNumber?.uppercase() == target) return node
+            if (node.deviceInfoSerialNumber == null) node.readSerialNumber()
+            if (node.deviceInfoSerialNumber?.uppercase() == target) return node
+        }
+        return null
+    }
+
     @ExperimentalCoroutinesApi
     fun clearDevices() {
+        // First, while the Node devices are still known: releases and disconnects held Nodes.
+        nodeConnectionManager.clear()
         (probeManagers.snapshot() + gaugeManagers.snapshot() + engineManagers.snapshot()).forEach { (_, manager) -> manager.finish() }
         probeIdManager.clear()
         gaugeIdManager.clear()
@@ -828,6 +940,7 @@ internal class NetworkManager(
         meatNetLinks.clear()
         proximityDevices.clear()
         wifiNodesManager.clear()
+        nodeLinkingManager.clear()
 
         // clear the discovered probes flow
         flowHolder.mutableDiscoveredDevicesFlow.resetReplayCache()
@@ -850,6 +963,7 @@ internal class NetworkManager(
         DeviceScanner.stop()
         jobManager.cancelJobs()
         clearDevices()
+        nodeConnectionManager.finish()
         _instanceFlow.value = null
         initialized.set(false)
     }
@@ -861,8 +975,10 @@ internal class NetworkManager(
         deviceId: String,
         advertisement: ProbeAdvertisingData,
     ) {
-        if (!devices.containsKey(deviceId)) {
-            val deviceHolder = when (advertisement.productType) {
+        // Atomic, because a Node can also be tracked from an API call (connectToNode) while
+        // advertising is being handled: two devices for one MAC would mean two BLE peripherals.
+        devices.computeIfAbsent(deviceId) {
+            when (advertisement.productType) {
                 PROBE -> {
                     DeviceHolder.ProbeHolder(
                         ProbeBleDevice(advertisement.mac, scope = scope, advertisement, adapter)
@@ -875,8 +991,6 @@ internal class NetworkManager(
 
                 else -> NOT_IMPLEMENTED("Unknown product type")
             }
-
-            devices[deviceId] = deviceHolder
         }
     }
 
@@ -922,6 +1036,9 @@ internal class NetworkManager(
             observeSilenceAlarmsCallback = { request ->
                 Log.v(LOG_TAG, "observeSilenceAlarms: $request")
                 _silenceAlarmsRequestFlow.tryEmit(request)
+            },
+            observeHeartbeatCallback = { request ->
+                nodeLinkingManager.handleHeartbeat(request)
             },
         )
         publishNodeFirmwareOnConnectedState(device.getDevice())
@@ -1203,6 +1320,10 @@ internal class NetworkManager(
     private suspend fun collectAdvertisingData() {
         DeviceScanner.advertisements.collect { advertisingData ->
             if (!deviceDiscoveryModeEnabled) return@collect
+
+            if (settings.meatNetEnabled) {
+                nodeConnectionManager.handleAdvertisement(advertisingData)
+            }
 
             val serialNumber = advertisingData.serialNumber
             val productType = advertisingData.productType

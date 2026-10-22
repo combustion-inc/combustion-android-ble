@@ -41,6 +41,7 @@ import inc.combustion.framework.LOG_TAG
 import inc.combustion.framework.analytics.AnalyticsEvent
 import inc.combustion.framework.analytics.AnalyticsTracker
 import inc.combustion.framework.analytics.ExceptionEvent
+import inc.combustion.framework.ble.LinkingTableKind
 import inc.combustion.framework.ble.NetworkManager
 import inc.combustion.framework.ble.device.DeviceID
 import inc.combustion.framework.ble.dfu.DfuManager
@@ -1224,6 +1225,227 @@ class DeviceManager(
             completionHandler,
         )
     }
+
+    /**
+     * Every MeatNet Node (Display, Booster, Gauge, Engine) heard advertising, including ones that
+     * have since gone out of range, sorted by device ID. Only populated when
+     * [Settings.meatNetEnabled]. See [MeatNetNode].
+     *
+     * A Display or Booster on firmware that doesn't send Device Info advertisements has an empty
+     * serial number here until the phone has connected to it.
+     */
+    val meatNetNodesFlow: StateFlow<List<MeatNetNode>> = NetworkManager.instanceFlow
+        .flatMapLatest { mgr ->
+            mgr?.meatNetNodesFlow ?: flowOf(emptyList())
+        }
+        .stateIn(
+            scope = appApiScope,
+            started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
+            initialValue = emptyList(),
+        )
+
+    /**
+     * Keeps the phone connected to the MeatNet Node [serialNumber] (see [meatNetNodesFlow]) until
+     * [disconnectFromNode] is called: connects now, reconnects whenever it's disconnected and
+     * advertising again, and stops the framework's own disconnects from dropping it. The linking
+     * methods (e.g. [readNodeLinkedDevices]) need the phone connected to the Node. iOS's
+     * `MeatNetNode.connect()`.
+     *
+     * Does nothing if no Node with this serial number has been heard. Entering DFU mode releases
+     * every Node.
+     */
+    fun connectToNode(serialNumber: String) {
+        doWhenNetworkManagerInitialized {
+            it.connectToNode(serialNumber)
+        }
+    }
+
+    /**
+     * Stops keeping the phone connected to the MeatNet Node [serialNumber], and disconnects
+     * unless the framework still uses the connection, e.g. to reach an allowed probe, gauge or
+     * engine. iOS's `MeatNetNode.disconnect()`.
+     */
+    fun disconnectFromNode(serialNumber: String) {
+        doWhenNetworkManagerInitialized {
+            it.disconnectFromNode(serialNumber)
+        }
+    }
+
+    /**
+     * Reads the table of devices linked to the MeatNet Node [serialNumber], which the phone must
+     * be connected to directly, and publishes it to [nodeLinkedDevicesFlow] once every page has
+     * been received and checked. Calls [completionHandler] with true then, or with false if a
+     * page can't be read or fails the checks, leaving the previously published table in place.
+     *
+     * [progressHandler], if given, is called after each valid page with the entries received so
+     * far; see [NodeLinkingTableProgress] for why those are provisional until it's complete.
+     *
+     * Only one read per Node runs at a time: calling this again while a read is running cancels
+     * that read, whose [completionHandler] gets false.
+     */
+    fun readNodeLinkedDevices(
+        serialNumber: String,
+        progressHandler: ((NodeLinkingTableProgress) -> Unit)? = null,
+        completionHandler: (Boolean) -> Unit,
+    ) {
+        doWhenNetworkManagerInitialized {
+            it.readNodeLinkingTable(serialNumber, LinkingTableKind.LINKED, progressHandler, completionHandler)
+        }
+    }
+
+    /**
+     * Reads the table of devices explicitly unlinked from the MeatNet Node [serialNumber] and
+     * publishes it to [nodeUnlinkedDevicesFlow]. Otherwise the same as [readNodeLinkedDevices].
+     */
+    fun readNodeUnlinkedDevices(
+        serialNumber: String,
+        progressHandler: ((NodeLinkingTableProgress) -> Unit)? = null,
+        completionHandler: (Boolean) -> Unit,
+    ) {
+        doWhenNetworkManagerInitialized {
+            it.readNodeLinkingTable(serialNumber, LinkingTableKind.UNLINKED, progressHandler, completionHandler)
+        }
+    }
+
+    /**
+     * Links the device [deviceSerialNumber] of type [deviceType] (a probe, or a Node product such
+     * as a Display, Booster, Gauge or Engine) to the MeatNet Node [serialNumber], which the phone
+     * must be connected to directly. The Node then tells the other Nodes. [timestamp] is recorded
+     * as the time of the link; null records it as unknown.
+     *
+     * Calls [completionHandler] with false, without sending anything, if [deviceSerialNumber]
+     * isn't valid for [deviceType]: a probe's must be its hex serial number, any other product's
+     * exactly 10 characters, and [deviceType] can't be [CombustionProductType.UNKNOWN].
+     *
+     * Doesn't update [nodeLinkedDevicesFlow]; read the table again to see the change.
+     */
+    fun linkDeviceToNode(
+        serialNumber: String,
+        deviceType: CombustionProductType,
+        deviceSerialNumber: String,
+        timestamp: Date? = null,
+        completionHandler: (Boolean) -> Unit,
+    ) {
+        doWhenNetworkManagerInitialized {
+            it.setDeviceLinkedToNode(serialNumber, true, deviceType, deviceSerialNumber, timestamp, completionHandler)
+        }
+    }
+
+    /**
+     * Unlinks the device [deviceSerialNumber] of type [deviceType] from the MeatNet Node
+     * [serialNumber]. Otherwise the same as [linkDeviceToNode].
+     *
+     * Not the same as removing a device from [setDeviceAllowList], which only affects which
+     * devices this phone connects to.
+     */
+    fun unlinkDeviceFromNode(
+        serialNumber: String,
+        deviceType: CombustionProductType,
+        deviceSerialNumber: String,
+        timestamp: Date? = null,
+        completionHandler: (Boolean) -> Unit,
+    ) {
+        doWhenNetworkManagerInitialized {
+            it.setDeviceLinkedToNode(serialNumber, false, deviceType, deviceSerialNumber, timestamp, completionHandler)
+        }
+    }
+
+    /**
+     * Enables or disables proximity-based automatic linking on the MeatNet Node [serialNumber],
+     * which the phone must be connected to directly. On success, [nodeProximityLinkingFlow] is
+     * updated before [completionHandler] is called.
+     *
+     * Not related to [deviceInProximityFlow], which is this phone's own RSSI-based proximity.
+     */
+    fun setNodeProximityLinking(
+        serialNumber: String,
+        enabled: Boolean,
+        completionHandler: (Boolean) -> Unit,
+    ) {
+        doWhenNetworkManagerInitialized {
+            it.setNodeProximityLinking(serialNumber, enabled, completionHandler)
+        }
+    }
+
+    /**
+     * Reads whether proximity-based automatic linking is enabled on the MeatNet Node
+     * [serialNumber], which the phone must be connected to directly. On success,
+     * [nodeProximityLinkingFlow] is updated before [completionHandler] is called.
+     */
+    fun readNodeProximityLinking(serialNumber: String, completionHandler: (Boolean) -> Unit) {
+        doWhenNetworkManagerInitialized {
+            it.readNodeProximityLinking(serialNumber, completionHandler)
+        }
+    }
+
+    /**
+     * The last complete table of devices linked to the MeatNet Node [serialNumber], or null if
+     * it hasn't been read yet. Updated by [readNodeLinkedDevices].
+     */
+    fun nodeLinkedDevicesFlow(serialNumber: String): StateFlow<List<NodeLinkingTableEntry>?> {
+        val initial = NetworkManager.instanceFlow.value?.nodeLinkedDevicesFlow(serialNumber)?.value
+        return NetworkManager.instanceFlow
+            .flatMapLatest { mgr ->
+                mgr?.nodeLinkedDevicesFlow(serialNumber) ?: flowOf(null)
+            }
+            .stateIn(
+                scope = appApiScope,
+                started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
+                initialValue = initial,
+            )
+    }
+
+    /**
+     * The last complete table of devices explicitly unlinked from the MeatNet Node
+     * [serialNumber], or null if it hasn't been read yet. Updated by [readNodeUnlinkedDevices].
+     */
+    fun nodeUnlinkedDevicesFlow(serialNumber: String): StateFlow<List<NodeLinkingTableEntry>?> {
+        val initial = NetworkManager.instanceFlow.value?.nodeUnlinkedDevicesFlow(serialNumber)?.value
+        return NetworkManager.instanceFlow
+            .flatMapLatest { mgr ->
+                mgr?.nodeUnlinkedDevicesFlow(serialNumber) ?: flowOf(null)
+            }
+            .stateIn(
+                scope = appApiScope,
+                started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
+                initialValue = initial,
+            )
+    }
+
+    /**
+     * Whether proximity-based automatic linking is enabled on the MeatNet Node [serialNumber], or
+     * null if it hasn't been read or set yet. Updated by [readNodeProximityLinking] and
+     * [setNodeProximityLinking].
+     */
+    fun nodeProximityLinkingFlow(serialNumber: String): StateFlow<Boolean?> {
+        val initial = NetworkManager.instanceFlow.value?.nodeProximityLinkingFlow(serialNumber)?.value
+        return NetworkManager.instanceFlow
+            .flatMapLatest { mgr ->
+                mgr?.nodeProximityLinkingFlow(serialNumber) ?: flowOf(null)
+            }
+            .stateIn(
+                scope = appApiScope,
+                started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
+                initialValue = initial,
+            )
+    }
+
+    /**
+     * Every heartbeat received from MeatNet Nodes, including relayed ones from Nodes the phone
+     * isn't connected to. Each heartbeat is emitted even if it's identical to the previous one from
+     * the same Node, so its arrival can be used as a sign that the Node's connections are still
+     * current. Key heartbeats by [NodeHeartbeat.serialNumber] and [NodeHeartbeat.inbound]. When
+     * the phone is connected to several Nodes, the same heartbeat can arrive through each of them.
+     * Doesn't replay; old heartbeats are dropped if a collector falls behind.
+     */
+    val nodeHeartbeatFlow: SharedFlow<NodeHeartbeat> = NetworkManager.instanceFlow
+        .flatMapLatest { mgr ->
+            mgr?.nodeHeartbeatFlow ?: emptyFlow()
+        }
+        .shareIn(
+            scope = appApiScope,
+            started = SharingStarted.WhileSubscribed(),
+        )
 
     /**
      * State flow containing the firmware details for all nodes on the network.
