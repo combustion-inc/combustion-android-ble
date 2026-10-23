@@ -64,6 +64,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 private const val CSV_VERSION = 6
@@ -1226,6 +1227,30 @@ class DeviceManager(
         )
     }
 
+    // One flow per Node and table, however often the functions below are called: a new stateIn
+    // per call would leave a sharing coroutine behind in appApiScope every time.
+    private val nodeLinkedDevicesFlows = ConcurrentHashMap<String, StateFlow<List<NodeLinkingTableEntry>?>>()
+    private val nodeUnlinkedDevicesFlows = ConcurrentHashMap<String, StateFlow<List<NodeLinkingTableEntry>?>>()
+    private val nodeProximityLinkingFlows = ConcurrentHashMap<String, StateFlow<Boolean?>>()
+    private val nodeFlowScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+
+    /**
+     * [select]'s flow from the current NetworkManager, following it across re-initialization.
+     * Shared eagerly, so its value stays current even while nothing collects it; there is one per
+     * Node, so this is bounded by the number of Nodes, not the number of calls. Unconfined, so a
+     * new value is passed on in the thread that set it: e.g. a table published before a read's
+     * completion handler runs is already this flow's value inside that handler.
+     */
+    private fun <T> sharedNodeFlow(select: (NetworkManager) -> StateFlow<T?>): StateFlow<T?> =
+        NetworkManager.instanceFlow
+            .flatMapLatest { mgr -> mgr?.let(select) ?: flowOf(null) }
+            .stateIn(
+                scope = nodeFlowScope,
+                started = SharingStarted.Eagerly,
+                initialValue = NetworkManager.instanceFlow.value?.let(select)?.value,
+            )
+
+
     /**
      * Every MeatNet Node (Display, Booster, Gauge, Engine) heard advertising, including ones that
      * have since gone out of range, sorted by device ID. Only populated when
@@ -1381,54 +1406,33 @@ class DeviceManager(
     /**
      * The last complete table of devices linked to the MeatNet Node [serialNumber], or null if
      * it hasn't been read yet. Updated by [readNodeLinkedDevices].
+     * Returns the same flow for the same serial number.
      */
-    fun nodeLinkedDevicesFlow(serialNumber: String): StateFlow<List<NodeLinkingTableEntry>?> {
-        val initial = NetworkManager.instanceFlow.value?.nodeLinkedDevicesFlow(serialNumber)?.value
-        return NetworkManager.instanceFlow
-            .flatMapLatest { mgr ->
-                mgr?.nodeLinkedDevicesFlow(serialNumber) ?: flowOf(null)
-            }
-            .stateIn(
-                scope = appApiScope,
-                started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
-                initialValue = initial,
-            )
-    }
+    fun nodeLinkedDevicesFlow(serialNumber: String): StateFlow<List<NodeLinkingTableEntry>?> =
+        nodeLinkedDevicesFlows.computeIfAbsent(serialNumber.uppercase()) { serial ->
+            sharedNodeFlow { it.nodeLinkedDevicesFlow(serial) }
+        }
 
     /**
      * The last complete table of devices explicitly unlinked from the MeatNet Node
      * [serialNumber], or null if it hasn't been read yet. Updated by [readNodeUnlinkedDevices].
+     * Returns the same flow for the same serial number.
      */
-    fun nodeUnlinkedDevicesFlow(serialNumber: String): StateFlow<List<NodeLinkingTableEntry>?> {
-        val initial = NetworkManager.instanceFlow.value?.nodeUnlinkedDevicesFlow(serialNumber)?.value
-        return NetworkManager.instanceFlow
-            .flatMapLatest { mgr ->
-                mgr?.nodeUnlinkedDevicesFlow(serialNumber) ?: flowOf(null)
-            }
-            .stateIn(
-                scope = appApiScope,
-                started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
-                initialValue = initial,
-            )
-    }
+    fun nodeUnlinkedDevicesFlow(serialNumber: String): StateFlow<List<NodeLinkingTableEntry>?> =
+        nodeUnlinkedDevicesFlows.computeIfAbsent(serialNumber.uppercase()) { serial ->
+            sharedNodeFlow { it.nodeUnlinkedDevicesFlow(serial) }
+        }
 
     /**
      * Whether proximity-based automatic linking is enabled on the MeatNet Node [serialNumber], or
      * null if it hasn't been read or set yet. Updated by [readNodeProximityLinking] and
      * [setNodeProximityLinking].
+     * Returns the same flow for the same serial number.
      */
-    fun nodeProximityLinkingFlow(serialNumber: String): StateFlow<Boolean?> {
-        val initial = NetworkManager.instanceFlow.value?.nodeProximityLinkingFlow(serialNumber)?.value
-        return NetworkManager.instanceFlow
-            .flatMapLatest { mgr ->
-                mgr?.nodeProximityLinkingFlow(serialNumber) ?: flowOf(null)
-            }
-            .stateIn(
-                scope = appApiScope,
-                started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
-                initialValue = initial,
-            )
-    }
+    fun nodeProximityLinkingFlow(serialNumber: String): StateFlow<Boolean?> =
+        nodeProximityLinkingFlows.computeIfAbsent(serialNumber.uppercase()) { serial ->
+            sharedNodeFlow { it.nodeProximityLinkingFlow(serial) }
+        }
 
     /**
      * Every heartbeat received from MeatNet Nodes, including relayed ones from Nodes the phone
