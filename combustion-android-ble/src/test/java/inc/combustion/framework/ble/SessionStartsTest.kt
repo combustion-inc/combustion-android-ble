@@ -162,4 +162,17 @@ class SessionStartsTest {
         assertTrue(sessionStarts.acceptSessionInfo(session1, current = session3))
         assertFalse(sessionStarts.acceptSessionInfo(session2, current = session3))
     }
+    // ---- PR 191 review verification ----
+
+    @Test
+    fun `REVIEW4 a newer session is accepted when the previous short session's estimate was late from relay delay`() {
+        val sessionStarts = SessionStarts()
+        val t = nowMs
+        // session 2 started at t; its only status heard was 2 samples in, relayed 20 s late
+        nowMs = t + 10_000 + 20_000
+        assertTrue(sessionStarts.acceptStatus(session2, maxSequenceNumber = 2u, current = null))
+        // session 3 started at t + 12 s, heard directly
+        nowMs = t + 12_000 + 5_000 + 100
+        assertTrue(sessionStarts.acceptStatus(session3, maxSequenceNumber = 1u, current = session2))
+    }
 }
