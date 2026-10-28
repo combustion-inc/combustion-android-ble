@@ -77,6 +77,8 @@ internal class GaugeManager(
 
     override val arbitrator = GaugeDataLinkArbitrator()
 
+    override val logPrefix = "GM"
+
     // Gauge status can arrive concurrently from more than one source (a direct BLE link and/or
     // multiple mesh-relay nodes), all invoking handleStatus() for the same gauge. This mutex
     // serializes the read-decide-write sequence in handleStatus() so two overlapping status
@@ -359,6 +361,8 @@ internal class GaugeManager(
         statusNotificationsMonitor.activity()
 
         handleStatusMutex.withLock {
+            if (isLateStatusOfOlderSession(status.sessionInformation, status)) return@withLock
+
             if (simulated || arbitrator.shouldUpdateDataFromStatusForNormalMode(
                     status,
                     status.sessionInformation,

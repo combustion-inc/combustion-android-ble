@@ -62,6 +62,9 @@ internal abstract class BleManager {
 
     abstract val serialNumber: String
 
+    // short name of the device type for log messages, e.g. "PM" for ProbeManager
+    protected abstract val logPrefix: String
+
     abstract val device: SpecializedDevice
 
     abstract val deviceFlow: StateFlow<SpecializedDevice>
@@ -102,6 +105,80 @@ internal abstract class BleManager {
     // current session information for the device
     var sessionInfo: SessionInformation? = null
         protected set
+
+    // when recently seen sessions started, to recognize a late message of an older session -- only
+    // accessed while holding the subclass's status handling mutex
+    private val sessionStarts = SessionStarts()
+
+    /**
+     * True if [status], of session [info], is a late status of a session that started before the
+     * current one -- e.g. relayed late over a slower MeatNet route after a reboot started a new
+     * session. It should then be ignored: switching back to its session would finish the current
+     * session's log transfer and split its log. See [SessionStarts]. Call with the status handling
+     * mutex held.
+     */
+    protected fun isLateStatusOfOlderSession(
+        info: SessionInformation,
+        status: SpecializedDeviceStatus,
+    ): Boolean {
+        if (sessionStarts.acceptStatus(info, status.maxSequenceNumber, sessionInfo)) return false
+        Log.i(
+            LOG_TAG,
+            "$logPrefix($serialNumber): ignoring late status of older session ${info.sessionID} " +
+                "(current ${sessionInfo?.sessionID})."
+        )
+        return true
+    }
+
+    /**
+     * Like [isLateStatusOfOlderSession], for a status without session info -- e.g. relayed by an
+     * older MeatNet node that strips it. Its session can't be identified, so it's compared with
+     * the current session's start, assuming the same sample period. See
+     * [SessionStarts.isStatusWithoutSessionInfoOfOlderSession].
+     */
+    protected fun isLateStatusWithoutSessionInfoOfOlderSession(
+        status: SpecializedDeviceStatus,
+    ): Boolean {
+        val older = sessionStarts.isStatusWithoutSessionInfoOfOlderSession(
+            status.maxSequenceNumber,
+            sessionInfo,
+        )
+        if (!older) return false
+        Log.i(
+            LOG_TAG,
+            "$logPrefix($serialNumber): ignoring late status without session info of an older " +
+                "session (sequence ${status.maxSequenceNumber}, current ${sessionInfo?.sessionID})."
+        )
+        return true
+    }
+
+    /**
+     * Records that [status], without session info, was accepted into the current session -- see
+     * [SessionStarts.statusWithoutSessionInfoAccepted]. Call with the status handling mutex held.
+     */
+    protected fun statusWithoutSessionInfoAccepted(status: SpecializedDeviceStatus) =
+        sessionStarts.statusWithoutSessionInfoAccepted(status.maxSequenceNumber, sessionInfo)
+
+    /**
+     * Records that session info without a status (e.g. a session info response) switched to
+     * session [info]. Call with the status handling mutex held.
+     */
+    protected fun switchedSessionBySessionInfo(info: SessionInformation) =
+        sessionStarts.switchedBySessionInfo(info)
+
+    /**
+     * Like [isLateStatusOfOlderSession], for session info without a status -- e.g. a session info
+     * response sent just before a reboot, arriving after a status of the new session.
+     */
+    protected fun isLateSessionInfoOfOlderSession(info: SessionInformation): Boolean {
+        if (sessionStarts.acceptSessionInfo(info, sessionInfo)) return false
+        Log.i(
+            LOG_TAG,
+            "$logPrefix($serialNumber): ignoring late session info of older session " +
+                "${info.sessionID} (current ${sessionInfo?.sessionID})."
+        )
+        return true
+    }
 
     fun addJob(serialNumber: String, job: Job) = jobManager.addJob(serialNumber, job)
 

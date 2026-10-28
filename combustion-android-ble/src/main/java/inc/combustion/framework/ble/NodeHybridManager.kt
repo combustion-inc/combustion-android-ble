@@ -259,7 +259,7 @@ internal abstract class NodeHybridManager<
         if (sessionInfo != info) {
             logTransferCompleteCallback()
             uploadState = ProbeUploadState.Unavailable
-            Log.i(LOG_TAG, "PM($serialNumber): finished log transfer.")
+            Log.i(LOG_TAG, "$logPrefix($serialNumber): finished log transfer.")
         }
         sessionInfo = info
         return _deviceFlow.updateAndGet {
@@ -299,7 +299,7 @@ internal abstract class NodeHybridManager<
         val isDisconnected = state == DeviceConnectionState.DISCONNECTED
 
         if (isConnected) {
-            Log.i(LOG_TAG, "PM($serialNumber): ${device.productType}[${device.id}] is connected.")
+            Log.i(LOG_TAG, "$logPrefix($serialNumber): ${device.productType}[${device.id}] is connected.")
             fetchDeviceInfo()
         }
 
@@ -308,7 +308,7 @@ internal abstract class NodeHybridManager<
         if (isDisconnected) {
             Log.i(
                 LOG_TAG,
-                "PM($serialNumber): ${device.productType}[${device.id}] is disconnected."
+                "$logPrefix($serialNumber): ${device.productType}[${device.id}] is disconnected."
             )
             device.disconnect()
             arbitrator.directLinkDiscoverTimestamp = null
@@ -331,7 +331,7 @@ internal abstract class NodeHybridManager<
         if (arbitrator.shouldConnect(device)) {
             Log.i(
                 LOG_TAG,
-                "PM($serialNumber) automatically connecting to ${device.id} (${device.productType})"
+                "$logPrefix($serialNumber) automatically connecting to ${device.id} (${device.productType})"
             )
             device.connect()
         }

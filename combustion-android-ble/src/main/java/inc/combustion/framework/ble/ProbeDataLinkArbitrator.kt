@@ -410,7 +410,7 @@ internal class ProbeDataLinkArbitrator(
      * Returns the max sequence number of the last accepted Normal Mode status if [status]'s is
      * at least [MIN_SEQUENCE_FALL] below it in the same session, else null. For a rejected Normal
      * Mode status, or any Instant Read status, which is arbitrated without a sequence check -- see
-     * ProbeManager.rereadSessionInfoIfSequenceFell().
+     * ProbeManager.handleIfSequenceFell().
      */
     fun lastAcceptedMaxSequenceIfStatusFellBelow(
         status: ProbeStatus,

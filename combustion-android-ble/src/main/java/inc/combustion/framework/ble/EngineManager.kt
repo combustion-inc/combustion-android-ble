@@ -64,6 +64,8 @@ internal class EngineManager(
 
     override val arbitrator = EngineDataLinkArbitrator()
 
+    override val logPrefix = "EM"
+
     // Engine status can arrive concurrently from more than one source (a direct BLE link and/or
     // multiple mesh-relay nodes), all invoking handleStatus() for the same engine. This mutex
     // serializes the read-decide-write sequence below so two overlapping status updates can't
@@ -163,6 +165,8 @@ internal class EngineManager(
         statusNotificationsMonitor.activity()
 
         handleStatusMutex.withLock {
+            if (isLateStatusOfOlderSession(status.sessionInformation, status)) return@withLock
+
             if (simulated || arbitrator.shouldUpdateDataFromStatusForNormalMode(
                     status,
                     status.sessionInformation,

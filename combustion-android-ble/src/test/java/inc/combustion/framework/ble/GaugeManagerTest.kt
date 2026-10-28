@@ -28,6 +28,7 @@
 
 package inc.combustion.framework.ble
 
+import android.os.SystemClock
 import android.util.Log
 import inc.combustion.framework.ble.device.SimulatedGaugeBleDevice
 import inc.combustion.framework.service.DeviceManager
@@ -84,6 +85,7 @@ class GaugeManagerTest {
     fun tearDown() {
         Dispatchers.resetMain()
         unmockkStatic(Log::class)
+        unmockkStatic(SystemClock::class)
     }
 
     private fun manager(scope: CoroutineScope): GaugeManager = GaugeManager(
@@ -96,12 +98,13 @@ class GaugeManagerTest {
 
     private fun gaugeStatus(
         sessionID: UInt = 1u,
+        samplePeriod: UInt = 1u,
         maxSequenceNumber: UInt = 1u,
         highLowAlarmStatus: HighLowAlarmStatus = HighLowAlarmStatus.DEFAULT,
         id: UByte? = 0u,
     ): GaugeStatus = GaugeStatus(
-        sessionInformation = SessionInformation(sessionID = sessionID, samplePeriod = 1u),
-        samplePeriod = 1u,
+        sessionInformation = SessionInformation(sessionID = sessionID, samplePeriod = samplePeriod),
+        samplePeriod = samplePeriod,
         temperature = SensorTemperature.NO_DATA,
         gaugeStatusFlags = GaugeStatusFlags(sensorPresent = true),
         minSequenceNumber = 0u,
@@ -427,4 +430,23 @@ class GaugeManagerTest {
 
             assertEquals(true, result)
         }
+
+    // Late statuses of an older session (SessionStarts)
+
+    @Test
+    fun `a late status of an older session is ignored`() = runTest {
+        mockkStatic(SystemClock::class)
+        var nowMs = 100_000L
+        every { SystemClock.elapsedRealtime() } answers { nowMs }
+        val manager = manager(backgroundScope)
+        manager.observedGaugeStatus(gaugeStatus(sessionID = 1u, samplePeriod = 5000u, maxSequenceNumber = 370u))
+        nowMs += 20_000
+        manager.observedGaugeStatus(gaugeStatus(sessionID = 2u, samplePeriod = 5000u, maxSequenceNumber = 2u))
+
+        // relayed late over a slower MeatNet route
+        manager.observedGaugeStatus(gaugeStatus(sessionID = 1u, samplePeriod = 5000u, maxSequenceNumber = 371u))
+
+        assertEquals(2u, manager.device.sessionInfo?.sessionID)
+        assertEquals(2u, manager.device.maxSequence)
+    }
 }
