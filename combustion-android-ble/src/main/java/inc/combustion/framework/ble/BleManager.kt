@@ -62,6 +62,9 @@ internal abstract class BleManager {
 
     abstract val serialNumber: String
 
+    // short name of the device type for log messages, e.g. "PM" for ProbeManager
+    protected abstract val logPrefix: String
+
     abstract val device: SpecializedDevice
 
     abstract val deviceFlow: StateFlow<SpecializedDevice>
@@ -121,11 +124,47 @@ internal abstract class BleManager {
         if (sessionStarts.acceptStatus(info, status.maxSequenceNumber, sessionInfo)) return false
         Log.i(
             LOG_TAG,
-            "PM($serialNumber): ignoring late status of older session ${info.sessionID} " +
+            "$logPrefix($serialNumber): ignoring late status of older session ${info.sessionID} " +
                 "(current ${sessionInfo?.sessionID})."
         )
         return true
     }
+
+    /**
+     * Like [isLateStatusOfOlderSession], for a status without session info -- e.g. relayed by an
+     * older MeatNet node that strips it. Its session can't be identified, so it's compared with
+     * the current session's start, assuming the same sample period. See
+     * [SessionStarts.isStatusWithoutSessionInfoOfOlderSession].
+     */
+    protected fun isLateStatusWithoutSessionInfoOfOlderSession(
+        status: SpecializedDeviceStatus,
+    ): Boolean {
+        val older = sessionStarts.isStatusWithoutSessionInfoOfOlderSession(
+            status.maxSequenceNumber,
+            sessionInfo,
+        )
+        if (!older) return false
+        Log.i(
+            LOG_TAG,
+            "$logPrefix($serialNumber): ignoring late status without session info of an older " +
+                "session (sequence ${status.maxSequenceNumber}, current ${sessionInfo?.sessionID})."
+        )
+        return true
+    }
+
+    /**
+     * Records that [status], without session info, was accepted into the current session -- see
+     * [SessionStarts.statusWithoutSessionInfoAccepted]. Call with the status handling mutex held.
+     */
+    protected fun statusWithoutSessionInfoAccepted(status: SpecializedDeviceStatus) =
+        sessionStarts.statusWithoutSessionInfoAccepted(status.maxSequenceNumber, sessionInfo)
+
+    /**
+     * Records that session info without a status (e.g. a session info response) switched to
+     * session [info]. Call with the status handling mutex held.
+     */
+    protected fun switchedSessionBySessionInfo(info: SessionInformation) =
+        sessionStarts.switchedBySessionInfo(info)
 
     /**
      * Like [isLateStatusOfOlderSession], for session info without a status -- e.g. a session info
@@ -135,8 +174,8 @@ internal abstract class BleManager {
         if (sessionStarts.acceptSessionInfo(info, sessionInfo)) return false
         Log.i(
             LOG_TAG,
-            "PM($serialNumber): ignoring late session info of older session ${info.sessionID} " +
-                "(current ${sessionInfo?.sessionID})."
+            "$logPrefix($serialNumber): ignoring late session info of older session " +
+                "${info.sessionID} (current ${sessionInfo?.sessionID})."
         )
         return true
     }

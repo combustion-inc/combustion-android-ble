@@ -1206,7 +1206,7 @@ class ProbeManagerTest {
         }
 
     @Test
-    fun `REVIEW4 a newer session isn't rejected when the short previous session was only heard via a slow route`() =
+    fun `REVIEW4 a newer session isn't rejected for good when the short previous session was only heard via a slow route`() =
         runTest {
             val harness = sessionInfoHarness(backgroundScope)
             harness.deliverStatus(status(maxSequenceNumber = 370u, sessionInformation = session1))
@@ -1219,12 +1219,21 @@ class ProbeManagerTest {
             runCurrent()
             assertEquals(session2, harness.manager.device.sessionInfo)
 
-            // session 3 started at t + 12 s, heard directly
+            // session 3 started at t + 12 s, first heard 4 samples in: it looks older than session
+            // 2's late estimate, so it's rejected at first
             val session3 = SessionInformation(sessionID = 3u, samplePeriod = 5000u)
-            nowMs = t + 12_000 + 5_000 + 100
-            harness.deliverStatus(status(maxSequenceNumber = 1u, sessionInformation = session3))
-            runCurrent()
+            nowMs = t + 12_000 + 4 * 5_000 + 100
+            for (sequence in 4u..6u) {
+                harness.deliverStatus(status(maxSequenceNumber = sequence, sessionInformation = session3))
+                runCurrent()
+                assertEquals(session2, harness.manager.device.sessionInfo)
+                nowMs += 5_000
+            }
 
+            // ...but once it has kept arriving for 3 sample periods with nothing heard of session
+            // 2, it's live, so it's accepted
+            harness.deliverStatus(status(maxSequenceNumber = 7u, sessionInformation = session3))
+            runCurrent()
             assertEquals(session3, harness.manager.device.sessionInfo)
         }
 
