@@ -45,6 +45,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * This class is responsible for managing and arbitrating the data links to a temperature
@@ -143,6 +144,10 @@ internal class ProbeManager(
     // when a Normal Mode status was last accepted -- see handleSessionInfo()
     private val normalStatusAcceptedMonitor = IdleMonitor()
 
+    // counts session switches, so a session info response can tell whether the session switched
+    // since its request was sent -- see handleSessionInfo()
+    private val sessionSwitches = AtomicInteger(0)
+
     // holds the current state and data for this probe
     private val _deviceFlow = MutableStateFlow(Probe.create(serialNumber = serialNumber))
 
@@ -181,6 +186,8 @@ internal class ProbeManager(
         get() {
             return _deviceFlow.value.serialNumber
         }
+
+    override val logPrefix = "PM"
 
     // current upload state for this probe, determined by LogManager
     override var uploadState: ProbeUploadState
@@ -1148,18 +1155,19 @@ internal class ProbeManager(
      *
      * A status that includes session info needs no re-read: [handleProbeStatus] has already
      * switched to its session if it's new, so a fall here is within the same session, and is
-     * handled right away (under the same rate limit).
+     * handled right away -- not rate limited, as nothing is sent, and
+     * [handleSequenceFellInSameSession] waits for its own idle timeout.
      */
     private fun handleIfSequenceFell(status: ProbeStatus) {
         val lastAccepted = arbitrator.lastAcceptedMaxSequenceIfStatusFellBelow(status, sessionInfo) ?: return
-        if (!sessionInfoRereadMonitor.isIdle(SESSION_INFO_REREAD_MIN_INTERVAL_MS)) return
-
-        sessionInfoRereadMonitor.activity()
 
         status.sessionInformation?.let { info ->
             handleSequenceFellInSameSession(info)
             return
         }
+
+        if (!sessionInfoRereadMonitor.isIdle(SESSION_INFO_REREAD_MIN_INTERVAL_MS)) return
+        sessionInfoRereadMonitor.activity()
 
         fallingSequenceRereadPending.set(true)
         Log.i(
@@ -1180,7 +1188,8 @@ internal class ProbeManager(
             // Newer probe firmware includes its session info in the status, so a new session is
             // picked up from its first status instead of waiting for a session info request (or,
             // after a reset seen through a MeatNet node, for handleIfSequenceFell).
-            status.sessionInformation?.let { info ->
+            val info = status.sessionInformation
+            if (info != null) {
                 if (isLateStatusOfOlderSession(info, status)) return@withLock
                 if (sessionInfo != info) {
                     startNewSession(info)
@@ -1188,12 +1197,18 @@ internal class ProbeManager(
                 // the route to the probe evidently works, which is what a successful session info
                 // response would otherwise tell us -- see connectionState's NO_ROUTE check
                 sessionInfoTimeout = false
+            } else if (isLateStatusWithoutSessionInfoOfOlderSession(status)) {
+                // without session info (older probe firmware, or relayed by an older MeatNet
+                // node), a late status of the previous session would otherwise be accepted into
+                // the current one, as its sequence number is likely higher
+                return@withLock
             }
 
             val accepted = arbitrator.shouldUpdateDataFromStatus(status, sessionInfo, link, hopCount)
             when (status.mode) {
                 ProbeMode.NORMAL -> if (accepted) {
                     normalStatusAcceptedMonitor.activity()
+                    if (info == null) statusWithoutSessionInfoAccepted(status)
                 } else {
                     handleIfSequenceFell(status)
                 }
@@ -1511,8 +1526,12 @@ internal class ProbeManager(
                 }
             }
         } ?: run {
+            val switchesAtRequest = sessionSwitches.get()
+
             // if direct link, then get the session info directly from the probe
-            arbitrator.directLink?.sendSessionInformationRequest(null, ::handleSessionInfo)
+            arbitrator.directLink?.sendSessionInformationRequest(null) { b, any ->
+                handleSessionInfo(b, any, switchesAtRequest)
+            }
                 ?: run {
                     // otherwise, use MeatNet is there is a connection
                     val nodeLinks = arbitrator.connectedNodeLinks
@@ -1528,7 +1547,7 @@ internal class ProbeManager(
                                             link.cancelSessionInfoRequest(requestId)
                                         }
                                     }
-                                    handleSessionInfo(b, any)
+                                    handleSessionInfo(b, any, switchesAtRequest)
                                 }
                             }
                         }
@@ -1537,7 +1556,11 @@ internal class ProbeManager(
         }
     }
 
-    private fun handleSessionInfo(status: Boolean, any: Any?) {
+    /**
+     * Handles a session info response to a request sent when [sessionSwitches] was
+     * [switchesAtRequest].
+     */
+    private fun handleSessionInfo(status: Boolean, any: Any?, switchesAtRequest: Int) {
         // cleared on any response, so a failed re-read is simply retried on the next fall
         val afterFallingSequence = fallingSequenceRereadPending.getAndSet(false)
 
@@ -1558,10 +1581,25 @@ internal class ProbeManager(
 
                 val info = any as SessionInformation
 
+                // The session switched since the request was sent (e.g. on a status that includes
+                // session info), so a different session in the response is most likely the
+                // previous one, answered just before a reboot. If it's actually newer, a later
+                // status or re-read picks it up.
+                if (sessionInfo != info && sessionSwitches.get() != switchesAtRequest) {
+                    Log.i(
+                        LOG_TAG,
+                        "PM($serialNumber): ignoring session info response of session " +
+                            "${info.sessionID}, the session switched since it was requested " +
+                            "(current ${sessionInfo?.sessionID})."
+                    )
+                    return@withLock
+                }
+
                 if (isLateSessionInfoOfOlderSession(info)) return@withLock
 
                 // if the session information has changed, then we need to finish the previous log session.
                 if (sessionInfo != info) {
+                    switchedSessionBySessionInfo(info)
                     startNewSession(info)
                     return@withLock
                 }
@@ -1611,6 +1649,7 @@ internal class ProbeManager(
      * status that includes session info ([handleProbeStatus]).
      */
     private fun startNewSession(info: SessionInformation) {
+        sessionSwitches.incrementAndGet()
         logTransferCompleteCallback()
         logTransferLink = null
         uploadState = ProbeUploadState.Unavailable

@@ -1138,4 +1138,125 @@ class ProbeManagerTest {
 
         assertNotNull(manager.device.instantReadCelsius)
     }
+    // ---- PR 191 review verification ----
+
+    @Test
+    fun `REVIEW1 a late status of an older session is ignored when the current session came from a session info response`() =
+        runTest {
+            val harness = sessionInfoHarness(backgroundScope)
+            harness.deliverStatus(status(maxSequenceNumber = 370u, sessionInformation = session1))
+            runCurrent()
+
+            // reset; the new session's first status arrives via an older node that strips session
+            // info, so it falls and session 2 is learned from the re-read response only
+            nowMs += 20_000
+            harness.deliverStatus(status(maxSequenceNumber = 2u))
+            runCurrent()
+            harness.sessionInfoCallbacks.last()(true, session2)
+            runCurrent()
+            assertEquals(session2, harness.manager.device.sessionInfo)
+
+            // a late status of session 1 relayed by a slower, newer node
+            harness.deliverStatus(status(maxSequenceNumber = 371u, sessionInformation = session1))
+            runCurrent()
+
+            assertEquals(session2, harness.manager.device.sessionInfo)
+        }
+
+    @Test
+    fun `REVIEW2 a late session info response of an older session never seen in a status is ignored`() =
+        runTest {
+            val harness = sessionInfoHarness(backgroundScope)
+            // first status relayed without session info, so session info is requested
+            harness.deliverStatus(status(maxSequenceNumber = 370u))
+            runCurrent()
+            val lateResponse = harness.sessionInfoCallbacks.last()
+
+            nowMs += 20_000
+            harness.deliverStatus(status(maxSequenceNumber = 2u, sessionInformation = session2))
+            runCurrent()
+            // answered just before the reset
+            lateResponse(true, session1)
+            runCurrent()
+
+            assertEquals(session2, harness.manager.device.sessionInfo)
+        }
+
+    @Test
+    fun `REVIEW3 a late status of an older session without session info isn't accepted into the new session`() =
+        runTest {
+            val harness = sessionInfoHarness(backgroundScope)
+            harness.deliverStatus(status(maxSequenceNumber = 1000u, sessionInformation = session1))
+            runCurrent()
+
+            nowMs += 20_000
+            harness.deliverStatus(status(maxSequenceNumber = 2u, sessionInformation = session2))
+            runCurrent()
+            // late status of session 1 relayed by an older node that strips session info
+            harness.deliverStatus(status(maxSequenceNumber = 999u))
+            runCurrent()
+
+            assertEquals(2u, harness.manager.device.maxSequence)
+
+            // and session 2's next status is still accepted
+            nowMs += 5_000
+            harness.deliverStatus(status(maxSequenceNumber = 3u, sessionInformation = session2))
+            runCurrent()
+            assertEquals(3u, harness.manager.device.maxSequence)
+        }
+
+    @Test
+    fun `REVIEW4 a newer session isn't rejected for good when the short previous session was only heard via a slow route`() =
+        runTest {
+            val harness = sessionInfoHarness(backgroundScope)
+            harness.deliverStatus(status(maxSequenceNumber = 370u, sessionInformation = session1))
+            runCurrent()
+
+            // session 2 starts at t, lives ~12 s; its only status heard was relayed 20 s late
+            val t = nowMs + 100_000
+            nowMs = t + 2 * 5_000 + 20_000
+            harness.deliverStatus(status(maxSequenceNumber = 2u, sessionInformation = session2))
+            runCurrent()
+            assertEquals(session2, harness.manager.device.sessionInfo)
+
+            // session 3 started at t + 12 s, first heard 4 samples in: it looks older than session
+            // 2's late estimate, so it's rejected at first
+            val session3 = SessionInformation(sessionID = 3u, samplePeriod = 5000u)
+            nowMs = t + 12_000 + 4 * 5_000 + 100
+            for (sequence in 4u..6u) {
+                harness.deliverStatus(status(maxSequenceNumber = sequence, sessionInformation = session3))
+                runCurrent()
+                assertEquals(session2, harness.manager.device.sessionInfo)
+                nowMs += 5_000
+            }
+
+            // ...but once it has kept arriving for 3 sample periods with nothing heard of session
+            // 2, it's live, so it's accepted
+            harness.deliverStatus(status(maxSequenceNumber = 7u, sessionInformation = session3))
+            runCurrent()
+            assertEquals(session3, harness.manager.device.sessionInfo)
+        }
+
+    @Test
+    fun `REVIEW5 a same-session fall including session info resets as soon as none was accepted for two sample periods`() =
+        runTest {
+            val harness = sessionInfoHarness(backgroundScope)
+            harness.deliverStatus(status(maxSequenceNumber = 500u, sessionInformation = session1))
+            runCurrent()
+
+            // falls 9 s after the last accepted status: kept (a status was accepted within 10 s)
+            nowMs += 9_000
+            harness.deliverStatus(status(maxSequenceNumber = 10u, sessionInformation = session1))
+            runCurrent()
+
+            // 10 s after the last accepted status: none accepted for two sample periods
+            nowMs += 1_000
+            harness.deliverStatus(status(maxSequenceNumber = 11u, sessionInformation = session1))
+            runCurrent()
+            nowMs += 100
+            harness.deliverStatus(status(maxSequenceNumber = 12u, sessionInformation = session1))
+            runCurrent()
+
+            assertEquals(12u, harness.manager.device.maxSequence)
+        }
 }
