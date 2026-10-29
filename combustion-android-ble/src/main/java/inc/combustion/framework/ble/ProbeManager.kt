@@ -45,6 +45,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * This class is responsible for managing and arbitrating the data links to a temperature
@@ -87,7 +88,7 @@ internal class ProbeManager(
         private const val INSTANT_READ_STALE_POLL_RATE_MS = 1000L
 
         // Minimum time between session info re-reads triggered by a falling sequence number (see
-        // rereadSessionInfoIfSequenceFell). Out-of-order statuses relayed over slower MeatNet routes
+        // handleIfSequenceFell). Out-of-order statuses relayed over slower MeatNet routes
         // can trigger it repeatedly, and a direct-link request is matched under a fixed null key, so
         // the previous re-read must have timed out (PROBE_MESSAGE_RESPONSE_TIMEOUT_MS) before the
         // next is sent -- the same reason as PROBE_DIRECT_RETRY_INTERVAL_MS. This only keeps
@@ -132,7 +133,7 @@ internal class ProbeManager(
     private val predictionMonitor = IdleMonitor()
 
     // when a falling sequence number last triggered a session info re-read -- see
-    // rereadSessionInfoIfSequenceFell()
+    // handleIfSequenceFell()
     private val sessionInfoRereadMonitor = IdleMonitor()
 
     // set while a re-read triggered by a falling sequence number awaits its response -- see
@@ -142,6 +143,10 @@ internal class ProbeManager(
 
     // when a Normal Mode status was last accepted -- see handleSessionInfo()
     private val normalStatusAcceptedMonitor = IdleMonitor()
+
+    // counts session switches, so a session info response can tell whether the session switched
+    // since its request was sent -- see handleSessionInfo()
+    private val sessionSwitches = AtomicInteger(0)
 
     // holds the current state and data for this probe
     private val _deviceFlow = MutableStateFlow(Probe.create(serialNumber = serialNumber))
@@ -166,7 +171,11 @@ internal class ProbeManager(
     private var logTransferLink: ProbeBleDeviceBase? = null
 
     // tracks if we've run into a message timeout condition getting
-    // session info
+    // session info. Written only while holding handleStatusMutex, serialized with the session state
+    // it's derived from (so a failure can no longer be overwritten by an earlier success still
+    // queued behind the lock); volatile because connectionState reads it without the lock (a
+    // non-suspending getter can't take the Mutex).
+    @Volatile
     private var sessionInfoTimeout: Boolean = false
 
     // the flow that is consumed to get LogResponses from MeatNet
@@ -177,6 +186,8 @@ internal class ProbeManager(
         get() {
             return _deviceFlow.value.serialNumber
         }
+
+    override val logPrefix = "PM"
 
     // current upload state for this probe, determined by LogManager
     override var uploadState: ProbeUploadState
@@ -386,14 +397,10 @@ internal class ProbeManager(
         simulatedProbe ?: run {
             var updatedProbe = _deviceFlow.value
 
-            // process simulated device status notifications
-            simProbe.observeProbeStatusUpdates(hopCount = null) { status, _ ->
-                if (status.mode == ProbeMode.NORMAL) {
-                    updatedProbe = updateNormalMode(status, updatedProbe)
-                    _normalModeProbeStatusFlow.emit(status)
-                } else if (status.mode == ProbeMode.INSTANT_READ) {
-                    updatedProbe = updateInstantRead(status, updatedProbe)
-                }
+            // process simulated device status notifications the same way as a real link's, so
+            // simulation exercises the same session/sequence handling
+            simProbe.observeProbeStatusUpdates(hopCount = null) { status, hopCount ->
+                handleProbeStatus(status, hopCount, link = simProbe)
             }
 
             // process simulated connection state changes
@@ -1125,31 +1132,43 @@ internal class ProbeManager(
     }
 
     /**
-     * Re-reads session info when [status] -- a rejected Normal Mode status, or any Instant Read
+     * Re-reads session info if [status] -- a rejected Normal Mode status, or any Instant Read
      * status -- has a max sequence number clearly below that of the last accepted Normal Mode
      * status (see [ProbeDataLinkArbitrator.lastAcceptedMaxSequenceIfStatusFellBelow]), i.e. the
      * probe has likely started a new session (e.g. a reset, from this or another device) that the
      * cached session info doesn't reflect yet.
      *
      * The arbitrator only accepts a status if the session info changed or its sequence number
-     * increased, and session info is otherwise only re-read on connect or after an accepted
-     * status. A reset reboots the probe, which forces a reconnect on a direct link -- but through a
-     * MeatNet node the link stays up, so without this every status of the new session would be
-     * rejected until its sequence number passed the old session's.
+     * increased, and session info is otherwise only re-read on connect or after an accepted status
+     * that doesn't include it. A reset reboots the probe, which forces a reconnect on a direct
+     * link -- but through a MeatNet node the link stays up, so without this every status of the
+     * new session would be rejected until its sequence number passed the old session's.
      *
      * Rate-limited to one re-read per [SESSION_INFO_REREAD_MIN_INTERVAL_MS]. A re-read that finds
      * the same session means either a MeatNet route is lagging 2+ samples behind, or the last
      * accepted sequence number was wrong -- e.g. a status of the previous session relayed late
-     * after a session change (statuses carry no session ID). Only the latter stops Normal Mode
-     * statuses from being accepted, so [handleSessionInfo] resets the sequence bookkeeping only
-     * once none has been accepted for two sample periods; otherwise the lagging route's next stale
-     * status would be accepted.
+     * after a session change by a status without session info (from older probe firmware or
+     * relayed by an older MeatNet node -- see [ProbeStatus.sessionInformation]). Only the latter
+     * stops Normal Mode statuses from being accepted, so [handleSequenceFellInSameSession] resets
+     * the sequence bookkeeping only once none has been accepted for two sample periods; otherwise
+     * the lagging route's next stale status would be accepted.
+     *
+     * A status that includes session info needs no re-read: [handleProbeStatus] has already
+     * switched to its session if it's new, so a fall here is within the same session, and is
+     * handled right away -- not rate limited, as nothing is sent, and
+     * [handleSequenceFellInSameSession] waits for its own idle timeout.
      */
-    private fun rereadSessionInfoIfSequenceFell(status: ProbeStatus) {
+    private fun handleIfSequenceFell(status: ProbeStatus) {
         val lastAccepted = arbitrator.lastAcceptedMaxSequenceIfStatusFellBelow(status, sessionInfo) ?: return
-        if (!sessionInfoRereadMonitor.isIdle(SESSION_INFO_REREAD_MIN_INTERVAL_MS)) return
 
+        status.sessionInformation?.let { info ->
+            handleSequenceFellInSameSession(info)
+            return
+        }
+
+        if (!sessionInfoRereadMonitor.isIdle(SESSION_INFO_REREAD_MIN_INTERVAL_MS)) return
         sessionInfoRereadMonitor.activity()
+
         fallingSequenceRereadPending.set(true)
         Log.i(
             LOG_TAG,
@@ -1166,17 +1185,37 @@ internal class ProbeManager(
     ) {
         Log.v(LOG_TAG, "ProbeManager.handleProbeStatus RECEIVED: $serialNumber $status")
         handleStatusMutex.withLock {
+            // Newer probe firmware includes its session info in the status, so a new session is
+            // picked up from its first status instead of waiting for a session info request (or,
+            // after a reset seen through a MeatNet node, for handleIfSequenceFell).
+            val info = status.sessionInformation
+            if (info != null) {
+                if (isLateStatusOfOlderSession(info, status)) return@withLock
+                if (sessionInfo != info) {
+                    startNewSession(info)
+                }
+                // the route to the probe evidently works, which is what a successful session info
+                // response would otherwise tell us -- see connectionState's NO_ROUTE check
+                sessionInfoTimeout = false
+            } else if (isLateStatusWithoutSessionInfoOfOlderSession(status)) {
+                // without session info (older probe firmware, or relayed by an older MeatNet
+                // node), a late status of the previous session would otherwise be accepted into
+                // the current one, as its sequence number is likely higher
+                return@withLock
+            }
+
             val accepted = arbitrator.shouldUpdateDataFromStatus(status, sessionInfo, link, hopCount)
             when (status.mode) {
                 ProbeMode.NORMAL -> if (accepted) {
                     normalStatusAcceptedMonitor.activity()
+                    if (info == null) statusWithoutSessionInfoAccepted(status)
                 } else {
-                    rereadSessionInfoIfSequenceFell(status)
+                    handleIfSequenceFell(status)
                 }
 
                 // Instant Read statuses are arbitrated without a sequence check, so check them
                 // regardless -- a reset may first show up as Instant Read statuses
-                ProbeMode.INSTANT_READ -> rereadSessionInfoIfSequenceFell(status)
+                ProbeMode.INSTANT_READ -> handleIfSequenceFell(status)
 
                 else -> {}
             }
@@ -1201,8 +1240,9 @@ internal class ProbeManager(
 
                     _normalModeProbeStatusFlow.emit(status)
 
-                    // redundantly check for device information
-                    fetchDeviceInfo()
+                    // redundantly check for device information -- session info only when the status
+                    // didn't include it (older probe firmware, or relayed by an older MeatNet node)
+                    fetchDeviceInfo(includeSessionInfo = status.sessionInformation == null)
                 } else if (status.mode == ProbeMode.INSTANT_READ) {
                     updatedProbe = updateInstantRead(status, updatedProbe)
                 }
@@ -1348,8 +1388,10 @@ internal class ProbeManager(
         }
     }
 
-    private fun fetchDeviceInfo() {
-        fetchSessionInfo()
+    private fun fetchDeviceInfo(includeSessionInfo: Boolean = true) {
+        if (includeSessionInfo) {
+            fetchSessionInfo()
+        }
         fetchFirmwareVersion()
         fetchHardwareRevision()
         fetchModelInformation()
@@ -1484,8 +1526,12 @@ internal class ProbeManager(
                 }
             }
         } ?: run {
+            val switchesAtRequest = sessionSwitches.get()
+
             // if direct link, then get the session info directly from the probe
-            arbitrator.directLink?.sendSessionInformationRequest(null, ::handleSessionInfo)
+            arbitrator.directLink?.sendSessionInformationRequest(null) { b, any ->
+                handleSessionInfo(b, any, switchesAtRequest)
+            }
                 ?: run {
                     // otherwise, use MeatNet is there is a connection
                     val nodeLinks = arbitrator.connectedNodeLinks
@@ -1501,7 +1547,7 @@ internal class ProbeManager(
                                             link.cancelSessionInfoRequest(requestId)
                                         }
                                     }
-                                    handleSessionInfo(b, any)
+                                    handleSessionInfo(b, any, switchesAtRequest)
                                 }
                             }
                         }
@@ -1510,16 +1556,13 @@ internal class ProbeManager(
         }
     }
 
-    private fun handleSessionInfo(status: Boolean, any: Any?) {
+    /**
+     * Handles a session info response to a request sent when [sessionSwitches] was
+     * [switchesAtRequest].
+     */
+    private fun handleSessionInfo(status: Boolean, any: Any?, switchesAtRequest: Int) {
         // cleared on any response, so a failed re-read is simply retried on the next fall
         val afterFallingSequence = fallingSequenceRereadPending.getAndSet(false)
-
-        // if we've timed out waiting for the message, then use that state
-        // to help us identify NO_ROUTE connection state.
-        if (!status) {
-            sessionInfoTimeout = true
-            return
-        }
 
         // This is a completion callback from an explicit session-info request (fetchSessionInfo,
         // called from fetchDeviceInfo()), fired from a UART completion handler that can run
@@ -1531,57 +1574,95 @@ internal class ProbeManager(
         // completionHandler, nothing here needs to land on a specific dispatcher.
         scope.launch {
             handleStatusMutex.withLock {
-                sessionInfoTimeout = false
+                // if we've timed out waiting for the message, then use that state
+                // to help us identify NO_ROUTE connection state.
+                sessionInfoTimeout = !status
+                if (!status) return@withLock
+
                 val info = any as SessionInformation
-                var minSequence = minSequenceNumber
-                var maxSequence = maxSequenceNumber
+
+                // The session switched since the request was sent (e.g. on a status that includes
+                // session info), so a different session in the response is most likely the
+                // previous one, answered just before a reboot. If it's actually newer, a later
+                // status or re-read picks it up.
+                if (sessionInfo != info && sessionSwitches.get() != switchesAtRequest) {
+                    Log.i(
+                        LOG_TAG,
+                        "PM($serialNumber): ignoring session info response of session " +
+                            "${info.sessionID}, the session switched since it was requested " +
+                            "(current ${sessionInfo?.sessionID})."
+                    )
+                    return@withLock
+                }
+
+                if (isLateSessionInfoOfOlderSession(info)) return@withLock
 
                 // if the session information has changed, then we need to finish the previous log session.
                 if (sessionInfo != info) {
-                    logTransferCompleteCallback()
-                    logTransferLink = null
-                    uploadState = ProbeUploadState.Unavailable
-
-                    minSequence = null
-                    maxSequence = null
-
-                    Log.i(LOG_TAG, "PM($serialNumber): finished log transfer.")
-                } else if (afterFallingSequence) {
-                    // Same session, yet a status fell below the last accepted sequence number. If
-                    // none has been accepted for two sample periods, that number was wrong (e.g. a
-                    // late status of the previous session), so start over from the next status
-                    // instead of rejecting them all. Otherwise a route may just be lagging, and
-                    // resetting would accept its next stale status.
-                    val noneAcceptedTimeoutMs = maxOf(
-                        2L * info.samplePeriod.toLong(),
-                        SESSION_INFO_REREAD_MIN_INTERVAL_MS,
-                    )
-                    if (normalStatusAcceptedMonitor.isIdle(noneAcceptedTimeoutMs)) {
-                        Log.i(
-                            LOG_TAG,
-                            "PM($serialNumber): session ${info.sessionID} unchanged after sequence " +
-                                "fell below the last accepted one, resetting it."
-                        )
-                        arbitrator.resetNormalModeStatus()
-                    } else {
-                        Log.i(
-                            LOG_TAG,
-                            "PM($serialNumber): session ${info.sessionID} unchanged after sequence " +
-                                "fell below the last accepted one, keeping it " +
-                                "(a status was accepted within $noneAcceptedTimeoutMs ms)."
-                        )
-                    }
+                    switchedSessionBySessionInfo(info)
+                    startNewSession(info)
+                    return@withLock
                 }
 
-                sessionInfo = info
-                _deviceFlow.update {
-                    it.copy(
-                        minSequence = minSequence,
-                        maxSequence = maxSequence,
-                        sessionInfo = info,
-                    )
+                if (afterFallingSequence) {
+                    handleSequenceFellInSameSession(info)
                 }
+
+                _deviceFlow.update { it.copy(sessionInfo = info) }
             }
+        }
+    }
+
+    /**
+     * A status fell below the last accepted sequence number, yet the session is unchanged (per a
+     * re-read, or per the session info included in the status). If none has been accepted for two
+     * sample periods, that number was wrong (e.g. a late status of the previous session), so start
+     * over from the next status instead of rejecting them all. Otherwise a route may just be
+     * lagging, and resetting would accept its next stale status. Called with handleStatusMutex
+     * held.
+     */
+    private fun handleSequenceFellInSameSession(info: SessionInformation) {
+        val noneAcceptedTimeoutMs = maxOf(
+            2L * info.samplePeriod.toLong(),
+            SESSION_INFO_REREAD_MIN_INTERVAL_MS,
+        )
+        if (normalStatusAcceptedMonitor.isIdle(noneAcceptedTimeoutMs)) {
+            Log.i(
+                LOG_TAG,
+                "PM($serialNumber): session ${info.sessionID} unchanged after sequence " +
+                    "fell below the last accepted one, resetting it."
+            )
+            arbitrator.resetNormalModeStatus()
+        } else {
+            Log.i(
+                LOG_TAG,
+                "PM($serialNumber): session ${info.sessionID} unchanged after sequence " +
+                    "fell below the last accepted one, keeping it " +
+                    "(a status was accepted within $noneAcceptedTimeoutMs ms)."
+            )
+        }
+    }
+
+    /**
+     * Switches to session [info], finishing the previous session's log transfer. Called with
+     * handleStatusMutex held, from either a session info response ([handleSessionInfo]) or a
+     * status that includes session info ([handleProbeStatus]).
+     */
+    private fun startNewSession(info: SessionInformation) {
+        sessionSwitches.incrementAndGet()
+        logTransferCompleteCallback()
+        logTransferLink = null
+        uploadState = ProbeUploadState.Unavailable
+
+        Log.i(LOG_TAG, "PM($serialNumber): finished log transfer.")
+
+        sessionInfo = info
+        _deviceFlow.update {
+            it.copy(
+                minSequence = null,
+                maxSequence = null,
+                sessionInfo = info,
+            )
         }
     }
 
