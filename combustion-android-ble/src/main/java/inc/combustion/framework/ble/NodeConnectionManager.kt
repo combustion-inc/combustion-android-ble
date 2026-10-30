@@ -66,7 +66,7 @@ import kotlin.math.roundToInt
  * A held Node (see [connect]) is reconnected whenever it advertises as connectable while
  * disconnected, and [NodeBleDevice.isConnectionHeld] stops the framework's own disconnects from
  * dropping it. Releasing it ([disconnect]) only disconnects if [isNeededByFramework] says nothing
- * else uses the connection.
+ * else uses the connection. In DFU mode, holds are paused ([pauseHolds]) rather than released.
  *
  * @param nodeDevice returns the [NodeBleDevice] the framework already has for a device ID, if any.
  * @param createNodeDevice creates (and starts tracking) a [NodeBleDevice] from a Node's repeater
@@ -99,6 +99,9 @@ internal class NodeConnectionManager(
 
     private val lock = Any()
     private val records = mutableMapOf<DeviceID, Record>()
+
+    // While true (DFU mode), held Nodes can be disconnected and aren't reconnected. Guarded by lock.
+    private var holdsPaused = false
 
     // The last published entry per Node, sorted by device ID, so the list is only rebuilt and
     // republished when an entry actually changes.
@@ -182,19 +185,25 @@ internal class NodeConnectionManager(
     /**
      * Keeps the phone connected to the Node [serialNumber] until [disconnect] is called: connects
      * now if it isn't connected, and again whenever it advertises as connectable while
-     * disconnected. Does nothing if no Node with this serial number has been heard.
+     * disconnected. Does nothing if no Node with this serial number has been heard. While holds
+     * are paused, only records the hold; the Node is connected once they resume.
      */
     fun connect(serialNumber: String) {
-        val record = synchronized(lock) {
-            findRecord(serialNumber)?.also { it.isHeld = true }
-        } ?: run {
-            Log.w(LOG_TAG, "Can't connect to Node $serialNumber: not heard advertising")
-            return
+        val (record, paused) = synchronized(lock) {
+            val record = findRecord(serialNumber)?.also { it.isHeld = true }
+            record to holdsPaused
         }
-        if (nodeDeviceFor(record) == null) {
-            Log.i(LOG_TAG, "Node $serialNumber: will connect once its repeater advertisement is heard")
-        } else {
-            connectNow(record)
+        when {
+            record == null -> {
+                Log.w(LOG_TAG, "Can't connect to Node $serialNumber: not heard advertising")
+                return
+            }
+
+            paused -> Log.i(LOG_TAG, "Node $serialNumber: will connect once DFU mode ends")
+            nodeDeviceFor(record) == null ->
+                Log.i(LOG_TAG, "Node $serialNumber: will connect once its repeater advertisement is heard")
+
+            else -> connectNow(record)
         }
         refresh()
     }
@@ -230,10 +239,40 @@ internal class NodeConnectionManager(
     }
 
     /**
-     * Releases every held connection without disconnecting, for callers about to disconnect
-     * everything themselves (DFU mode).
+     * Pauses every hold for DFU mode, which disconnects everything: held Nodes can then be
+     * disconnected, but stay held, and aren't reconnected until [resumeHolds].
      */
-    fun releaseAll() {
+    fun pauseHolds() {
+        synchronized(lock) {
+            holdsPaused = true
+            records.values.filter { it.isHeld }.forEach { record ->
+                // So the first advertisement after DFU mode can reconnect straight away.
+                record.lastConnectAttemptMs = null
+                nodeDevice(record.id)?.isConnectionHeld = false
+            }
+        }
+        refresh()
+    }
+
+    /**
+     * Ends [pauseHolds]. Held Nodes the framework has already reconnected are protected from its
+     * disconnects again; the others reconnect on their next connectable advertisement, like the
+     * framework's own devices after DFU. Connects nothing itself: Nodes may still be restarting
+     * after their update.
+     */
+    fun resumeHolds() {
+        synchronized(lock) {
+            holdsPaused = false
+            records.values.filter { it.isHeld }.forEach { record ->
+                // nodeDevice, not nodeDeviceFor: a device is only created to connect it.
+                nodeDevice(record.id)?.isConnectionHeld = true
+            }
+        }
+        refresh()
+    }
+
+    /** Releases every held connection without disconnecting; see [clear]. */
+    private fun releaseAll() {
         synchronized(lock) {
             records.values.filter { it.isHeld }.forEach { it.release() }
         }
@@ -303,11 +342,13 @@ internal class NodeConnectionManager(
     }
 
     private fun connectNow(record: Record) {
+        // Checked before nodeDeviceFor, which may create a device, and again below.
+        if (synchronized(lock) { holdsPaused }) return
         val node = nodeDeviceFor(record) ?: return
         synchronized(lock) {
-            // Checked and set under lock: a release on another thread since the caller decided to
-            // connect must win, or the device would stay guarded with nothing holding it.
-            if (!record.isHeld) return
+            // Checked and set under lock: a release or a pause on another thread since the caller
+            // decided to connect must win, or the device would stay guarded with nothing holding it.
+            if (!record.isHeld || holdsPaused) return
             // Also for a device created only now, when the Node's first repeater advertisement
             // arrived after connect() was called.
             node.isConnectionHeld = true

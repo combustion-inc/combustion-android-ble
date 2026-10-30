@@ -397,17 +397,88 @@ class NodeConnectionManagerTest {
     }
 
     @Test
-    fun `releaseAll clears holds without disconnecting`() = runTest {
+    fun `pausing holds lets DFU disconnect held Nodes, which stay requested`() = runTest {
         val h = Harness(this)
         val fake = FakeNode().also { h.nodes[boosterId] = it }
         h.manager.handleAdvertisement(deviceInfo(rssi = -60))
         h.manager.connectToBooster()
+        assertTrue(fake.held)
 
-        h.manager.releaseAll()
+        h.manager.pauseHolds()
 
-        assertFalse(fake.held)
+        assertFalse("DFU's disconnects must go through", fake.held)
         verify(exactly = 0) { fake.device.disconnect() }
-        assertFalse(h.node(booster).isConnectionRequested)
+        assertTrue(h.node(booster).isConnectionRequested)
+    }
+
+    @Test
+    fun `connecting while holds are paused creates and connects nothing until they resume`() = runTest {
+        val h = Harness(this)
+        h.manager.handleAdvertisement(deviceInfo(rssi = -60))
+        h.manager.pauseHolds()
+
+        h.manager.connectToBooster()
+        h.manager.handleAdvertisement(repeater())
+
+        assertTrue(h.created.isEmpty())
+        assertTrue(h.node(booster).isConnectionRequested)
+
+        h.manager.resumeHolds()
+        assertTrue("resuming connects nothing itself", h.created.isEmpty())
+        h.manager.handleAdvertisement(repeater())
+
+        val fake = h.nodes.getValue(boosterId)
+        assertTrue(fake.held)
+        verify(exactly = 1) { fake.device.connect() }
+    }
+
+    @Test
+    fun `connecting while holds are paused doesn't create a device, even when it could`() = runTest {
+        val h = Harness(this)
+        h.manager.handleAdvertisement(deviceInfo(rssi = -60))
+        h.manager.handleAdvertisement(repeater()) // known, but not created: nothing holds it yet
+        h.manager.pauseHolds()
+
+        h.manager.connectToBooster()
+
+        assertTrue(h.created.isEmpty())
+        assertTrue(h.node(booster).isConnectionRequested)
+    }
+
+    @Test
+    fun `resuming holds protects a held Node the framework already reconnected`() = runTest {
+        val h = Harness(this)
+        val fake = FakeNode().also { h.nodes[boosterId] = it }
+        h.manager.handleAdvertisement(deviceInfo(rssi = -60))
+        h.manager.connectToBooster()
+        h.manager.pauseHolds()
+        fake.connected = true // reconnected by the framework, e.g. to reach a probe
+
+        h.manager.resumeHolds()
+
+        assertTrue(fake.held)
+        verify(exactly = 1) { fake.device.connect() }
+    }
+
+    @Test
+    fun `after resuming, a disconnected held Node reconnects on its next connectable advertisement`() = runTest {
+        val h = Harness(this)
+        val fake = FakeNode().also { h.nodes[boosterId] = it }
+        h.manager.handleAdvertisement(deviceInfo(rssi = -60))
+        h.manager.connectToBooster()
+        verify(exactly = 1) { fake.device.connect() }
+
+        h.manager.pauseHolds()
+        h.manager.handleAdvertisement(deviceInfo(rssi = -60))
+        verify(exactly = 1) { fake.device.connect() }
+
+        h.manager.resumeHolds()
+        verify(exactly = 1) { fake.device.connect() }
+
+        // Within 5 s of the last attempt, which the pause forgot.
+        h.manager.handleAdvertisement(deviceInfo(rssi = -60))
+        verify(exactly = 2) { fake.device.connect() }
+        assertTrue(fake.held)
     }
 
     @Test

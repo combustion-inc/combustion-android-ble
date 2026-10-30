@@ -1276,8 +1276,8 @@ class DeviceManager(
      * a gauge or engine that is this Node. The linking methods (e.g. [readNodeLinkedDevices]) need
      * the phone connected to the Node. iOS's `MeatNetNode.connect()`.
      *
-     * Does nothing if no Node with this serial number has been heard. Entering DFU mode releases
-     * every Node.
+     * Does nothing if no Node with this serial number has been heard. DFU mode disconnects held
+     * Nodes too; they stay held, and reconnect when they advertise again after DFU mode ends.
      *
      * Each held Node uses one of the phone's Bluetooth connections, which Android limits (often to
      * about 7, depending on the device) and shares with the probes, gauges and engines the

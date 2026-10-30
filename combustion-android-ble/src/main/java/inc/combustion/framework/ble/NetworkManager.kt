@@ -435,8 +435,9 @@ internal class NetworkManager(
         // if MeatNet is managing network, then stop returning probe scan results
         switchScanningPurpose(ScanningPurpose.Dfu)
 
-        // DFU disconnects everything, including Nodes the app asked to stay connected to
-        nodeConnectionManager.releaseAll()
+        // DFU disconnects everything, including Nodes the app asked to stay connected to; their
+        // holds resume when DFU mode ends
+        nodeConnectionManager.pauseHolds()
 
         // disconnect everything at this level
         devices.forEach { (_, device) ->
@@ -470,6 +471,9 @@ internal class NetworkManager(
                 }
             }
         }
+
+        // Before scanning resumes, so the first advertisements handled can reconnect held Nodes.
+        nodeConnectionManager.resumeHolds()
 
         switchScanningPurpose(modeOnDfuCompletion)
     }
