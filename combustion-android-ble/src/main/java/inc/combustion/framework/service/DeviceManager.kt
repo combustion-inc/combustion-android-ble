@@ -1308,21 +1308,23 @@ class DeviceManager(
     /**
      * Reads the table of devices linked to the MeatNet Node [serialNumber], which the phone must
      * be connected to directly, and publishes it to [nodeLinkedDevicesFlow] once every page has
-     * been received and checked. Calls [completionHandler] with true then, or with false if a
-     * page can't be read or fails the checks, leaving the previously published table in place.
+     * been received and checked. Then calls [completionHandler] with
+     * [NodeLinkingResult.Success] carrying the table. On failure (see [NodeLinkingResult]), the
+     * previously published table stays in place; pages that are malformed or inconsistent give
+     * [NodeLinkingResult.InvalidResponse].
      *
      * [progressHandler], if given, is called after each valid page with the entries received so
      * far; see [NodeLinkingTableProgress] for why those are provisional until it's complete.
      *
      * Only one read per Node runs at a time: calling this again while a read is running cancels
-     * that read, whose [completionHandler] gets false.
+     * that read, whose [completionHandler] gets [NodeLinkingResult.Cancelled].
      *
      * Both handlers are called on a background thread.
      */
     fun readNodeLinkedDevices(
         serialNumber: String,
         progressHandler: ((NodeLinkingTableProgress) -> Unit)? = null,
-        completionHandler: (Boolean) -> Unit,
+        completionHandler: (NodeLinkingResult<List<NodeLinkingTableEntry>>) -> Unit,
     ) {
         doWhenNetworkManagerInitialized {
             it.readNodeLinkingTable(serialNumber, LinkingTableKind.LINKED, progressHandler, completionHandler)
@@ -1336,7 +1338,7 @@ class DeviceManager(
     fun readNodeUnlinkedDevices(
         serialNumber: String,
         progressHandler: ((NodeLinkingTableProgress) -> Unit)? = null,
-        completionHandler: (Boolean) -> Unit,
+        completionHandler: (NodeLinkingResult<List<NodeLinkingTableEntry>>) -> Unit,
     ) {
         doWhenNetworkManagerInitialized {
             it.readNodeLinkingTable(serialNumber, LinkingTableKind.UNLINKED, progressHandler, completionHandler)
@@ -1349,7 +1351,9 @@ class DeviceManager(
      * must be connected to directly. The Node then tells the other Nodes. [timestamp] is recorded
      * as the time of the link; null records it as unknown.
      *
-     * Calls [completionHandler] with false, without sending anything, if [deviceSerialNumber]
+     * Calls [completionHandler] with [NodeLinkingResult.Success] once the Node confirms the link,
+     * or with why it failed (see [NodeLinkingResult]). Gives
+     * [NodeLinkingResult.InvalidSerialNumber], without sending anything, if [deviceSerialNumber]
      * isn't valid for [deviceType]: a probe's must be its hex serial number, any other product's
      * exactly 10 characters, and [deviceType] can't be [CombustionProductType.UNKNOWN].
      *
@@ -1362,7 +1366,7 @@ class DeviceManager(
         deviceType: CombustionProductType,
         deviceSerialNumber: String,
         timestamp: Date? = null,
-        completionHandler: (Boolean) -> Unit,
+        completionHandler: (NodeLinkingResult<Unit>) -> Unit,
     ) {
         doWhenNetworkManagerInitialized {
             it.setDeviceLinkedToNode(serialNumber, true, deviceType, deviceSerialNumber, timestamp, completionHandler)
@@ -1381,7 +1385,7 @@ class DeviceManager(
         deviceType: CombustionProductType,
         deviceSerialNumber: String,
         timestamp: Date? = null,
-        completionHandler: (Boolean) -> Unit,
+        completionHandler: (NodeLinkingResult<Unit>) -> Unit,
     ) {
         doWhenNetworkManagerInitialized {
             it.setDeviceLinkedToNode(serialNumber, false, deviceType, deviceSerialNumber, timestamp, completionHandler)
@@ -1391,7 +1395,7 @@ class DeviceManager(
     /**
      * Enables or disables proximity-based automatic linking on the MeatNet Node [serialNumber],
      * which the phone must be connected to directly. On success, [nodeProximityLinkingFlow] is
-     * updated before [completionHandler] is called.
+     * updated before [completionHandler] is called with [NodeLinkingResult.Success].
      *
      * Not related to [deviceInProximityFlow], which is this phone's own RSSI-based proximity.
      *
@@ -1400,7 +1404,7 @@ class DeviceManager(
     fun setNodeProximityLinking(
         serialNumber: String,
         enabled: Boolean,
-        completionHandler: (Boolean) -> Unit,
+        completionHandler: (NodeLinkingResult<Unit>) -> Unit,
     ) {
         doWhenNetworkManagerInitialized {
             it.setNodeProximityLinking(serialNumber, enabled, completionHandler)
@@ -1410,11 +1414,15 @@ class DeviceManager(
     /**
      * Reads whether proximity-based automatic linking is enabled on the MeatNet Node
      * [serialNumber], which the phone must be connected to directly. On success,
-     * [nodeProximityLinkingFlow] is updated before [completionHandler] is called.
+     * [nodeProximityLinkingFlow] is updated before [completionHandler] is called with
+     * [NodeLinkingResult.Success] carrying the setting.
      *
      * [completionHandler] is called on a background thread.
      */
-    fun readNodeProximityLinking(serialNumber: String, completionHandler: (Boolean) -> Unit) {
+    fun readNodeProximityLinking(
+        serialNumber: String,
+        completionHandler: (NodeLinkingResult<Boolean>) -> Unit,
+    ) {
         doWhenNetworkManagerInitialized {
             it.readNodeProximityLinking(serialNumber, completionHandler)
         }

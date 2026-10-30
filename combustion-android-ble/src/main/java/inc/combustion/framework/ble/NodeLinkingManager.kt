@@ -45,13 +45,18 @@ import inc.combustion.framework.ble.uart.meatnet.NodeResponse
 import inc.combustion.framework.ble.uart.meatnet.NodeSetProximityLinkingRequest
 import inc.combustion.framework.service.CombustionProductType
 import inc.combustion.framework.service.NodeHeartbeat
+import inc.combustion.framework.service.NodeLinkingResult
 import inc.combustion.framework.service.NodeLinkingTableEntry
 import inc.combustion.framework.service.NodeLinkingTableProgress
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -166,7 +171,8 @@ internal class LinkingTableReader {
  * effects, and link, unlink and set proximity linking set a state, so sending one again is
  * harmless. A request the Node answers with failure fails straight away instead: firmware refuses
  * Link Device and Unlink Device when its link table is full (every unlink also takes a slot) or the
- * product type is invalid, and retrying doesn't change that.
+ * product type is invalid, and retrying doesn't change that. A request whose Node disconnects
+ * fails within [CONNECTION_CHECK_INTERVAL_MS] instead of waiting out the command timeout.
  *
  * @param findConnectedNode returns the connected Node with this serial number, or null.
  */
@@ -215,16 +221,17 @@ internal class NodeLinkingManager(
      * the flow keeps the previous table. [progressHandler] is called after each valid page.
      *
      * Only one read per Node and table runs at a time: starting another cancels the one running,
-     * whose [completionHandler] then gets false.
+     * whose [completionHandler] then gets [NodeLinkingResult.Cancelled].
      */
     fun readTable(
         serialNumber: String,
         kind: LinkingTableKind,
         progressHandler: ((NodeLinkingTableProgress) -> Unit)?,
-        completionHandler: (Boolean) -> Unit,
+        completionHandler: (NodeLinkingResult<List<NodeLinkingTableEntry>>) -> Unit,
     ) {
         val readKey = ReadKey(serialNumber.key(), kind)
-        var result = false
+        // Stays Cancelled if the read is cancelled before it finishes.
+        var result: NodeLinkingResult<List<NodeLinkingTableEntry>> = NodeLinkingResult.Cancelled
         val job = scope.launch(start = CoroutineStart.LAZY) {
             result = readAllPages(serialNumber, kind, progressHandler)
         }
@@ -240,8 +247,8 @@ internal class NodeLinkingManager(
 
     /**
      * Sends Link Device (0x75) or Unlink Device (0x76) to the Node. Calls [completionHandler] with
-     * false, without sending anything, if [deviceSerialNumber] isn't valid for [deviceType] (see
-     * [NodeLinkingWire.encodeProductSerialNumber]).
+     * [NodeLinkingResult.InvalidSerialNumber], without sending anything, if [deviceSerialNumber]
+     * isn't valid for [deviceType] (see [NodeLinkingWire.encodeProductSerialNumber]).
      */
     fun setDeviceLinked(
         serialNumber: String,
@@ -249,7 +256,7 @@ internal class NodeLinkingManager(
         deviceType: CombustionProductType,
         deviceSerialNumber: String,
         timestamp: Date?,
-        completionHandler: (Boolean) -> Unit,
+        completionHandler: (NodeLinkingResult<Unit>) -> Unit,
     ) {
         val payload = NodeLinkingWire.encodeDevicePayload(
             deviceType,
@@ -262,16 +269,16 @@ internal class NodeLinkingManager(
                 "Can't ${if (linked) "link" else "unlink"} $deviceType $deviceSerialNumber: " +
                         "invalid serial number for this product type",
             )
-            completionHandler(false)
+            completionHandler(NodeLinkingResult.InvalidSerialNumber)
             return
         }
         val messageType = if (linked) NodeMessageType.LINK_DEVICE else NodeMessageType.UNLINK_DEVICE
 
         scope.launch {
-            val response = sendToConnectedNode(serialNumber, messageType) { requestId ->
+            val result = sendToConnectedNode(serialNumber, messageType) { requestId ->
                 NodeLinkDeviceRequest(serialNumber, messageType, payload, requestId)
             }
-            completionHandler(response != null)
+            completionHandler(result.map { })
         }
     }
 
@@ -282,32 +289,42 @@ internal class NodeLinkingManager(
     fun setProximityLinking(
         serialNumber: String,
         enabled: Boolean,
-        completionHandler: (Boolean) -> Unit,
+        completionHandler: (NodeLinkingResult<Unit>) -> Unit,
     ) {
         scope.launch {
-            val response = sendToConnectedNode(serialNumber, NodeMessageType.SET_PROXIMITY_LINKING) { requestId ->
+            val result = sendToConnectedNode(serialNumber, NodeMessageType.SET_PROXIMITY_LINKING) { requestId ->
                 NodeSetProximityLinkingRequest(serialNumber, enabled, requestId)
             }
-            if (response != null) {
+            if (result.isSuccess) {
                 proximityLinking.getOrPut(serialNumber.key()) { MutableStateFlow(null) }.value = enabled
             }
-            completionHandler(response != null)
+            completionHandler(result.map { })
         }
     }
 
     /**
      * Sends Read Proximity Linking (0x7A) to the Node, and on success publishes the setting to its
-     * proximity-linking flow before calling [completionHandler].
+     * proximity-linking flow before calling [completionHandler] with it.
      */
-    fun readProximityLinking(serialNumber: String, completionHandler: (Boolean) -> Unit) {
+    fun readProximityLinking(
+        serialNumber: String,
+        completionHandler: (NodeLinkingResult<Boolean>) -> Unit,
+    ) {
         scope.launch {
-            val enabled = (sendToConnectedNode(serialNumber, NodeMessageType.READ_PROXIMITY_LINKING) { requestId ->
+            val sent = sendToConnectedNode(serialNumber, NodeMessageType.READ_PROXIMITY_LINKING) { requestId ->
                 NodeReadProximityLinkingRequest(serialNumber, requestId)
-            } as? NodeReadProximityLinkingResponse)?.enabled
-            if (enabled != null) {
-                proximityLinking.getOrPut(serialNumber.key()) { MutableStateFlow(null) }.value = enabled
             }
-            completionHandler(enabled != null)
+            val result = when (sent) {
+                is NodeLinkingResult.Success -> (sent.value as? NodeReadProximityLinkingResponse)?.enabled
+                    ?.let { NodeLinkingResult.Success(it) }
+                    ?: NodeLinkingResult.InvalidResponse
+
+                else -> sent.asFailure()
+            }
+            if (result is NodeLinkingResult.Success) {
+                proximityLinking.getOrPut(serialNumber.key()) { MutableStateFlow(null) }.value = result.value
+            }
+            completionHandler(result)
         }
     }
 
@@ -348,18 +365,24 @@ internal class NodeLinkingManager(
         serialNumber: String,
         kind: LinkingTableKind,
         progressHandler: ((NodeLinkingTableProgress) -> Unit)?,
-    ): Boolean {
+    ): NodeLinkingResult<List<NodeLinkingTableEntry>> {
         val reader = LinkingTableReader()
         var page = 0
         while (true) {
-            val response = sendToConnectedNode(serialNumber, kind.messageType) { requestId ->
+            val sent = sendToConnectedNode(serialNumber, kind.messageType) { requestId ->
                 NodeReadLinkingTableRequest(serialNumber, kind.messageType, page, requestId)
-            } as? NodeLinkingTablePageResponse ?: return false
+            }
+            val response = when (sent) {
+                is NodeLinkingResult.Success -> sent.value as? NodeLinkingTablePageResponse
+                    ?: return NodeLinkingResult.InvalidResponse
+
+                else -> return sent.asFailure()
+            }
 
             when (val step = reader.accept(page, response.page)) {
                 is LinkingTableReader.Step.Failed -> {
                     Log.w(LOG_TAG, "Reading $kind table of $serialNumber failed: ${step.reason}")
-                    return false
+                    return NodeLinkingResult.InvalidResponse
                 }
 
                 is LinkingTableReader.Step.Continue -> {
@@ -374,7 +397,7 @@ internal class NodeLinkingManager(
                     currentCoroutineContext().ensureActive()
                     tableFlow(kind, serialNumber).value = step.entries
                     progressHandler?.invoke(step.progress)
-                    return true
+                    return NodeLinkingResult.Success(step.entries)
                 }
             }
         }
@@ -383,45 +406,87 @@ internal class NodeLinkingManager(
     /**
      * Sends the request built by [buildRequest] to the connected Node [serialNumber], building a
      * fresh one (with a new request ID) for each attempt. Returns the Node's successful response,
-     * or null if the Node isn't connected, rejected the request, or didn't respond in time.
+     * or why there is none.
      */
     private suspend fun sendToConnectedNode(
         serialNumber: String,
         messageType: NodeMessageType,
         buildRequest: (requestId: UInt) -> NodeRequest,
-    ): NodeResponse? {
+    ): NodeLinkingResult<NodeResponse> {
         val node = findConnectedNode(serialNumber) ?: run {
             Log.w(LOG_TAG, "Can't send $messageType: Node $serialNumber isn't connected")
-            return null
+            return NodeLinkingResult.NotConnected
         }
 
+        // Both written before completeAttempt, for the same reason as
+        // WiFiNodesManager.sendNodeRequestRequiringWiFi's responseData.
         var response: NodeResponse? = null
-        val result = commandCoordinator.sendRoutedCommand(
-            targetSerialNumber = serialNumber,
-            send = {
-                if (!node.isConnected) {
-                    emptySet()
-                } else {
-                    val requestId = makeRequestId()
-                    val key = CommandAttemptKey.Node(messageType, requestId)
-                    node.sendLinkingRequest(buildRequest(requestId)) { success, data ->
-                        // Written only on success, before completeAttempt, for the same reason
-                        // as WiFiNodesManager.sendNodeRequestRequiringWiFi's responseData.
-                        if (success) {
-                            response = data as? NodeResponse
-                            commandCoordinator.completeAttempt(key, success = true)
-                        } else if (data is NodeResponse) {
-                            // The Node answered and refused, e.g. Link Device with a full table;
-                            // sending it again won't help. (A timeout passes no response.)
-                            commandCoordinator.completeAttempt(key, success = false)
+        var isRejected = false
+        val result = coroutineScope {
+            val command = async {
+                commandCoordinator.sendRoutedCommand(
+                    targetSerialNumber = serialNumber,
+                    send = {
+                        if (!node.isConnected) {
+                            emptySet()
+                        } else {
+                            val requestId = makeRequestId()
+                            val key = CommandAttemptKey.Node(messageType, requestId)
+                            node.sendLinkingRequest(buildRequest(requestId)) { success, data ->
+                                if (success) {
+                                    response = data as? NodeResponse
+                                    commandCoordinator.completeAttempt(key, success = true)
+                                } else if (data is NodeResponse) {
+                                    // The Node answered and refused, e.g. Link Device with a full
+                                    // table; sending it again won't help. (A timeout passes no
+                                    // response.)
+                                    isRejected = true
+                                    commandCoordinator.completeAttempt(key, success = false)
+                                }
+                            }
+                            setOf(key)
                         }
-                    }
-                    setOf(key)
-                }
-            },
-            isConfirmed = { false },
-        )
-        return response.takeIf { result == CommandResult.SUCCESS }
+                    },
+                    isConfirmed = { false },
+                )
+            }
+            // Ends the command once the Node disconnects, instead of when it times out.
+            val connectionWatch = launch {
+                while (node.isConnected) delay(CONNECTION_CHECK_INTERVAL_MS)
+                command.cancel()
+            }
+            try {
+                command.await()
+            } catch (e: CancellationException) {
+                // Cancelled by connectionWatch, unless this coroutine itself was cancelled.
+                currentCoroutineContext().ensureActive()
+                null
+            } finally {
+                connectionWatch.cancel()
+            }
+        }
+
+        return when (result) {
+            CommandResult.SUCCESS -> response?.let { NodeLinkingResult.Success(it) } ?: NodeLinkingResult.InvalidResponse
+            CommandResult.FAILURE -> if (isRejected) NodeLinkingResult.Rejected else NodeLinkingResult.TimedOut
+            null -> {
+                Log.w(LOG_TAG, "$messageType to Node $serialNumber failed: it disconnected")
+                NodeLinkingResult.NotConnected
+            }
+        }
+    }
+
+    private inline fun <T, R> NodeLinkingResult<T>.map(transform: (T) -> R): NodeLinkingResult<R> =
+        when (this) {
+            is NodeLinkingResult.Success -> NodeLinkingResult.Success(transform(value))
+            else -> asFailure()
+        }
+
+    /** This failure, typed for another success value; only [NodeLinkingResult.Success] carries one. */
+    @Suppress("UNCHECKED_CAST")
+    private fun <T> NodeLinkingResult<*>.asFailure(): NodeLinkingResult<T> {
+        check(this !is NodeLinkingResult.Success) { "$this is not a failure" }
+        return this as NodeLinkingResult<T>
     }
 
     private fun tableFlow(
@@ -439,5 +504,6 @@ internal class NodeLinkingManager(
 
     companion object {
         private const val HEARTBEAT_BUFFER = 64
+        const val CONNECTION_CHECK_INTERVAL_MS = 500L
     }
 }

@@ -873,7 +873,7 @@ internal class NetworkManager(
         serialNumber: String,
         kind: LinkingTableKind,
         progressHandler: ((NodeLinkingTableProgress) -> Unit)?,
-        completionHandler: (Boolean) -> Unit,
+        completionHandler: (NodeLinkingResult<List<NodeLinkingTableEntry>>) -> Unit,
     ) {
         nodeLinkingManager.readTable(serialNumber, kind, progressHandler, completionHandler)
     }
@@ -884,7 +884,7 @@ internal class NetworkManager(
         deviceType: CombustionProductType,
         deviceSerialNumber: String,
         timestamp: Date?,
-        completionHandler: (Boolean) -> Unit,
+        completionHandler: (NodeLinkingResult<Unit>) -> Unit,
     ) {
         nodeLinkingManager.setDeviceLinked(
             serialNumber,
@@ -899,12 +899,15 @@ internal class NetworkManager(
     internal fun setNodeProximityLinking(
         serialNumber: String,
         enabled: Boolean,
-        completionHandler: (Boolean) -> Unit,
+        completionHandler: (NodeLinkingResult<Unit>) -> Unit,
     ) {
         nodeLinkingManager.setProximityLinking(serialNumber, enabled, completionHandler)
     }
 
-    internal fun readNodeProximityLinking(serialNumber: String, completionHandler: (Boolean) -> Unit) {
+    internal fun readNodeProximityLinking(
+        serialNumber: String,
+        completionHandler: (NodeLinkingResult<Boolean>) -> Unit,
+    ) {
         nodeLinkingManager.readProximityLinking(serialNumber, completionHandler)
     }
 

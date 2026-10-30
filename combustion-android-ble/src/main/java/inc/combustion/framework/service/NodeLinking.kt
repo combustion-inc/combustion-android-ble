@@ -31,6 +31,38 @@ package inc.combustion.framework.service
 import java.util.Date
 
 /**
+ * Result of a MeatNet linking command, e.g. [DeviceManager.readNodeLinkedDevices] or
+ * [DeviceManager.linkDeviceToNode]. Only [Success] carries a value: what the command read, or
+ * [Unit] for a command that reads nothing.
+ */
+sealed class NodeLinkingResult<out T> {
+    data class Success<out T>(val value: T) : NodeLinkingResult<T>()
+
+    /** The phone isn't connected directly to the Node, or the connection dropped during the command. */
+    data object NotConnected : NodeLinkingResult<Nothing>()
+
+    /**
+     * The Node answered and refused, e.g. Link Device when its link table is full. Sending the
+     * same command again won't help.
+     */
+    data object Rejected : NodeLinkingResult<Nothing>()
+
+    /** The Node didn't answer in time, retries included. */
+    data object TimedOut : NodeLinkingResult<Nothing>()
+
+    /** The device's serial number isn't valid for its product type, so nothing was sent. */
+    data object InvalidSerialNumber : NodeLinkingResult<Nothing>()
+
+    /** A table read was replaced by a newer read of the same table, or the framework was reset. */
+    data object Cancelled : NodeLinkingResult<Nothing>()
+
+    /** The Node's answer was malformed or inconsistent, e.g. table pages that don't add up. */
+    data object InvalidResponse : NodeLinkingResult<Nothing>()
+
+    val isSuccess: Boolean get() = this is Success
+}
+
+/**
  * Serial number of a device in a MeatNet Node's linking table.
  */
 sealed class NodeLinkingSerialNumber {

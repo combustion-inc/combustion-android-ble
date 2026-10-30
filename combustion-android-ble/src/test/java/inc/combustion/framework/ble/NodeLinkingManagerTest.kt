@@ -42,6 +42,7 @@ import inc.combustion.framework.ble.uart.meatnet.NodeRequest
 import inc.combustion.framework.ble.uart.meatnet.NodeResponse
 import inc.combustion.framework.service.CombustionProductType
 import inc.combustion.framework.service.NodeHeartbeat
+import inc.combustion.framework.service.NodeLinkingResult
 import inc.combustion.framework.service.NodeLinkingSerialNumber
 import inc.combustion.framework.service.NodeLinkingTableEntry
 import inc.combustion.framework.service.NodeLinkingTableProgress
@@ -143,8 +144,9 @@ class NodeLinkingManagerTest {
     private inner class FakeNode(private val scope: CoroutineScope) {
         val requests = mutableListOf<NodeRequest>()
         private val callbacks = mutableMapOf<UInt, (Boolean, Any?) -> Unit>()
+        var connected = true
         val device = mockk<NodeBleDevice>(relaxed = true).also { device ->
-            every { device.isConnected } returns true
+            every { device.isConnected } answers { connected }
             every { device.sendLinkingRequest(any(), any()) } answers {
                 val request = firstArg<NodeRequest>()
                 requests += request
@@ -190,7 +192,7 @@ class NodeLinkingManagerTest {
         val fakeNode = FakeNode(backgroundScope)
         val manager = manager(fakeNode)
         val progress = mutableListOf<NodeLinkingTableProgress>()
-        var result: Boolean? = null
+        var result: NodeLinkingResult<List<NodeLinkingTableEntry>>? = null
 
         manager.readTable(node, LinkingTableKind.LINKED, { progress += it }) { result = it }
         runCurrent()
@@ -204,8 +206,9 @@ class NodeLinkingManagerTest {
         fakeNode.respond { pageResponse(it, page(1, 2, 5, "5")) }
         runCurrent()
 
-        assertEquals(true, result)
-        assertEquals(listOf("1", "2", "3", "4", "5").map(::entry), manager.linkedDevicesFlow(node).value)
+        val table = listOf("1", "2", "3", "4", "5").map(::entry)
+        assertEquals(NodeLinkingResult.Success(table), result)
+        assertEquals(table, manager.linkedDevicesFlow(node).value)
         assertEquals(listOf(1, 2), progress.map { it.pagesReceived })
         assertNull(manager.unlinkedDevicesFlow(node).value)
     }
@@ -221,7 +224,7 @@ class NodeLinkingManagerTest {
         runCurrent()
         assertEquals(listOf(entry("1")), manager.unlinkedDevicesFlow(node).value)
 
-        var result: Boolean? = null
+        var result: NodeLinkingResult<List<NodeLinkingTableEntry>>? = null
         manager.readTable(node, LinkingTableKind.UNLINKED, null) { result = it }
         runCurrent()
         fakeNode.respond { pageResponse(it, page(0, 2, 5, "2", "3", "4", "5")) }
@@ -229,7 +232,7 @@ class NodeLinkingManagerTest {
         fakeNode.respond { pageResponse(it, null) } // malformed second page
         runCurrent()
 
-        assertEquals(false, result)
+        assertEquals(NodeLinkingResult.InvalidResponse, result)
         assertEquals(listOf(entry("1")), manager.unlinkedDevicesFlow(node).value)
     }
 
@@ -237,14 +240,14 @@ class NodeLinkingManagerTest {
     fun `a read whose Node never answers fails after the command timeout`() = runTest {
         val fakeNode = FakeNode(backgroundScope)
         val manager = manager(fakeNode)
-        var result: Boolean? = null
+        var result: NodeLinkingResult<List<NodeLinkingTableEntry>>? = null
 
         manager.readTable(node, LinkingTableKind.LINKED, null) { result = it }
         // advanceUntilIdle doesn't run backgroundScope work, so step past the 30 s timeout.
         advanceTimeBy(31_000)
         runCurrent()
 
-        assertEquals(false, result)
+        assertEquals(NodeLinkingResult.TimedOut, result)
         assertTrue("retried", fakeNode.requests.size > 1)
     }
 
@@ -252,28 +255,28 @@ class NodeLinkingManagerTest {
     fun `starting a read cancels the running one`() = runTest {
         val fakeNode = FakeNode(backgroundScope)
         val manager = manager(fakeNode)
-        var first: Boolean? = null
-        var second: Boolean? = null
+        var first: NodeLinkingResult<List<NodeLinkingTableEntry>>? = null
+        var second: NodeLinkingResult<List<NodeLinkingTableEntry>>? = null
 
         manager.readTable(node, LinkingTableKind.LINKED, null) { first = it }
         runCurrent()
         manager.readTable(node, LinkingTableKind.LINKED, null) { second = it }
         runCurrent()
 
-        assertEquals(false, first)
+        assertEquals(NodeLinkingResult.Cancelled, first)
         assertNull(second)
 
         fakeNode.respond { pageResponse(it, page(0, 1, 1, "9")) }
         runCurrent()
 
-        assertEquals(true, second)
+        assertEquals(NodeLinkingResult.Success(listOf(entry("9"))), second)
         assertEquals(listOf(entry("9")), manager.linkedDevicesFlow(node).value)
     }
 
     @Test
     fun `commands fail straight away when the Node isn't connected`() = runTest {
         val manager = manager(fakeNode = null)
-        val results = mutableListOf<Boolean>()
+        val results = mutableListOf<NodeLinkingResult<*>>()
 
         manager.readTable(node, LinkingTableKind.LINKED, null) { results += it }
         manager.setDeviceLinked(node, true, CombustionProductType.PROBE, "1000DA4C", null) { results += it }
@@ -281,7 +284,7 @@ class NodeLinkingManagerTest {
         manager.readProximityLinking(node) { results += it }
         runCurrent()
 
-        assertEquals(listOf(false, false, false, false), results)
+        assertEquals(List(4) { NodeLinkingResult.NotConnected }, results)
         assertEquals(0L, testScheduler.currentTime)
     }
 
@@ -289,7 +292,7 @@ class NodeLinkingManagerTest {
     fun `link and unlink send the device payload`() = runTest {
         val fakeNode = FakeNode(backgroundScope)
         val manager = manager(fakeNode)
-        val results = mutableListOf<Boolean>()
+        val results = mutableListOf<NodeLinkingResult<Unit>>()
 
         manager.setDeviceLinked(node, true, CombustionProductType.DISPLAY, "DS10001234", null) { results += it }
         runCurrent()
@@ -305,21 +308,21 @@ class NodeLinkingManagerTest {
         fakeNode.respond(::ack)
         runCurrent()
 
-        assertEquals(listOf(true, true), results)
+        assertEquals(List(2) { NodeLinkingResult.Success(Unit) }, results)
     }
 
     @Test
     fun `a link the Node refuses fails straight away, without retrying`() = runTest {
         val fakeNode = FakeNode(backgroundScope)
         val manager = manager(fakeNode)
-        var result: Boolean? = null
+        var result: NodeLinkingResult<Unit>? = null
 
         manager.setDeviceLinked(node, true, CombustionProductType.PROBE, "1000DA4C", null) { result = it }
         runCurrent()
         fakeNode.respond { NodeLinkingAckResponse(false, it.requestId, 0u, 0u, NodeMessageType.LINK_DEVICE) }
         runCurrent()
 
-        assertEquals(false, result)
+        assertEquals(NodeLinkingResult.Rejected, result)
         assertEquals(0L, testScheduler.currentTime)
         assertEquals(1, fakeNode.requests.size)
     }
@@ -328,14 +331,14 @@ class NodeLinkingManagerTest {
     fun `link with an invalid serial number fails without sending`() = runTest {
         val fakeNode = FakeNode(backgroundScope)
         val manager = manager(fakeNode)
-        val results = mutableListOf<Boolean>()
+        val results = mutableListOf<NodeLinkingResult<Unit>>()
 
         manager.setDeviceLinked(node, true, CombustionProductType.CHARGER, "TOO SHORT", null) { results += it }
         manager.setDeviceLinked(node, true, CombustionProductType.PROBE, "XYZ", null) { results += it }
         manager.setDeviceLinked(node, true, CombustionProductType.UNKNOWN, "CR10007379", null) { results += it }
         runCurrent()
 
-        assertEquals(listOf(false, false, false), results)
+        assertEquals(List(3) { NodeLinkingResult.InvalidSerialNumber }, results)
         assertTrue(fakeNode.requests.isEmpty())
     }
 
@@ -344,17 +347,52 @@ class NodeLinkingManagerTest {
         val fakeNode = FakeNode(backgroundScope)
         val manager = manager(fakeNode)
 
-        manager.setProximityLinking(node, true) {}
+        var set: NodeLinkingResult<Unit>? = null
+        manager.setProximityLinking(node, true) { set = it }
         runCurrent()
         fakeNode.respond(::ack)
         runCurrent()
+        assertEquals(NodeLinkingResult.Success(Unit), set)
         assertEquals(true, manager.proximityLinkingFlow(node).value)
 
-        manager.readProximityLinking(node) {}
+        var read: NodeLinkingResult<Boolean>? = null
+        manager.readProximityLinking(node) { read = it }
         runCurrent()
         fakeNode.respond { NodeReadProximityLinkingResponse(true, it.requestId, 0u, 1u, enabled = false) }
         runCurrent()
+        assertEquals(NodeLinkingResult.Success(false), read)
         assertEquals(false, manager.proximityLinkingFlow(node).value)
+    }
+
+    @Test
+    fun `a proximity-linking read without the setting is an invalid response`() = runTest {
+        val fakeNode = FakeNode(backgroundScope)
+        val manager = manager(fakeNode)
+        var read: NodeLinkingResult<Boolean>? = null
+
+        manager.readProximityLinking(node) { read = it }
+        runCurrent()
+        fakeNode.respond { NodeReadProximityLinkingResponse(true, it.requestId, 0u, 0u, enabled = null) }
+        runCurrent()
+
+        assertEquals(NodeLinkingResult.InvalidResponse, read)
+        assertNull(manager.proximityLinkingFlow(node).value)
+    }
+
+    @Test
+    fun `a command whose Node disconnects fails within the connection check, not the timeout`() = runTest {
+        val fakeNode = FakeNode(backgroundScope)
+        val manager = manager(fakeNode)
+        var result: NodeLinkingResult<Unit>? = null
+
+        manager.setDeviceLinked(node, true, CombustionProductType.PROBE, "1000DA4C", null) { result = it }
+        runCurrent()
+        fakeNode.connected = false
+        advanceTimeBy(NodeLinkingManager.CONNECTION_CHECK_INTERVAL_MS)
+        runCurrent()
+
+        assertEquals(NodeLinkingResult.NotConnected, result)
+        assertTrue(testScheduler.currentTime < 1_000)
     }
 
     @Test
