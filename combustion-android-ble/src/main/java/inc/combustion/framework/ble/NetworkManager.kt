@@ -967,6 +967,7 @@ internal class NetworkManager(
         jobManager.cancelJobs()
         clearDevices()
         nodeConnectionManager.finish()
+        nodeLinkingManager.finish()
         _instanceFlow.value = null
         initialized.set(false)
     }

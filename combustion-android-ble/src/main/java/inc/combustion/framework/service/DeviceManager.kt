@@ -53,6 +53,7 @@ import inc.combustion.framework.service.DeviceManager.Companion.stopCombustionSe
 import inc.combustion.framework.service.DeviceManager.Companion.unbindCombustionService
 import inc.combustion.framework.service.dfu.DfuProductType
 import inc.combustion.framework.service.dfu.DfuSystemState
+import inc.combustion.framework.service.utils.shareSelected
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -1245,13 +1246,7 @@ class DeviceManager(
      * completion handler runs is already this flow's value inside that handler.
      */
     private fun <T> sharedNodeFlow(select: (NetworkManager) -> StateFlow<T?>): StateFlow<T?> =
-        NetworkManager.instanceFlow
-            .flatMapLatest { mgr -> mgr?.let(select) ?: flowOf(null) }
-            .stateIn(
-                scope = nodeFlowScope,
-                started = SharingStarted.Eagerly,
-                initialValue = NetworkManager.instanceFlow.value?.let(select)?.value,
-            )
+        NetworkManager.instanceFlow.shareSelected(nodeFlowScope, select)
 
 
     /**

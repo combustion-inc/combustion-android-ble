@@ -50,6 +50,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
+import io.mockk.verify
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -393,6 +394,44 @@ class NodeLinkingManagerTest {
 
         assertEquals(NodeLinkingResult.NotConnected, result)
         assertTrue(testScheduler.currentTime < 1_000)
+    }
+
+    @Test
+    fun `clear cancels running commands, whose handlers get Cancelled`() = runTest {
+        val fakeNode = FakeNode(backgroundScope)
+        val manager = manager(fakeNode)
+        val results = mutableListOf<NodeLinkingResult<*>>()
+
+        manager.readTable(node, LinkingTableKind.LINKED, null) { results += it }
+        manager.setDeviceLinked(node, true, CombustionProductType.PROBE, "1000DA4C", null) { results += it }
+        manager.setProximityLinking(node, true) { results += it }
+        manager.readProximityLinking(node) { results += it }
+        runCurrent()
+        assertEquals(4, fakeNode.requests.size)
+
+        manager.clear()
+        runCurrent()
+
+        assertEquals(List(4) { NodeLinkingResult.Cancelled }, results)
+        assertNull(manager.proximityLinkingFlow(node).value)
+    }
+
+    @Test
+    fun `a command that succeeds on a retry stops waiting for the earlier attempt`() = runTest {
+        val fakeNode = FakeNode(backgroundScope)
+        val manager = manager(fakeNode)
+        var result: NodeLinkingResult<Unit>? = null
+
+        manager.setDeviceLinked(node, true, CombustionProductType.PROBE, "1000DA4C", null) { result = it }
+        runCurrent()
+        advanceTimeBy(5_001) // the retry interval
+        runCurrent()
+        assertEquals(2, fakeNode.requests.size)
+        fakeNode.respond(::ack)
+        runCurrent()
+
+        assertEquals(NodeLinkingResult.Success(Unit), result)
+        verify { fakeNode.device.cancelLinkingRequest(fakeNode.requests.first().requestId) }
     }
 
     @Test

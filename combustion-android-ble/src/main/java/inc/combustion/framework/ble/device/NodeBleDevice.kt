@@ -269,6 +269,11 @@ internal class NodeBleDevice(
         sendUartRequest(request)
     }
 
+    /** Stops waiting for the response to the linking request [requestId], without calling back. */
+    fun cancelLinkingRequest(requestId: UInt) {
+        linkingHandler.cancel(requestId)
+    }
+
     override fun connect() {
         uart.connect()
     }

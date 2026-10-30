@@ -52,7 +52,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
@@ -67,6 +69,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.util.Date
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.random.Random
 import kotlin.random.nextUInt
 
@@ -191,6 +194,10 @@ internal class NodeLinkingManager(
     private val proximityLinking = ConcurrentHashMap<String, MutableStateFlow<Boolean?>>()
     private val readJobs = ConcurrentHashMap<ReadKey, Job>()
 
+    // Every command runs in here, so clear() and finish() can cancel them without cancelling scope.
+    private val commandJob = SupervisorJob(scope.coroutineContext[Job])
+    private val commandScope = CoroutineScope(scope.coroutineContext + commandJob)
+
     private val _heartbeatFlow = MutableSharedFlow<NodeHeartbeat>(
         replay = 0,
         extraBufferCapacity = HEARTBEAT_BUFFER,
@@ -230,17 +237,8 @@ internal class NodeLinkingManager(
         completionHandler: (NodeLinkingResult<List<NodeLinkingTableEntry>>) -> Unit,
     ) {
         val readKey = ReadKey(serialNumber.key(), kind)
-        // Stays Cancelled if the read is cancelled before it finishes.
-        var result: NodeLinkingResult<List<NodeLinkingTableEntry>> = NodeLinkingResult.Cancelled
-        val job = scope.launch(start = CoroutineStart.LAZY) {
-            result = readAllPages(serialNumber, kind, progressHandler)
-        }
-        // invokeOnCompletion rather than a finally block: a job cancelled before it's dispatched
-        // never runs its body, but still completes.
-        job.invokeOnCompletion {
-            readJobs.remove(readKey, job)
-            completionHandler(result)
-        }
+        val job = command(completionHandler) { readAllPages(serialNumber, kind, progressHandler) }
+        job.invokeOnCompletion { readJobs.remove(readKey, job) }
         readJobs.put(readKey, job)?.cancel()
         job.start()
     }
@@ -274,12 +272,11 @@ internal class NodeLinkingManager(
         }
         val messageType = if (linked) NodeMessageType.LINK_DEVICE else NodeMessageType.UNLINK_DEVICE
 
-        scope.launch {
-            val result = sendToConnectedNode(serialNumber, messageType) { requestId ->
+        command(completionHandler) {
+            sendToConnectedNode(serialNumber, messageType) { requestId ->
                 NodeLinkDeviceRequest(serialNumber, messageType, payload, requestId)
-            }
-            completionHandler(result.map { })
-        }
+            }.map { }
+        }.start()
     }
 
     /**
@@ -291,15 +288,15 @@ internal class NodeLinkingManager(
         enabled: Boolean,
         completionHandler: (NodeLinkingResult<Unit>) -> Unit,
     ) {
-        scope.launch {
+        command(completionHandler) {
             val result = sendToConnectedNode(serialNumber, NodeMessageType.SET_PROXIMITY_LINKING) { requestId ->
                 NodeSetProximityLinkingRequest(serialNumber, enabled, requestId)
             }
             if (result.isSuccess) {
                 proximityLinking.getOrPut(serialNumber.key()) { MutableStateFlow(null) }.value = enabled
             }
-            completionHandler(result.map { })
-        }
+            result.map { }
+        }.start()
     }
 
     /**
@@ -310,7 +307,7 @@ internal class NodeLinkingManager(
         serialNumber: String,
         completionHandler: (NodeLinkingResult<Boolean>) -> Unit,
     ) {
-        scope.launch {
+        command(completionHandler) {
             val sent = sendToConnectedNode(serialNumber, NodeMessageType.READ_PROXIMITY_LINKING) { requestId ->
                 NodeReadProximityLinkingRequest(serialNumber, requestId)
             }
@@ -324,8 +321,8 @@ internal class NodeLinkingManager(
             if (result is NodeLinkingResult.Success) {
                 proximityLinking.getOrPut(serialNumber.key()) { MutableStateFlow(null) }.value = result.value
             }
-            completionHandler(result)
-        }
+            result
+        }.start()
     }
 
     fun handleHeartbeat(request: NodeHeartbeatRequest) {
@@ -350,15 +347,37 @@ internal class NodeLinkingManager(
     }
 
     /**
-     * Cancels running reads and forgets every Node's tables and setting. Flows already handed out
-     * stay valid and go back to null.
+     * Cancels running commands, whose handlers get [NodeLinkingResult.Cancelled], and forgets every
+     * Node's tables and setting. Flows already handed out stay valid and go back to null.
      */
     fun clear() {
-        readJobs.values.forEach { it.cancel() }
+        commandJob.cancelChildren()
         readJobs.clear()
         linkedDevices.values.forEach { it.value = null }
         unlinkedDevices.values.forEach { it.value = null }
         proximityLinking.values.forEach { it.value = null }
+    }
+
+    /** Cancels running commands for good; [scope] outlives this manager when NetworkManager is recreated. */
+    fun finish() {
+        commandJob.cancel()
+    }
+
+    /**
+     * A command that calls [completionHandler] exactly once: with [block]'s result, or with
+     * [NodeLinkingResult.Cancelled] if it's cancelled first, e.g. by [clear], by a newer read, or
+     * because the framework shut down. Not started yet, so the caller can track it first.
+     */
+    private fun <T> command(
+        completionHandler: (NodeLinkingResult<T>) -> Unit,
+        block: suspend () -> NodeLinkingResult<T>,
+    ): Job {
+        var result: NodeLinkingResult<T> = NodeLinkingResult.Cancelled
+        val job = commandScope.launch(start = CoroutineStart.LAZY) { result = block() }
+        // invokeOnCompletion rather than a finally block: a job cancelled before it's dispatched
+        // never runs its body, but still completes.
+        job.invokeOnCompletion { completionHandler(result) }
+        return job
     }
 
     private suspend fun readAllPages(
@@ -422,48 +441,55 @@ internal class NodeLinkingManager(
         // WiFiNodesManager.sendNodeRequestRequiringWiFi's responseData.
         var response: NodeResponse? = null
         var isRejected = false
-        val result = coroutineScope {
-            val command = async {
-                commandCoordinator.sendRoutedCommand(
-                    targetSerialNumber = serialNumber,
-                    send = {
-                        if (!node.isConnected) {
-                            emptySet()
-                        } else {
-                            val requestId = makeRequestId()
-                            val key = CommandAttemptKey.Node(messageType, requestId)
-                            node.sendLinkingRequest(buildRequest(requestId)) { success, data ->
-                                if (success) {
-                                    response = data as? NodeResponse
-                                    commandCoordinator.completeAttempt(key, success = true)
-                                } else if (data is NodeResponse) {
-                                    // The Node answered and refused, e.g. Link Device with a full
-                                    // table; sending it again won't help. (A timeout passes no
-                                    // response.)
-                                    isRejected = true
-                                    commandCoordinator.completeAttempt(key, success = false)
+        // Every attempt's request ID, so the other attempts' waits end with the command.
+        val attemptRequestIds = ConcurrentLinkedQueue<UInt>()
+        val result = try {
+            coroutineScope {
+                val routedCommand = async {
+                    commandCoordinator.sendRoutedCommand(
+                        targetSerialNumber = serialNumber,
+                        send = {
+                            if (!node.isConnected) {
+                                emptySet()
+                            } else {
+                                val requestId = makeRequestId()
+                                attemptRequestIds += requestId
+                                val key = CommandAttemptKey.Node(messageType, requestId)
+                                node.sendLinkingRequest(buildRequest(requestId)) { success, data ->
+                                    if (success) {
+                                        response = data as? NodeResponse
+                                        commandCoordinator.completeAttempt(key, success = true)
+                                    } else if (data is NodeResponse) {
+                                        // The Node answered and refused, e.g. Link Device with a full
+                                        // table; sending it again won't help. (A timeout passes no
+                                        // response.)
+                                        isRejected = true
+                                        commandCoordinator.completeAttempt(key, success = false)
+                                    }
                                 }
+                                setOf(key)
                             }
-                            setOf(key)
-                        }
-                    },
-                    isConfirmed = { false },
-                )
+                        },
+                        isConfirmed = { false },
+                    )
+                }
+                // Ends the command once the Node disconnects, instead of when it times out.
+                val connectionWatch = launch {
+                    while (node.isConnected) delay(CONNECTION_CHECK_INTERVAL_MS)
+                    routedCommand.cancel()
+                }
+                try {
+                    routedCommand.await()
+                } catch (e: CancellationException) {
+                    // Cancelled by connectionWatch, unless this coroutine itself was cancelled.
+                    currentCoroutineContext().ensureActive()
+                    null
+                } finally {
+                    connectionWatch.cancel()
+                }
             }
-            // Ends the command once the Node disconnects, instead of when it times out.
-            val connectionWatch = launch {
-                while (node.isConnected) delay(CONNECTION_CHECK_INTERVAL_MS)
-                command.cancel()
-            }
-            try {
-                command.await()
-            } catch (e: CancellationException) {
-                // Cancelled by connectionWatch, unless this coroutine itself was cancelled.
-                currentCoroutineContext().ensureActive()
-                null
-            } finally {
-                connectionWatch.cancel()
-            }
+        } finally {
+            attemptRequestIds.forEach(node::cancelLinkingRequest)
         }
 
         return when (result) {
