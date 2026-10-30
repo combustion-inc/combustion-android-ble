@@ -363,6 +363,8 @@ internal class NodeLinkingManager(
                 }
 
                 is LinkingTableReader.Step.Continue -> {
+                    // A read replaced by a newer one must not report progress either.
+                    currentCoroutineContext().ensureActive()
                     progressHandler?.invoke(step.progress)
                     page = step.nextPage
                 }

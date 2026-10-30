@@ -762,6 +762,9 @@ class DeviceManager(
      * disconnection the probe's connection state is updated and that state change
      * is produced to the probe's state update flow.
      *
+     * MeatNet Nodes held with [connectToNode] stay connected until [disconnectFromNode], including
+     * the Node of a gauge or engine disconnected here.
+     *
      * @param serialNumber the serial number of the probe.
      * @return true if the connection process was started, false otherwise.
      *
@@ -1258,6 +1261,8 @@ class DeviceManager(
      *
      * A Display or Booster on firmware that doesn't send Device Info advertisements has an empty
      * serial number here until the phone has connected to it.
+     *
+     * Shared eagerly, so its value is current even while nothing collects it.
      */
     val meatNetNodesFlow: StateFlow<List<MeatNetNode>> = NetworkManager.instanceFlow
         .flatMapLatest { mgr ->
@@ -1265,19 +1270,23 @@ class DeviceManager(
         }
         .stateIn(
             scope = appApiScope,
-            started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
+            started = SharingStarted.Eagerly,
             initialValue = emptyList(),
         )
 
     /**
      * Keeps the phone connected to the MeatNet Node [serialNumber] (see [meatNetNodesFlow]) until
      * [disconnectFromNode] is called: connects now, reconnects whenever it's disconnected and
-     * advertising again, and stops the framework's own disconnects from dropping it. The linking
-     * methods (e.g. [readNodeLinkedDevices]) need the phone connected to the Node. iOS's
-     * `MeatNetNode.connect()`.
+     * advertising again, and stops other disconnects from dropping it, including [disconnect] for
+     * a gauge or engine that is this Node. The linking methods (e.g. [readNodeLinkedDevices]) need
+     * the phone connected to the Node. iOS's `MeatNetNode.connect()`.
      *
      * Does nothing if no Node with this serial number has been heard. Entering DFU mode releases
      * every Node.
+     *
+     * Each held Node uses one of the phone's Bluetooth connections, which Android limits (often to
+     * about 7, depending on the device) and shares with the probes, gauges and engines the
+     * framework connects to, so hold only the Nodes needed.
      */
     fun connectToNode(serialNumber: String) {
         doWhenNetworkManagerInitialized {
@@ -1307,6 +1316,8 @@ class DeviceManager(
      *
      * Only one read per Node runs at a time: calling this again while a read is running cancels
      * that read, whose [completionHandler] gets false.
+     *
+     * Both handlers are called on a background thread.
      */
     fun readNodeLinkedDevices(
         serialNumber: String,
@@ -1343,6 +1354,8 @@ class DeviceManager(
      * exactly 10 characters, and [deviceType] can't be [CombustionProductType.UNKNOWN].
      *
      * Doesn't update [nodeLinkedDevicesFlow]; read the table again to see the change.
+     *
+     * [completionHandler] is called on a background thread.
      */
     fun linkDeviceToNode(
         serialNumber: String,
@@ -1381,6 +1394,8 @@ class DeviceManager(
      * updated before [completionHandler] is called.
      *
      * Not related to [deviceInProximityFlow], which is this phone's own RSSI-based proximity.
+     *
+     * [completionHandler] is called on a background thread.
      */
     fun setNodeProximityLinking(
         serialNumber: String,
@@ -1396,6 +1411,8 @@ class DeviceManager(
      * Reads whether proximity-based automatic linking is enabled on the MeatNet Node
      * [serialNumber], which the phone must be connected to directly. On success,
      * [nodeProximityLinkingFlow] is updated before [completionHandler] is called.
+     *
+     * [completionHandler] is called on a background thread.
      */
     fun readNodeProximityLinking(serialNumber: String, completionHandler: (Boolean) -> Unit) {
         doWhenNetworkManagerInitialized {

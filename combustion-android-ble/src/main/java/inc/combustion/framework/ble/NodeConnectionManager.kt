@@ -204,12 +204,19 @@ internal class NodeConnectionManager(
      * framework still uses the connection.
      */
     fun disconnect(serialNumber: String) {
-        val node = synchronized(lock) {
+        val id = synchronized(lock) {
             val record = findRecord(serialNumber) ?: return
             record.release()
-            nodeDevice(record.id)?.takeIf { !isNeededByFramework(record.id) }
+            record.id
         }
-        node?.disconnect()
+        // Asked outside lock, as it takes NetworkManager's own locks.
+        if (!isNeededByFramework(id)) {
+            val node = synchronized(lock) {
+                // A connect() since the release must win.
+                nodeDevice(id)?.takeIf { records[id]?.isHeld != true }
+            }
+            node?.disconnect()
+        }
         refresh()
     }
 
@@ -252,6 +259,7 @@ internal class NodeConnectionManager(
     /** Rebuilds the published list; also reads a connected Node's serial number if needed. */
     fun refresh() {
         val toRead = synchronized(lock) {
+            if (records.isEmpty()) return
             val toRead = records.values.mapNotNull { record ->
                 val node = nodeDevice(record.id)
                 if (node == null || !node.isConnected) {

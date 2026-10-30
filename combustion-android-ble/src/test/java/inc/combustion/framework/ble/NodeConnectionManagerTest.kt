@@ -98,6 +98,9 @@ class NodeConnectionManagerTest {
         val nodes = mutableMapOf<DeviceID, FakeNode>()
         val created = mutableListOf<DeviceID>()
         var neededByFramework = false
+
+        // Runs while isNeededByFramework is asked, i.e. between a release and its disconnect.
+        var whileAskingIfNeeded: () -> Unit = {}
         val manager = NodeConnectionManager(
             scope = scope.backgroundScope,
             nodeDevice = { id -> nodes[id]?.device },
@@ -105,7 +108,10 @@ class NodeConnectionManagerTest {
                 created += advertisement.id
                 nodes.getOrPut(advertisement.id) { FakeNode() }.device
             },
-            isNeededByFramework = { neededByFramework },
+            isNeededByFramework = {
+                whileAskingIfNeeded()
+                neededByFramework
+            },
             now = { time },
         )
 
@@ -313,6 +319,22 @@ class NodeConnectionManagerTest {
         h.manager.disconnect(booster)
         verify(exactly = 1) { fake.device.disconnect() }
         assertFalse(h.node(booster).isConnectionRequested)
+    }
+
+    @Test
+    fun `a Node held again while being released is not disconnected`() = runTest {
+        val h = Harness(this)
+        val fake = FakeNode().also { h.nodes[boosterId] = it }
+        h.manager.handleAdvertisement(deviceInfo(rssi = -60))
+        h.manager.connectToBooster()
+        fake.connected = true
+
+        h.whileAskingIfNeeded = { h.manager.connectToBooster() }
+        h.manager.disconnect(booster)
+
+        verify(exactly = 0) { fake.device.disconnect() }
+        assertTrue(fake.held)
+        assertTrue(h.node(booster).isConnectionRequested)
     }
 
     @Test
