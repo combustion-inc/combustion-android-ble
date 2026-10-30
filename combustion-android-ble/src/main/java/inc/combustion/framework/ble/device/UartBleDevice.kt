@@ -173,6 +173,12 @@ internal open class UartBleDevice(
             }
             requestId = null
         }
+
+        /** Cancels the wait for [reqId], if one is pending, without invoking its callback. */
+        fun cancel(reqId: UInt?) {
+            pending.remove(Key(reqId))?.job?.cancel()
+            clearRequestIdIfEmpty()
+        }
     }
 
     companion object {

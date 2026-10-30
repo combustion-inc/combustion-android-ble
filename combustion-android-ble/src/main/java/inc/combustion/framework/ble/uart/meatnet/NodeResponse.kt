@@ -308,9 +308,44 @@ internal open class NodeResponse(
                     )
                 }
 
+                NodeMessageType.READ_LINKED_DEVICES,
+                NodeMessageType.READ_UNLINKED_DEVICES -> {
+                    NodeLinkingTablePageResponse.fromData(
+                        data,
+                        messageType,
+                        success,
+                        requestId,
+                        responseId,
+                        payloadLength,
+                    )
+                }
+
+                NodeMessageType.LINK_DEVICE,
+                NodeMessageType.UNLINK_DEVICE,
+                NodeMessageType.SET_PROXIMITY_LINKING,
+                NodeMessageType.SYNC_LINK_TABLE -> {
+                    NodeLinkingAckResponse(
+                        success,
+                        requestId,
+                        responseId,
+                        payloadLength,
+                        messageType,
+                    )
+                }
+
+                NodeMessageType.READ_PROXIMITY_LINKING -> {
+                    NodeReadProximityLinkingResponse.fromData(
+                        data,
+                        success,
+                        requestId,
+                        responseId,
+                        payloadLength,
+                    )
+                }
+
                 else -> {
                     // The message didn't match any of the defined types, so check if it matches a custom type
-                    return DeviceManager.instance.settings.messageTypeCallback(rawMessageType)
+                    DeviceManager.instance.settings.messageTypeCallback(rawMessageType)
                         ?.let {
                             return GenericNodeResponse.fromData(
                                 data,

@@ -115,6 +115,16 @@ interface AdvertisingData {
                     manufacturerData = manufacturerData,
                 )
 
+                CombustionProductType.DISPLAY,
+                CombustionProductType.CHARGER -> NodeDeviceInfoAdvertisingData.create(
+                    address = address,
+                    name = name,
+                    rssi = rssi,
+                    isConnectable = isConnectable,
+                    manufacturerData = manufacturerData,
+                    type = type,
+                ) ?: base
+
                 else -> base
             }
         }

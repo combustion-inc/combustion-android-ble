@@ -22,6 +22,7 @@ internal class NodeBleDevice(
     private val observeGaugeStatusCallback: suspend (String, GaugeStatus) -> Unit,
     private val observeEngineStatusCallback: suspend (String, EngineStatus) -> Unit,
     private val observeSilenceAlarmsCallback: suspend (SilenceAlarmsRequest) -> Unit,
+    private val observeHeartbeatCallback: suspend (NodeHeartbeatRequest) -> Unit = {},
 ) : UartCapableDevice {
 
     override val id: DeviceID
@@ -34,6 +35,9 @@ internal class NodeBleDevice(
     private val silenceAlarmsHandler = UartBleDevice.MessageCompletionHandler()
     private val setEngineTemperatureSetPointHandler = UartBleDevice.MessageCompletionHandler()
     private val setEngineControlDeviceHandler = UartBleDevice.MessageCompletionHandler()
+
+    // Shared by every linking request (0x73-0x7B); responses are matched by request ID.
+    private val linkingHandler = UartBleDevice.MessageCompletionHandler()
 
     companion object {
         const val NODE_MESSAGE_RESPONSE_TIMEOUT_MS = 120000L
@@ -70,6 +74,22 @@ internal class NodeBleDevice(
     val deviceInfoSerialNumber: String?
         get() {
             return uart.serialNumber
+        }
+
+    val deviceInfoFirmwareVersion: FirmwareVersion?
+        get() = uart.firmwareVersion
+
+    val deviceInfoHardwareRevision: String?
+        get() = uart.hardwareRevision
+
+    val deviceInfoModelInformation: ModelInformation?
+        get() = uart.modelInformation
+
+    /** See [DeviceInformationBleDevice.isConnectionHeld]. */
+    var isConnectionHeld: Boolean
+        get() = uart.isConnectionHeld
+        set(value) {
+            uart.isConnectionHeld = value
         }
 
     private val disconnectedCallbacks = mutableMapOf<String, () -> Unit>()
@@ -234,6 +254,26 @@ internal class NodeBleDevice(
         )
     }
 
+    /**
+     * Sends a linking request (0x73-0x7A) to this Node. [callback] gets the matching
+     * [NodeLinkingResponse] on a response, or `(false, null)` if none arrives in time. The wait
+     * is keyed by [request]'s own request ID, so several linking requests can be pending at once.
+     */
+    fun sendLinkingRequest(request: NodeRequest, callback: ((Boolean, Any?) -> Unit)?) {
+        linkingHandler.wait(
+            uart.scope,
+            MEATNET_MESSAGE_RESPONSE_TIMEOUT_MS,
+            request.requestId,
+            callback,
+        )
+        sendUartRequest(request)
+    }
+
+    /** Stops waiting for the response to the linking request [requestId], without calling back. */
+    fun cancelLinkingRequest(requestId: UInt) {
+        linkingHandler.cancel(requestId)
+    }
+
     override fun connect() {
         uart.connect()
     }
@@ -379,6 +419,20 @@ internal class NodeBleDevice(
                         )
                     }
 
+                    message is NodeLinkingResponse -> {
+                        linkingHandler.handled(message.success, message, message.requestId)
+                    }
+
+                    // Checked before the hybrid child, which a gauge's or engine's own heartbeat
+                    // would otherwise match by serial number.
+                    message is NodeHeartbeatRequest -> {
+                        observeHeartbeatCallback(message)
+                    }
+
+                    message is NodeIncomingLinkingRequest -> {
+                        // Node-to-Node linking traffic; nothing for the phone to do.
+                    }
+
                     (message is NodeRequest) && (message.serialNumber == hybridDeviceChild?.serialNumber) -> {
                         hybridDeviceChild?.processNodeRequest(message)
                     }
@@ -404,5 +458,10 @@ internal class NodeBleDevice(
     // Read the serial number from the device
     suspend fun readSerialNumber() {
         uart.readSerialNumber()
+    }
+
+    // Read the model information, which tells a Display from a Booster
+    suspend fun readModelInformation() {
+        uart.readModelInformation()
     }
 }
