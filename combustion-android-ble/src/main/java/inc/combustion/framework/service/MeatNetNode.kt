@@ -42,8 +42,8 @@ import inc.combustion.framework.ble.device.DeviceID
  * - [Device.serialNumber] is empty until known: from the Node's advertising (Gauge, Engine, and
  *   Display and Booster firmware that sends Device Info advertisements), otherwise once the phone
  *   has connected to it.
- * - [Device.rssi] is smoothed, and rounded to whole dB, so the list doesn't change on every
- *   advertisement.
+ * - [Device.rssi] is smoothed, rounded to whole dB, and updated at most about once a second, so
+ *   the list doesn't change on every advertisement. Other changes are published straight away.
  *
  * @property highRadioPower whether the Node transmits at high radio power (+8 dBm), from its own
  * advertising; false if unknown.

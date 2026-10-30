@@ -213,9 +213,24 @@ class NodeConnectionManagerTest {
         assertTrue("unchanged, so the same list instance", first === h.manager.nodesFlow.value)
 
         h.manager.handleAdvertisement(deviceInfo(rssi = -60))
+        assertTrue("an RSSI change alone waits for the refresh", first === h.manager.nodesFlow.value)
+
+        h.manager.refresh()
         val second = h.manager.nodesFlow.value
         assertTrue(first !== second)
         assertEquals(-67, second.single().rssi) // smoothed: -70 + (2/7) * 10 = -67.1, rounded
+    }
+
+    @Test
+    fun `an advertisement that changes more than the RSSI is published straight away`() = runTest {
+        val h = Harness(this)
+        h.manager.handleAdvertisement(deviceInfo(rssi = -70))
+
+        h.manager.handleAdvertisement(deviceInfo(rssi = -60, isConnectable = false))
+
+        val node = h.node(booster)
+        assertEquals(DeviceConnectionState.ADVERTISING_NOT_CONNECTABLE, node.connectionState)
+        assertEquals(-67, node.rssi)
     }
 
     @Test

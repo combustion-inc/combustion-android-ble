@@ -177,9 +177,10 @@ internal class NodeConnectionManager(
         }
 
         if (reconnect) connectNow(record)
-        // Adverts are frequent, so only this Node is re-checked; the periodic refresh covers the
-        // rest (out of range, connection changes, device info).
-        synchronized(lock) { publish(listOf(record), now()) }
+        // Adverts are frequent, so only this Node is re-checked, and an RSSI change alone waits for
+        // the periodic refresh, which also covers the rest (out of range, connection changes,
+        // device info).
+        synchronized(lock) { publish(listOf(record), now(), deferRssiOnlyChanges = true) }
     }
 
     /**
@@ -328,13 +329,22 @@ internal class NodeConnectionManager(
 
     /**
      * Rebuilds the entries of [changed] and republishes the list if any of them differs from what
-     * was published. Must be called holding lock, so concurrent calls can't publish out of order.
+     * was published. With [deferRssiOnlyChanges], an entry whose only change is its RSSI is left
+     * for the next [refresh]: advertisements arrive several times a second per Node, and each
+     * republish makes collectors rebuild. Must be called holding lock, so concurrent calls can't
+     * publish out of order.
      */
-    private fun publish(changed: Collection<Record>, time: Long) {
+    private fun publish(changed: Collection<Record>, time: Long, deferRssiOnlyChanges: Boolean = false) {
         var isChanged = false
         changed.forEach { record ->
             val entry = record.toMeatNetNode(nodeDevice(record.id), time)
-            if (published.put(record.id, entry) != entry) isChanged = true
+            val previous = published[record.id]
+            if (entry == previous) return@forEach
+            if (deferRssiOnlyChanges && previous != null && entry.withRssi(previous.rssi) == previous) {
+                return@forEach
+            }
+            published[record.id] = entry
+            isChanged = true
         }
         if (isChanged) {
             _nodesFlow.value = published.values.toList()
@@ -451,6 +461,8 @@ internal class NodeConnectionManager(
             isConnectionRequested = isHeld,
         )
     }
+
+    private fun MeatNetNode.withRssi(rssi: Int) = copy(baseDevice = baseDevice.copy(rssi = rssi))
 
     private fun DfuProductType.toNodeProductType(): CombustionProductType? = when (this) {
         DfuProductType.DISPLAY -> CombustionProductType.DISPLAY
