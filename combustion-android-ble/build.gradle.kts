@@ -1,33 +1,39 @@
-import java.io.ByteArrayOutputStream
+import org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
-@Suppress("DSL_SCOPE_VIOLATION") // TODO: Remove once KTIJ-19369 is fixed--this is boilerplate.
 plugins {
     alias(frameworkLibs.plugins.android.library)
-    alias(frameworkLibs.plugins.kotlin.android)
     alias(frameworkLibs.plugins.kotlin.serialization)
     alias(frameworkLibs.plugins.maven.publish)
 }
 
-fun String.runCommand(currentWorkingDir: File = file("./")): String {
-    val byteOut = ByteArrayOutputStream()
-
-    project.exec {
+// project.exec was removed in Gradle 9 -- providers.exec is its configuration-cache-safe replacement.
+fun String.runCommand(currentWorkingDir: File = file("./")): String =
+    providers.exec {
         workingDir = currentWorkingDir
         commandLine = this@runCommand.split("\\s".toRegex())
-        standardOutput = byteOut
         isIgnoreExitValue = true
-    }
-
-    return String(byteOut.toByteArray()).trim()
-}
+    }.standardOutput.asText.get().trim()
 
 fun getVersionName(): String {
     return "git describe --tags --abbrev=4 HEAD".runCommand()
 }
 
+// AGP 9's built-in Kotlin replaces the kotlin-android plugin.
 kotlin {
     jvmToolchain(17)
+    compilerOptions {
+        optIn.addAll(
+            "kotlin.ExperimentalUnsignedTypes",
+            "com.juul.kable.ObsoleteKableApi",
+        )
+        // Equivalent of the former "-Xjvm-default=all-compatibility" flag (deprecated since Kotlin 2.2).
+        jvmDefault = JvmDefaultMode.ENABLE
+    }
+}
+
+tasks.withType<KotlinCompile>().configureEach {
+    compilerOptions.allWarningsAsErrors = name.contains("Release")
 }
 
 android {
@@ -45,6 +51,7 @@ android {
         buildConfigField("String", "VERSION_NAME", "\"" + getVersionName() + "\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        consumerProguardFiles("consumer-rules.pro")
         vectorDrawables {
             useSupportLibrary = true
         }
@@ -85,20 +92,6 @@ android {
     }
     buildFeatures {
         buildConfig = true
-    }
-
-    tasks.withType<KotlinCompile>().configureEach {
-        compilerOptions {
-            freeCompilerArgs.addAll(
-                "-opt-in=kotlin.ExperimentalUnsignedTypes",
-                "-opt-in=com.juul.kable.ObsoleteKableApi",
-                "-Xjvm-default=all-compatibility"
-            )
-        }
-    }
-
-    tasks.withType<KotlinCompile>().configureEach {
-        compilerOptions.allWarningsAsErrors = name.contains("Release")
     }
 }
 

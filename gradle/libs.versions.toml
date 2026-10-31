@@ -1,19 +1,18 @@
 [versions]
-androidGradlePlugin = "8.12.2"
+androidGradlePlugin = "9.4.1"
 lifecycle = "2.8.7"
 androidxAppCompat = "1.7.0"
 androidxTestExt = "1.2.1"
 androidxTestEspresso = "3.6.1"
 core-ktx = "1.15.0"
 kableCore = "0.42.0"
-kotlin = "2.1.0"
+kotlin = "2.4.21"
 kotlinxSerializationJson = "1.8.0"
 kotlinxImmutables = "0.4.0"
 nordicsemiDfu = "2.9.0"
 junit = "4.13.2"
 junitParams = "1.1.1"
 androidDesugarJdkLibs = "2.1.4"
-kotlinTestJunit = "2.1.0"
 mavenPublish = "0.25.3"
 mockk = "1.13.9"
 kotlinxCoroutines = "1.10.2"
@@ -30,7 +29,7 @@ androidx-test-espresso = { group = "androidx.test.espresso", name = "espresso-co
 core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "core-ktx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 kable-core = { group = "com.juul.kable", name = "kable-core", version.ref = "kableCore" }
-kotlin-test-junit = { group = "org.jetbrains.kotlin", name = "kotlin-test-junit", version.ref = "kotlinTestJunit" }
+kotlin-test-junit = { group = "org.jetbrains.kotlin", name = "kotlin-test-junit", version.ref = "kotlin" }
 nordicsemi-dfu = { group = "no.nordicsemi.android", name = "dfu", version.ref = "nordicsemiDfu" }
 junit-params = { group = "pl.pragmatists", name = "JUnitParams", version.ref = "junitParams" }
 mockk-android = { group = "io.mockk", name = "mockk-android", version.ref = "mockk" }
@@ -38,6 +37,5 @@ kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-cor
 
 [plugins]
 android-library = { id = "com.android.library", version.ref = "androidGradlePlugin" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 maven-publish = { id = "com.vanniktech.maven.publish", version.ref = "mavenPublish" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
