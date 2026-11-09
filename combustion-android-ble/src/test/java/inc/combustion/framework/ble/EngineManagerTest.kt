@@ -115,6 +115,9 @@ class EngineManagerTest {
         controlDeviceConnected: Boolean = false,
         controlDeviceType: CombustionProductType? = null,
         controlSerialNumber: String? = null,
+        controlDeviceSensorMissing: Boolean = false,
+        controlTemperature: SensorTemperature? =
+            if (controlDeviceType != null) SensorTemperature.NO_DATA else null,
     ): EngineStatus = EngineStatus(
         sessionInformation = SessionInformation(sessionID = sessionID, samplePeriod = samplePeriod),
         samplePeriod = samplePeriod,
@@ -125,10 +128,13 @@ class EngineManagerTest {
         // Parsing no longer gates these on controlDeviceConnected -- firmware reports them
         // independently of the connected flag (see EngineStatus.fromRawData), so the fixture
         // shouldn't null them out here either.
-        controlTemperature = if (controlDeviceType != null) SensorTemperature.NO_DATA else null,
+        controlTemperature = controlTemperature,
         controlDeviceType = controlDeviceType,
         controlSerialNumber = controlSerialNumber,
-        engineStatusFlags = EngineStatusFlags(controlDeviceConnected = controlDeviceConnected),
+        engineStatusFlags = EngineStatusFlags(
+            controlDeviceConnected = controlDeviceConnected,
+            controlDeviceSensorMissing = controlDeviceSensorMissing,
+        ),
         engineFanStatus = EngineFanStatus(
             fanState = EngineFanState.FAN_ON,
             dutyCycle = 50u,
@@ -195,6 +201,56 @@ class EngineManagerTest {
             assertEquals("1000D564", manager.device.controlSerialNumber)
             assertEquals(CombustionProductType.PROBE, manager.device.controlDeviceType)
             assertFalse(manager.device.engineStatusFlags.controlDeviceConnected)
+        }
+
+    @Test
+    fun `controlTemperature is passed through while the control device sensor is present`() =
+        runTest {
+            val manager = manager(backgroundScope)
+
+            manager.observedEngineStatus(
+                engineStatus(
+                    controlDeviceConnected = true,
+                    controlDeviceType = CombustionProductType.GAUGE,
+                    controlSerialNumber = "G0000001",
+                    controlTemperature = SensorTemperature(85.5),
+                ),
+            )
+
+            assertEquals(SensorTemperature(85.5), manager.device.controlTemperature)
+        }
+
+    @Test
+    fun `controlTemperature is null while the control device sensor is missing, and returns once present`() =
+        runTest {
+            val manager = manager(backgroundScope)
+
+            // Firmware keeps sending the last reading while the Gauge's sensor is missing.
+            manager.observedEngineStatus(
+                engineStatus(
+                    maxSequenceNumber = 1u,
+                    controlDeviceConnected = true,
+                    controlDeviceType = CombustionProductType.GAUGE,
+                    controlSerialNumber = "G0000001",
+                    controlDeviceSensorMissing = true,
+                    controlTemperature = SensorTemperature(85.5),
+                ),
+            )
+            assertNull(manager.device.controlTemperature)
+            assertTrue(manager.device.engineStatusFlags.controlDeviceSensorMissing)
+            assertTrue(manager.device.engineStatusFlags.controlDeviceConnected)
+
+            manager.observedEngineStatus(
+                engineStatus(
+                    maxSequenceNumber = 2u,
+                    controlDeviceConnected = true,
+                    controlDeviceType = CombustionProductType.GAUGE,
+                    controlSerialNumber = "G0000001",
+                    controlTemperature = SensorTemperature(90.0),
+                ),
+            )
+            assertEquals(SensorTemperature(90.0), manager.device.controlTemperature)
+            assertFalse(manager.device.engineStatusFlags.controlDeviceSensorMissing)
         }
 
     @Test

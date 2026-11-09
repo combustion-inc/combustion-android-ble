@@ -35,6 +35,14 @@ data class EngineStatusFlags(
     val controlDeviceConnected: Boolean = false,
     val lidOpen: Boolean = false,
     val fixedSpeed: Boolean = false,
+    /**
+     * True when the control device is a Gauge reporting that its temperature sensor is not
+     * present, so the Engine has no control temperature. Only meaningful while
+     * [controlDeviceConnected] is true. While true, the Engine's control temperature is not
+     * valid (it holds the last reading received, or 0 °C if none). Engine firmware that predates
+     * this flag always sends 0, which reads as false.
+     */
+    val controlDeviceSensorMissing: Boolean = false,
 ) {
 
     companion object {
@@ -44,6 +52,7 @@ data class EngineStatusFlags(
                 controlDeviceConnected = byte.isBitSet(1),
                 lidOpen = byte.isBitSet(2),
                 fixedSpeed = byte.isBitSet(3),
+                controlDeviceSensorMissing = byte.isBitSet(4),
             )
         }
     }
