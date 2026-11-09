@@ -42,6 +42,7 @@ class EngineStatusFlagsTest {
                 controlDeviceConnected = false,
                 lidOpen = false,
                 fixedSpeed = false,
+                controlDeviceSensorMissing = false,
             ),
             flags,
         )
@@ -57,6 +58,7 @@ class EngineStatusFlagsTest {
                 controlDeviceConnected = true,
                 lidOpen = true,
                 fixedSpeed = true,
+                controlDeviceSensorMissing = false,
             ),
             flags,
         )
@@ -72,6 +74,7 @@ class EngineStatusFlagsTest {
                 controlDeviceConnected = false,
                 lidOpen = false,
                 fixedSpeed = false,
+                controlDeviceSensorMissing = false,
             ),
             flags,
         )
@@ -87,6 +90,7 @@ class EngineStatusFlagsTest {
                 controlDeviceConnected = true,
                 lidOpen = false,
                 fixedSpeed = false,
+                controlDeviceSensorMissing = false,
             ),
             flags,
         )
@@ -102,6 +106,7 @@ class EngineStatusFlagsTest {
                 controlDeviceConnected = false,
                 lidOpen = true,
                 fixedSpeed = false,
+                controlDeviceSensorMissing = false,
             ),
             flags,
         )
@@ -117,14 +122,15 @@ class EngineStatusFlagsTest {
                 controlDeviceConnected = false,
                 lidOpen = false,
                 fixedSpeed = true,
+                controlDeviceSensorMissing = false,
             ),
             flags,
         )
     }
 
     @Test
-    fun `fromRawByte ignores unrelated high bits`() {
-        val flags = EngineStatusFlags.fromRawByte(0b1111_0000u)
+    fun `fromRawByte with only controlDeviceSensorMissing set`() {
+        val flags = EngineStatusFlags.fromRawByte(0b0001_0000u)
 
         assertEquals(
             EngineStatusFlags(
@@ -132,6 +138,39 @@ class EngineStatusFlagsTest {
                 controlDeviceConnected = false,
                 lidOpen = false,
                 fixedSpeed = false,
+                controlDeviceSensorMissing = true,
+            ),
+            flags,
+        )
+    }
+
+    @Test
+    fun `fromRawByte with all five defined bits set`() {
+        val flags = EngineStatusFlags.fromRawByte(0b0001_1111u)
+
+        assertEquals(
+            EngineStatusFlags(
+                appMode = true,
+                controlDeviceConnected = true,
+                lidOpen = true,
+                fixedSpeed = true,
+                controlDeviceSensorMissing = true,
+            ),
+            flags,
+        )
+    }
+
+    @Test
+    fun `fromRawByte ignores reserved high bits`() {
+        val flags = EngineStatusFlags.fromRawByte(0b1110_0000u)
+
+        assertEquals(
+            EngineStatusFlags(
+                appMode = false,
+                controlDeviceConnected = false,
+                lidOpen = false,
+                fixedSpeed = false,
+                controlDeviceSensorMissing = false,
             ),
             flags,
         )

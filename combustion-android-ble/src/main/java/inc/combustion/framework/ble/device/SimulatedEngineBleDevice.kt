@@ -43,6 +43,12 @@ internal class SimulatedEngineBleDevice(
     shouldConnect: Boolean = false,
     hopCount: UInt = 0u,
     private val appMode: Boolean = true,
+    /**
+     * Simulates a control Gauge whose temperature sensor is not present. Only reported while the
+     * control device is a connected Gauge, matching Engine firmware (never set for a Probe, and
+     * always 0 while no control device is connected).
+     */
+    private val controlGaugeSensorMissing: Boolean = false,
 ) : SimulatedNodeHybridBleDevice(
     scope = scope,
     mac = mac,
@@ -75,6 +81,9 @@ internal class SimulatedEngineBleDevice(
             engineStatusFlags = EngineStatusFlags(
                 appMode = appMode,
                 controlDeviceConnected = controlDeviceType != null,
+                controlDeviceSensorMissing = isControlDeviceSensorMissing(
+                    controlDeviceConnected = controlDeviceType != null,
+                ),
             ),
             enginePreferences = EnginePreferences(),
         )
@@ -93,6 +102,9 @@ internal class SimulatedEngineBleDevice(
         engineStatusFlags = EngineStatusFlags(
             appMode = appMode,
             controlDeviceConnected = !controlSerialNumber.isNullOrEmpty(),
+            controlDeviceSensorMissing = isControlDeviceSensorMissing(
+                controlDeviceConnected = !controlSerialNumber.isNullOrEmpty(),
+            ),
         ),
         engineFanStatus = EngineFanStatus(
             fanState = EngineFanState.FAN_ON,
@@ -147,6 +159,11 @@ internal class SimulatedEngineBleDevice(
             }
         }
     }
+
+    private fun isControlDeviceSensorMissing(controlDeviceConnected: Boolean): Boolean =
+        controlGaugeSensorMissing &&
+            controlDeviceConnected &&
+            controlDeviceType == CombustionProductType.GAUGE
 
     private fun randomPercent(): UByte = (0..100).random().toUByte()
 }
