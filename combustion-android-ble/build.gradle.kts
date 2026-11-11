@@ -1,4 +1,3 @@
-import org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
@@ -27,8 +26,6 @@ kotlin {
             "kotlin.ExperimentalUnsignedTypes",
             "com.juul.kable.ObsoleteKableApi",
         )
-        // Equivalent of the former "-Xjvm-default=all-compatibility" flag (deprecated since Kotlin 2.2).
-        jvmDefault = JvmDefaultMode.ENABLE
     }
 }
 
