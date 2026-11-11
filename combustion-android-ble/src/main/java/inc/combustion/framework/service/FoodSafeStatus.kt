@@ -95,7 +95,7 @@ data class FoodSafeStatus(
                     state = State.fromRaw(rawState.toUInt()),
                     logReduction = rawLogReduction.toDouble() * 0.1,
                     secondsAboveThreshold = secondsAboveThreshold.toUInt(),
-                    sequenceNumber = sequenceNumber.toUInt(),
+                    sequenceNumber = sequenceNumber,
                 )
             } catch (e: Exception) {
                 null
