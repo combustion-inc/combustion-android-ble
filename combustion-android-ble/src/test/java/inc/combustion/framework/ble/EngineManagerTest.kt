@@ -30,8 +30,13 @@ package inc.combustion.framework.ble
 
 import android.os.SystemClock
 import android.util.Log
+import inc.combustion.framework.ble.device.DeviceInformationBleDevice
+import inc.combustion.framework.ble.device.EngineBleDevice
 import inc.combustion.framework.ble.device.SimulatedEngineBleDevice
+import inc.combustion.framework.ble.scanning.DeviceAdvertisingData
+import inc.combustion.framework.ble.scanning.EngineAdvertisingData
 import inc.combustion.framework.service.CombustionProductType
+import inc.combustion.framework.service.DeviceConnectionState
 import inc.combustion.framework.service.DeviceManager
 import inc.combustion.framework.service.EngineBatteryStatus
 import inc.combustion.framework.service.EngineChargingFault
@@ -40,12 +45,15 @@ import inc.combustion.framework.service.EngineControllerState
 import inc.combustion.framework.service.EngineControllerStatus
 import inc.combustion.framework.service.EngineFanState
 import inc.combustion.framework.service.EngineFanStatus
+import inc.combustion.framework.service.EnginePreferences
 import inc.combustion.framework.service.EngineStatusFlags
 import inc.combustion.framework.service.HopCount
 import inc.combustion.framework.service.SensorTemperature
 import inc.combustion.framework.service.SessionInformation
 import io.mockk.every
+import io.mockk.mockk
 import io.mockk.mockkStatic
+import io.mockk.slot
 import io.mockk.unmockkStatic
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -115,7 +123,6 @@ class EngineManagerTest {
         controlDeviceConnected: Boolean = false,
         controlDeviceType: CombustionProductType? = null,
         controlSerialNumber: String? = null,
-        controlDeviceSensorMissing: Boolean = false,
         controlTemperature: SensorTemperature? =
             if (controlDeviceType != null) SensorTemperature.NO_DATA else null,
     ): EngineStatus = EngineStatus(
@@ -133,7 +140,6 @@ class EngineManagerTest {
         controlSerialNumber = controlSerialNumber,
         engineStatusFlags = EngineStatusFlags(
             controlDeviceConnected = controlDeviceConnected,
-            controlDeviceSensorMissing = controlDeviceSensorMissing,
         ),
         engineFanStatus = EngineFanStatus(
             fanState = EngineFanState.FAN_ON,
@@ -157,6 +163,45 @@ class EngineManagerTest {
         knobAngleTenthsDegrees = 0u,
         chargingFault = EngineChargingFault.NONE,
     )
+
+    private fun engineAdvertisement(
+        controlDeviceSensorMissing: Boolean = false,
+    ): EngineAdvertisingData = EngineAdvertisingData(
+        mac = "AA:BB:CC:DD:EE:FF",
+        name = "Engine",
+        rssi = -50,
+        isConnectable = true,
+        serialNumber = "12345678",
+        engineTemperatureSetPoint = SensorTemperature.NO_DATA,
+        engineStatusFlags = EngineStatusFlags(
+            controlDeviceConnected = true,
+            controlDeviceSensorMissing = controlDeviceSensorMissing,
+        ),
+        enginePreferences = EnginePreferences(),
+    )
+
+    /**
+     * Adds a mocked, advertising (not connected) Engine and returns a function that delivers an
+     * advertisement to the manager the same way a real scan would.
+     */
+    private fun addAdvertisingEngine(
+        manager: EngineManager,
+    ): suspend (EngineAdvertisingData) -> Unit {
+        val engine = mockk<EngineBleDevice>(relaxed = true)
+        every { engine.connectionState } returns DeviceConnectionState.ADVERTISING_CONNECTABLE
+        val advertisementCallback = slot<suspend (DeviceAdvertisingData) -> Unit>()
+        every {
+            engine.observeAdvertisingPackets(any(), any(), capture(advertisementCallback))
+        } returns Unit
+
+        manager.addEngine(
+            engine,
+            mockk<DeviceInformationBleDevice>(relaxed = true),
+            engineAdvertisement(),
+        )
+
+        return { advertisementCallback.captured(it) }
+    }
 
     @Test
     fun `controlDeviceConnected is reported exactly as firmware sent it, with no debounce`() =
@@ -221,24 +266,30 @@ class EngineManagerTest {
         }
 
     @Test
-    fun `controlTemperature is null while the control device sensor is missing, and returns once present`() =
+    fun `controlTemperature is cleared by an advertisement reporting the control device sensor missing, and returns with the next status`() =
         runTest {
             val manager = manager(backgroundScope)
+            val deliverAdvertisement = addAdvertisingEngine(manager)
 
-            // Firmware keeps sending the last reading while the Gauge's sensor is missing.
             manager.observedEngineStatus(
                 engineStatus(
                     maxSequenceNumber = 1u,
                     controlDeviceConnected = true,
                     controlDeviceType = CombustionProductType.GAUGE,
                     controlSerialNumber = "G0000001",
-                    controlDeviceSensorMissing = true,
                     controlTemperature = SensorTemperature(85.5),
                 ),
             )
+            assertEquals(SensorTemperature(85.5), manager.device.controlTemperature)
+
+            // An advertisement with the sensor present leaves the last reading alone, since
+            // advertisements don't carry the control temperature.
+            deliverAdvertisement(engineAdvertisement(controlDeviceSensorMissing = false))
+            assertEquals(SensorTemperature(85.5), manager.device.controlTemperature)
+
+            deliverAdvertisement(engineAdvertisement(controlDeviceSensorMissing = true))
             assertNull(manager.device.controlTemperature)
             assertTrue(manager.device.engineStatusFlags.controlDeviceSensorMissing)
-            assertTrue(manager.device.engineStatusFlags.controlDeviceConnected)
 
             manager.observedEngineStatus(
                 engineStatus(

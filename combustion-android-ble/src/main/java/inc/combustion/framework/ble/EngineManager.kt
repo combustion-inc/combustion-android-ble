@@ -126,6 +126,12 @@ internal class EngineManager(
         engineStatusFlags = advertisement.engineStatusFlags,
         temperatureSetPointCelsius = advertisement.engineTemperatureSetPoint,
         enginePreferences = advertisement.enginePreferences,
+        // Advertisements don't carry the control temperature, so only clear it here.
+        controlTemperature = if (advertisement.engineStatusFlags.controlDeviceSensorMissing) {
+            null
+        } else {
+            current.controlTemperature
+        },
     )
 
     override fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt) {
@@ -199,15 +205,7 @@ internal class EngineManager(
                         temperatureSetPointCelsius = status.temperatureSetPoint,
                         controlDeviceType = status.controlDeviceType,
                         controlSerialNumber = status.controlSerialNumber,
-                        // While the control Gauge reports no sensor, Engine firmware keeps sending
-                        // its last reading (or 0 °C if it never had one), so report no control
-                        // temperature instead -- the same way GaugeManager drops a Gauge's own
-                        // temperature when its sensor isn't present.
-                        controlTemperature = if (status.engineStatusFlags.controlDeviceSensorMissing) {
-                            null
-                        } else {
-                            status.controlTemperature
-                        },
+                        controlTemperature = status.controlTemperature,
                         knobVoltageMillivolts = status.knobVoltageMillivolts,
                         knobAngleTenthsDegrees = status.knobAngleTenthsDegrees,
                         hopCount = status.hopCount.hopCount,

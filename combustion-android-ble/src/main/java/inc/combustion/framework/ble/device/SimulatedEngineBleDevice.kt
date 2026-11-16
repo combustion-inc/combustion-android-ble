@@ -96,7 +96,16 @@ internal class SimulatedEngineBleDevice(
         maxSequenceNumber = sequenceNumber++,
         engineBatteryStatus = EngineBatteryStatus(),
         temperatureSetPoint = temperatureSetPoint ?: SensorTemperature.withRandomData(60.0, 300.0),
-        controlTemperature = SensorTemperature.NO_DATA,
+        // Matches EngineStatus.fromRawData, which drops the reading while the sensor is missing.
+        controlTemperature = if (
+            isControlDeviceSensorMissing(
+                controlDeviceConnected = !controlSerialNumber.isNullOrEmpty(),
+            )
+        ) {
+            null
+        } else {
+            SensorTemperature.NO_DATA
+        },
         controlDeviceType = controlDeviceType,
         controlSerialNumber = controlSerialNumber,
         engineStatusFlags = EngineStatusFlags(

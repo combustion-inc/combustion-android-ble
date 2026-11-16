@@ -38,9 +38,9 @@ data class EngineStatusFlags(
     /**
      * True when the control device is a Gauge reporting that its temperature sensor is not
      * present, so the Engine has no control temperature. Only meaningful while
-     * [controlDeviceConnected] is true. While true, the Engine's control temperature is not
-     * valid (it holds the last reading received, or 0 °C if none). Engine firmware that predates
-     * this flag always sends 0, which reads as false.
+     * [controlDeviceConnected] is true. While true, firmware keeps sending the last reading
+     * received (or 0 °C if none), so the framework reports the control temperature as null.
+     * Engine firmware that predates this flag always sends 0, which reads as false.
      */
     val controlDeviceSensorMissing: Boolean = false,
 ) {
