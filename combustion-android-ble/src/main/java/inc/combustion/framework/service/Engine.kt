@@ -47,6 +47,11 @@ data class Engine(
     val temperatureSetPointCelsius: SensorTemperature = SensorTemperature.NO_DATA,
     val controlDeviceType: CombustionProductType? = null,
     val controlSerialNumber: String? = null,
+    /**
+     * Temperature reported by the control device. Null when no control device is set, and while
+     * [EngineStatusFlags.controlDeviceSensorMissing] is set (the control Gauge reports no sensor,
+     * so the Engine has no valid reading).
+     */
     val controlTemperature: SensorTemperature? = null,
     override val recordsDownloaded: Int = 0,
     override val logUploadPercent: UInt = 0u,
