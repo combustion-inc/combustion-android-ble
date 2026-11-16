@@ -62,6 +62,7 @@ class EngineStatusTest {
         populateControlDeviceBytes: Boolean = controlDeviceConnected,
         controlDeviceType: CombustionProductType = CombustionProductType.PROBE,
         controlSerialNumber: String = "1000DA4C",
+        controlDeviceSensorMissing: Boolean = false,
     ): UByteArray {
         val raw = UByteArray(EngineStatus.RAW_SIZE)
 
@@ -87,6 +88,8 @@ class EngineStatusTest {
         // Engine status flags (34): appMode + lidOpen, plus controlDeviceConnected per param
         var flags = 0b0000_0101 // appMode (bit0) + lidOpen (bit2)
         if (controlDeviceConnected) flags = flags or 0b0000_0010 // controlDeviceConnected (bit1)
+        // controlDeviceSensorMissing (bit4)
+        if (controlDeviceSensorMissing) flags = flags or 0b0001_0000
         raw[34] = flags.toUByte()
 
         // Control device type (21) + control serial number (22..33) -- populated independently of
@@ -260,6 +263,22 @@ class EngineStatusTest {
         } ?: run {
             assert(false)
         }
+    }
+
+    @Test
+    fun `fromRawData drops the control temperature while the control device sensor is missing`() {
+        val status = EngineStatus.fromRawData(
+            buildRawStatus(
+                controlDeviceConnected = true,
+                controlDeviceType = CombustionProductType.GAUGE,
+                controlSerialNumber = "AB12CD34EF",
+                controlDeviceSensorMissing = true,
+            )
+        )
+
+        assertEquals(true, status?.engineStatusFlags?.controlDeviceSensorMissing)
+        assertEquals("AB12CD34EF", status?.controlSerialNumber)
+        assertNull(status?.controlTemperature)
     }
 
     @Test
