@@ -148,7 +148,10 @@ data class EngineStatus(
                     .takeIfIsSet { data.utf8StringFromRange(NODE_SERIAL_RANGE) }
             }
 
-            val controlTemp = if (controlSerialNumber != null) {
+            // See EngineStatusFlags.controlDeviceSensorMissing for why the reading is dropped.
+            val controlTemp = if (
+                controlSerialNumber != null && !engineStatusFlags.controlDeviceSensorMissing
+            ) {
                 SensorTemperature.fromRawDataStart(data.sliceArray(CONTROL_TEMP_RANGE))
             } else {
                 null

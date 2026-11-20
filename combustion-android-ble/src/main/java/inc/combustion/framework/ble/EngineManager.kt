@@ -126,6 +126,12 @@ internal class EngineManager(
         engineStatusFlags = advertisement.engineStatusFlags,
         temperatureSetPointCelsius = advertisement.engineTemperatureSetPoint,
         enginePreferences = advertisement.enginePreferences,
+        // Advertisements don't carry the control temperature, so only clear it here.
+        controlTemperature = if (advertisement.engineStatusFlags.controlDeviceSensorMissing) {
+            null
+        } else {
+            current.controlTemperature
+        },
     )
 
     override fun sendLogRequest(startSequenceNumber: UInt, endSequenceNumber: UInt) {

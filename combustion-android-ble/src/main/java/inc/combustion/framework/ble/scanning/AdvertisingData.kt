@@ -124,8 +124,6 @@ interface AdvertisingData {
                     manufacturerData = manufacturerData,
                     type = type,
                 ) ?: base
-
-                else -> base
             }
         }
     }

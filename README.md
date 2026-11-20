@@ -46,7 +46,9 @@ The [`CombustionService`](https://github.com/combustion-inc/combustion-android-b
 The [Android example](https://github.com/combustion-inc/combustion-android-example) provides more detail on using these APIs.
 
 ## Adding the Library to Your Project
-You can find our library on [JitPack](https://jitpack.io/#combustion-inc/combustion-android-ble).  Go to that page for instructions on setting up your root `build.gradle` to use the JitPack repository and add the library dependency to your build.  See our [`build.gradle`](combustion-android-ble/build.gradle) for the compiler arguments and dependencies used by the library.
+You can find our library on [JitPack](https://jitpack.io/#combustion-inc/combustion-android-ble).  Go to that page for instructions on setting up your root `build.gradle` to use the JitPack repository and add the library dependency to your build.  See our [`build.gradle.kts`](combustion-android-ble/build.gradle.kts) for the compiler arguments and dependencies used by the library.
+
+Kotlin apps using the library need **Kotlin 2.3 or newer**, because the library is compiled with Kotlin 2.4 (an older Kotlin compiler can't read its class metadata). Projects building the library from source also need the same Android Gradle Plugin version as this project (`androidGradlePlugin` in [`libs.versions.toml`](gradle/libs.versions.toml)).
 
 ## Permissions
 The library uses BLE to communicate with Combustion's thermometers so your app is required to declare [Bluetooth permissions](https://developer.android.com/guide/topics/connectivity/bluetooth/permissions). Additionally the library also interacts with the notification system service which requires [Notification permissions](https://developer.android.com/develop/ui/views/notifications/notification-permission). The [Android example](https://github.com/combustion-inc/combustion-android-example) walks through an approach for getting consent from your users as part of your app's UI.  Also see the library's [AndroidManifest.xml](combustion-android-ble/src/main/AndroidManifest.xml) for the specific permission list.
