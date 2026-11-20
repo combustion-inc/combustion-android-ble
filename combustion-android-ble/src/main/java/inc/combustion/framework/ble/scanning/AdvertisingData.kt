@@ -114,8 +114,6 @@ interface AdvertisingData {
                     isConnectable = isConnectable,
                     manufacturerData = manufacturerData,
                 )
-
-                else -> base
             }
         }
     }
