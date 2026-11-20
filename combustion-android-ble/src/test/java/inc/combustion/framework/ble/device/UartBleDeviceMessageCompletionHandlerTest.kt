@@ -256,6 +256,26 @@ class UartBleDeviceMessageCompletionHandlerTest {
     }
 
     @Test
+    fun `cancelling one request id leaves the other waits pending`() = runTest {
+        val handler = UartBleDevice.MessageCompletionHandler()
+        var firstInvoked = false
+        var secondResult: Pair<Boolean, Any?>? = null
+
+        handler.wait(scope = backgroundScope, duration = 10_000, reqId = 1u) { _, _ -> firstInvoked = true }
+        handler.wait(scope = backgroundScope, duration = 10_000, reqId = 2u) { r, d -> secondResult = r to d }
+
+        handler.cancel(1u)
+        advanceTimeBy(20_000)
+        runCurrent()
+
+        assertFalse("a cancelled wait doesn't time out either", firstInvoked)
+        assertFalse(handler.handled(result = true, data = null, reqId = 1u))
+        assertEquals(false to null, secondResult)
+        assertFalse(handler.isWaiting)
+        assertNull(handler.requestId)
+    }
+
+    @Test
     fun `a re-entrant wait from within the completion callback is accepted, not rejected`() =
         runTest {
             val handler = UartBleDevice.MessageCompletionHandler()

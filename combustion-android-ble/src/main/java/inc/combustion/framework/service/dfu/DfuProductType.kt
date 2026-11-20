@@ -66,6 +66,8 @@ enum class DfuProductType {
                 CombustionProductType.PROBE -> PROBE
                 CombustionProductType.GAUGE -> GAUGE
                 CombustionProductType.ENGINE -> ENGINE
+                CombustionProductType.DISPLAY -> DISPLAY
+                CombustionProductType.CHARGER -> CHARGER
                 CombustionProductType.NODE -> UNKNOWN
                 else -> UNKNOWN
             }

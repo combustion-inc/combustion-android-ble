@@ -72,9 +72,22 @@ internal enum class NodeMessageType(override val value: UByte) : NodeMessage {
     ENGINE_STATUS(0x70u),
     SET_ENGINE_TEMPERATURE_SET_POINT(0x71u),
     SET_ENGINE_CONTROL_DEVICE(0x72u),
+
+    READ_LINKED_DEVICES(0x73u),
+    READ_UNLINKED_DEVICES(0x74u),
+    LINK_DEVICE(0x75u),
+    UNLINK_DEVICE(0x76u),
+    DEVICE_LINKED(0x77u),
+    DEVICE_UNLINKED(0x78u),
+    SET_PROXIMITY_LINKING(0x79u),
+    READ_PROXIMITY_LINKING(0x7Au),
+    SYNC_LINK_TABLE(0x7Bu),
     ;
 
+    val isLinkingTableRead: Boolean
+        get() = this == READ_LINKED_DEVICES || this == READ_UNLINKED_DEVICES
+
     companion object {
-        fun fromUByte(value: UByte) = values().firstOrNull { it.value == value }
+        fun fromUByte(value: UByte) = entries.firstOrNull { it.value == value }
     }
 }
