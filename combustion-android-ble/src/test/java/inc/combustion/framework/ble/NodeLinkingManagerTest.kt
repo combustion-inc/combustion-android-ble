@@ -464,7 +464,7 @@ class NodeLinkingManagerTest {
 
         assertEquals(listOf("DS10001234", "DS10001234", "CR10007379"), received.map { it.serialNumber })
         assertEquals(
-            NodeHeartbeat.Connection(true, "1000DA4C", CombustionProductType.PROBE, -60),
+            NodeHeartbeat.Connection(true, "1000DA4C", CombustionProductType.PROBE, -60, smoothedRssi = -60),
             received.first().connections.first(),
         )
     }

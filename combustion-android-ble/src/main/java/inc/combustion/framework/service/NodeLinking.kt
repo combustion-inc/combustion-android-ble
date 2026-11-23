@@ -136,11 +136,18 @@ data class NodeHeartbeat(
     /**
      * One connection slot of a heartbeat. When [present] is false the slot is empty and the other
      * fields hold no data.
+     *
+     * @property rssi the signal strength (dBm) of this peer as the sending Node currently estimates
+     * it (the Node's own running average); a non-negative value means it had no reading.
+     * @property smoothedRssi [rssi] averaged further across the sending Node's recent heartbeats;
+     * null if the slot is empty, the peer's serial number is unknown, or there's no reading in the
+     * last 15 s. Prefer it for showing signal quality, as [rssi] still fluctuates between heartbeats.
      */
     data class Connection(
         val present: Boolean,
         val serialNumber: String,
         val productType: CombustionProductType,
         val rssi: Int,
+        val smoothedRssi: Int? = null,
     )
 }

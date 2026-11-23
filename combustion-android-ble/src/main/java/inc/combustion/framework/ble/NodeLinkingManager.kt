@@ -184,6 +184,7 @@ internal class NodeLinkingManager(
     private val commandCoordinator: CommandCoordinator = CommandCoordinator(),
     private val findConnectedNode: suspend (serialNumber: String) -> NodeBleDevice?,
     private val makeRequestId: () -> UInt = { Random.nextUInt() },
+    private val heartbeatRssi: HeartbeatRssiSmoother = HeartbeatRssiSmoother(),
 ) {
     private data class ReadKey(val serialNumber: String, val kind: LinkingTableKind)
 
@@ -327,6 +328,8 @@ internal class NodeLinkingManager(
 
     fun handleHeartbeat(request: NodeHeartbeatRequest) {
         val serialNumber = request.serialNumber ?: return
+        // Before emitting, so collectors get averages that include this heartbeat.
+        val smoothedRssi = heartbeatRssi.smooth(request)
         _heartbeatFlow.tryEmit(
             NodeHeartbeat(
                 serialNumber = serialNumber,
@@ -334,12 +337,13 @@ internal class NodeLinkingManager(
                 productType = request.productType,
                 hopCount = request.hopCount,
                 inbound = request.inbound,
-                connections = request.connectionDetails.map {
+                connections = request.connectionDetails.zip(smoothedRssi) { detail, smoothed ->
                     NodeHeartbeat.Connection(
-                        present = it.present,
-                        serialNumber = it.serialNumber,
-                        productType = it.productType,
-                        rssi = it.rssi,
+                        present = detail.present,
+                        serialNumber = detail.serialNumber,
+                        productType = detail.productType,
+                        rssi = detail.rssi,
+                        smoothedRssi = smoothed,
                     )
                 },
             )
@@ -356,6 +360,7 @@ internal class NodeLinkingManager(
         linkedDevices.values.forEach { it.value = null }
         unlinkedDevices.values.forEach { it.value = null }
         proximityLinking.values.forEach { it.value = null }
+        heartbeatRssi.clear()
     }
 
     /** Cancels running commands for good; [scope] outlives this manager when NetworkManager is recreated. */
