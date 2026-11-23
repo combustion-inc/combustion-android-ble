@@ -86,6 +86,8 @@ internal class NodeHeartbeatRequest(
 
                     CombustionProductType.NODE,
                     CombustionProductType.GAUGE,
+                    CombustionProductType.DISPLAY,
+                    CombustionProductType.CHARGER,
                     CombustionProductType.ENGINE ->
                         data.trimmedStringFromRange(SERIAL_NUMBER_INDEX until SERIAL_NUMBER_INDEX + NODE_SERIAL_NUMBER_SIZE)
 

@@ -148,6 +148,23 @@ internal open class NodeRequest(
                     )
                 }
 
+                NodeMessageType.READ_LINKED_DEVICES,
+                NodeMessageType.READ_UNLINKED_DEVICES,
+                NodeMessageType.LINK_DEVICE,
+                NodeMessageType.UNLINK_DEVICE,
+                NodeMessageType.DEVICE_LINKED,
+                NodeMessageType.DEVICE_UNLINKED,
+                NodeMessageType.SET_PROXIMITY_LINKING,
+                NodeMessageType.READ_PROXIMITY_LINKING,
+                NodeMessageType.SYNC_LINK_TABLE -> {
+                    NodeIncomingLinkingRequest.fromRaw(
+                        requestData,
+                        messageType,
+                        requestId,
+                        payloadLength,
+                    )
+                }
+
                 else -> {
                     DeviceManager.instance.settings.messageTypeCallback(rawMessageType)?.let {
                         return GenericNodeRequest.fromRaw(
