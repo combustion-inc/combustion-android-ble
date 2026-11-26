@@ -376,6 +376,14 @@ internal class LogManager {
         return temperatureLog(serialNumber)?.dataPointsBySession
     }
 
+    fun exportLogsForDeviceSession(
+        serialNumber: String,
+        sessionId: UInt,
+        ranges: List<UIntRange>,
+    ): List<LoggedDataPoint>? {
+        return temperatureLog(serialNumber)?.sessionDataPointsInRanges(sessionId, ranges)
+    }
+
     fun createLogFlowForDevice(
         serialNumber: String,
         includeHistory: Boolean = true
