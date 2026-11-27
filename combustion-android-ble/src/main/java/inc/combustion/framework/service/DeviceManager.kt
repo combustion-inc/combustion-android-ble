@@ -860,12 +860,16 @@ class DeviceManager(
      *
      * @see LoggedDataPoint
      */
-    fun exportLogsForDeviceSession(
+    fun exportLogsForDeviceSessionInRanges(
         serialNumber: String,
         sessionId: UInt,
         ranges: List<UIntRange>,
     ): List<LoggedDataPoint>? {
-        return LogManager.instance.exportLogsForDeviceSession(serialNumber, sessionId, ranges)
+        return LogManager.instance.exportLogsForDeviceSessionInRanges(
+            serialNumber = serialNumber,
+            sessionId = sessionId,
+            ranges = ranges,
+        )
     }
 
     /**
