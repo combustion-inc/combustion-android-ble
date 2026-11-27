@@ -847,6 +847,32 @@ class DeviceManager(
     }
 
     /**
+     * Retrieves the logged data points of session [sessionId] of the specified serial number,
+     * with sequence numbers in [ranges]. Unlike [exportLogsForDeviceBySession], this only copies
+     * those data points, so its cost doesn't grow with the length of the log.
+     *
+     * @param serialNumber the serial number of the device.
+     * @param sessionId the ID of the session.
+     * @param ranges the sequence numbers to include. If they're sorted and don't overlap, the data
+     * points are in sequence number order.
+     * @return the data points; empty if there are none in [ranges], or null if the device or the
+     * session isn't in the log.
+     *
+     * @see LoggedDataPoint
+     */
+    fun exportLogsForDeviceSessionInRanges(
+        serialNumber: String,
+        sessionId: UInt,
+        ranges: List<UIntRange>,
+    ): List<LoggedDataPoint>? {
+        return LogManager.instance.exportLogsForDeviceSessionInRanges(
+            serialNumber = serialNumber,
+            sessionId = sessionId,
+            ranges = ranges,
+        )
+    }
+
+    /**
      * Retrieves the current temperature log as a comma separate value string with header.
      *
      * @param serialNumber Serial number to export

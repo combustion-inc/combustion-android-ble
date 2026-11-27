@@ -48,6 +48,16 @@ internal abstract class TemperatureLog<L : LoggedDataPoint>(protected val serial
     val currentSessionStartTime: Date? get() = sessions.lastOrNull()?.startTime
     val logStartTime: Date? get() = sessions.firstOrNull()?.startTime
 
+    /**
+     * The data points of session [sessionId] with sequence numbers in [ranges] (see
+     * [Session.dataPointsInRanges]), or null if the session isn't in the log.
+     */
+    fun sessionDataPointsInRanges(
+        sessionId: UInt,
+        ranges: List<UIntRange>,
+    ): List<LoggedDataPoint>? =
+        sessions.lastOrNull { it.id == sessionId }?.dataPointsInRanges(ranges)
+
     val dataPointCount: Int
         get() {
             var count = 0

@@ -45,6 +45,15 @@ import java.util.Date
 import java.util.concurrent.ConcurrentSkipListMap
 
 /**
+ * The values with keys in [ranges], in key order if [ranges] are sorted and don't overlap. Only
+ * reads the entries in [ranges], not the whole map.
+ */
+internal fun <V> ConcurrentSkipListMap<UInt, V>.valuesInRanges(ranges: List<UIntRange>): List<V> =
+    ranges.filterNot { it.isEmpty() }.flatMap { range ->
+        subMap(range.first, true, range.last, true).values
+    }
+
+/**
  * Log transfer sessions and buffer instance for a probe.
  *
  * @property serialNumber Probe serial number
@@ -94,6 +103,13 @@ internal class Session(
             return _logs.values.toList()
 
         }
+
+    /**
+     * The data points with sequence numbers in [ranges], in sequence number order if [ranges] are
+     * sorted and don't overlap. Only reads those data points, not the whole log.
+     */
+    fun dataPointsInRanges(ranges: List<UIntRange>): List<LoggedDataPoint> =
+        _logs.valuesInRanges(ranges)
 
     val dataPointCount: Int
         get() {
